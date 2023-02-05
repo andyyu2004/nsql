@@ -1,0 +1,6 @@
+[workspace]
+members = [
+    "nsql",
+    "nsql-btree",
+    "nsql-pager",
+]
