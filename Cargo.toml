@@ -2,5 +2,7 @@
 members = [
     "nsql",
     "nsql-btree",
+    "nsql-buffer",
     "nsql-pager",
+    "nsql-storage",
 ]
