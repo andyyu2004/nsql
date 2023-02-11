@@ -2,11 +2,11 @@ use std::io;
 
 use nsql_pager::SingleFilePager;
 
-pub struct BTree<S> {
-    pager: SingleFilePager<S>,
+pub struct BTree {
+    pager: SingleFilePager,
 }
 
-impl<S> BTree<S> {
+impl BTree {
     pub fn open() -> io::Result<Self> {
         todo!()
         // let pager = SingleFilePager::open(path)?;

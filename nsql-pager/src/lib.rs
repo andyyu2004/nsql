@@ -6,7 +6,8 @@ use std::path::Path;
 use std::sync::Arc;
 use std::{fmt, io};
 
-use nsql_storage::{Buffer, DmaFileStorage, Storage, HEADER_SIZE, PAGE_SIZE};
+use nsql_storage::Storage;
+pub use nsql_storage::{HEADER_SIZE, PAGE_SIZE};
 
 pub trait Pager {
     // fn alloc_page(&self) -> io::Result<PageIndex>;
@@ -23,14 +24,11 @@ impl Pager for InMemoryPager {
     }
 }
 
-pub struct SingleFilePager<S> {
-    storage: S,
+pub struct SingleFilePager {
+    storage: Storage,
 }
 
-impl<S> Pager for SingleFilePager<S>
-where
-    S: Storage,
-{
+impl Pager for SingleFilePager {
     async fn read_page(&self, idx: PageIndex) -> io::Result<Page> {
         let offset = self.offset_for_page(idx);
         let data = self.storage.read_at(offset as u64, PAGE_SIZE).await?;
@@ -45,19 +43,19 @@ where
             ));
         }
 
-        Ok(Page::new(Arc::new(data)))
+        Ok(Page::new(data.to_vec().into_boxed_slice()))
     }
 }
 
-impl SingleFilePager<DmaFileStorage> {
+impl SingleFilePager {
     #[inline]
-    pub async fn open(path: impl AsRef<Path>) -> io::Result<SingleFilePager<DmaFileStorage>> {
-        Ok(SingleFilePager { storage: DmaFileStorage::open(path).await? })
+    pub async fn open(path: impl AsRef<Path>) -> io::Result<SingleFilePager> {
+        Ok(SingleFilePager { storage: Storage::open(path).await? })
     }
 }
 
 // private helpers
-impl<S> SingleFilePager<S> {
+impl SingleFilePager {
     fn offset_for_page(&self, idx: PageIndex) -> usize {
         (idx.0 * PAGE_SIZE) + HEADER_SIZE
     }
@@ -65,12 +63,12 @@ impl<S> SingleFilePager<S> {
 
 #[derive(Clone)]
 pub struct Page {
-    data: Arc<dyn Buffer>,
+    bytes: Box<[u8]>,
 }
 
 impl Page {
-    pub fn new(data: Arc<dyn Buffer>) -> Self {
-        Self { data }
+    pub fn new(bytes: Box<[u8]>) -> Self {
+        Self { bytes }
     }
 }
 

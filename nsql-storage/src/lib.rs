@@ -3,8 +3,8 @@
 #![feature(async_fn_in_trait)]
 
 use std::io;
-use std::ops::Deref;
 use std::path::Path;
+use std::sync::Arc;
 
 use glommio::io::{DmaFile, ReadResult};
 use glommio::GlommioError;
@@ -12,30 +12,19 @@ use glommio::GlommioError;
 pub const HEADER_SIZE: usize = 4096;
 pub const PAGE_SIZE: usize = 4096;
 
-pub struct DmaFileStorage {
-    file: DmaFile,
+#[derive(Clone)]
+pub struct Storage {
+    file: Arc<DmaFile>,
 }
 
-impl DmaFileStorage {
+impl Storage {
     #[inline]
     pub async fn open(path: impl AsRef<Path>) -> io::Result<Self> {
-        Ok(Self { file: DmaFile::open(path).await.map_err(convert_err)? })
+        Ok(Self { file: Arc::new(DmaFile::open(path).await.map_err(convert_err)?) })
     }
-}
 
-pub trait Buffer: Deref<Target = [u8]> + 'static {}
-
-impl Buffer for ReadResult {}
-
-pub trait Storage {
-    type Bytes: Buffer;
-    async fn read_at(&self, pos: u64, size: usize) -> Result<Self::Bytes, std::io::Error>;
-}
-
-impl Storage for DmaFileStorage {
-    type Bytes = ReadResult;
-
-    async fn read_at(&self, pos: u64, size: usize) -> Result<Self::Bytes, std::io::Error> {
+    #[inline]
+    pub async fn read_at(&self, pos: u64, size: usize) -> io::Result<ReadResult> {
         self.file.read_at(pos, size).await.map_err(convert_err)
     }
 }
