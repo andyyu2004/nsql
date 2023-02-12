@@ -1,6 +1,7 @@
 #![deny(rust_2018_idioms)]
 
 use std::hash::Hash;
+use std::marker::PhantomData;
 use std::ops::{Add, Sub};
 use std::sync::Arc;
 
@@ -28,15 +29,15 @@ impl<T: ?Sized> RefCounted for Arc<T> {
     }
 }
 
-struct Hist<T, const K: usize>(ArrayVec<T, K>);
+struct History<T, const K: usize>(ArrayVec<T, K>);
 
-impl<T, const K: usize> Default for Hist<T, K> {
+impl<T, const K: usize> Default for History<T, K> {
     fn default() -> Self {
         Self(Default::default())
     }
 }
 
-impl<T, const K: usize> Hist<T, K> {
+impl<T, const K: usize> History<T, K> {
     pub fn kth(&self) -> Option<&T> {
         self.0.first()
     }
@@ -58,11 +59,35 @@ impl<T, const K: usize> Hist<T, K> {
     }
 }
 
+pub trait Callbacks {
+    type Key;
+    type Value;
+
+    fn on_evict(&self, key: &Self::Key, value: &Self::Value);
+}
+
+pub struct NullCallbacks<K, V> {
+    marker: PhantomData<(K, V)>,
+}
+
+impl<K, V> NullCallbacks<K, V> {
+    fn new() -> Self {
+        Self { marker: PhantomData }
+    }
+}
+
+impl<K, V> Callbacks for NullCallbacks<K, V> {
+    type Key = K;
+    type Value = V;
+
+    fn on_evict(&self, _: &K, _: &V) {}
+}
+
 // based off https://www.cs.cmu.edu/~natassa/courses/15-721/papers/p297-o_neil.pdf
-pub struct LruK<K, V, C: Clock, const N: usize> {
+pub struct LruK<K, V, C: Clock, F: Callbacks = NullCallbacks<K, V>, const N: usize = 2> {
     map: DashMap<K, V>,
-    history: DashMap<K, Hist<C::Time, N>>,
-    last: DashMap<K, C::Time>,
+    histories: DashMap<K, History<C::Time, N>>,
+    last_accessed: DashMap<K, C::Time>,
     capacity: usize,
     clock: C,
     retained_information_period: C::Duration,
@@ -70,12 +95,12 @@ pub struct LruK<K, V, C: Clock, const N: usize> {
     /// These references will not be considered a second reference.
     /// It is also the minimum span of time where a key must be retained in the cache.
     correlated_reference_period: C::Duration,
-    evict_cb: fn(&K, &V),
+    callbacks: F,
 }
 
 pub struct CacheFull;
 
-impl<K, V, C, const N: usize> LruK<K, V, C, N>
+impl<K, V, C, const N: usize> LruK<K, V, C, NullCallbacks<K, V>, N>
 where
     // K doesn't really need to be copy, can relax to clone if needed
     K: Eq + Hash + Copy + 'static,
@@ -88,29 +113,39 @@ where
         correlated_reference_period: C::Duration,
     ) -> Self {
         assert!(capacity > 0, "capacity must be greater than 0");
-        Self::new_with_evict_cb(
+        Self::new_with_callbacks(
             capacity,
             retained_information_period,
             correlated_reference_period,
-            |_, _| {},
+            NullCallbacks::new(),
         )
     }
-    pub fn new_with_evict_cb(
+}
+
+impl<K, V, C, F, const N: usize> LruK<K, V, C, F, N>
+where
+    // K doesn't really need to be copy, can relax to clone if needed
+    K: Eq + Hash + Copy + 'static,
+    F: Callbacks<Key = K, Value = V>,
+    V: Send + Sync + RefCounted + 'static,
+    C: Clock,
+{
+    pub fn new_with_callbacks(
         capacity: usize,
         retained_information_period: C::Duration,
         correlated_reference_period: C::Duration,
-        evict_cb: fn(&K, &V),
+        callbacks: F,
     ) -> Self {
         // the capacity isn't exactly what we pass to it
         Self {
             capacity,
-            evict_cb,
+            callbacks,
             retained_information_period,
             correlated_reference_period,
             map: DashMap::with_capacity(capacity + 1),
             clock: C::default(),
-            last: Default::default(),
-            history: Default::default(),
+            last_accessed: Default::default(),
+            histories: Default::default(),
         }
     }
 
@@ -119,9 +154,9 @@ where
         let now = self.clock.now();
         let value = self.map.get(&key);
 
-        self.last.insert(key, now);
+        self.last_accessed.insert(key, now);
 
-        let mut hist = self.history.entry(key).or_default();
+        let mut hist = self.histories.entry(key).or_default();
         match hist.last().copied() {
             // if it was a correlated reference, then we just update the last reference time
             Some(last) if now - last < self.correlated_reference_period => {
@@ -160,15 +195,15 @@ where
         .insert(value.clone());
 
         // insert into history so it is not possible for they key to be immediately evicted
-        let prev = self.last.insert(key, now);
+        let prev = self.last_accessed.insert(key, now);
 
         // if we did actually insert something (i.e. it was a new key) then we try another eviction
         // and if this fails we undo the insertion
         if self.is_overfull() && !self.evict(now) {
             self.map.remove(&key);
             match prev {
-                Some(prev) => assert!(self.last.insert(key, prev).is_some()),
-                None => assert!(self.last.remove(&key).is_some()),
+                Some(prev) => assert!(self.last_accessed.insert(key, prev).is_some()),
+                None => assert!(self.last_accessed.remove(&key).is_some()),
             }
             assert!(!self.is_overfull());
             return Err(CacheFull);
@@ -199,7 +234,7 @@ where
             .filter(|r| {
                 // don't evict keys that have been referenced in the last `retained_information_period` or are still referenced
                 let has_references = r.value().ref_count() > 1;
-                let referenced_too_recently = match self.last.get(r.key()) {
+                let referenced_too_recently = match self.last_accessed.get(r.key()) {
                     Some(last) => now - *last.value() < self.retained_information_period,
                     None => false,
                 };
@@ -207,7 +242,7 @@ where
                 !has_references && !referenced_too_recently
             })
             // find the key with the minimum kth reference time (i.e. the `kth` reference is the least recent reference)
-            .min_by_key(|k| match self.history.get(k.key()) {
+            .min_by_key(|k| match self.histories.get(k.key()) {
                 Some(hist) => hist.value().kth().copied().unwrap(),
                 None => now,
             });
@@ -215,16 +250,16 @@ where
         let succeeded = victim.is_some();
         if let Some(victim) = victim {
             assert!(victim.value().ref_count() == 1);
-            (self.evict_cb)(victim.key(), victim.value());
+            self.callbacks.on_evict(victim.key(), victim.value());
             let key = *victim.key();
             drop(victim);
             debug_assert!(self.map.remove(&key).is_some());
-            debug_assert!(self.last.remove(&key).is_some());
+            debug_assert!(self.last_accessed.remove(&key).is_some());
             // not removing from history as we want to retain the history using a separate parameter
         }
 
         // drop any entries for keys that have not been referenced in the last `retained_information_period`
-        self.history.retain(|_, hist| match hist.last().copied() {
+        self.histories.retain(|_, hist| match hist.last().copied() {
             Some(last) => now - last < self.retained_information_period,
             None => false,
         });
@@ -241,5 +276,9 @@ where
 
     pub fn is_empty(&self) -> bool {
         self.map.is_empty()
+    }
+
+    pub fn callbacks(&self) -> &F {
+        &self.callbacks
     }
 }

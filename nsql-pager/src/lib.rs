@@ -3,7 +3,6 @@
 #![feature(async_fn_in_trait)]
 
 use std::path::Path;
-use std::sync::Arc;
 use std::{fmt, io};
 
 use nsql_storage::Storage;

@@ -24,23 +24,9 @@ impl RefCounted for BufferHandle {
     }
 }
 
-#[derive(Default)]
-pub struct Timer;
-
-impl lruk::Clock for Timer {
-    type Time = coarsetime::Instant;
-    type Duration = coarsetime::Duration;
-
-    fn now(&self) -> Self::Time {
-        coarsetime::Instant::now()
-    }
-}
-
-const LRU_K: usize = 2;
-
 pub struct BufferPool<P> {
     pager: P,
-    cache: LruK<PageIndex, BufferHandle, Timer, LRU_K>,
+    cache: LruK<PageIndex, BufferHandle, Clock>,
 }
 
 impl<P> BufferPool<P> {
@@ -75,5 +61,17 @@ impl<P: Pager> BufferPoolInterface for BufferPool<P> {
         let page = Arc::new(self.pager.read_page(index).await?);
         let handle = BufferHandle { page };
         Ok(self.cache.insert(index, handle))
+    }
+}
+
+#[derive(Default)]
+pub struct Clock;
+
+impl lruk::Clock for Clock {
+    type Time = coarsetime::Instant;
+    type Duration = coarsetime::Duration;
+
+    fn now(&self) -> Self::Time {
+        coarsetime::Instant::now()
     }
 }

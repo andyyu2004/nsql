@@ -1,13 +1,31 @@
 use std::sync::atomic::{self, AtomicU64};
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
 
 use lruk::{Clock, LruK};
 use proptest::prelude::*;
 
+#[derive(Default)]
+pub struct Callbacks<K, V> {
+    evicted: RwLock<Vec<(K, V)>>,
+}
+
+impl<K: Clone, V: Clone> lruk::Callbacks for Callbacks<K, V> {
+    type Key = K;
+    type Value = V;
+
+    fn on_evict(&self, key: &Self::Key, value: &Self::Value) {
+        self.evicted.write().unwrap().push((key.clone(), value.clone()));
+    }
+}
+
 #[test]
 fn test_cache_as_lru() {
-    let cache = LruK::<i32, Arc<char>, CounterClock, 1>::new(2, 0, 0);
+    let cbs = Callbacks::default();
+    let cache =
+        LruK::<i32, Arc<char>, CounterClock, Callbacks<i32, Arc<char>>, 1>::new_with_callbacks(
+            2, 0, 0, cbs,
+        );
 
     macro_rules! get {
         ($key:expr) => {
@@ -54,6 +72,11 @@ fn test_cache_as_lru() {
     assert_eq!(get!(2), None);
     assert_eq!(get!(3), Some('c'));
     assert_eq!(get!(4), Some('d'));
+
+    let evicted = cache.callbacks().evicted.read().unwrap();
+    assert_eq!(evicted.len(), 2);
+    assert_eq!(evicted[0], (1, Arc::new('a')));
+    assert_eq!(evicted[1], (2, Arc::new('b')));
 }
 
 // The correctness of the eviction policy is currently a best-effort sort of thing, they are not essential for correctness.
@@ -66,7 +89,7 @@ proptest! {
         correlated_reference_period in 0..20,
         elements in prop::collection::vec(0..20, 0..100),
     ) {
-        let cache = LruK::<i32, Arc<char>, CounterClock, 3>::new(
+        let cache = LruK::<i32, Arc<char>, CounterClock>::new(
             capacity as usize,
             retained_information_period as u64,
             correlated_reference_period as u64,
@@ -90,7 +113,7 @@ proptest! {
         correlated_reference_period in 0..20,
         elements in prop::collection::vec(0..20, 0..100),
     ) {
-        let cache = LruK::<i32, Arc<char>, CounterClock, 3>::new(
+        let cache = LruK::<i32, Arc<char>, CounterClock>::new(
             capacity as usize,
             retained_information_period as u64,
             correlated_reference_period as u64,
@@ -107,7 +130,7 @@ proptest! {
 #[test]
 #[should_panic]
 fn test_disallow_zero_capacity() {
-    LruK::<i32, Arc<char>, CounterClock, 2>::new(0, 0, 0);
+    LruK::<i32, Arc<char>, CounterClock>::new(0, 0, 0);
 }
 
 #[derive(Default)]
