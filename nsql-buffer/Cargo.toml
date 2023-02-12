@@ -4,7 +4,10 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-stretto = "0.7.1"
+coarsetime = "0.1.22"
 
 [dependencies.nsql-pager]
 path = "../nsql-pager"
+
+[dependencies.lruk]
+path = "../lruk"
