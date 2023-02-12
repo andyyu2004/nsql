@@ -3,6 +3,7 @@
 #![feature(async_fn_in_trait)]
 
 use std::path::Path;
+use std::sync::RwLock;
 use std::{fmt, io};
 
 use nsql_storage::Storage;
@@ -11,15 +12,21 @@ pub use nsql_storage::{HEADER_SIZE, PAGE_SIZE};
 pub trait Pager {
     // fn alloc_page(&self) -> io::Result<PageIndex>;
     async fn read_page(&self, idx: PageIndex) -> io::Result<Page>;
+    async fn write_page(&self, idx: PageIndex, page: Page) -> io::Result<()>;
 }
 
 pub struct InMemoryPager {
-    pages: Vec<Page>,
+    pages: RwLock<Vec<Page>>,
 }
 
 impl Pager for InMemoryPager {
     async fn read_page(&self, idx: PageIndex) -> io::Result<Page> {
-        Ok(self.pages[idx.0].clone())
+        Ok(self.pages.read().unwrap()[idx.0].clone())
+    }
+
+    async fn write_page(&self, idx: PageIndex, page: Page) -> io::Result<()> {
+        self.pages.write().unwrap()[idx.0] = page;
+        Ok(())
     }
 }
 
@@ -27,12 +34,14 @@ pub struct SingleFilePager {
     storage: Storage,
 }
 
+const CHECKSUM_LENGTH: usize = std::mem::size_of::<u64>();
+
 impl Pager for SingleFilePager {
     async fn read_page(&self, idx: PageIndex) -> io::Result<Page> {
         let offset = self.offset_for_page(idx);
         let data = self.storage.read_at(offset as u64, PAGE_SIZE).await?;
-        let expected_checksum = u64::from_be_bytes(data[0..4].try_into().unwrap());
-        let computed_checksum = checksum(&data[4..]);
+        let expected_checksum = u64::from_be_bytes(data[..CHECKSUM_LENGTH].try_into().unwrap());
+        let computed_checksum = checksum(&data[CHECKSUM_LENGTH..]);
         if expected_checksum != computed_checksum {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
@@ -42,7 +51,25 @@ impl Pager for SingleFilePager {
             ));
         }
 
-        Ok(Page::new(data.to_vec().into_boxed_slice()))
+        Ok(Page::new(
+            data.to_vec().into_boxed_slice().try_into().expect("data was incorrect length"),
+        ))
+    }
+
+    async fn write_page(&self, idx: PageIndex, mut page: Page) -> io::Result<()> {
+        let offset = self.offset_for_page(idx);
+        let checksum = checksum(&page.bytes[CHECKSUM_LENGTH..]);
+        let checksum_slice = &mut page.bytes[..CHECKSUM_LENGTH];
+        assert_eq!(
+            u64::from_be_bytes(checksum_slice.try_into().unwrap()),
+            0,
+            "checksum slice is non-zero"
+        );
+        checksum_slice.copy_from_slice(&checksum.to_be_bytes());
+
+        let data = Vec::with_capacity(PAGE_SIZE);
+        self.storage.write_at(offset as u64, &data).await?;
+        Ok(())
     }
 }
 
@@ -62,11 +89,11 @@ impl SingleFilePager {
 
 #[derive(Clone)]
 pub struct Page {
-    bytes: Box<[u8]>,
+    bytes: Box<[u8; PAGE_SIZE]>,
 }
 
 impl Page {
-    pub fn new(bytes: Box<[u8]>) -> Self {
+    pub fn new(bytes: Box<[u8; PAGE_SIZE]>) -> Self {
         Self { bytes }
     }
 }
