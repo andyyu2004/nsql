@@ -5,32 +5,6 @@ use std::time::{Duration, Instant};
 use lruk::{Clock, LruK};
 use proptest::prelude::*;
 
-#[derive(Default)]
-struct CounterClock {
-    counter: AtomicU64,
-}
-
-impl Clock for CounterClock {
-    type Time = u64;
-    type Duration = u64;
-
-    fn now(&self) -> Self::Time {
-        self.counter.fetch_add(1, atomic::Ordering::Relaxed)
-    }
-}
-
-#[derive(Default)]
-struct RealClock;
-
-impl Clock for RealClock {
-    type Time = Instant;
-    type Duration = Duration;
-
-    fn now(&self) -> Self::Time {
-        Instant::now()
-    }
-}
-
 #[test]
 fn test_cache_as_lru() {
     let cache = LruK::<i32, Arc<char>, CounterClock, 1>::new(2, 0, 0);
@@ -67,6 +41,14 @@ fn test_cache_as_lru() {
     assert_eq!(get!(3), Some('c'));
 
     insert!(4 => 'd');
+    assert_eq!(cache.len(), 2);
+    assert_eq!(get!(1), None);
+    assert_eq!(get!(2), None);
+    assert_eq!(get!(3), Some('c'));
+    assert_eq!(get!(4), Some('d'));
+
+    // keeps former value
+    insert!(4 => 'e');
     assert_eq!(cache.len(), 2);
     assert_eq!(get!(1), None);
     assert_eq!(get!(2), None);
@@ -126,4 +108,30 @@ proptest! {
 #[should_panic]
 fn test_disallow_zero_capacity() {
     LruK::<i32, Arc<char>, CounterClock, 2>::new(0, 0, 0);
+}
+
+#[derive(Default)]
+struct CounterClock {
+    counter: AtomicU64,
+}
+
+impl Clock for CounterClock {
+    type Time = u64;
+    type Duration = u64;
+
+    fn now(&self) -> Self::Time {
+        self.counter.fetch_add(1, atomic::Ordering::Relaxed)
+    }
+}
+
+#[derive(Default)]
+struct RealClock;
+
+impl Clock for RealClock {
+    type Time = Instant;
+    type Duration = Duration;
+
+    fn now(&self) -> Self::Time {
+        Instant::now()
+    }
 }

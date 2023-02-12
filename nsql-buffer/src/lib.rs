@@ -11,7 +11,6 @@ use nsql_pager::{Page, PageIndex, Pager, PAGE_SIZE};
 
 trait BufferPoolInterface {
     async fn load(&self, index: PageIndex) -> io::Result<BufferHandle>;
-    fn max_memory_bytes(&self) -> usize;
 }
 
 #[derive(Clone)]
@@ -40,8 +39,6 @@ impl lruk::Clock for Timer {
 pub struct BufferPool<P> {
     pager: P,
     cache: LruK<PageIndex, BufferHandle, Timer, 2>,
-    max_memory_bytes: usize,
-    max_pages: usize,
 }
 
 impl<P> BufferPool<P> {
@@ -52,22 +49,25 @@ impl<P> BufferPool<P> {
             pager,
             cache: LruK::new(
                 max_pages,
-                coarsetime::Duration::from_secs(200),
-                coarsetime::Duration::from_millis(50),
+                if cfg!(test) {
+                    coarsetime::Duration::from_millis(100)
+                } else {
+                    coarsetime::Duration::from_secs(200)
+                },
+                if cfg!(test) {
+                    coarsetime::Duration::from_millis(10)
+                } else {
+                    coarsetime::Duration::from_millis(50)
+                },
             ),
-            max_memory_bytes,
-            max_pages,
         }
     }
 }
 
 impl<P: Pager> BufferPoolInterface for BufferPool<P> {
-    fn max_memory_bytes(&self) -> usize {
-        self.max_memory_bytes
-    }
-
     async fn load(&self, index: PageIndex) -> io::Result<BufferHandle> {
         // TODO check cache first
+        // self.cache.get();
         let page = Arc::new(self.pager.read_page(index).await?);
         Ok(BufferHandle { page })
     }

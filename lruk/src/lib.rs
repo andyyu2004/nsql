@@ -98,6 +98,7 @@ where
         correlated_reference_period: C::Duration,
         evict_cb: fn(&K, &V),
     ) -> Self {
+        // the capacity isn't exactly what we pass to it
         Self {
             capacity,
             evict_cb,
@@ -134,27 +135,47 @@ where
         self.map.len() >= self.capacity
     }
 
+    fn is_overfull(&self) -> bool {
+        assert!(self.map.len() <= self.capacity + 1, "map is overfull by more than one element");
+        self.map.len() > self.capacity
+    }
+
+    // attempts to insert `(K, V)` into the cache failing if the cache is full and there are no eviction candidates
+    // If the key already exists, it is NOT replaced.
     pub fn try_insert(&self, key: K, value: V) -> bool {
         let now = self.clock.now();
-        if self.is_full() && !self.evict(now) {
+        // checking for `overfullness` because the new key may already exist
+        if self.is_overfull() && !self.evict(now) {
             return false;
         }
 
         match self.map.entry(key.clone()) {
-            Entry::Occupied(mut occupied) => {
-                occupied.insert(value);
-                return true;
-            }
+            // don't replace the old value
+            Entry::Occupied(_) => return true,
             Entry::Vacant(entry) => entry,
         }
         .insert(value);
 
         // insert into history so it is not possible for they key to be immediately evicted
-        self.last.insert(key, now);
+        let prev = self.last.insert(key.clone(), now);
 
+        // if we did actually insert something (i.e. it was a new key) then we try another eviction
+        // and if this fails we undo the insertion
+        if self.is_overfull() && !self.evict(now) {
+            self.map.remove(&key);
+            match prev {
+                Some(prev) => assert!(self.last.insert(key, prev).is_some()),
+                None => assert!(self.last.remove(&key).is_some()),
+            }
+            assert!(!self.is_overfull());
+            return false;
+        }
+
+        assert!(!self.is_overfull());
         true
     }
 
+    // panicking variant of `try_insert`
     pub fn insert(&self, key: K, value: V) {
         if !self.try_insert(key, value) {
             panic!("failed to insert: cache is full");
