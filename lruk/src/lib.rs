@@ -2,15 +2,13 @@
 
 use std::hash::Hash;
 use std::ops::{Add, Sub};
-use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
 
 use arrayvec::ArrayVec;
 use dashmap::mapref::entry::Entry;
-use dashmap::mapref::one::Ref;
 use dashmap::DashMap;
 
-pub trait RefCounted {
+pub trait RefCounted: Clone {
     fn ref_count(&self) -> usize;
 }
 
@@ -66,12 +64,13 @@ pub struct LruK<K, V, C: Clock, const N: usize> {
     history: DashMap<K, Hist<C::Time, N>>,
     last: DashMap<K, C::Time>,
     capacity: usize,
-    timer: C,
+    clock: C,
     retained_information_period: C::Duration,
     /// The span of time where another reference to a key will be considered to be correlated with the prior reference.
     /// These references will not be considered a second reference.
     /// It is also the minimum span of time where a key must be retained in the cache.
     correlated_reference_period: C::Duration,
+    evict_cb: fn(&K, &V),
 }
 
 impl<K, V, C, const N: usize> LruK<K, V, C, N>
@@ -85,22 +84,38 @@ where
         retained_information_period: C::Duration,
         correlated_reference_period: C::Duration,
     ) -> Self {
-        Self {
+        assert!(capacity > 0, "capacity must be greater than 0");
+        Self::new_with_evict_cb(
             capacity,
             retained_information_period,
             correlated_reference_period,
-            map: DashMap::with_capacity(capacity),
-            timer: C::default(),
+            |_, _| {},
+        )
+    }
+    pub fn new_with_evict_cb(
+        capacity: usize,
+        retained_information_period: C::Duration,
+        correlated_reference_period: C::Duration,
+        evict_cb: fn(&K, &V),
+    ) -> Self {
+        Self {
+            capacity,
+            evict_cb,
+            retained_information_period,
+            correlated_reference_period,
+            map: DashMap::with_capacity(capacity + 1),
+            clock: C::default(),
             last: Default::default(),
             history: Default::default(),
         }
     }
 
-    pub fn get(&self, key: K) -> Option<Ref<'_, K, V>> {
-        let now = self.timer.now();
+    pub fn get(&self, key: K) -> Option<V> {
+        assert!(self.map.len() <= self.capacity);
+        let now = self.clock.now();
         let value = self.map.get(&key);
 
-        self.last.insert(key.clone(), self.timer.now());
+        self.last.insert(key.clone(), now);
 
         let mut hist = self.history.entry(key).or_default();
         match hist.last().copied() {
@@ -111,27 +126,47 @@ where
             // otherwise, we push a new reference time
             _ => hist.push(now),
         }
-        value
+        value.map(|r| r.value().clone())
+    }
+
+    #[inline]
+    pub fn is_full(&self) -> bool {
+        self.map.len() >= self.capacity
+    }
+
+    pub fn try_insert(&self, key: K, value: V) -> bool {
+        let now = self.clock.now();
+        if self.is_full() && !self.evict(now) {
+            return false;
+        }
+
+        match self.map.entry(key.clone()) {
+            Entry::Occupied(mut occupied) => {
+                occupied.insert(value);
+                return true;
+            }
+            Entry::Vacant(entry) => entry,
+        }
+        .insert(value);
+
+        // insert into history so it is not possible for they key to be immediately evicted
+        self.last.insert(key, now);
+
+        true
     }
 
     pub fn insert(&self, key: K, value: V) {
-        let entry = match self.map.entry(key) {
-            Entry::Occupied(mut occupied) => {
-                occupied.insert(value);
-                return;
-            }
-            Entry::Vacant(entry) => entry,
-        };
-
-        entry.insert(value);
-        if self.map.len() > self.capacity {
-            self.evict();
+        if !self.try_insert(key, value) {
+            panic!("failed to insert: cache is full");
         }
     }
 
-    fn evict(&self) {
-        let now = self.timer.now();
-
+    // evict a key returning true if an eviction occurred and false due to no eviction candidates
+    fn evict(&self, now: C::Time) -> bool {
+        assert!(
+            self.map.len() <= self.capacity + 1,
+            "map is larger than capacity by more than one at the start of eviction"
+        );
         let victim = self
             .map
             .iter()
@@ -152,16 +187,15 @@ where
                 None => now,
             });
 
-        match victim {
-            Some(victim) => {
-                assert!(victim.value().ref_count() == 1);
-                let key = victim.key().clone();
-                drop(victim);
-                debug_assert!(self.map.remove(&key).is_some());
-                debug_assert!(self.last.remove(&key).is_some());
-                // not removing from history as we want to keep the history for a bit longer
-            }
-            None => panic!("out of capacity, could not evict from cache"),
+        let succeeded = victim.is_some();
+        if let Some(victim) = victim {
+            assert!(victim.value().ref_count() == 1);
+            (self.evict_cb)(victim.key(), victim.value());
+            let key = victim.key().clone();
+            drop(victim);
+            debug_assert!(self.map.remove(&key).is_some());
+            debug_assert!(self.last.remove(&key).is_some());
+            // not removing from history as we want to retain the history using a separate parameter
         }
 
         // drop any entries for keys that have not been referenced in the last `retained_information_period`
@@ -170,7 +204,10 @@ where
             None => false,
         });
 
-        assert!(self.map.len() <= self.capacity);
+        if succeeded {
+            assert!(self.map.len() <= self.capacity);
+        }
+        succeeded
     }
 
     pub fn len(&self) -> usize {
