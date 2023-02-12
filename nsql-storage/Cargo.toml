@@ -5,4 +5,4 @@ edition = "2021"
 
 [dependencies]
 bytes = "1.4.0"
-glommio = "0.8.0"
+tokio-uring = { branch = "master", git = "https://github.com/tokio-rs/tokio-uring" }

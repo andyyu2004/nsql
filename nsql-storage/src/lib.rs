@@ -7,8 +7,8 @@ use std::path::Path;
 use std::sync::Arc;
 
 use bytes::{Buf, BufMut};
-use glommio::io::{DmaFile, OpenOptions, ReadResult};
-use glommio::GlommioError;
+use tokio_uring::buf::BoundedBuf;
+use tokio_uring::fs::{File, OpenOptions};
 
 pub const HEADER_SIZE: usize = PAGE_SIZE;
 pub const HEADER_START: u64 = 0;
@@ -55,59 +55,43 @@ impl Header {
 
 #[derive(Clone)]
 pub struct Storage {
-    file: Arc<DmaFile>,
+    file: Arc<File>,
 }
 
+// FIXME we could probably use fixed iouring buffers
 impl Storage {
     #[inline]
     pub async fn new(path: impl AsRef<Path>) -> io::Result<Self> {
-        let file = Arc::new(
-            OpenOptions::new().create_new(true).dma_open(path).await.map_err(convert_err)?,
-        );
+        let file = Arc::new(OpenOptions::new().create_new(true).open(path).await?);
 
-        let mut buffer = file.alloc_dma_buffer(HEADER_SIZE);
-        buffer.as_mut().copy_from_slice(&[0; HEADER_SIZE]);
+        let mut buffer = vec![0; HEADER_SIZE];
         let header = Header { magic: MAGIC, version: CURRENT_VERSION };
         header.serialize(buffer.as_mut());
-        file.write_at(buffer, HEADER_START).await.map_err(convert_err)?;
-        file.fdatasync().await.map_err(convert_err)?;
+        let (res, _) = file.write_all_at(buffer, HEADER_START).await;
+        res?;
+        file.sync_data().await?;
 
         Ok(Self { file })
     }
 
     #[inline]
     pub async fn open(path: impl AsRef<Path>) -> io::Result<Self> {
-        let file = Arc::new(DmaFile::open(path).await.map_err(convert_err)?);
-        let buf = file.read_at(HEADER_START, HEADER_SIZE).await.map_err(convert_err)?;
+        let file = Arc::new(File::open(path).await?);
+        let (res, buf) = file.read_exact_at(vec![0; HEADER_SIZE], HEADER_START).await;
+        res?;
         Header::deserialize(&buf)?;
         Ok(Self { file })
     }
 
     #[inline]
-    pub async fn read_at(&self, pos: u64, size: usize) -> io::Result<ReadResult> {
-        self.file.read_at(pos, size).await.map_err(convert_err)
+    pub async fn read_at(&self, pos: u64, size: usize) -> io::Result<Vec<u8>> {
+        let (res, buf) = self.file.read_exact_at(vec![0; size], pos).await;
+        res?;
+        Ok(buf)
     }
 
     #[inline]
-    pub async fn write_at(&self, pos: u64, data: &[u8]) -> io::Result<()> {
-        let size = data.len();
-        let mut buf = self.file.alloc_dma_buffer(size);
-        buf.as_mut().copy_from_slice(data);
-        let n = self.file.write_at(buf, pos).await.map_err(convert_err)?;
-        if n < size {
-            return Err(io::Error::new(
-                io::ErrorKind::Other,
-                "failed to write all data to dmafile",
-            ));
-        }
-        Ok(())
-    }
-}
-
-fn convert_err<T>(err: GlommioError<T>) -> std::io::Error {
-    match err {
-        GlommioError::IoError(err) => err,
-        GlommioError::EnhancedIoError { source, .. } => source,
-        _ => todo!("unhandled glommio::io error"),
+    pub async fn write_at(&self, pos: u64, data: &[u8; PAGE_SIZE]) -> io::Result<()> {
+        self.file.write_all_at(data.to_vec(), pos).await.0
     }
 }

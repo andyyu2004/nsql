@@ -67,8 +67,7 @@ impl Pager for SingleFilePager {
         );
         checksum_slice.copy_from_slice(&checksum.to_be_bytes());
 
-        let data = Vec::with_capacity(PAGE_SIZE);
-        self.storage.write_at(offset as u64, &data).await?;
+        self.storage.write_at(offset as u64, &page.bytes).await?;
         Ok(())
     }
 }
