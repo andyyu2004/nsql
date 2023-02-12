@@ -36,9 +36,11 @@ impl lruk::Clock for Timer {
     }
 }
 
+const LRU_K: usize = 2;
+
 pub struct BufferPool<P> {
     pager: P,
-    cache: LruK<PageIndex, BufferHandle, Timer, 2>,
+    cache: LruK<PageIndex, BufferHandle, Timer, LRU_K>,
 }
 
 impl<P> BufferPool<P> {
@@ -66,9 +68,12 @@ impl<P> BufferPool<P> {
 
 impl<P: Pager> BufferPoolInterface for BufferPool<P> {
     async fn load(&self, index: PageIndex) -> io::Result<BufferHandle> {
-        // TODO check cache first
-        // self.cache.get();
+        if let Some(handle) = self.cache.get(index) {
+            return Ok(handle);
+        }
+
         let page = Arc::new(self.pager.read_page(index).await?);
-        Ok(BufferHandle { page })
+        let handle = BufferHandle { page };
+        Ok(self.cache.insert(index, handle))
     }
 }

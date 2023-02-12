@@ -73,9 +73,12 @@ pub struct LruK<K, V, C: Clock, const N: usize> {
     evict_cb: fn(&K, &V),
 }
 
+pub struct CacheFull;
+
 impl<K, V, C, const N: usize> LruK<K, V, C, N>
 where
-    K: Eq + Hash + Clone + 'static,
+    // K doesn't really need to be copy, can relax to clone if needed
+    K: Eq + Hash + Copy + 'static,
     V: Send + Sync + RefCounted + 'static,
     C: Clock,
 {
@@ -116,7 +119,7 @@ where
         let now = self.clock.now();
         let value = self.map.get(&key);
 
-        self.last.insert(key.clone(), now);
+        self.last.insert(key, now);
 
         let mut hist = self.history.entry(key).or_default();
         match hist.last().copied() {
@@ -142,22 +145,22 @@ where
 
     // attempts to insert `(K, V)` into the cache failing if the cache is full and there are no eviction candidates
     // If the key already exists, it is NOT replaced.
-    pub fn try_insert(&self, key: K, value: V) -> bool {
+    pub fn try_insert(&self, key: K, value: V) -> Result<V, CacheFull> {
         let now = self.clock.now();
         // checking for `overfullness` because the new key may already exist
         if self.is_overfull() && !self.evict(now) {
-            return false;
+            return Err(CacheFull);
         }
 
-        match self.map.entry(key.clone()) {
+        match self.map.entry(key) {
             // don't replace the old value
-            Entry::Occupied(_) => return true,
+            Entry::Occupied(entry) => return Ok(entry.get().clone()),
             Entry::Vacant(entry) => entry,
         }
-        .insert(value);
+        .insert(value.clone());
 
         // insert into history so it is not possible for they key to be immediately evicted
-        let prev = self.last.insert(key.clone(), now);
+        let prev = self.last.insert(key, now);
 
         // if we did actually insert something (i.e. it was a new key) then we try another eviction
         // and if this fails we undo the insertion
@@ -168,17 +171,18 @@ where
                 None => assert!(self.last.remove(&key).is_some()),
             }
             assert!(!self.is_overfull());
-            return false;
+            return Err(CacheFull);
         }
 
         assert!(!self.is_overfull());
-        true
+        Ok(value)
     }
 
     // panicking variant of `try_insert`
-    pub fn insert(&self, key: K, value: V) {
-        if !self.try_insert(key, value) {
-            panic!("failed to insert: cache is full");
+    pub fn insert(&self, key: K, value: V) -> V {
+        match self.try_insert(key, value) {
+            Ok(value) => value,
+            Err(CacheFull) => panic!("failed to insert: cache is full"),
         }
     }
 
@@ -212,7 +216,7 @@ where
         if let Some(victim) = victim {
             assert!(victim.value().ref_count() == 1);
             (self.evict_cb)(victim.key(), victim.value());
-            let key = victim.key().clone();
+            let key = *victim.key();
             drop(victim);
             debug_assert!(self.map.remove(&key).is_some());
             debug_assert!(self.last.remove(&key).is_some());

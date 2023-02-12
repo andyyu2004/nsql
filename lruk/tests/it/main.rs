@@ -17,30 +17,30 @@ fn test_cache_as_lru() {
 
     macro_rules! insert {
         ($key:expr => $value:expr) => {
-            cache.insert($key, Arc::new($value));
+            *cache.insert($key, Arc::new($value)).as_ref()
         };
     }
 
     assert!(cache.is_empty());
     assert!(get!(1).is_none());
 
-    insert!(1 => 'a');
+    assert_eq!(insert!(1 => 'a'), 'a');
 
     assert!(!cache.is_empty());
     assert_eq!(cache.len(), 1);
     assert_eq!(get!(1), Some('a'));
 
-    insert!(2 => 'b');
+    assert_eq!(insert!(2 => 'b'), 'b');
     assert_eq!(cache.len(), 2);
     assert_eq!(get!(2), Some('b'));
 
-    insert!(3 => 'c');
+    assert_eq!(insert!(3 => 'c'), 'c');
     assert_eq!(cache.len(), 2);
     assert_eq!(get!(1), None);
     assert_eq!(get!(2), Some('b'));
     assert_eq!(get!(3), Some('c'));
 
-    insert!(4 => 'd');
+    assert_eq!(insert!(4 => 'd'), 'd');
     assert_eq!(cache.len(), 2);
     assert_eq!(get!(1), None);
     assert_eq!(get!(2), None);
@@ -48,7 +48,7 @@ fn test_cache_as_lru() {
     assert_eq!(get!(4), Some('d'));
 
     // keeps former value
-    insert!(4 => 'e');
+    assert_eq!(insert!(4 => 'e'), 'd');
     assert_eq!(cache.len(), 2);
     assert_eq!(get!(1), None);
     assert_eq!(get!(2), None);
@@ -74,7 +74,7 @@ proptest! {
 
         let mut references = vec![];
         for (i, &element) in elements.iter().enumerate() {
-            if cache.try_insert(element, Arc::new(i as u8 as char)) {
+            if cache.try_insert(element, Arc::new(i as u8 as char)).is_ok() {
                 let value = cache.get(element).expect("key shouldn't be immediately evicted");
                 references.push(value);
             }
@@ -97,7 +97,7 @@ proptest! {
         );
 
         for (i, &element) in elements.iter().enumerate() {
-            if cache.try_insert(element, Arc::new(i as u8 as char)) {
+            if cache.try_insert(element, Arc::new(i as u8 as char)).is_ok() {
                 assert!(cache.get(element).is_some(), "key shouldn't be immediately evicted");
             }
         }
