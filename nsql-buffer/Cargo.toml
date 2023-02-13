@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 coarsetime = "0.1.22"
+parking_lot = "0.12.1"
 
 [dependencies.nsql-pager]
 path = "../nsql-pager"

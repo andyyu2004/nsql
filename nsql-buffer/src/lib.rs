@@ -7,6 +7,7 @@ use std::sync::Arc;
 
 use lruk::{LruK, RefCounted};
 use nsql_pager::{Page, PageIndex, Pager, Result, PAGE_SIZE};
+use parking_lot::RwLock;
 
 trait BufferPoolInterface {
     async fn load(&self, index: PageIndex) -> Result<BufferHandle>;
@@ -25,7 +26,7 @@ impl RefCounted for BufferHandle {
 
 pub struct BufferPool<P> {
     pager: P,
-    cache: LruK<PageIndex, BufferHandle, Clock>,
+    cache: RwLock<LruK<PageIndex, BufferHandle, Clock>>,
 }
 
 impl<P> BufferPool<P> {
@@ -34,7 +35,7 @@ impl<P> BufferPool<P> {
         let max_pages = max_memory_bytes / PAGE_SIZE;
         Self {
             pager,
-            cache: LruK::new(
+            cache: RwLock::new(LruK::new(
                 max_pages,
                 if cfg!(test) {
                     coarsetime::Duration::from_millis(100)
@@ -46,20 +47,20 @@ impl<P> BufferPool<P> {
                 } else {
                     coarsetime::Duration::from_millis(50)
                 },
-            ),
+            )),
         }
     }
 }
 
 impl<P: Pager> BufferPoolInterface for BufferPool<P> {
     async fn load(&self, index: PageIndex) -> Result<BufferHandle> {
-        if let Some(handle) = self.cache.get(index) {
+        if let Some(handle) = self.cache.read().get(index) {
             return Ok(handle);
         }
 
         let page = Arc::new(self.pager.read_page(index).await?);
         let handle = BufferHandle { page };
-        Ok(self.cache.insert(index, handle))
+        Ok(self.cache.write().insert(index, handle))
     }
 }
 

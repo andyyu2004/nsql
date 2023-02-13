@@ -2,7 +2,7 @@ use std::sync::atomic::{self, AtomicU64};
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
 
-use lruk::{Clock, LruK};
+use lruk::{CacheFull, Clock, LruK};
 use proptest::prelude::*;
 
 #[derive(Default)]
@@ -22,7 +22,7 @@ impl<K: Clone, V: Clone> lruk::Callbacks for Callbacks<K, V> {
 #[test]
 fn test_cache_as_lru() {
     let cbs = Callbacks::default();
-    let cache =
+    let mut cache =
         LruK::<i32, Arc<char>, CounterClock, Callbacks<i32, Arc<char>>, 1>::new_with_callbacks(
             2, 0, 0, cbs,
         );
@@ -89,7 +89,7 @@ proptest! {
         correlated_reference_period in 0..20,
         elements in prop::collection::vec(0..20, 0..50),
     ) {
-        let cache = LruK::<i32, Arc<char>, CounterClock>::new(
+        let mut cache = LruK::<i32, Arc<char>, CounterClock>::new(
             capacity as usize,
             retained_information_period as u64,
             correlated_reference_period as u64,
@@ -107,13 +107,32 @@ proptest! {
 
 proptest! {
     #[test]
+    fn test_cache_is_never_full_when_correlated_reference_period_is_zero(
+        capacity in 1..20,
+        retained_information_period in 0..20,
+        elements in prop::collection::vec(0..20, 0..50),
+    ) {
+        let mut cache = LruK::<i32, Arc<char>, CounterClock>::new(
+            capacity as usize,
+            retained_information_period as u64,
+            0,
+        );
+
+        for (i, &element) in elements.iter().enumerate() {
+            cache.insert(element, Arc::new(i as u8 as char));
+        }
+    }
+}
+
+proptest! {
+    #[test]
     fn test_cache_internal_assertions(
         capacity in 1..20,
         retained_information_period in 0..20,
         correlated_reference_period in 0..20,
         elements in prop::collection::vec(0..20, 0..50),
     ) {
-        let cache = LruK::<i32, Arc<char>, CounterClock>::new(
+        let mut cache = LruK::<i32, Arc<char>, CounterClock>::new(
             capacity as usize,
             retained_information_period as u64,
             correlated_reference_period as u64,
@@ -133,6 +152,14 @@ fn test_disallow_zero_capacity() {
     LruK::<i32, Arc<char>, CounterClock>::new(0, 0, 0);
 }
 
+#[test]
+fn test_reference_is_not_evicted() {
+    let mut cache = LruK::<usize, Arc<u64>, CounterClock>::new(1, 0, 0);
+    let arc = Arc::new(1);
+    cache.insert(1, Arc::clone(&arc));
+    assert_eq!(cache.try_insert(2, arc), Err(CacheFull));
+}
+
 #[derive(Default)]
 struct CounterClock {
     counter: AtomicU64,
@@ -143,7 +170,7 @@ impl Clock for CounterClock {
     type Duration = u64;
 
     fn now(&self) -> Self::Time {
-        self.counter.fetch_add(1, atomic::Ordering::Relaxed)
+        self.counter.fetch_add(1, atomic::Ordering::SeqCst)
     }
 }
 
