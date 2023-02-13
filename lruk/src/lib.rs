@@ -10,8 +10,11 @@ use std::marker::PhantomData;
 use std::ops::Sub;
 use std::sync::Arc;
 
-use arrayvec::ArrayVec;
+mod history;
+
 use rustc_hash::{FxHashMap, FxHashSet};
+
+use self::history::History;
 
 pub trait RefCounted: Clone {
     fn ref_count(&self) -> usize;
@@ -28,37 +31,6 @@ impl<T: ?Sized> RefCounted for Arc<T> {
     #[inline]
     fn ref_count(&self) -> usize {
         Arc::strong_count(self)
-    }
-}
-
-struct History<T, const K: usize>(ArrayVec<T, K>);
-
-impl<T, const K: usize> Default for History<T, K> {
-    fn default() -> Self {
-        Self(Default::default())
-    }
-}
-
-impl<T: Copy, const K: usize> History<T, K> {
-    pub fn kth(&self) -> Option<T> {
-        // if we don't even have `K` measurements, return None
-        if self.0.len() < K { None } else { self.0.first().copied() }
-    }
-
-    pub fn last(&self) -> Option<T> {
-        self.0.last().copied()
-    }
-
-    pub fn push(&mut self, value: T) {
-        if self.0.is_full() {
-            self.0.remove(0);
-        }
-        self.0.push(value);
-    }
-
-    pub fn update_last(&mut self, value: T) {
-        self.0.pop().unwrap();
-        self.0.push(value);
     }
 }
 
@@ -141,7 +113,7 @@ where
 pub struct LruK<K, V, C: Clock, F: Callbacks = NullCallbacks<K, V>, const N: usize = 2> {
     map: FxHashMap<K, V>,
     kth_reference_times: RefCell<WeirdMap<K, Option<C::Time>>>,
-    histories: RefCell<FxHashMap<K, History<C::Time, N>>>,
+    histories: RefCell<FxHashMap<K, History<C, N>>>,
     last_accessed: RefCell<FxHashMap<K, C::Time>>,
     capacity: usize,
     clock: C,
@@ -273,13 +245,9 @@ where
         self.last_accessed.borrow_mut().insert(k, at);
 
         let mut histories = self.histories.borrow_mut();
-        let hist = histories.entry(k).or_default();
-        match hist.last() {
-            // if it was a correlated reference, then we just update the last reference time
-            Some(last) if at - last < self.correlated_reference_period => hist.update_last(at),
-            // otherwise, we push a new reference time
-            _ => hist.push(at),
-        }
+        let hist =
+            histories.entry(k).or_insert_with(|| History::new(self.correlated_reference_period));
+        hist.mark_access(at);
 
         self.kth_reference_times.borrow_mut().insert(k, hist.kth());
     }
@@ -323,7 +291,7 @@ where
         }
 
         // drop any entries for keys that have not been referenced in the last `retained_information_period`
-        self.histories.borrow_mut().retain(|_, hist| match hist.last() {
+        self.histories.borrow_mut().retain(|_, hist| match hist.latest_access() {
             Some(last) => now - last < self.retained_information_period,
             None => false,
         });
