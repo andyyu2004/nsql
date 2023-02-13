@@ -7,3 +7,6 @@ members = [
     "nsql-storage",
     "lruk",
 ]
+
+[profile.bench]
+debug = true

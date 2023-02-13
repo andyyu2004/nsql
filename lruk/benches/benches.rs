@@ -1,25 +1,28 @@
+#![feature(test)]
+
 use std::hint::black_box;
 use std::sync::atomic::{self, AtomicU64};
 use std::sync::Arc;
 
-use crate::{Clock, LruK};
+use lruk::{Clock, LruK};
 
 extern crate test;
 
-// #[test]
-fn f() {
-    // const CAPACITY: usize = 1024 * 1024 / 4096;
-    const CAPACITY: usize = 3;
-    let mut cache = LruK::<usize, Arc<usize>, CounterClock>::new(CAPACITY, 100, 0);
+fn insertions() {
+    const CAPACITY: usize = 50 * 1024 * 1024 / 4096;
+    let mut cache = LruK::<usize, Arc<()>, CounterClock>::new(CAPACITY, 100, 20);
 
-    for i in 0..CAPACITY + 1 {
-        drop(cache.insert(i % 1024, Arc::new(i)));
+    const MULTIPLIER: usize = 5;
+
+    for i in 0..CAPACITY * MULTIPLIER {
+        cache.insert(i, Arc::new(()));
+        // cache.get(key);
     }
 }
 
-// #[bench]
+#[bench]
 fn bench(b: &mut test::Bencher) {
-    b.iter(black_box(f))
+    b.iter(black_box(insertions))
 }
 
 #[derive(Default)]

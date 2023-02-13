@@ -282,6 +282,3 @@ where
         &self.callbacks
     }
 }
-
-#[cfg(test)]
-mod benchmarks;
