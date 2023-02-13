@@ -58,57 +58,6 @@ impl<K, V> Callbacks for NullCallbacks<K, V> {
     fn on_evict(&self, _: &K, _: &V) {}
 }
 
-/// A map that maintains ordering based on `V` but only keeps the value for the latest key.
-#[derive(Debug)]
-struct WeirdMap<K, V> {
-    map: FxHashMap<K, V>,
-    ordering: BTreeMap<V, FxHashSet<K>>,
-}
-
-impl<K, V> Default for WeirdMap<K, V> {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl<K, V> WeirdMap<K, V> {
-    pub fn new() -> Self {
-        Self { ordering: Default::default(), map: Default::default() }
-    }
-}
-
-impl<K, V> WeirdMap<K, V>
-where
-    K: Debug + Hash + Eq + Copy,
-    V: Debug + Copy + Hash + Ord,
-{
-    pub fn insert(&mut self, k: K, v: V) {
-        if let Some(old_value) = self.map.insert(k, v) {
-            self.ordering.remove(&old_value);
-        }
-
-        assert!(self.ordering.entry(v).or_default().insert(k));
-    }
-
-    pub fn remove<Q>(&mut self, key: &Q) -> Option<V>
-    where
-        K: Borrow<Q>,
-        Q: ?Sized + Eq + Hash,
-    {
-        let value = self.map.remove(key)?;
-        let vs = self.ordering.get_mut(&value).unwrap();
-        assert!(vs.remove(key));
-        vs.shrink_to_fit();
-        Some(value)
-    }
-
-    /// Iterator over keys in order of their values.
-    /// If there are multiple values with the same key, the keys are returned in insertion order.
-    pub fn keys(&self) -> impl Iterator<Item = K> + '_ {
-        self.ordering.values().flatten().copied()
-    }
-}
-
 // based off https://www.cs.cmu.edu/~natassa/courses/15-721/papers/p297-o_neil.pdf
 pub struct LruK<K, V, C: Clock, F: Callbacks = NullCallbacks<K, V>, const N: usize = 2> {
     map: FxHashMap<K, V>,
@@ -135,6 +84,7 @@ where
     V: Send + Sync + RefCounted + 'static,
     C: Clock,
 {
+    #[inline]
     pub fn new(
         capacity: usize,
         retained_information_period: C::Duration,
@@ -158,6 +108,7 @@ where
     V: Send + Sync + RefCounted + 'static,
     C: Clock,
 {
+    #[inline]
     pub fn new_with_callbacks(
         capacity: usize,
         retained_information_period: C::Duration,
@@ -178,6 +129,7 @@ where
         }
     }
 
+    #[inline]
     pub fn get(&self, key: K) -> Option<V> {
         assert!(self.map.len() <= self.capacity);
         let now = self.clock.now();
@@ -194,6 +146,7 @@ where
 
     // attempts to insert `(K, V)` into the cache failing if the cache is full and there are no eviction candidates
     // If the key already exists, it is NOT replaced.
+    #[inline]
     pub fn try_insert(&mut self, k: K, v: V) -> Result<V, CacheFull> {
         assert!(!self.is_overfull());
         let now = self.clock.now();
@@ -275,8 +228,8 @@ where
     }
 
     // evict a key returning true if an eviction occurred and false due to no eviction candidates
-    fn evict(&mut self, now: C::Time) -> bool {
-        let victim = self.find_eviction_candidate(now);
+    fn evict(&mut self, at: C::Time) -> bool {
+        let victim = self.find_eviction_candidate(at);
         let succeeded = victim.is_some();
 
         if let Some(key) = victim {
@@ -292,11 +245,62 @@ where
 
         // drop any entries for keys that have not been referenced in the last `retained_information_period`
         self.histories.borrow_mut().retain(|_, hist| match hist.latest_access() {
-            Some(last) => now - last < self.retained_information_period,
+            Some(last) => at - last < self.retained_information_period,
             None => false,
         });
 
         succeeded
+    }
+}
+
+/// A map that maintains ordering based on `V` but only keeps the value for the latest key.
+#[derive(Debug)]
+struct WeirdMap<K, V> {
+    map: FxHashMap<K, V>,
+    ordering: BTreeMap<V, FxHashSet<K>>,
+}
+
+impl<K, V> Default for WeirdMap<K, V> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<K, V> WeirdMap<K, V> {
+    pub fn new() -> Self {
+        Self { ordering: Default::default(), map: Default::default() }
+    }
+}
+
+impl<K, V> WeirdMap<K, V>
+where
+    K: Debug + Hash + Eq + Copy,
+    V: Debug + Copy + Hash + Ord,
+{
+    fn insert(&mut self, k: K, v: V) {
+        if let Some(old_value) = self.map.insert(k, v) {
+            self.ordering.remove(&old_value);
+        }
+
+        assert!(self.ordering.entry(v).or_default().insert(k));
+    }
+
+    fn remove<Q>(&mut self, key: &Q) -> Option<V>
+    where
+        K: Borrow<Q>,
+        Q: ?Sized + Eq + Hash,
+    {
+        let value = self.map.remove(key)?;
+        let vs = self.ordering.get_mut(&value).unwrap();
+        assert!(vs.remove(key));
+        vs.shrink_to_fit();
+        Some(value)
+    }
+
+    /// Iterator over keys in order of their values.
+    /// If there are multiple values with the same key, the keys are returned in insertion order.
+    fn keys(&self) -> impl Iterator<Item = K> + '_ {
+        self.ordering.values().flatten().copied()
     }
 }
 

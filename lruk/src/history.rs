@@ -15,22 +15,25 @@ impl<C: Clock, const K: usize> History<C, K> {
 
 impl<C: Clock, const K: usize> History<C, K> {
     /// The `backwards K'th distance`
+    #[inline]
     pub fn kth(&self) -> Option<C::Time> {
         // if we don't even have `K` measurements, return None
         if self.times.len() < K { None } else { self.times.first().copied() }
     }
 
-    pub fn mark_access(&mut self, time: C::Time) {
+    #[inline]
+    pub fn mark_access(&mut self, at: C::Time) {
         match self.latest_access() {
             // if it was a correlated reference, then we just update the last reference time
-            Some(last) if time - last < self.correlated_reference_period => {
-                self.update_latest_access(time)
+            Some(last) if at - last < self.correlated_reference_period => {
+                self.update_latest_access(at)
             }
             // otherwise, we push a new reference time
-            _ => self.push(time),
+            _ => self.push(at),
         }
     }
 
+    #[inline]
     pub fn latest_access(&self) -> Option<C::Time> {
         self.times.last().copied()
     }
