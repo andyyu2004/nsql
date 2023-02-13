@@ -1,12 +1,8 @@
-#![feature(test)]
-
-use std::hint::black_box;
 use std::sync::atomic::{self, AtomicU64};
 use std::sync::Arc;
 
+use criterion::{criterion_group, criterion_main, Criterion};
 use lruk::{Clock, LruK};
-
-extern crate test;
 
 fn insertions() {
     const CAPACITY: usize = 12 * 1024 * 1024 / 4096;
@@ -16,14 +12,15 @@ fn insertions() {
 
     for i in 0..CAPACITY * MULTIPLIER {
         cache.insert(i, Arc::new(()));
-        // cache.get(key);
     }
 }
 
-#[bench]
-fn bench(b: &mut test::Bencher) {
-    b.iter(black_box(insertions))
+fn bench_insertions(c: &mut Criterion) {
+    c.bench_function("insertions", |b| b.iter(insertions));
 }
+
+criterion_group!(benches, bench_insertions);
+criterion_main!(benches);
 
 #[derive(Default)]
 struct CounterClock {
@@ -35,6 +32,6 @@ impl Clock for CounterClock {
     type Duration = u64;
 
     fn now(&self) -> Self::Time {
-        self.counter.fetch_add(1, atomic::Ordering::SeqCst)
+        self.counter.fetch_add(1, atomic::Ordering::Relaxed)
     }
 }

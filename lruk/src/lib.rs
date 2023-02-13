@@ -125,7 +125,7 @@ where
     {
         let value = self.map.remove(key)?;
         let vs = self.ordering.get_mut(&value).unwrap();
-        vs.remove(key);
+        assert!(vs.remove(key));
         vs.shrink_to_fit();
         Some(value)
     }

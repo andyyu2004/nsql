@@ -140,7 +140,7 @@ proptest! {
 
         for (i, &element) in elements.iter().enumerate() {
             if cache.try_insert(element, Arc::new(i as u8 as char)).is_ok() {
-                assert!(cache.get(element).is_some(), "key shouldn't be immediately evicted");
+                assert!(cache.get(element).is_some(), "key should never be immediately evicted");
             }
         }
     }
