@@ -3,6 +3,7 @@
 #![feature(async_fn_in_trait)]
 
 use std::io;
+use std::os::unix::prelude::OpenOptionsExt;
 use std::path::Path;
 use std::sync::Arc;
 
@@ -25,7 +26,7 @@ pub struct Header {
 
 impl Header {
     fn serialize(&self, mut buf: &mut [u8]) {
-        buf.put_slice(&MAGIC);
+        buf.put_slice(&self.magic);
         buf.put_u32(self.version);
     }
 
@@ -58,11 +59,19 @@ pub struct Storage {
     file: Arc<File>,
 }
 
+pub type Result<T, E = std::io::Error> = std::result::Result<T, error_stack::Report<E>>;
+
 // FIXME we could probably use fixed iouring buffers
 impl Storage {
     #[inline]
-    pub async fn new(path: impl AsRef<Path>) -> io::Result<Self> {
-        let file = Arc::new(OpenOptions::new().create_new(true).open(path).await?);
+    pub async fn new(path: impl AsRef<Path>) -> Result<Self> {
+        let file = OpenOptions::new()
+            .create_new(true)
+            .read(true)
+            .write(true)
+            // .custom_flags(libc::O_DIRECT) // FIXME
+            .open(path)
+            .await?;
 
         let mut buffer = vec![0; HEADER_SIZE];
         let header = Header { magic: MAGIC, version: CURRENT_VERSION };
@@ -71,27 +80,35 @@ impl Storage {
         res?;
         file.sync_data().await?;
 
-        Ok(Self { file })
+        Ok(Self { file: Arc::new(file) })
     }
 
     #[inline]
-    pub async fn open(path: impl AsRef<Path>) -> io::Result<Self> {
-        let file = Arc::new(File::open(path).await?);
+    pub async fn open(path: impl AsRef<Path>) -> Result<Self> {
+        let file = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(false)
+            // .custom_flags(libc::O_DIRECT)
+            .open(path)
+            .await?;
+
         let (res, buf) = file.read_exact_at(vec![0; HEADER_SIZE], HEADER_START).await;
         res?;
         Header::deserialize(&buf)?;
-        Ok(Self { file })
+        Ok(Self { file: Arc::new(file) })
     }
 
     #[inline]
-    pub async fn read_at(&self, pos: u64, size: usize) -> io::Result<Vec<u8>> {
-        let (res, buf) = self.file.read_exact_at(vec![0; size], pos).await;
+    pub async fn read_at<const N: usize>(&self, pos: u64) -> Result<Vec<u8>> {
+        let (res, buf) = self.file.read_exact_at(vec![0; N], pos).await;
         res?;
         Ok(buf)
     }
 
     #[inline]
-    pub async fn write_at(&self, pos: u64, data: &[u8; PAGE_SIZE]) -> io::Result<()> {
-        self.file.write_all_at(data.to_vec(), pos).await.0
+    pub async fn write_at<const N: usize>(&self, pos: u64, data: &[u8; N]) -> Result<()> {
+        self.file.write_all_at(data.to_vec(), pos).await.0?;
+        Ok(())
     }
 }

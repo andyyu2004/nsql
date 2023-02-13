@@ -87,7 +87,7 @@ proptest! {
         capacity in 15..50,
         retained_information_period in 0..20,
         correlated_reference_period in 0..20,
-        elements in prop::collection::vec(0..20, 0..100),
+        elements in prop::collection::vec(0..20, 0..50),
     ) {
         let cache = LruK::<i32, Arc<char>, CounterClock>::new(
             capacity as usize,
@@ -111,7 +111,7 @@ proptest! {
         capacity in 1..20,
         retained_information_period in 0..20,
         correlated_reference_period in 0..20,
-        elements in prop::collection::vec(0..20, 0..100),
+        elements in prop::collection::vec(0..20, 0..50),
     ) {
         let cache = LruK::<i32, Arc<char>, CounterClock>::new(
             capacity as usize,

@@ -3,14 +3,13 @@
 #![feature(async_fn_in_trait)]
 #![feature(once_cell)]
 
-use std::io;
 use std::sync::Arc;
 
 use lruk::{LruK, RefCounted};
-use nsql_pager::{Page, PageIndex, Pager, PAGE_SIZE};
+use nsql_pager::{Page, PageIndex, Pager, Result, PAGE_SIZE};
 
 trait BufferPoolInterface {
-    async fn load(&self, index: PageIndex) -> io::Result<BufferHandle>;
+    async fn load(&self, index: PageIndex) -> Result<BufferHandle>;
 }
 
 #[derive(Clone)]
@@ -53,7 +52,7 @@ impl<P> BufferPool<P> {
 }
 
 impl<P: Pager> BufferPoolInterface for BufferPool<P> {
-    async fn load(&self, index: PageIndex) -> io::Result<BufferHandle> {
+    async fn load(&self, index: PageIndex) -> Result<BufferHandle> {
         if let Some(handle) = self.cache.get(index) {
             return Ok(handle);
         }
