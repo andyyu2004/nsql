@@ -3,7 +3,6 @@
 
 use std::borrow::Borrow;
 use std::cell::RefCell;
-
 use std::collections::{BTreeMap, HashMap};
 use std::fmt::Debug;
 use std::hash::Hash;
@@ -12,8 +11,7 @@ use std::ops::Sub;
 use std::sync::Arc;
 
 use arrayvec::ArrayVec;
-use rustc_hash::FxHashMap;
-use smallvec::SmallVec;
+use rustc_hash::{FxHashMap, FxHashSet};
 
 pub trait RefCounted: Clone {
     fn ref_count(&self) -> usize;
@@ -92,7 +90,7 @@ impl<K, V> Callbacks for NullCallbacks<K, V> {
 #[derive(Debug)]
 struct WeirdMap<K, V> {
     map: FxHashMap<K, V>,
-    ordering: BTreeMap<V, SmallVec<[K; 2]>>,
+    ordering: BTreeMap<V, FxHashSet<K>>,
 }
 
 impl<K, V> Default for WeirdMap<K, V> {
@@ -117,7 +115,7 @@ where
             self.ordering.remove(&old_value);
         }
 
-        self.ordering.entry(v).or_default().push(k);
+        assert!(self.ordering.entry(v).or_default().insert(k));
     }
 
     pub fn remove<Q>(&mut self, key: &Q) -> Option<V>
@@ -127,7 +125,7 @@ where
     {
         let value = self.map.remove(key)?;
         let vs = self.ordering.get_mut(&value).unwrap();
-        vs.retain(|k| (*k).borrow() != key);
+        vs.remove(key);
         vs.shrink_to_fit();
         Some(value)
     }

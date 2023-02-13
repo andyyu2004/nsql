@@ -280,7 +280,6 @@ dependencies = [
  "arrayvec",
  "proptest",
  "rustc-hash",
- "smallvec",
 ]
 
 [[package]]
