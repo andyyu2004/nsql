@@ -97,7 +97,7 @@ impl Page {
     }
 }
 
-#[derive(Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub struct PageIndex(usize);
 
 impl fmt::Display for PageIndex {

@@ -1,9 +1,10 @@
 #![cfg_attr(test, feature(test))]
 #![deny(rust_2018_idioms)]
 
+use std::borrow::Borrow;
 use std::cell::RefCell;
-use std::collections::hash_map::Entry;
-use std::collections::HashMap;
+
+use std::collections::{BTreeMap, HashMap};
 use std::fmt::Debug;
 use std::hash::Hash;
 use std::marker::PhantomData;
@@ -11,19 +12,22 @@ use std::ops::Sub;
 use std::sync::Arc;
 
 use arrayvec::ArrayVec;
+use rustc_hash::FxHashMap;
+use smallvec::SmallVec;
 
 pub trait RefCounted: Clone {
     fn ref_count(&self) -> usize;
 }
 
 pub trait Clock: Default {
-    type Time: Copy + Ord + Debug + Sub<Self::Time, Output = Self::Duration>;
-    type Duration: Copy + Ord + Debug;
+    type Time: Hash + Copy + Ord + Debug + Sub<Self::Time, Output = Self::Duration>;
+    type Duration: Hash + Copy + Ord + Debug;
 
     fn now(&self) -> Self::Time;
 }
 
 impl<T: ?Sized> RefCounted for Arc<T> {
+    #[inline]
     fn ref_count(&self) -> usize {
         Arc::strong_count(self)
     }
@@ -37,13 +41,14 @@ impl<T, const K: usize> Default for History<T, K> {
     }
 }
 
-impl<T, const K: usize> History<T, K> {
-    pub fn kth(&self) -> Option<&T> {
-        self.0.first()
+impl<T: Copy, const K: usize> History<T, K> {
+    pub fn kth(&self) -> Option<T> {
+        // if we don't even have `K` measurements, return None
+        if self.0.len() < K { None } else { self.0.first().copied() }
     }
 
-    pub fn last(&self) -> Option<&T> {
-        self.0.last()
+    pub fn last(&self) -> Option<T> {
+        self.0.last().copied()
     }
 
     pub fn push(&mut self, value: T) {
@@ -83,11 +88,63 @@ impl<K, V> Callbacks for NullCallbacks<K, V> {
     fn on_evict(&self, _: &K, _: &V) {}
 }
 
+/// A map that maintains ordering based on `V` but only keeps the value for the latest key.
+#[derive(Debug)]
+struct WeirdMap<K, V> {
+    map: FxHashMap<K, V>,
+    ordering: BTreeMap<V, SmallVec<[K; 2]>>,
+}
+
+impl<K, V> Default for WeirdMap<K, V> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<K, V> WeirdMap<K, V> {
+    pub fn new() -> Self {
+        Self { ordering: Default::default(), map: Default::default() }
+    }
+}
+
+impl<K, V> WeirdMap<K, V>
+where
+    K: Debug + Hash + Eq + Copy,
+    V: Debug + Copy + Hash + Ord,
+{
+    pub fn insert(&mut self, k: K, v: V) {
+        if let Some(old_value) = self.map.insert(k, v) {
+            self.ordering.remove(&old_value);
+        }
+
+        self.ordering.entry(v).or_default().push(k);
+    }
+
+    pub fn remove<Q>(&mut self, key: &Q) -> Option<V>
+    where
+        K: Borrow<Q>,
+        Q: ?Sized + Eq + Hash,
+    {
+        let value = self.map.remove(key)?;
+        let vs = self.ordering.get_mut(&value).unwrap();
+        vs.retain(|k| (*k).borrow() != key);
+        vs.shrink_to_fit();
+        Some(value)
+    }
+
+    /// Iterator over keys in order of their values.
+    /// If there are multiple values with the same key, the keys are returned in insertion order.
+    pub fn keys(&self) -> impl Iterator<Item = K> + '_ {
+        self.ordering.values().flatten().copied()
+    }
+}
+
 // based off https://www.cs.cmu.edu/~natassa/courses/15-721/papers/p297-o_neil.pdf
 pub struct LruK<K, V, C: Clock, F: Callbacks = NullCallbacks<K, V>, const N: usize = 2> {
-    map: HashMap<K, V>,
-    histories: RefCell<HashMap<K, History<C::Time, N>>>,
-    last_accessed: RefCell<HashMap<K, C::Time>>,
+    map: FxHashMap<K, V>,
+    kth_reference_times: RefCell<WeirdMap<K, Option<C::Time>>>,
+    histories: RefCell<FxHashMap<K, History<C::Time, N>>>,
+    last_accessed: RefCell<FxHashMap<K, C::Time>>,
     capacity: usize,
     clock: C,
     retained_information_period: C::Duration,
@@ -104,7 +161,7 @@ pub struct CacheFull;
 impl<K, V, C, const N: usize> LruK<K, V, C, NullCallbacks<K, V>, N>
 where
     // K doesn't really need to be copy, can relax to clone if needed
-    K: Eq + Hash + Copy + 'static,
+    K: Debug + Eq + Hash + Copy + 'static,
     V: Send + Sync + RefCounted + 'static,
     C: Clock,
 {
@@ -126,7 +183,7 @@ where
 impl<K, V, C, F, const N: usize> LruK<K, V, C, F, N>
 where
     // K doesn't really need to be copy, can relax to clone if needed
-    K: Eq + Hash + Copy + 'static,
+    K: Debug + Eq + Hash + Copy + 'static,
     F: Callbacks<Key = K, Value = V>,
     V: Send + Sync + RefCounted + 'static,
     C: Clock,
@@ -143,8 +200,9 @@ where
             callbacks,
             retained_information_period,
             correlated_reference_period,
-            map: HashMap::with_capacity(capacity + 1),
+            map: HashMap::with_capacity_and_hasher(capacity + 1, Default::default()),
             clock: C::default(),
+            kth_reference_times: Default::default(),
             last_accessed: Default::default(),
             histories: Default::default(),
         }
@@ -155,16 +213,7 @@ where
         let now = self.clock.now();
         let value = self.map.get(&key)?;
 
-        // if key was found, we update the `history` and `last_accessed` maps
-        self.last_accessed.borrow_mut().insert(key, now);
-        let mut histories = self.histories.borrow_mut();
-        let hist = histories.entry(key).or_default();
-        match hist.last().copied() {
-            // if it was a correlated reference, then we just update the last reference time
-            Some(last) if now - last < self.correlated_reference_period => hist.update_last(now),
-            // otherwise, we push a new reference time
-            _ => hist.push(now),
-        }
+        self.mark_access(key, now);
         Some(value.clone())
     }
 
@@ -173,47 +222,31 @@ where
         self.map.len() >= self.capacity
     }
 
-    fn is_overfull(&self) -> bool {
-        assert!(self.map.len() <= self.capacity + 1, "map is overfull by more than one element");
-        assert!(
-            self.last_accessed.borrow().len() <= self.capacity + 1,
-            "last_accessed has not been cleaned properly"
-        );
-        self.map.len() > self.capacity
-    }
-
     // attempts to insert `(K, V)` into the cache failing if the cache is full and there are no eviction candidates
     // If the key already exists, it is NOT replaced.
-    pub fn try_insert(&mut self, key: K, value: V) -> Result<V, CacheFull> {
+    pub fn try_insert(&mut self, k: K, v: V) -> Result<V, CacheFull> {
         assert!(!self.is_overfull());
         let now = self.clock.now();
 
-        match self.map.entry(key) {
-            // don't replace the old value
-            Entry::Occupied(entry) => return Ok(entry.get().clone()),
-            Entry::Vacant(entry) => entry,
+        if let Some(old_value) = self.map.get(&k) {
+            // don't replace the old value with the given `value`, just return it
+            self.mark_access(k, now);
+            return Ok(old_value.clone());
         }
-        .insert(value.clone());
 
-        // insert into history so it is not possible for they key to be immediately evicted
-        let prev = self.last_accessed.borrow_mut().insert(key, now);
-
-        // if we did actually insert something (i.e. it was a new key) then we try another eviction
-        // and if this fails we undo the insertion
-        if self.is_overfull() && !self.evict(now) {
-            assert!(self.map.remove(&key).is_some());
-            match prev {
-                Some(prev) => assert!(self.last_accessed.borrow_mut().insert(key, prev).is_some()),
-                None => assert!(self.last_accessed.borrow_mut().remove(&key).is_some()),
-            }
-            assert!(!self.is_overfull());
+        // `k` is a new value, so we need to evict something if the cache is already full
+        if self.is_full() && !self.evict(now) {
             return Err(CacheFull);
         }
 
+        assert!(self.map.insert(k, v.clone()).is_none());
+        self.mark_access(k, now);
+
         assert!(!self.is_overfull());
-        Ok(value)
+        Ok(v)
     }
 
+    #[inline]
     // panicking variant of `try_insert`
     pub fn insert(&mut self, key: K, value: V) -> V {
         match self.try_insert(key, value) {
@@ -222,28 +255,57 @@ where
         }
     }
 
-    fn find_eviction_candidate(&mut self, now: C::Time) -> Option<(K, V)> {
-        let (key, value) = self
-            .map
-            .iter()
-            // MUST NOT evict keys that still have references
-            .filter(|(_, v)| v.ref_count() == 1)
-            .filter(|(k, _)| {
-                // don't evict keys that have been referenced within the last `correlated_reference_period`
-                let referenced_too_recently = match self.last_accessed.borrow().get(k).copied() {
-                    Some(last) => now - last < self.correlated_reference_period,
-                    None => false,
-                };
+    #[inline]
+    pub fn len(&self) -> usize {
+        self.map.len()
+    }
 
-                !referenced_too_recently
-            })
-            // find the key with the minimum kth reference time (i.e. the `kth` reference is the least recent reference)
-            .min_by_key(|(k, _)| match self.histories.borrow().get(k) {
-                Some(hist) => hist.kth().copied().unwrap(),
-                None => now,
-            })?;
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.map.is_empty()
+    }
 
-        Some((*key, value.clone()))
+    #[inline]
+    pub fn callbacks(&self) -> &F {
+        &self.callbacks
+    }
+
+    // update required metadata
+    fn mark_access(&self, k: K, at: C::Time) {
+        self.last_accessed.borrow_mut().insert(k, at);
+
+        let mut histories = self.histories.borrow_mut();
+        let hist = histories.entry(k).or_default();
+        match hist.last() {
+            // if it was a correlated reference, then we just update the last reference time
+            Some(last) if at - last < self.correlated_reference_period => hist.update_last(at),
+            // otherwise, we push a new reference time
+            _ => hist.push(at),
+        }
+
+        self.kth_reference_times.borrow_mut().insert(k, hist.kth());
+    }
+
+    #[track_caller]
+    fn is_overfull(&self) -> bool {
+        assert!(self.map.len() <= self.capacity + 1, "map is overfull by more than one element");
+        assert!(
+            self.last_accessed.borrow().len() <= self.capacity + 2,
+            "last_accessed has not been cleaned properly"
+        );
+        self.map.len() > self.capacity
+    }
+
+    fn find_eviction_candidate(&mut self, now: C::Time) -> Option<K> {
+        let last_accessed = self.last_accessed.borrow();
+        // find key with the maximum kth reference time that matches the critieria
+        self.kth_reference_times.borrow().keys().filter(|k| self.map[k].ref_count() == 1).find(
+            // don't evict keys that have been referenced within the last `correlated_reference_period`
+            |k| match last_accessed.get(k).copied() {
+                Some(last) => now - last > self.correlated_reference_period,
+                None => true,
+            },
+        )
     }
 
     // evict a key returning true if an eviction occurred and false due to no eviction candidates
@@ -251,34 +313,26 @@ where
         let victim = self.find_eviction_candidate(now);
         let succeeded = victim.is_some();
 
-        if let Some((key, value)) = victim {
+        if let Some(key) = victim {
             // one reference is `victim` and one in the map
-            assert!(value.ref_count() == 2, "eviction candidate has outstanding references");
+            let value = self.map.remove(&key).unwrap();
+            assert_eq!(value.ref_count(), 1, "eviction victim has outstanding references");
             self.callbacks.on_evict(&key, &value);
-            assert!(self.map.remove(&key).is_some());
             assert!(self.last_accessed.borrow_mut().remove(&key).is_some());
+            assert!(self.kth_reference_times.borrow_mut().remove(&key).is_some());
             // not removing from history as we want to retain the history using a separate parameter
             assert!(!self.is_overfull());
         }
 
         // drop any entries for keys that have not been referenced in the last `retained_information_period`
-        self.histories.borrow_mut().retain(|_, hist| match hist.last().copied() {
+        self.histories.borrow_mut().retain(|_, hist| match hist.last() {
             Some(last) => now - last < self.retained_information_period,
             None => false,
         });
 
         succeeded
     }
-
-    pub fn len(&self) -> usize {
-        self.map.len()
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.map.is_empty()
-    }
-
-    pub fn callbacks(&self) -> &F {
-        &self.callbacks
-    }
 }
+
+#[cfg(test)]
+mod tests;

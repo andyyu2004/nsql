@@ -9,7 +9,7 @@ use lruk::{Clock, LruK};
 extern crate test;
 
 fn insertions() {
-    const CAPACITY: usize = 50 * 1024 * 1024 / 4096;
+    const CAPACITY: usize = 12 * 1024 * 1024 / 4096;
     let mut cache = LruK::<usize, Arc<()>, CounterClock>::new(CAPACITY, 100, 20);
 
     const MULTIPLIER: usize = 5;
