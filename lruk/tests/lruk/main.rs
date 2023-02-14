@@ -3,7 +3,8 @@ use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
 
 use lruk::{CacheFull, Clock, LruK};
-use proptest::prelude::*;
+use proptest::collection::vec;
+use test_strategy::proptest;
 
 #[derive(Default)]
 pub struct Callbacks<K, V> {
@@ -107,67 +108,61 @@ fn test_cache_as_lru() {
 
 // The correctness of the eviction policy is currently a best-effort sort of thing, they are not essential for correctness.
 // The property essential for correctness is that values that are referenced do NOT get evicted.
-proptest! {
-    #[test]
-    fn test_cache_does_not_evict_referenced_values(
-        capacity in 15..50,
-        retained_information_period in 0..20,
-        correlated_reference_period in 0..20,
-        elements in prop::collection::vec(0..20, 0..50),
-    ) {
-        let mut cache = LruK::<i32, Arc<char>, CounterClock>::new(
-            capacity as usize,
-            retained_information_period as u64,
-            correlated_reference_period as u64,
-        );
+#[proptest]
+fn test_cache_does_not_evict_referenced_values(
+    #[strategy(1..20)] capacity: i32,
+    #[strategy(0..600)] retained_information_period: i32,
+    #[strategy(0..200)] correlated_reference_period: i32,
+    #[strategy(vec(0..20, 0..500))] elements: Vec<i32>,
+) {
+    let mut cache = LruK::<i32, Arc<char>, CounterClock>::new(
+        capacity as usize,
+        retained_information_period as u64,
+        correlated_reference_period as u64,
+    );
 
-        let mut references = vec![];
-        for (i, &element) in elements.iter().enumerate() {
-            if cache.try_insert(element, Arc::new(i as u8 as char)).is_ok() {
-                let value = cache.get(element).expect("key shouldn't be immediately evicted");
-                references.push(value);
-            }
+    let mut references = vec![];
+    for (i, &element) in elements.iter().enumerate() {
+        if cache.try_insert(element, Arc::new(i as u8 as char)).is_ok() {
+            let value = cache.get(element).expect("key shouldn't be immediately evicted");
+            references.push(value);
         }
     }
 }
 
-proptest! {
-    #[test]
-    fn test_cache_is_never_full_when_correlated_reference_period_is_zero(
-        capacity in 1..20,
-        retained_information_period in 0..20,
-        elements in prop::collection::vec(0..20, 0..50),
-    ) {
-        let mut cache = LruK::<i32, Arc<char>, CounterClock>::new(
-            capacity as usize,
-            retained_information_period as u64,
-            0,
-        );
+#[proptest]
+fn test_cache_is_never_full_when_correlated_reference_period_is_zero(
+    #[strategy(1..20)] capacity: i32,
+    #[strategy(0..50)] retained_information_period: i32,
+    #[strategy(vec(0..20, 0..500))] elements: Vec<i32>,
+) {
+    let mut cache = LruK::<i32, Arc<char>, CounterClock>::new(
+        capacity as usize,
+        retained_information_period as u64,
+        0,
+    );
 
-        for (i, &element) in elements.iter().enumerate() {
-            cache.insert(element, Arc::new(i as u8 as char));
-        }
+    for (i, &element) in elements.iter().enumerate() {
+        cache.insert(element, Arc::new(i as u8 as char));
     }
 }
 
-proptest! {
-    #[test]
-    fn test_cache_internal_assertions(
-        capacity in 1..20,
-        retained_information_period in 0..20,
-        correlated_reference_period in 0..20,
-        elements in prop::collection::vec(0..20, 0..50),
-    ) {
-        let mut cache = LruK::<i32, Arc<char>, CounterClock>::new(
-            capacity as usize,
-            retained_information_period as u64,
-            correlated_reference_period as u64,
-        );
+#[proptest]
+fn test_cache_internal_assertions(
+    #[strategy(1..21)] capacity: i32,
+    #[strategy(0..200)] retained_information_period: i32,
+    #[strategy(0..100)] correlated_reference_period: i32,
+    #[strategy(vec(0..20, 0..500))] elements: Vec<i32>,
+) {
+    let mut cache = LruK::<i32, Arc<char>, CounterClock>::new(
+        capacity as usize,
+        retained_information_period as u64,
+        correlated_reference_period as u64,
+    );
 
-        for (i, &element) in elements.iter().enumerate() {
-            if cache.try_insert(element, Arc::new(i as u8 as char)).is_ok() {
-                assert!(cache.get(element).is_some(), "key should never be immediately evicted");
-            }
+    for (i, &element) in elements.iter().enumerate() {
+        if cache.try_insert(element, Arc::new(i as u8 as char)).is_ok() {
+            assert!(cache.get(element).is_some(), "key should never be immediately evicted");
         }
     }
 }
