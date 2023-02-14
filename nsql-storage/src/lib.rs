@@ -52,15 +52,18 @@ impl Header {
     }
 }
 
-#[derive(Clone)]
 pub struct Storage {
-    file: Arc<File>,
+    file: File,
 }
 
 pub type Result<T, E = std::io::Error> = std::result::Result<T, error_stack::Report<E>>;
 
 // FIXME we could probably use fixed iouring buffers
 impl Storage {
+    fn new(file: File) -> Self {
+        Self { file }
+    }
+
     #[inline]
     pub async fn create(path: impl AsRef<Path>) -> Result<Self> {
         let file = OpenOptions::new()
@@ -78,7 +81,7 @@ impl Storage {
         res?;
         file.sync_data().await?;
 
-        Ok(Self { file: Arc::new(file) })
+        Ok(Self::new(file))
     }
 
     #[inline]
@@ -94,7 +97,7 @@ impl Storage {
         let (res, buf) = file.read_exact_at(vec![0; HEADER_SIZE], HEADER_START).await;
         res?;
         Header::deserialize(&buf)?;
-        Ok(Self { file: Arc::new(file) })
+        Ok(Self::new(file))
     }
 
     #[inline]

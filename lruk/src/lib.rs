@@ -38,7 +38,16 @@ pub trait Callbacks {
     type Key;
     type Value;
 
-    fn on_evict(&self, key: &Self::Key, value: &Self::Value);
+    fn on_evict(&self, key: Self::Key, value: Self::Value);
+}
+
+impl<C: Callbacks> Callbacks for Arc<C> {
+    type Key = <C as Callbacks>::Key;
+    type Value = <C as Callbacks>::Value;
+
+    fn on_evict(&self, key: Self::Key, value: Self::Value) {
+        self.as_ref().on_evict(key, value)
+    }
 }
 
 pub struct NullCallbacks<K, V> {
@@ -55,7 +64,7 @@ impl<K, V> Callbacks for NullCallbacks<K, V> {
     type Key = K;
     type Value = V;
 
-    fn on_evict(&self, _: &K, _: &V) {}
+    fn on_evict(&self, _: K, _: V) {}
 }
 
 // based off https://www.cs.cmu.edu/~natassa/courses/15-721/papers/p297-o_neil.pdf
@@ -251,11 +260,11 @@ where
                 // one reference is `victim` and one in the map
                 let value = self.map.remove(&key).unwrap();
                 assert_eq!(value.ref_count(), 1, "eviction victim has outstanding references");
-                self.callbacks.on_evict(&key, &value);
                 last_accessed.remove(&key);
                 drop(last_accessed);
                 assert!(self.kth_reference_times.borrow_mut().remove(&key).is_some());
                 // not removing from history as we want to retain the history using a separate parameter
+                self.callbacks.on_evict(key, value);
                 assert!(!self.is_overfull());
             }
         }

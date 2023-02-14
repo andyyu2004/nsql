@@ -32,15 +32,6 @@ where
     V: Debug + Copy + Hash + Ord,
 {
     #[inline]
-    pub fn get<Q>(&self, key: &Q) -> Option<&V>
-    where
-        K: Borrow<Q>,
-        Q: Hash + Eq + ?Sized,
-    {
-        self.map.get(key)
-    }
-
-    #[inline]
     pub fn insert(&mut self, k: K, v: V) {
         if let Some(old_v) = self.map.insert(k, v) {
             self.remove_inner(&k, &old_v);
@@ -67,11 +58,6 @@ where
     #[inline]
     pub fn keys(&self) -> impl Iterator<Item = K> + '_ {
         self.ordering.values().flatten().copied()
-    }
-
-    #[inline]
-    pub fn len(&self) -> usize {
-        self.map.len()
     }
 
     fn remove_inner<Q>(&mut self, k: &Q, v: &V)

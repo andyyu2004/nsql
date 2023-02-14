@@ -5,7 +5,9 @@ edition = "2021"
 
 [dependencies]
 coarsetime = "0.1.22"
+crossbeam = { version = "0.8.2", default-features = false, features = ["crossbeam-channel", "std"] }
 parking_lot = "0.12.1"
+tokio-uring = { version = "0.4.0", default-features = false }
 
 [dependencies.nsql-pager]
 path = "../nsql-pager"

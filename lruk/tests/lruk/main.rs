@@ -15,8 +15,8 @@ impl<K: Clone, V: Clone> lruk::Callbacks for Callbacks<K, V> {
     type Key = K;
     type Value = V;
 
-    fn on_evict(&self, key: &Self::Key, value: &Self::Value) {
-        self.evicted.write().unwrap().push((key.clone(), value.clone()));
+    fn on_evict(&self, key: Self::Key, value: Self::Value) {
+        self.evicted.write().unwrap().push((key, value));
     }
 }
 

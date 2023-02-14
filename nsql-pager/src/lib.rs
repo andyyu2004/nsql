@@ -9,7 +9,7 @@ use std::{fmt, io};
 use nsql_storage::Storage;
 pub use nsql_storage::{Result, HEADER_SIZE, PAGE_SIZE};
 
-pub trait Pager {
+pub trait Pager: 'static {
     // fn alloc_page(&self) -> io::Result<PageIndex>;
     async fn read_page(&self, idx: PageIndex) -> Result<Page>;
     async fn write_page(&self, idx: PageIndex, page: Page) -> Result<()>;
@@ -89,6 +89,12 @@ impl SingleFilePager {
 #[derive(Clone)]
 pub struct Page {
     bytes: Box<[u8; PAGE_SIZE]>,
+}
+
+impl fmt::Debug for Page {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Page").finish_non_exhaustive()
+    }
 }
 
 impl Page {

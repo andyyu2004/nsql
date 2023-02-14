@@ -5,6 +5,8 @@
 
 use std::sync::Arc;
 
+use coarsetime::Duration;
+use crossbeam::channel::{self, Receiver, Sender};
 use lruk::{LruK, RefCounted};
 use nsql_pager::{Page, PageIndex, Pager, Result, PAGE_SIZE};
 use parking_lot::RwLock;
@@ -18,54 +20,93 @@ pub struct BufferHandle {
     page: Arc<Page>,
 }
 
+impl BufferHandle {
+    pub fn new(page: Page) -> Self {
+        Self { page: Arc::new(page) }
+    }
+}
+
 impl RefCounted for BufferHandle {
     fn ref_count(&self) -> usize {
         self.page.ref_count()
     }
 }
 
-pub struct BufferPool<P> {
-    pager: P,
-    cache: RwLock<LruK<PageIndex, BufferHandle, Clock>>,
+pub struct BufferPool<P: Pager> {
+    inner: Arc<Inner<P>>,
 }
 
-impl<P> BufferPool<P> {
+struct Inner<P: Pager> {
+    pager: P,
+    cache: RwLock<LruK<PageIndex, BufferHandle, Clock, Callbacks>>,
+    eviction_rx: Receiver<(PageIndex, BufferHandle)>,
+}
+
+impl<P: Pager> BufferPool<P> {
+    #[must_use]
     pub fn new(pager: P) -> Self {
-        let max_memory_bytes = 128 * 1024 * 1024;
+        let max_memory_bytes = if cfg!(test) { 1024 * 1024 } else { 128 * 1024 * 1024 };
         let max_pages = max_memory_bytes / PAGE_SIZE;
-        Self {
+
+        let (tx, eviction_rx) = channel::bounded(max_pages.max(1));
+        let inner = Arc::new(Inner {
             pager,
-            cache: RwLock::new(LruK::new(
+            eviction_rx,
+            cache: RwLock::new(LruK::new_with_callbacks(
                 max_pages,
-                if cfg!(test) {
-                    coarsetime::Duration::from_millis(100)
-                } else {
-                    coarsetime::Duration::from_secs(200)
-                },
-                if cfg!(test) {
-                    coarsetime::Duration::from_millis(10)
-                } else {
-                    coarsetime::Duration::from_millis(50)
-                },
+                if cfg!(test) { Duration::from_millis(100) } else { Duration::from_secs(200) },
+                if cfg!(test) { Duration::from_millis(10) } else { Duration::from_millis(50) },
+                Callbacks::new(tx),
             )),
-        }
+        });
+
+        let b = inner.clone();
+        tokio_uring::spawn(async move {
+            while let Ok((page_index, handle)) = b.eviction_rx.recv() {
+                let page = Arc::try_unwrap(handle.page)
+                    .expect("this must be the last remaining reference if it was evicted");
+                b.pager.write_page(page_index, page).await.unwrap();
+            }
+        });
+
+        Self { inner }
     }
 }
 
 impl<P: Pager> BufferPoolInterface for BufferPool<P> {
     async fn load(&self, index: PageIndex) -> Result<BufferHandle> {
-        if let Some(handle) = self.cache.read().get(index) {
+        let inner = &self.inner;
+        if let Some(handle) = inner.cache.read().get(index) {
             return Ok(handle);
         }
 
-        let page = Arc::new(self.pager.read_page(index).await?);
-        let handle = BufferHandle { page };
-        Ok(self.cache.write().insert(index, handle))
+        let page = inner.pager.read_page(index).await?;
+        let handle = BufferHandle::new(page);
+        Ok(inner.cache.write().insert(index, handle))
+    }
+}
+
+struct Callbacks {
+    tx: Sender<(PageIndex, BufferHandle)>,
+}
+
+impl Callbacks {
+    fn new(tx: crossbeam::channel::Sender<(PageIndex, BufferHandle)>) -> Callbacks {
+        Self { tx }
+    }
+}
+
+impl lruk::Callbacks for Callbacks {
+    type Key = PageIndex;
+    type Value = BufferHandle;
+
+    fn on_evict(&self, page_index: Self::Key, handle: Self::Value) {
+        self.tx.send((page_index, handle)).expect("channel should not be closed")
     }
 }
 
 #[derive(Default)]
-pub struct Clock;
+struct Clock;
 
 impl lruk::Clock for Clock {
     type Time = coarsetime::Instant;
