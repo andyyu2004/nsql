@@ -566,6 +566,7 @@ dependencies = [
  "bytes",
  "error-stack",
  "libc",
+ "proptest",
  "tempfile",
  "tokio-uring",
 ]

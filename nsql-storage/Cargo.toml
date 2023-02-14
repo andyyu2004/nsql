@@ -9,3 +9,6 @@ error-stack = "0.3.1"
 libc = { version = "0.2.139", default-features = false }
 tempfile = "3.3.0"
 tokio-uring = { branch = "master", git = "https://github.com/tokio-rs/tokio-uring" }
+
+[dev-dependencies]
+proptest = "1.1.0"

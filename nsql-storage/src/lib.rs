@@ -3,12 +3,10 @@
 #![feature(async_fn_in_trait)]
 
 use std::io;
-use std::os::unix::prelude::OpenOptionsExt;
 use std::path::Path;
 use std::sync::Arc;
 
 use bytes::{Buf, BufMut};
-use tokio_uring::buf::BoundedBuf;
 use tokio_uring::fs::{File, OpenOptions};
 
 pub const HEADER_SIZE: usize = PAGE_SIZE;
@@ -64,7 +62,7 @@ pub type Result<T, E = std::io::Error> = std::result::Result<T, error_stack::Rep
 // FIXME we could probably use fixed iouring buffers
 impl Storage {
     #[inline]
-    pub async fn new(path: impl AsRef<Path>) -> Result<Self> {
+    pub async fn create(path: impl AsRef<Path>) -> Result<Self> {
         let file = OpenOptions::new()
             .create_new(true)
             .read(true)
@@ -101,6 +99,7 @@ impl Storage {
 
     #[inline]
     pub async fn read_at<const N: usize>(&self, pos: u64) -> Result<Vec<u8>> {
+        Self::assert_aligned::<N>(pos);
         let (res, buf) = self.file.read_exact_at(vec![0; N], pos).await;
         res?;
         Ok(buf)
@@ -108,7 +107,22 @@ impl Storage {
 
     #[inline]
     pub async fn write_at<const N: usize>(&self, pos: u64, data: &[u8; N]) -> Result<()> {
+        Self::assert_aligned::<N>(pos);
         self.file.write_all_at(data.to_vec(), pos).await.0?;
         Ok(())
+    }
+
+    #[inline]
+    pub async fn sync(&self) -> Result<()> {
+        self.file.sync_data().await?;
+        Ok(())
+    }
+
+    const fn assert_aligned<const N: usize>(pos: u64) {
+        assert!(Self::is_aligned::<N>(pos), "position is not aligned to size");
+    }
+
+    const fn is_aligned<const N: usize>(pos: u64) -> bool {
+        pos % N as u64 == 0
     }
 }
