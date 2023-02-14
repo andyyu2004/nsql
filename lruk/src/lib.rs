@@ -243,27 +243,32 @@ where
         let victim = self.find_eviction_candidate(at);
         let succeeded = victim.is_some();
 
-        let mut last_accessed = self.last_accessed.borrow_mut();
+        self.prune_history(at);
 
-        if let Some(key) = victim {
-            // one reference is `victim` and one in the map
-            let value = self.map.remove(&key).unwrap();
-            assert_eq!(value.ref_count(), 1, "eviction victim has outstanding references");
-            self.callbacks.on_evict(&key, &value);
-            last_accessed.remove(&key);
-            drop(last_accessed);
-            assert!(self.kth_reference_times.borrow_mut().remove(&key).is_some());
-            // not removing from history as we want to retain the history using a separate parameter
-            assert!(!self.is_overfull());
+        {
+            let mut last_accessed = self.last_accessed.borrow_mut();
+            if let Some(key) = victim {
+                // one reference is `victim` and one in the map
+                let value = self.map.remove(&key).unwrap();
+                assert_eq!(value.ref_count(), 1, "eviction victim has outstanding references");
+                self.callbacks.on_evict(&key, &value);
+                last_accessed.remove(&key);
+                drop(last_accessed);
+                assert!(self.kth_reference_times.borrow_mut().remove(&key).is_some());
+                // not removing from history as we want to retain the history using a separate parameter
+                assert!(!self.is_overfull());
+            }
         }
 
-        // drop any entries for keys that have not been referenced in the last `retained_information_period`
+        succeeded
+    }
+
+    // drop any entries for keys that have not been referenced in the last `retained_information_period`
+    fn prune_history(&mut self, at: C::Time) {
         self.histories.borrow_mut().retain(|_, hist| match hist.latest_uncorrelated_access() {
             Some(last) => at - last < self.retained_information_period,
             None => false,
         });
-
-        succeeded
     }
 }
 
