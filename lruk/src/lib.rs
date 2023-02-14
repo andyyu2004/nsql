@@ -1,9 +1,7 @@
 #![cfg_attr(test, feature(test))]
 #![deny(rust_2018_idioms)]
 
-use std::borrow::Borrow;
 use std::cell::RefCell;
-use std::collections::{BTreeMap, HashMap};
 use std::fmt::Debug;
 use std::hash::Hash;
 use std::marker::PhantomData;
@@ -11,10 +9,12 @@ use std::ops::Sub;
 use std::sync::Arc;
 
 mod history;
+mod value_ordered_map;
 
-use rustc_hash::{FxHashMap, FxHashSet};
+use rustc_hash::FxHashMap;
 
 use self::history::History;
+use self::value_ordered_map::ValueOrderedMap;
 
 pub trait RefCounted: Clone {
     fn ref_count(&self) -> usize;
@@ -61,7 +61,7 @@ impl<K, V> Callbacks for NullCallbacks<K, V> {
 // based off https://www.cs.cmu.edu/~natassa/courses/15-721/papers/p297-o_neil.pdf
 pub struct LruK<K, V, C: Clock, F: Callbacks = NullCallbacks<K, V>, const N: usize = 2> {
     map: FxHashMap<K, V>,
-    kth_reference_times: RefCell<WeirdMap<K, Option<C::Time>>>,
+    kth_reference_times: RefCell<ValueOrderedMap<K, Option<C::Time>>>,
     histories: RefCell<FxHashMap<K, History<C, N>>>,
     last_accessed: RefCell<FxHashMap<K, C::Time>>,
     capacity: usize,
@@ -121,7 +121,7 @@ where
             callbacks,
             retained_information_period,
             correlated_reference_period,
-            map: HashMap::with_capacity_and_hasher(capacity + 1, Default::default()),
+            map: FxHashMap::with_capacity_and_hasher(capacity + 1, Default::default()),
             clock: C::default(),
             kth_reference_times: Default::default(),
             last_accessed: Default::default(),
@@ -131,11 +131,11 @@ where
 
     #[inline]
     pub fn get(&self, key: K) -> Option<V> {
-        assert!(self.map.len() <= self.capacity);
+        assert!(!self.is_overfull());
         let now = self.clock.now();
         let value = self.map.get(&key)?;
 
-        self.mark_access(key, now);
+        self.register_access_at(key, now);
         Some(value.clone())
     }
 
@@ -153,7 +153,7 @@ where
 
         if let Some(old_value) = self.map.get(&k) {
             // don't replace the old value with the given `value`, just return it
-            self.mark_access(k, now);
+            self.register_access_at(k, now);
             return Ok(old_value.clone());
         }
 
@@ -163,7 +163,7 @@ where
         }
 
         assert!(self.map.insert(k, v.clone()).is_none());
-        self.mark_access(k, now);
+        self.register_access_at(k, now);
 
         assert!(!self.is_overfull());
         Ok(v)
@@ -194,13 +194,13 @@ where
     }
 
     // update required metadata
-    fn mark_access(&self, k: K, at: C::Time) {
+    fn register_access_at(&self, k: K, at: C::Time) {
         self.last_accessed.borrow_mut().insert(k, at);
 
         let mut histories = self.histories.borrow_mut();
         let hist =
             histories.entry(k).or_insert_with(|| History::new(self.correlated_reference_period));
-        hist.mark_access(at);
+        hist.register_access_at(at);
 
         self.kth_reference_times.borrow_mut().insert(k, hist.kth());
     }
@@ -215,16 +215,27 @@ where
         self.map.len() > self.capacity
     }
 
-    fn find_eviction_candidate(&mut self, now: C::Time) -> Option<K> {
+    fn find_eviction_candidate(&mut self, at: C::Time) -> Option<K> {
         let last_accessed = self.last_accessed.borrow();
         // find key with the maximum kth reference time that matches the critieria
-        self.kth_reference_times.borrow().keys().filter(|k| self.map[k].ref_count() == 1).find(
+        self.kth_reference_times
+            .borrow()
+            .keys()
+            .find(|k| self.is_key_safe_for_eviction(&last_accessed, k, at))
+    }
+
+    fn is_key_safe_for_eviction(
+        &self,
+        last_accessed: &FxHashMap<K, C::Time>,
+        k: &K,
+        at: C::Time,
+    ) -> bool {
+        self.map[k].ref_count() == 1
             // don't evict keys that have been referenced within the last `correlated_reference_period`
-            |k| match last_accessed.get(k).copied() {
-                Some(last) => now - last > self.correlated_reference_period,
+            && match last_accessed.get(k).copied() {
+                Some(last) => at - last > self.correlated_reference_period,
                 None => true,
-            },
-        )
+            }
     }
 
     // evict a key returning true if an eviction occurred and false due to no eviction candidates
@@ -232,75 +243,27 @@ where
         let victim = self.find_eviction_candidate(at);
         let succeeded = victim.is_some();
 
+        let mut last_accessed = self.last_accessed.borrow_mut();
+
         if let Some(key) = victim {
             // one reference is `victim` and one in the map
             let value = self.map.remove(&key).unwrap();
             assert_eq!(value.ref_count(), 1, "eviction victim has outstanding references");
             self.callbacks.on_evict(&key, &value);
-            assert!(self.last_accessed.borrow_mut().remove(&key).is_some());
+            last_accessed.remove(&key);
+            drop(last_accessed);
             assert!(self.kth_reference_times.borrow_mut().remove(&key).is_some());
             // not removing from history as we want to retain the history using a separate parameter
             assert!(!self.is_overfull());
         }
 
         // drop any entries for keys that have not been referenced in the last `retained_information_period`
-        self.histories.borrow_mut().retain(|_, hist| match hist.latest_access() {
+        self.histories.borrow_mut().retain(|_, hist| match hist.latest_uncorrelated_access() {
             Some(last) => at - last < self.retained_information_period,
             None => false,
         });
 
         succeeded
-    }
-}
-
-/// A map that maintains ordering based on `V` but only keeps the value for the latest key.
-#[derive(Debug)]
-struct WeirdMap<K, V> {
-    map: FxHashMap<K, V>,
-    ordering: BTreeMap<V, FxHashSet<K>>,
-}
-
-impl<K, V> Default for WeirdMap<K, V> {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl<K, V> WeirdMap<K, V> {
-    pub fn new() -> Self {
-        Self { ordering: Default::default(), map: Default::default() }
-    }
-}
-
-impl<K, V> WeirdMap<K, V>
-where
-    K: Debug + Hash + Eq + Copy,
-    V: Debug + Copy + Hash + Ord,
-{
-    fn insert(&mut self, k: K, v: V) {
-        if let Some(old_value) = self.map.insert(k, v) {
-            self.ordering.remove(&old_value);
-        }
-
-        assert!(self.ordering.entry(v).or_default().insert(k));
-    }
-
-    fn remove<Q>(&mut self, key: &Q) -> Option<V>
-    where
-        K: Borrow<Q>,
-        Q: ?Sized + Eq + Hash,
-    {
-        let value = self.map.remove(key)?;
-        let vs = self.ordering.get_mut(&value).unwrap();
-        assert!(vs.remove(key));
-        vs.shrink_to_fit();
-        Some(value)
-    }
-
-    /// Iterator over keys in order of their values.
-    /// If there are multiple values with the same key, the keys are returned in insertion order.
-    fn keys(&self) -> impl Iterator<Item = K> + '_ {
-        self.ordering.values().flatten().copied()
     }
 }
 

@@ -20,6 +20,32 @@ impl<K: Clone, V: Clone> lruk::Callbacks for Callbacks<K, V> {
 }
 
 #[test]
+fn test_debug_1() {
+    let elements = [8, 15, 16, 2, 3, 14, 4, 0, 9, 1, 10, 17, 11, 6, 18, 5, 5];
+
+    let mut cache = LruK::<i32, Arc<char>, CounterClock>::new(15, 0, 0);
+
+    let mut references = vec![];
+    for (i, &element) in elements.iter().enumerate() {
+        if let Ok(value) = cache.try_insert(element, Arc::new(i as u8 as char)) {
+            references.push(value);
+        }
+    }
+}
+
+#[test]
+fn test_debug_2() {
+    let elements = [2, 3, 4, 1, 0, 5, 6, 7];
+    let mut cache = LruK::<i32, Arc<char>, CounterClock>::new(6, 0, 0);
+
+    for (i, &element) in elements.iter().enumerate() {
+        if cache.try_insert(element, Arc::new(i as u8 as char)).is_ok() {
+            assert!(cache.get(element).is_some(), "key should never be immediately evicted");
+        }
+    }
+}
+
+#[test]
 fn test_cache_as_lru() {
     let cbs = Callbacks::default();
     let mut cache =
