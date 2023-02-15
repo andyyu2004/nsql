@@ -1,33 +1,45 @@
-use std::io;
 use std::path::Path;
-use std::sync::atomic::{self, AtomicUsize};
+use std::sync::atomic::{self, AtomicU64};
+use std::{io, mem};
 
 use bytes::{Buf, BufMut};
 use nsql_storage::Storage;
 
-use crate::{Page, PageIndex, Pager, Result};
+use crate::{Page, PageIndex, Pager, Result, CHECKSUM_LENGTH, RAW_PAGE_SIZE};
 
-const CHECKSUM_LENGTH: usize = std::mem::size_of::<u64>();
+const _: () = [(); 1][(mem::size_of::<DbHeader>() < PAGE_SIZE) as usize ^ 1];
+const _: () = [(); 1][(mem::size_of::<FileHeader>() < PAGE_SIZE) as usize ^ 1];
 
-pub const HEADER_SIZE: usize = std::mem::size_of::<Header>();
 pub const FILE_HEADER_START: u64 = 0;
+pub const DB_HEADER_START: u64 = RAW_PAGE_SIZE as u64;
 pub const PAGE_SIZE: usize = 4096;
 pub const MAGIC: [u8; 4] = *b"NSQL";
 
 pub const CURRENT_VERSION: u32 = 1;
 
-#[derive(Debug)]
+trait Serialize {
+    fn serialize(&self, buf: &mut [u8]);
+}
+
+trait Deserialize {
+    fn deserialize(buf: &[u8]) -> Self;
+}
+
+#[derive(Debug, PartialEq, Eq)]
+#[cfg_attr(test, derive(test_strategy::Arbitrary))]
 pub struct FileHeader {
     magic: [u8; 4],
     version: u32,
 }
 
-impl FileHeader {
+impl Serialize for FileHeader {
     fn serialize(&self, mut buf: &mut [u8]) {
         buf.put_slice(&self.magic);
         buf.put_u32(self.version);
     }
+}
 
+impl Deserialize for FileHeader {
     fn deserialize(mut buf: &[u8]) -> Self {
         let mut magic = [0; 4];
         buf.copy_to_slice(&mut magic);
@@ -36,27 +48,48 @@ impl FileHeader {
     }
 }
 
-#[derive(Debug)]
-struct Header {
+#[derive(Debug, PartialEq, Eq)]
+#[cfg_attr(test, derive(test_strategy::Arbitrary))]
+struct DbHeader {
     free_list_head: PageIndex,
     page_count: PageIndex,
 }
 
+impl Serialize for DbHeader {
+    fn serialize(&self, mut buf: &mut [u8]) {
+        buf.put_u64(self.free_list_head.as_u64());
+        buf.put_u64(self.page_count.as_u64());
+    }
+}
+
+impl Deserialize for DbHeader {
+    fn deserialize(mut buf: &[u8]) -> Self {
+        let free_list_head = PageIndex::new(buf.get_u64());
+        let page_count = PageIndex::new(buf.get_u64());
+        Self { free_list_head, page_count }
+    }
+}
+
 pub struct SingleFilePager {
-    storage: Storage<PAGE_SIZE>,
-    max_page_index: AtomicUsize,
+    storage: Storage<RAW_PAGE_SIZE>,
+    max_page_index: AtomicU64,
 }
 
 impl Pager for SingleFilePager {
     async fn alloc_page(&self) -> Result<PageIndex> {
-        Ok(PageIndex::new(self.max_page_index.fetch_add(1, atomic::Ordering::SeqCst)))
+        let next_index = PageIndex::new(self.max_page_index.fetch_add(1, atomic::Ordering::SeqCst));
+        self.write_page(next_index, Page::zeroed()).await?;
+        Ok(next_index)
     }
 
     async fn read_page(&self, idx: PageIndex) -> Result<Page> {
+        self.assert_page_in_bounds(idx);
         let offset = self.offset_for_page(idx);
-        let data = self.storage.read_at(offset as u64).await?;
-        let expected_checksum = u64::from_be_bytes(data[..CHECKSUM_LENGTH].try_into().unwrap());
-        let computed_checksum = checksum(&data[CHECKSUM_LENGTH..]);
+        let page = Page::new(self.storage.read_at(offset).await?);
+
+        let expected_checksum = page.expected_checksum();
+        let computed_checksum = page.compute_checksum();
+
         if expected_checksum != computed_checksum {
             Err(io::Error::new(
                 io::ErrorKind::InvalidData,
@@ -66,23 +99,15 @@ impl Pager for SingleFilePager {
             ))?;
         }
 
-        Ok(Page::new(
-            data.to_vec().into_boxed_slice().try_into().expect("data was incorrect length"),
-        ))
+        Ok(page)
     }
 
     async fn write_page(&self, idx: PageIndex, mut page: Page) -> Result<()> {
+        self.assert_page_in_bounds(idx);
         let offset = self.offset_for_page(idx);
-        let checksum = checksum(&page.bytes()[CHECKSUM_LENGTH..]);
-        let checksum_slice = &mut page.bytes_mut()[..CHECKSUM_LENGTH];
-        assert_eq!(
-            u64::from_be_bytes(checksum_slice.try_into().unwrap()),
-            0,
-            "checksum slice is non-zero"
-        );
-        checksum_slice.copy_from_slice(&checksum.to_be_bytes());
+        page.update_checksum();
 
-        self.storage.write_at(offset as u64, page.bytes()).await?;
+        self.storage.write_at(offset, page.bytes()).await?;
         self.storage.sync().await?;
         Ok(())
     }
@@ -90,58 +115,85 @@ impl Pager for SingleFilePager {
 
 impl SingleFilePager {
     #[inline]
-    pub fn new(storage: Storage<PAGE_SIZE>) -> Self {
-        Self { storage, max_page_index: todo!() }
+    pub async fn open(path: impl AsRef<Path>) -> Result<SingleFilePager> {
+        let storage = Storage::open(path).await?;
+        Self::check_file_header(&storage).await?;
+
+        let db_header = Self::read_database_header(&storage).await?;
+
+        Ok(Self::new(storage, db_header))
+    }
+
+    // Create a new database file at the given path.
+    #[inline]
+    pub async fn create(path: impl AsRef<Path>) -> Result<SingleFilePager> {
+        let storage = Storage::create(path).await?;
+
+        let mut buf = [0; PAGE_SIZE];
+        let file_header = FileHeader { magic: MAGIC, version: CURRENT_VERSION };
+        file_header.serialize(buf.as_mut());
+        storage.write_at(FILE_HEADER_START, &buf).await?;
+
+        let db_header =
+            DbHeader { free_list_head: PageIndex::INVALID, page_count: PageIndex::new(0) };
+        storage.write_at(DB_HEADER_START, &buf).await?;
+        storage.sync().await?;
+
+        Ok(Self::new(storage, db_header))
     }
 
     #[inline]
-    pub async fn open(path: impl AsRef<Path>) -> Result<SingleFilePager> {
-        let storage = Storage::open(path).await?;
+    fn new(storage: Storage<PAGE_SIZE>, db_header: DbHeader) -> Self {
+        Self { storage, max_page_index: AtomicU64::new(db_header.page_count.as_u64()) }
+    }
 
+    async fn read_database_header(storage: &Storage<PAGE_SIZE>) -> Result<DbHeader> {
+        let buf = storage.read_at(DB_HEADER_START).await?;
+        let db_header = DbHeader::deserialize(&buf);
+        Ok(db_header)
+    }
+
+    async fn check_file_header(storage: &Storage<PAGE_SIZE>) -> Result<()> {
         let buf = storage.read_at(FILE_HEADER_START).await?;
-        let header = FileHeader::deserialize(&buf);
+        let file_header = FileHeader::deserialize(&buf);
 
-        if header.magic != MAGIC {
+        if file_header.magic != MAGIC {
             Err(io::Error::new(
                 io::ErrorKind::Other,
                 "this is not a valid nsql file (magic number mismatch)",
             ))?;
         }
 
-        if header.version != CURRENT_VERSION {
+        if file_header.version != CURRENT_VERSION {
             Err(io::Error::new(
                 io::ErrorKind::Other,
                 format!(
                     "attempting to read nsql database file with version `{}`, but can only read version `{CURRENT_VERSION}",
-                    header.version
+                    file_header.version
                 ),
             ))?;
         }
 
-        Ok(Self::new(storage))
+        Ok(())
     }
 
-    #[inline]
-    pub async fn create(path: impl AsRef<Path>) -> Result<SingleFilePager> {
-        let mut buf = [0; PAGE_SIZE];
-        let header = FileHeader { magic: MAGIC, version: CURRENT_VERSION };
-        header.serialize(buf.as_mut());
-
-        let storage = Storage::open(path).await?;
-        storage.write_at(FILE_HEADER_START, &buf).await?;
-        storage.sync().await?;
-
-        Ok(Self::new(storage))
+    fn assert_page_in_bounds(&self, idx: PageIndex) {
+        assert!(
+            idx.as_u64() < self.max_page_index.load(atomic::Ordering::SeqCst),
+            "page index out of bounds"
+        );
     }
 }
 
 // private helpers
 impl SingleFilePager {
-    fn offset_for_page(&self, idx: PageIndex) -> usize {
-        (idx.as_usize() * PAGE_SIZE) + HEADER_SIZE
+    fn offset_for_page(&self, idx: PageIndex) -> u64 {
+        // reserving 3 pages for the file header, and two database headers
+        let offset = (idx.as_u64() + 3) * PAGE_SIZE as u64;
+        assert_eq!(offset % PAGE_SIZE as u64, 0);
+        offset
     }
 }
 
-fn checksum(data: &[u8]) -> u64 {
-    crc::Crc::<u64>::new(&crc::CRC_64_WE).checksum(data)
-}
+#[cfg(test)]
+mod tests;

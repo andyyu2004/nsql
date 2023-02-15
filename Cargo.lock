@@ -575,7 +575,6 @@ dependencies = [
  "lruk",
  "nsql-pager",
  "parking_lot",
- "tokio-uring 0.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
@@ -587,6 +586,8 @@ dependencies = [
  "nsql-storage",
  "nsql-test",
  "parking_lot",
+ "proptest",
+ "test-strategy",
 ]
 
 [[package]]
@@ -598,7 +599,7 @@ dependencies = [
  "nsql-test",
  "proptest",
  "test-strategy",
- "tokio-uring 0.4.0 (git+https://github.com/tokio-rs/tokio-uring?branch=master)",
+ "tokio-uring",
 ]
 
 [[package]]
@@ -606,7 +607,7 @@ name = "nsql-test"
 version = "0.1.0"
 dependencies = [
  "tempfile",
- "tokio-uring 0.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "tokio-uring",
 ]
 
 [[package]]
@@ -904,12 +905,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "scoped-tls"
-version = "1.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e1cf6437eb19a8f4a6cc0f7dca544973b0b78843adbfeb3683d1a94a0024a294"
-
-[[package]]
 name = "scopeguard"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1065,20 +1060,6 @@ dependencies = [
  "pin-project-lite",
  "socket2",
  "windows-sys 0.42.0",
-]
-
-[[package]]
-name = "tokio-uring"
-version = "0.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0d5e02bb137e030b3a547c65a3bd2f1836d66a97369fdcc69034002b10e155ef"
-dependencies = [
- "io-uring",
- "libc",
- "scoped-tls",
- "slab",
- "socket2",
- "tokio",
 ]
 
 [[package]]

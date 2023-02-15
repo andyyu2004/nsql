@@ -7,7 +7,7 @@ const SIZE: usize = 4096;
 
 #[test]
 fn test_new_storage() -> Result<()> {
-    tokio_uring::start(async {
+    nsql_test::start(async {
         let storage = mk_storage!();
         let mut buf = [0; SIZE];
         buf[0] = 1;
@@ -24,7 +24,7 @@ fn test_read_after_write_consistency(
     #[strategy(vec(0..10000u64, 1..100))] page_indices: Vec<u64>,
     #[strategy(vec(0..u8::MAX, SIZE))] buf: Vec<u8>,
 ) {
-    let result: Result<()> = tokio_uring::start(async {
+    let result: Result<()> = nsql_test::start(async {
         let storage = mk_storage!();
         let mut buf: [u8; SIZE] = buf.try_into().unwrap();
 

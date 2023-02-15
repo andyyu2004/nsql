@@ -13,3 +13,5 @@ path = "../nsql-storage"
 
 [dev-dependencies]
 nsql-test = { path = "../nsql-test" }
+proptest = "1.1.0"
+test-strategy = "0.3.0"

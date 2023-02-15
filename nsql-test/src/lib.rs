@@ -19,18 +19,12 @@ macro_rules! mk_storage {
 #[macro_export]
 macro_rules! mk_file_pager {
     () => {
-        nsql_pager::SingleFilePager::open($crate::tmp!()).await?
+        nsql_pager::SingleFilePager::create($crate::tmp!()).await?
     };
 }
 
-#[macro_export]
-macro_rules! mk_file_pager_sync {
-    () => {
-        $crate::run(nsql_pager::SingleFilePager::open($crate::tmp!())).unwrap()
-    };
-}
-
-pub fn run<F: Future>(fut: F) -> F::Output {
+#[inline]
+pub fn start<F: Future>(fut: F) -> F::Output {
     tokio_uring::start(fut)
 }
 
@@ -41,11 +35,11 @@ macro_rules! test_each_impl {
             mod $impl_name {
                 use super::*;
 
+                #[test]
                 fn $test_name() -> Result<()> {
-                    nsql_test::run(async {
+                    $crate::start(async {
                         let $x = $impl;
                         $block
-                        Ok(())
                     })
                 }
             }

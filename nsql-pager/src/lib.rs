@@ -12,7 +12,9 @@ pub use self::mem::InMemoryPager;
 pub use self::page::{Page, PageIndex};
 pub use self::single_file::SingleFilePager;
 
-pub const PAGE_SIZE: usize = 4096;
+pub const PAGE_SIZE: usize = RAW_PAGE_SIZE - CHECKSUM_LENGTH;
+const RAW_PAGE_SIZE: usize = 4096;
+const CHECKSUM_LENGTH: usize = std::mem::size_of::<u64>();
 
 pub trait Pager: 'static {
     /// Allocate a new unused [`crate::PageIndex`]

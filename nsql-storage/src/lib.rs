@@ -68,8 +68,8 @@ impl<const N: usize> Storage<N> {
         Ok(())
     }
 
-    const fn assert_aligned(pos: u64) {
-        assert!(Self::is_aligned(pos), "position is not aligned to size");
+    fn assert_aligned(pos: u64) {
+        assert!(Self::is_aligned(pos), "position `{pos}` is not aligned to size `{N}`");
     }
 
     const fn is_aligned(pos: u64) -> bool {

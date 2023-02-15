@@ -1,10 +1,10 @@
 use std::fmt;
 
-use crate::PAGE_SIZE;
+use crate::{CHECKSUM_LENGTH, PAGE_SIZE, RAW_PAGE_SIZE};
 
 #[derive(Clone)]
 pub struct Page {
-    bytes: Box<[u8; PAGE_SIZE]>,
+    bytes: Box<[u8; RAW_PAGE_SIZE]>,
 }
 
 impl fmt::Debug for Page {
@@ -14,23 +14,59 @@ impl fmt::Debug for Page {
 }
 
 impl Page {
-    pub fn new(bytes: Box<[u8; PAGE_SIZE]>) -> Self {
-        Self { bytes }
+    #[inline]
+    pub fn data(&self) -> &[u8; PAGE_SIZE] {
+        (&self.bytes[CHECKSUM_LENGTH..]).try_into().unwrap()
     }
 
     #[inline]
-    pub fn bytes(&self) -> &[u8; PAGE_SIZE] {
+    pub(crate) fn new(bytes: [u8; RAW_PAGE_SIZE]) -> Self {
+        Self { bytes: Box::new(bytes) }
+    }
+
+    #[inline]
+    pub(crate) fn zeroed() -> Self {
+        Self::new([0; RAW_PAGE_SIZE])
+    }
+
+    #[inline]
+    pub(crate) fn bytes(&self) -> &[u8; RAW_PAGE_SIZE] {
         &self.bytes
     }
 
+    /// Read the checksum from the page header
     #[inline]
-    pub fn bytes_mut(&mut self) -> &mut [u8; PAGE_SIZE] {
-        &mut self.bytes
+    pub(crate) fn expected_checksum(&self) -> u64 {
+        u64::from_be_bytes(self.bytes()[..CHECKSUM_LENGTH].try_into().unwrap())
+    }
+
+    #[inline]
+    pub(crate) fn update_checksum(&mut self) {
+        let checksum = self.compute_checksum();
+        self.bytes[0..8].copy_from_slice(&checksum.to_be_bytes());
+        assert!(self.expected_checksum() == checksum);
+    }
+
+    /// Compute the checksum of the page and write it to the first 8 bytes of the page.
+    #[inline]
+    pub(crate) fn compute_checksum(&self) -> u64 {
+        checksum(self.data())
     }
 }
 
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord)]
-pub struct PageIndex(usize);
+pub struct PageIndex(u64);
+
+#[cfg(test)]
+impl proptest::arbitrary::Arbitrary for PageIndex {
+    type Parameters = ();
+    type Strategy = proptest::strategy::BoxedStrategy<Self>;
+
+    fn arbitrary_with(_args: Self::Parameters) -> proptest::strategy::BoxedStrategy<Self> {
+        use proptest::prelude::Strategy;
+        (0..1000u64).prop_map(PageIndex).boxed()
+    }
+}
 
 impl Default for PageIndex {
     fn default() -> Self {
@@ -39,13 +75,15 @@ impl Default for PageIndex {
 }
 
 impl PageIndex {
-    pub(crate) const INVALID: Self = Self(usize::MAX);
+    pub(crate) const INVALID: Self = Self::new(u64::MAX);
 
-    pub(crate) fn new(idx: usize) -> Self {
+    #[inline]
+    pub(crate) const fn new(idx: u64) -> Self {
         Self(idx)
     }
 
-    pub(crate) fn as_usize(self) -> usize {
+    #[inline]
+    pub(crate) fn as_u64(self) -> u64 {
         self.0
     }
 }
@@ -54,4 +92,8 @@ impl fmt::Display for PageIndex {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.0)
     }
+}
+
+fn checksum(data: &[u8]) -> u64 {
+    crc::Crc::<u64>::new(&crc::CRC_64_WE).checksum(data)
 }
