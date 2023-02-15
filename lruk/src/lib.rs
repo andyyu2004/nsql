@@ -54,19 +54,22 @@ pub struct CacheFull;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum InsertionResult<V> {
     /// The provided value was inserted.
-    /// `value` is a clone of the value
-    /// `evicted` is the value that was evicted, if any
-    Inserted { value: V, evicted: Option<V> },
+    /// `V` is a clone of the value
+    Inserted(V),
     /// The provided value was not inserted as it already exists in the cache.
     /// `V` is a clone of the existing value
     AlreadyExists(V),
+    InsertedWithEviction {
+        value: V,
+        evicted: V,
+    },
 }
 
 impl<V> AsRef<V> for InsertionResult<V> {
     fn as_ref(&self) -> &V {
         match self {
-            InsertionResult::Inserted { value, .. } => value,
-            InsertionResult::AlreadyExists(value) => value,
+            InsertionResult::InsertedWithEviction { value, .. } => value,
+            InsertionResult::AlreadyExists(value) | InsertionResult::Inserted(value) => value,
         }
     }
 }
@@ -139,7 +142,11 @@ where
         self.register_access_at(key, now);
 
         assert!(!self.is_overfull());
-        Ok(InsertionResult::Inserted { value, evicted })
+
+        match evicted {
+            Some(evicted) => Ok(InsertionResult::InsertedWithEviction { value, evicted }),
+            None => Ok(InsertionResult::Inserted(value)),
+        }
     }
 
     #[inline]

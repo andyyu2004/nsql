@@ -7,7 +7,6 @@ use std::future::Future;
 use std::sync::Arc;
 
 use coarsetime::Duration;
-use crossbeam::channel::{self, Receiver, Sender};
 use lruk::{LruK, RefCounted};
 use nsql_pager::{Page, PageIndex, Pager, Result, PAGE_SIZE};
 use parking_lot::RwLock;
@@ -40,20 +39,17 @@ pub struct BufferPool<P: Pager> {
 struct Inner<P: Pager> {
     pager: P,
     cache: RwLock<LruK<PageIndex, BufferHandle, Clock>>,
-    eviction_rx: Receiver<(PageIndex, BufferHandle)>,
 }
 
 impl<P: Pager> BufferPool<P> {
     // Create a new buffer pool with the given pager implementation.
     // Returns the buffer pool and a future that must be polled to completion.
-    pub fn new(pager: P) -> (Self, impl Future<Output = Result<()>>) {
+    pub fn new(pager: P) -> Self {
         let max_memory_bytes = if cfg!(test) { 1024 * 1024 } else { 128 * 1024 * 1024 };
         let max_pages = max_memory_bytes / PAGE_SIZE;
 
-        let (tx, eviction_rx) = channel::bounded(max_pages.max(1));
         let inner = Arc::new(Inner {
             pager,
-            eviction_rx,
             cache: RwLock::new(LruK::new(
                 max_pages,
                 if cfg!(test) { Duration::from_millis(100) } else { Duration::from_secs(200) },
@@ -61,17 +57,7 @@ impl<P: Pager> BufferPool<P> {
             )),
         });
 
-        let b = inner.clone();
-        let eviction_future = async move {
-            while let Ok((page_index, handle)) = b.eviction_rx.recv() {
-                let page = Arc::try_unwrap(handle.page)
-                    .expect("this must be the last remaining reference if it was evicted");
-                b.pager.write_page(page_index, page).await?;
-            }
-            Ok(())
-        };
-
-        (Self { inner }, eviction_future)
+        Self { inner }
     }
 }
 
@@ -84,13 +70,12 @@ impl<P: Pager> BufferPoolInterface for BufferPool<P> {
 
         let page = inner.pager.read_page(index).await?;
         let handle = match inner.cache.write().insert(index, BufferHandle::new(page)) {
-            lruk::InsertionResult::Inserted { value, evicted } => {
-                if let Some(evicted) = evicted {
-                    todo!("flush this page to disk")
-                }
+            lruk::InsertionResult::InsertedWithEviction { value, evicted } => {
+                todo!("flush this page to disk");
                 value
             }
-            lruk::InsertionResult::AlreadyExists(value) => value,
+            lruk::InsertionResult::Inserted(value)
+            | lruk::InsertionResult::AlreadyExists(value) => value,
         };
 
         Ok(handle)
