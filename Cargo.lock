@@ -582,16 +582,17 @@ dependencies = [
 name = "nsql-pager"
 version = "0.1.0"
 dependencies = [
+ "bytes",
  "crc",
  "nsql-storage",
  "nsql-test",
+ "parking_lot",
 ]
 
 [[package]]
 name = "nsql-storage"
 version = "0.1.0"
 dependencies = [
- "bytes",
  "error-stack",
  "libc",
  "nsql-test",

@@ -3,7 +3,6 @@
 #![feature(async_fn_in_trait)]
 #![feature(once_cell)]
 
-use std::future::Future;
 use std::sync::Arc;
 
 use coarsetime::Duration;
