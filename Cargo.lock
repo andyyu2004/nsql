@@ -584,6 +584,7 @@ version = "0.1.0"
 dependencies = [
  "crc",
  "nsql-storage",
+ "nsql-test",
 ]
 
 [[package]]
@@ -593,10 +594,18 @@ dependencies = [
  "bytes",
  "error-stack",
  "libc",
+ "nsql-test",
  "proptest",
- "tempfile",
  "test-strategy",
  "tokio-uring 0.4.0 (git+https://github.com/tokio-rs/tokio-uring?branch=master)",
+]
+
+[[package]]
+name = "nsql-test"
+version = "0.1.0"
+dependencies = [
+ "tempfile",
+ "tokio-uring 0.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]

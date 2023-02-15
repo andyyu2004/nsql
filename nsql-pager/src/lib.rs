@@ -15,6 +15,7 @@ pub trait Pager: 'static {
     async fn write_page(&self, idx: PageIndex, page: Page) -> Result<()>;
 }
 
+#[derive(Default)]
 pub struct InMemoryPager {
     pages: RwLock<Vec<Page>>,
 }
@@ -73,6 +74,11 @@ impl Pager for SingleFilePager {
 }
 
 impl SingleFilePager {
+    #[inline]
+    pub fn new(storage: Storage) -> Self {
+        Self { storage }
+    }
+
     #[inline]
     pub async fn open(path: impl AsRef<Path>) -> Result<SingleFilePager> {
         Ok(SingleFilePager { storage: Storage::open(path).await? })

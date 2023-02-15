@@ -5,6 +5,7 @@ members = [
     "nsql-buffer",
     "nsql-pager",
     "nsql-storage",
+    "nsql-test",
     "lruk",
 ]
 

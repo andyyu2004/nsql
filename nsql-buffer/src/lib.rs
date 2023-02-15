@@ -3,6 +3,7 @@
 #![feature(async_fn_in_trait)]
 #![feature(once_cell)]
 
+use std::future::Future;
 use std::sync::Arc;
 
 use coarsetime::Duration;
@@ -43,8 +44,9 @@ struct Inner<P: Pager> {
 }
 
 impl<P: Pager> BufferPool<P> {
-    #[must_use]
-    pub fn new(pager: P) -> Self {
+    // Create a new buffer pool with the given pager implementation.
+    // Returns the buffer pool and a future that must be polled to completion.
+    pub fn new(pager: P) -> (Self, impl Future<Output = Result<()>>) {
         let max_memory_bytes = if cfg!(test) { 1024 * 1024 } else { 128 * 1024 * 1024 };
         let max_pages = max_memory_bytes / PAGE_SIZE;
 
@@ -61,15 +63,16 @@ impl<P: Pager> BufferPool<P> {
         });
 
         let b = inner.clone();
-        tokio_uring::spawn(async move {
+        let eviction_future = async move {
             while let Ok((page_index, handle)) = b.eviction_rx.recv() {
                 let page = Arc::try_unwrap(handle.page)
                     .expect("this must be the last remaining reference if it was evicted");
-                b.pager.write_page(page_index, page).await.unwrap();
+                b.pager.write_page(page_index, page).await?;
             }
-        });
+            Ok(())
+        };
 
-        Self { inner }
+        (Self { inner }, eviction_future)
     }
 }
 

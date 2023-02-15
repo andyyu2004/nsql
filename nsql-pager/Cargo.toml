@@ -8,3 +8,6 @@ crc = "3.0"
 
 [dependencies.nsql-storage]
 path = "../nsql-storage"
+
+[dev-dependencies]
+nsql-test = { path = "../nsql-test" }

@@ -1,25 +1,14 @@
-use nsql_storage::{Result, Storage};
+use nsql_storage::Result;
+use nsql_test::mk_storage;
 use proptest::collection::vec;
 use test_strategy::proptest;
 
 const SIZE: usize = 4096;
 
-macro_rules! tmp {
-    () => {
-        tempfile::tempdir()?.path().join("test.db")
-    };
-}
-
-macro_rules! create {
-    () => {
-        Storage::create(tmp!()).await?
-    };
-}
-
 #[test]
 fn test_new_storage() -> Result<()> {
     tokio_uring::start(async {
-        let storage = create!();
+        let storage = mk_storage!();
         let mut buf = [0; SIZE];
         buf[0] = 1;
         storage.write_at(0, &buf).await?;
@@ -36,7 +25,7 @@ fn test_read_after_write_consistency(
     #[strategy(vec(0..u8::MAX, SIZE))] buf: Vec<u8>,
 ) {
     let result: Result<()> = tokio_uring::start(async {
-        let storage = create!();
+        let storage = mk_storage!();
         let mut buf: [u8; SIZE] = buf.try_into().unwrap();
 
         for page_index in page_indices {
