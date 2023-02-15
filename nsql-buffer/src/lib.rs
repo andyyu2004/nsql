@@ -39,7 +39,7 @@ pub struct BufferPool<P: Pager> {
 
 struct Inner<P: Pager> {
     pager: P,
-    cache: RwLock<LruK<PageIndex, BufferHandle, Clock, Callbacks>>,
+    cache: RwLock<LruK<PageIndex, BufferHandle, Clock>>,
     eviction_rx: Receiver<(PageIndex, BufferHandle)>,
 }
 
@@ -54,11 +54,10 @@ impl<P: Pager> BufferPool<P> {
         let inner = Arc::new(Inner {
             pager,
             eviction_rx,
-            cache: RwLock::new(LruK::new_with_callbacks(
+            cache: RwLock::new(LruK::new(
                 max_pages,
                 if cfg!(test) { Duration::from_millis(100) } else { Duration::from_secs(200) },
                 if cfg!(test) { Duration::from_millis(10) } else { Duration::from_millis(50) },
-                Callbacks::new(tx),
             )),
         });
 
@@ -84,27 +83,17 @@ impl<P: Pager> BufferPoolInterface for BufferPool<P> {
         }
 
         let page = inner.pager.read_page(index).await?;
-        let handle = BufferHandle::new(page);
-        Ok(inner.cache.write().insert(index, handle))
-    }
-}
+        let handle = match inner.cache.write().insert(index, BufferHandle::new(page)) {
+            lruk::InsertionResult::Inserted { value, evicted } => {
+                if let Some(evicted) = evicted {
+                    todo!("flush this page to disk")
+                }
+                value
+            }
+            lruk::InsertionResult::AlreadyExists(value) => value,
+        };
 
-struct Callbacks {
-    tx: Sender<(PageIndex, BufferHandle)>,
-}
-
-impl Callbacks {
-    fn new(tx: crossbeam::channel::Sender<(PageIndex, BufferHandle)>) -> Callbacks {
-        Self { tx }
-    }
-}
-
-impl lruk::Callbacks for Callbacks {
-    type Key = PageIndex;
-    type Value = BufferHandle;
-
-    fn on_evict(&self, page_index: Self::Key, handle: Self::Value) {
-        self.tx.send((page_index, handle)).expect("channel should not be closed")
+        Ok(handle)
     }
 }
 

@@ -1,24 +1,10 @@
 use std::sync::atomic::{self, AtomicU64};
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use lruk::{CacheFull, Clock, LruK};
 use proptest::collection::vec;
 use test_strategy::proptest;
-
-#[derive(Default)]
-pub struct Callbacks<K, V> {
-    evicted: RwLock<Vec<(K, V)>>,
-}
-
-impl<K: Clone, V: Clone> lruk::Callbacks for Callbacks<K, V> {
-    type Key = K;
-    type Value = V;
-
-    fn on_evict(&self, key: Self::Key, value: Self::Value) {
-        self.evicted.write().unwrap().push((key, value));
-    }
-}
 
 #[test]
 fn test_debug_1() {
@@ -48,11 +34,7 @@ fn test_debug_2() {
 
 #[test]
 fn test_cache_as_lru() {
-    let cbs = Callbacks::default();
-    let mut cache =
-        LruK::<i32, Arc<char>, CounterClock, Callbacks<i32, Arc<char>>, 1>::new_with_callbacks(
-            2, 0, 0, cbs,
-        );
+    let mut cache = LruK::<i32, Arc<char>, CounterClock, 1>::new(2, 0, 0);
 
     macro_rules! get {
         ($key:expr) => {
@@ -62,7 +44,7 @@ fn test_cache_as_lru() {
 
     macro_rules! insert {
         ($key:expr => $value:expr) => {
-            *cache.insert($key, Arc::new($value)).as_ref()
+            **cache.insert($key, Arc::new($value)).as_ref()
         };
     }
 
@@ -99,11 +81,6 @@ fn test_cache_as_lru() {
     assert_eq!(get!(2), None);
     assert_eq!(get!(3), Some('c'));
     assert_eq!(get!(4), Some('d'));
-
-    let evicted = cache.callbacks().evicted.read().unwrap();
-    assert_eq!(evicted.len(), 2);
-    assert_eq!(evicted[0], (1, Arc::new('a')));
-    assert_eq!(evicted[1], (2, Arc::new('b')));
 }
 
 // The correctness of the eviction policy is currently a best-effort sort of thing, they are not essential for correctness.

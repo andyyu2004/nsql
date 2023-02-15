@@ -4,7 +4,6 @@
 use std::cell::RefCell;
 use std::fmt::Debug;
 use std::hash::Hash;
-use std::marker::PhantomData;
 use std::ops::Sub;
 use std::sync::Arc;
 
@@ -34,41 +33,8 @@ impl<T: ?Sized> RefCounted for Arc<T> {
     }
 }
 
-pub trait Callbacks {
-    type Key;
-    type Value;
-
-    fn on_evict(&self, key: Self::Key, value: Self::Value);
-}
-
-impl<C: Callbacks> Callbacks for Arc<C> {
-    type Key = <C as Callbacks>::Key;
-    type Value = <C as Callbacks>::Value;
-
-    fn on_evict(&self, key: Self::Key, value: Self::Value) {
-        self.as_ref().on_evict(key, value)
-    }
-}
-
-pub struct NullCallbacks<K, V> {
-    marker: PhantomData<(K, V)>,
-}
-
-impl<K, V> NullCallbacks<K, V> {
-    fn new() -> Self {
-        Self { marker: PhantomData }
-    }
-}
-
-impl<K, V> Callbacks for NullCallbacks<K, V> {
-    type Key = K;
-    type Value = V;
-
-    fn on_evict(&self, _: K, _: V) {}
-}
-
 // based off https://www.cs.cmu.edu/~natassa/courses/15-721/papers/p297-o_neil.pdf
-pub struct LruK<K, V, C: Clock, F: Callbacks = NullCallbacks<K, V>, const N: usize = 2> {
+pub struct LruK<K, V, C: Clock, const N: usize = 2> {
     map: FxHashMap<K, V>,
     kth_reference_times: RefCell<ValueOrderedMap<K, Option<C::Time>>>,
     histories: RefCell<FxHashMap<K, History<C, N>>>,
@@ -80,13 +46,32 @@ pub struct LruK<K, V, C: Clock, F: Callbacks = NullCallbacks<K, V>, const N: usi
     /// These references will not be considered a second reference.
     /// It is also the minimum span of time where a key must be retained in the cache.
     correlated_reference_period: C::Duration,
-    callbacks: F,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CacheFull;
 
-impl<K, V, C, const N: usize> LruK<K, V, C, NullCallbacks<K, V>, N>
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum InsertionResult<V> {
+    /// The provided value was inserted.
+    /// `value` is a clone of the value
+    /// `evicted` is the value that was evicted, if any
+    Inserted { value: V, evicted: Option<V> },
+    /// The provided value was not inserted as it already exists in the cache.
+    /// `V` is a clone of the existing value
+    AlreadyExists(V),
+}
+
+impl<V> AsRef<V> for InsertionResult<V> {
+    fn as_ref(&self) -> &V {
+        match self {
+            InsertionResult::Inserted { value, .. } => value,
+            InsertionResult::AlreadyExists(value) => value,
+        }
+    }
+}
+
+impl<K, V, C, const N: usize> LruK<K, V, C, N>
 where
     // K doesn't really need to be copy, can relax to clone if needed
     K: Debug + Eq + Hash + Copy + 'static,
@@ -100,34 +85,8 @@ where
         correlated_reference_period: C::Duration,
     ) -> Self {
         assert!(capacity > 0, "capacity must be greater than 0");
-        Self::new_with_callbacks(
-            capacity,
-            retained_information_period,
-            correlated_reference_period,
-            NullCallbacks::new(),
-        )
-    }
-}
-
-impl<K, V, C, F, const N: usize> LruK<K, V, C, F, N>
-where
-    // K doesn't really need to be copy, can relax to clone if needed
-    K: Debug + Eq + Hash + Copy + 'static,
-    F: Callbacks<Key = K, Value = V>,
-    V: Send + Sync + RefCounted + 'static,
-    C: Clock,
-{
-    #[inline]
-    pub fn new_with_callbacks(
-        capacity: usize,
-        retained_information_period: C::Duration,
-        correlated_reference_period: C::Duration,
-        callbacks: F,
-    ) -> Self {
-        // the capacity isn't exactly what we pass to it
         Self {
             capacity,
-            callbacks,
             retained_information_period,
             correlated_reference_period,
             map: FxHashMap::with_capacity_and_hasher(capacity + 1, Default::default()),
@@ -156,31 +115,36 @@ where
     // attempts to insert `(K, V)` into the cache failing if the cache is full and there are no eviction candidates
     // If the key already exists, it is NOT replaced.
     #[inline]
-    pub fn try_insert(&mut self, k: K, v: V) -> Result<V, CacheFull> {
+    pub fn try_insert(&mut self, key: K, value: V) -> Result<InsertionResult<V>, CacheFull> {
         assert!(!self.is_overfull());
         let now = self.clock.now();
 
-        if let Some(old_value) = self.map.get(&k) {
+        if let Some(old_value) = self.map.get(&key) {
             // don't replace the old value with the given `value`, just return it
-            self.register_access_at(k, now);
-            return Ok(old_value.clone());
+            self.register_access_at(key, now);
+            return Ok(InsertionResult::AlreadyExists(old_value.clone()));
         }
 
         // `k` is a new value, so we need to evict something if the cache is already full
-        if self.is_full() && !self.evict(now) {
-            return Err(CacheFull);
-        }
+        let evicted = if self.is_full() {
+            match self.evict(now) {
+                Some(evicted) => Some(evicted),
+                None => return Err(CacheFull),
+            }
+        } else {
+            None
+        };
 
-        assert!(self.map.insert(k, v.clone()).is_none());
-        self.register_access_at(k, now);
+        assert!(self.map.insert(key, value.clone()).is_none());
+        self.register_access_at(key, now);
 
         assert!(!self.is_overfull());
-        Ok(v)
+        Ok(InsertionResult::Inserted { value, evicted })
     }
 
     #[inline]
     // panicking variant of `try_insert`
-    pub fn insert(&mut self, key: K, value: V) -> V {
+    pub fn insert(&mut self, key: K, value: V) -> InsertionResult<V> {
         match self.try_insert(key, value) {
             Ok(value) => value,
             Err(CacheFull) => panic!("failed to insert: cache is full"),
@@ -195,11 +159,6 @@ where
     #[inline]
     pub fn is_empty(&self) -> bool {
         self.map.is_empty()
-    }
-
-    #[inline]
-    pub fn callbacks(&self) -> &F {
-        &self.callbacks
     }
 
     // update required metadata
@@ -248,28 +207,23 @@ where
     }
 
     // evict a key returning true if an eviction occurred and false due to no eviction candidates
-    fn evict(&mut self, at: C::Time) -> bool {
+    fn evict(&mut self, at: C::Time) -> Option<V> {
         let victim = self.find_eviction_candidate(at);
-        let succeeded = victim.is_some();
 
         self.prune_history(at);
 
-        {
-            let mut last_accessed = self.last_accessed.borrow_mut();
-            if let Some(key) = victim {
-                // one reference is `victim` and one in the map
-                let value = self.map.remove(&key).unwrap();
-                assert_eq!(value.ref_count(), 1, "eviction victim has outstanding references");
-                last_accessed.remove(&key);
-                drop(last_accessed);
-                assert!(self.kth_reference_times.borrow_mut().remove(&key).is_some());
-                // not removing from history as we want to retain the history using a separate parameter
-                self.callbacks.on_evict(key, value);
-                assert!(!self.is_overfull());
-            }
-        }
+        let key = victim?;
 
-        succeeded
+        let mut last_accessed = self.last_accessed.borrow_mut();
+        let value = self.map.remove(&key).unwrap();
+        assert_eq!(value.ref_count(), 1, "eviction victim has outstanding references");
+        last_accessed.remove(&key);
+        drop(last_accessed);
+        assert!(self.kth_reference_times.borrow_mut().remove(&key).is_some());
+        // not removing from history as we want to retain the history using a separate parameter
+        assert!(!self.is_overfull());
+
+        Some(value)
     }
 
     // drop any entries for keys that have not been referenced in the last `retained_information_period`
