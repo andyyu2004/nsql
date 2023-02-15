@@ -14,6 +14,7 @@ impl fmt::Debug for Page {
 }
 
 impl Page {
+    /// Get an immutable reference to the data bytes of the page
     #[inline]
     pub fn data(&self) -> &[u8; PAGE_SIZE] {
         (&self.bytes[CHECKSUM_LENGTH..]).try_into().unwrap()
