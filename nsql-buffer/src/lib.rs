@@ -69,9 +69,13 @@ impl<P: Pager> BufferPoolInterface for BufferPool<P> {
         }
 
         let page = inner.pager.read_page(index).await?;
-        let handle = match inner.cache.write().insert(index, BufferHandle::new(page)) {
+        let result = inner.cache.write().insert(index, BufferHandle::new(page));
+        let handle = match result {
             lruk::InsertionResult::InsertedWithEviction { value, evicted } => {
-                todo!("flush this page to disk");
+                let page = Arc::try_unwrap(evicted.page)
+                    .expect("evicted page was not the final reference");
+                // FIXME check whether page is dirty
+                inner.pager.write_page(index, page).await?;
                 value
             }
             lruk::InsertionResult::Inserted(value)

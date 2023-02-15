@@ -12,6 +12,7 @@ pub use nsql_storage::{Result, HEADER_SIZE, PAGE_SIZE};
 pub trait Pager: 'static {
     // fn alloc_page(&self) -> io::Result<PageIndex>;
     async fn read_page(&self, idx: PageIndex) -> Result<Page>;
+    /// Write the given page to the given index and fsync
     async fn write_page(&self, idx: PageIndex, page: Page) -> Result<()>;
 }
 
@@ -69,6 +70,7 @@ impl Pager for SingleFilePager {
         checksum_slice.copy_from_slice(&checksum.to_be_bytes());
 
         self.storage.write_at(offset as u64, &page.bytes).await?;
+        self.storage.sync().await?;
         Ok(())
     }
 }

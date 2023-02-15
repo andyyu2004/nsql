@@ -79,7 +79,7 @@ impl Storage {
         header.serialize(buffer.as_mut());
         let (res, _) = file.write_all_at(buffer, HEADER_START).await;
         res?;
-        file.sync_data().await?;
+        file.sync_all().await?;
 
         Ok(Self::new(file))
     }
@@ -117,7 +117,7 @@ impl Storage {
 
     #[inline]
     pub async fn sync(&self) -> Result<()> {
-        self.file.sync_data().await?;
+        self.file.sync_all().await?;
         Ok(())
     }
 
