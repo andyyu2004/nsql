@@ -21,6 +21,11 @@ impl Page {
     }
 
     #[inline]
+    pub fn data_mut(&mut self) -> &mut [u8; PAGE_SIZE] {
+        unsafe { &mut *(self.bytes[CHECKSUM_LENGTH..].as_mut_ptr() as *mut [u8; PAGE_SIZE]) }
+    }
+
+    #[inline]
     pub(crate) fn new(bytes: [u8; RAW_PAGE_SIZE]) -> Self {
         Self { bytes: Box::new(bytes) }
     }

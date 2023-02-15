@@ -28,3 +28,21 @@ test_each_pager! {
         Ok(())
     }
 }
+
+test_each_pager! {
+    fn test_pager_read_after_write(pager) {
+        for i in 0..PAGE_SIZE {
+            let idx = pager.alloc_page().await?;
+            let mut page = pager.read_page(idx).await?;
+
+            page.data_mut()[i] = (i % u8::MAX as usize) as u8;
+            let expected = *page.data();
+
+            pager.write_page(idx, page).await?;
+            let page = pager.read_page(idx).await?;
+            assert_eq!(page.data(), &expected);
+        }
+
+        Ok(())
+    }
+}
