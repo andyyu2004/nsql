@@ -578,24 +578,34 @@ dependencies = [
 ]
 
 [[package]]
+name = "nsql-error"
+version = "0.1.0"
+dependencies = [
+ "error-stack",
+]
+
+[[package]]
 name = "nsql-pager"
 version = "0.1.0"
 dependencies = [
  "bytes",
  "crc",
+ "nsql-error",
  "nsql-storage",
  "nsql-test",
  "parking_lot",
+ "pin-utils",
  "proptest",
  "test-strategy",
+ "tokio",
 ]
 
 [[package]]
 name = "nsql-storage"
 version = "0.1.0"
 dependencies = [
- "error-stack",
  "libc",
+ "nsql-error",
  "nsql-test",
  "proptest",
  "test-strategy",

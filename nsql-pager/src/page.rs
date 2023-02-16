@@ -93,6 +93,11 @@ impl PageIndex {
     pub(crate) fn as_u32(self) -> u32 {
         self.0
     }
+
+    #[inline]
+    pub(crate) fn is_valid(self) -> bool {
+        self != Self::INVALID
+    }
 }
 
 impl fmt::Display for PageIndex {

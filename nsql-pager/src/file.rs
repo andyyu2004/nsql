@@ -5,6 +5,7 @@ use std::{io, mem};
 use bytes::{Buf, BufMut};
 use nsql_storage::Storage;
 
+use crate::meta_page_reader::MetaPageReader;
 use crate::{Page, PageIndex, Pager, Result, CHECKSUM_LENGTH, RAW_PAGE_SIZE};
 
 const _: () = [(); 1][(mem::size_of::<DbHeader>() < PAGE_SIZE) as usize ^ 1];
@@ -73,7 +74,7 @@ impl Deserialize for DbHeader {
 pub struct SingleFilePager {
     storage: Storage<RAW_PAGE_SIZE>,
     max_page_index: AtomicU32,
-    // free_list: AtomicU64,
+    free_list_head: PageIndex,
 }
 
 impl Pager for SingleFilePager {
@@ -153,11 +154,18 @@ impl SingleFilePager {
         Self {
             storage,
             max_page_index: AtomicU32::new(db_header.page_count.as_u32()),
-            // free_list: db_header.free_list_head,
+            free_list_head: db_header.free_list_head,
         }
     }
 
     async fn load_free_list(&self) -> Result<Vec<PageIndex>> {
+        if !self.free_list_head.is_valid() {
+            return Ok(vec![]);
+        }
+
+        let reader = MetaPageReader::new(self, self.free_list_head);
+
+        let head = self.read_page(self.free_list_head).await?;
         todo!()
     }
 
@@ -192,6 +200,7 @@ impl SingleFilePager {
     }
 
     fn assert_page_in_bounds(&self, idx: PageIndex) {
+        assert!(idx.is_valid(), "page index is invalid");
         assert!(
             idx.as_u32() < self.max_page_index.load(atomic::Ordering::SeqCst),
             "page index out of bounds"

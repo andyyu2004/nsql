@@ -3,6 +3,7 @@ members = [
     "nsql",
     "nsql-btree",
     "nsql-buffer",
+    "nsql-error",
     "nsql-pager",
     "nsql-storage",
     "nsql-test",
