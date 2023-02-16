@@ -61,7 +61,7 @@ impl Page {
 }
 
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord)]
-pub struct PageIndex(u64);
+pub struct PageIndex(u32);
 
 #[cfg(test)]
 impl proptest::arbitrary::Arbitrary for PageIndex {
@@ -70,7 +70,7 @@ impl proptest::arbitrary::Arbitrary for PageIndex {
 
     fn arbitrary_with(_args: Self::Parameters) -> proptest::strategy::BoxedStrategy<Self> {
         use proptest::prelude::Strategy;
-        (0..1000u64).prop_map(PageIndex).boxed()
+        (0..1000u32).prop_map(PageIndex).boxed()
     }
 }
 
@@ -81,15 +81,16 @@ impl Default for PageIndex {
 }
 
 impl PageIndex {
-    pub(crate) const INVALID: Self = Self::new(u64::MAX);
+    pub(crate) const INVALID: Self = Self(u32::MAX);
 
     #[inline]
-    pub(crate) const fn new(idx: u64) -> Self {
+    pub(crate) const fn new(idx: u32) -> Self {
+        assert!(idx < u32::MAX, "page index is too large");
         Self(idx)
     }
 
     #[inline]
-    pub(crate) fn as_u64(self) -> u64 {
+    pub(crate) fn as_u32(self) -> u32 {
         self.0
     }
 }

@@ -3,7 +3,7 @@ use std::fmt;
 use test_strategy::proptest;
 
 use super::{DbHeader, FileHeader};
-use crate::single_file::{Deserialize, Serialize};
+use crate::file::{Deserialize, Serialize};
 use crate::PAGE_SIZE;
 
 #[proptest]

@@ -1,5 +1,5 @@
 use std::path::Path;
-use std::sync::atomic::{self, AtomicU64};
+use std::sync::atomic::{self, AtomicU32, AtomicU64};
 use std::{io, mem};
 
 use bytes::{Buf, BufMut};
@@ -57,22 +57,23 @@ struct DbHeader {
 
 impl Serialize for DbHeader {
     fn serialize(&self, mut buf: &mut [u8]) {
-        buf.put_u64(self.free_list_head.as_u64());
-        buf.put_u64(self.page_count.as_u64());
+        buf.put_u32(self.free_list_head.as_u32());
+        buf.put_u32(self.page_count.as_u32());
     }
 }
 
 impl Deserialize for DbHeader {
     fn deserialize(mut buf: &[u8]) -> Self {
-        let free_list_head = PageIndex::new(buf.get_u64());
-        let page_count = PageIndex::new(buf.get_u64());
+        let free_list_head = PageIndex::new(buf.get_u32());
+        let page_count = PageIndex::new(buf.get_u32());
         Self { free_list_head, page_count }
     }
 }
 
 pub struct SingleFilePager {
     storage: Storage<RAW_PAGE_SIZE>,
-    max_page_index: AtomicU64,
+    max_page_index: AtomicU32,
+    // free_list: AtomicU64,
 }
 
 impl Pager for SingleFilePager {
@@ -80,6 +81,11 @@ impl Pager for SingleFilePager {
         let next_index = PageIndex::new(self.max_page_index.fetch_add(1, atomic::Ordering::SeqCst));
         self.write_page(next_index, Page::zeroed()).await?;
         Ok(next_index)
+    }
+
+    async fn free_page(&self, idx: PageIndex) -> Result<()> {
+        self.assert_page_in_bounds(idx);
+        Ok(())
     }
 
     async fn read_page(&self, idx: PageIndex) -> Result<Page> {
@@ -144,7 +150,15 @@ impl SingleFilePager {
 
     #[inline]
     fn new(storage: Storage<PAGE_SIZE>, db_header: DbHeader) -> Self {
-        Self { storage, max_page_index: AtomicU64::new(db_header.page_count.as_u64()) }
+        Self {
+            storage,
+            max_page_index: AtomicU32::new(db_header.page_count.as_u32()),
+            // free_list: db_header.free_list_head,
+        }
+    }
+
+    async fn load_free_list(&self) -> Result<Vec<PageIndex>> {
+        todo!()
     }
 
     async fn read_database_header(storage: &Storage<PAGE_SIZE>) -> Result<DbHeader> {
@@ -179,7 +193,7 @@ impl SingleFilePager {
 
     fn assert_page_in_bounds(&self, idx: PageIndex) {
         assert!(
-            idx.as_u64() < self.max_page_index.load(atomic::Ordering::SeqCst),
+            idx.as_u32() < self.max_page_index.load(atomic::Ordering::SeqCst),
             "page index out of bounds"
         );
     }
@@ -189,7 +203,7 @@ impl SingleFilePager {
 impl SingleFilePager {
     fn offset_for_page(&self, idx: PageIndex) -> u64 {
         // reserving 3 pages for the file header, and two database headers
-        let offset = (idx.as_u64() + 3) * PAGE_SIZE as u64;
+        let offset = (idx.as_u32() as u64 + 3) * PAGE_SIZE as u64;
         assert_eq!(offset % PAGE_SIZE as u64, 0);
         offset
     }
