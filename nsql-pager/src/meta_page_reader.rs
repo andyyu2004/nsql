@@ -28,7 +28,7 @@ impl<'a, P: Pager> AsyncRead for MetaPageReader<'a, P> {
     ) -> Poll<io::Result<()>> {
         let fut = self.pager.read_page(self.page_idx);
         pin_mut!(fut);
-        ready!(fut.poll(cx))?;
+        let page = ready!(fut.poll(cx))?;
         todo!()
     }
 }

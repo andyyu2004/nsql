@@ -22,7 +22,7 @@ test_each_pager! {
         for _ in 0..100 {
             let idx = pager.alloc_page().await?;
             let page = pager.read_page(idx).await?;
-            assert_eq!(page.data(), &[0; PAGE_SIZE]);
+            assert_eq!(page.data().as_ref(), [0u8; PAGE_SIZE]);
         }
 
         Ok(())
@@ -40,7 +40,7 @@ test_each_pager! {
 
             pager.write_page(idx, page).await?;
             let page = pager.read_page(idx).await?;
-            assert_eq!(page.data(), &expected);
+            assert_eq!(page.data().as_ref(), expected.as_ref());
         }
 
         Ok(())

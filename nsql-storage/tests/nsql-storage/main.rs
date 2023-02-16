@@ -11,7 +11,7 @@ fn test_new_storage() -> Result<()> {
         let storage = mk_storage!();
         let mut buf = [0; SIZE];
         buf[0] = 1;
-        storage.write_at(0, &buf).await?;
+        storage.write_at(0, buf).await?;
 
         let data = storage.read_at(0).await?;
         assert_eq!(data, buf);
@@ -31,7 +31,7 @@ fn test_read_after_write_consistency(
         for page_index in page_indices {
             buf[0] = page_index as u8;
             let pos = page_index * SIZE as u64;
-            storage.write_at(pos, &buf).await?;
+            storage.write_at(pos, buf).await?;
             let data = storage.read_at(pos).await?;
             assert_eq!(data, buf);
         }

@@ -31,7 +31,6 @@ pub fn start<F: Future>(fut: F) -> F::Output {
 #[macro_export]
 macro_rules! test_each_impl {
     (
-         // accept attrs etc
         fn $test_name:ident($var:ident) $body:block
         for [$($impl_name:ident: $imp:expr),*]
     ) => {
@@ -39,6 +38,7 @@ macro_rules! test_each_impl {
             use super::*;
             $(
                     use super::*;
+
                     #[test]
                     fn $impl_name() -> Result<()> {
                         $crate::start(async {

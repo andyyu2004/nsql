@@ -114,7 +114,7 @@ impl Pager for SingleFilePager {
         let offset = self.offset_for_page(idx);
         page.update_checksum();
 
-        self.storage.write_at(offset, page.bytes()).await?;
+        self.storage.write_at(offset, *page.bytes()).await?;
         self.storage.sync().await?;
         Ok(())
     }
@@ -139,11 +139,11 @@ impl SingleFilePager {
         let mut buf = [0; PAGE_SIZE];
         let file_header = FileHeader { magic: MAGIC, version: CURRENT_VERSION };
         file_header.serialize(buf.as_mut());
-        storage.write_at(FILE_HEADER_START, &buf).await?;
+        storage.write_at(FILE_HEADER_START, buf).await?;
 
         let db_header =
             DbHeader { free_list_head: PageIndex::INVALID, page_count: PageIndex::new(0) };
-        storage.write_at(DB_HEADER_START, &buf).await?;
+        storage.write_at(DB_HEADER_START, buf).await?;
         storage.sync().await?;
 
         Ok(Self::new(storage, db_header))

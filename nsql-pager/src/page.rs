@@ -1,10 +1,14 @@
 use std::fmt;
+use std::ops::{Deref, DerefMut};
+use std::sync::Arc;
+
+use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use crate::{CHECKSUM_LENGTH, PAGE_SIZE, RAW_PAGE_SIZE};
 
 #[derive(Clone)]
 pub struct Page {
-    bytes: Box<[u8; RAW_PAGE_SIZE]>,
+    bytes: Arc<RwLock<[u8; RAW_PAGE_SIZE]>>,
 }
 
 impl fmt::Debug for Page {
@@ -16,18 +20,20 @@ impl fmt::Debug for Page {
 impl Page {
     /// Get an immutable reference to the data bytes of the page
     #[inline]
-    pub fn data(&self) -> &[u8; PAGE_SIZE] {
-        (&self.bytes[CHECKSUM_LENGTH..]).try_into().unwrap()
+    pub fn data(&self) -> ReadonlyPageView<'_> {
+        let bytes = self.bytes.read();
+        ReadonlyPageView { bytes }
     }
 
     #[inline]
-    pub fn data_mut(&mut self) -> &mut [u8; PAGE_SIZE] {
-        unsafe { &mut *(self.bytes[CHECKSUM_LENGTH..].as_mut_ptr() as *mut [u8; PAGE_SIZE]) }
+    pub fn data_mut(&mut self) -> WriteablePageView<'_> {
+        let bytes = self.bytes.write();
+        WriteablePageView { bytes }
     }
 
     #[inline]
     pub(crate) fn new(bytes: [u8; RAW_PAGE_SIZE]) -> Self {
-        Self { bytes: Box::new(bytes) }
+        Self { bytes: Arc::new(RwLock::new(bytes)) }
     }
 
     #[inline]
@@ -36,8 +42,8 @@ impl Page {
     }
 
     #[inline]
-    pub(crate) fn bytes(&self) -> &[u8; RAW_PAGE_SIZE] {
-        &self.bytes
+    pub(crate) fn bytes(&self) -> RwLockReadGuard<'_, [u8; RAW_PAGE_SIZE]> {
+        self.bytes.read()
     }
 
     /// Read the checksum from the page header
@@ -49,14 +55,14 @@ impl Page {
     #[inline]
     pub(crate) fn update_checksum(&mut self) {
         let checksum = self.compute_checksum();
-        self.bytes[0..8].copy_from_slice(&checksum.to_be_bytes());
+        self.bytes.write()[0..8].copy_from_slice(&checksum.to_be_bytes());
         assert!(self.expected_checksum() == checksum);
     }
 
     /// Compute the checksum of the page and write it to the first 8 bytes of the page.
     #[inline]
     pub(crate) fn compute_checksum(&self) -> u64 {
-        checksum(self.data())
+        checksum(self.data().as_ref())
     }
 }
 
@@ -106,6 +112,47 @@ impl fmt::Display for PageIndex {
     }
 }
 
-fn checksum(data: &[u8]) -> u64 {
-    crc::Crc::<u64>::new(&crc::CRC_64_WE).checksum(data)
+#[derive(Debug)]
+pub struct ReadonlyPageView<'a> {
+    bytes: RwLockReadGuard<'a, [u8; RAW_PAGE_SIZE]>,
+}
+
+impl Deref for ReadonlyPageView<'_> {
+    type Target = [u8; PAGE_SIZE];
+
+    fn deref(&self) -> &Self::Target {
+        unsafe { &*(self.bytes[CHECKSUM_LENGTH..].as_ptr() as *const [u8; PAGE_SIZE]) }
+    }
+}
+
+#[cfg(test)]
+impl<R> PartialEq<R> for ReadonlyPageView<'_>
+where
+    R: AsRef<[u8; PAGE_SIZE]>,
+{
+    fn eq(&self, other: &R) -> bool {
+        self.as_ref() == other.as_ref()
+    }
+}
+
+#[derive(Debug)]
+pub struct WriteablePageView<'a> {
+    bytes: RwLockWriteGuard<'a, [u8; RAW_PAGE_SIZE]>,
+}
+
+impl Deref for WriteablePageView<'_> {
+    type Target = [u8; PAGE_SIZE];
+
+    fn deref(&self) -> &Self::Target {
+        unsafe { &*(self.bytes[CHECKSUM_LENGTH..].as_ptr() as *const [u8; PAGE_SIZE]) }
+    }
+}
+
+impl DerefMut for WriteablePageView<'_> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        unsafe { &mut *(self.bytes[CHECKSUM_LENGTH..].as_mut_ptr() as *mut [u8; PAGE_SIZE]) }
+    }
+}
+fn checksum(data: impl AsRef<[u8]>) -> u64 {
+    crc::Crc::<u64>::new(&crc::CRC_64_WE).checksum(data.as_ref())
 }

@@ -56,7 +56,7 @@ impl<const N: usize> Storage<N> {
     }
 
     #[inline]
-    pub async fn write_at(&self, pos: u64, data: &[u8; N]) -> Result<()> {
+    pub async fn write_at(&self, pos: u64, data: [u8; N]) -> Result<()> {
         Self::assert_aligned(pos);
         self.file.write_all_at(data.to_vec(), pos).await.0?;
         Ok(())
