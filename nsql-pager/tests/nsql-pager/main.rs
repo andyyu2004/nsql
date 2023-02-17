@@ -37,7 +37,7 @@ test_each_pager! {
             page.data_mut()[i] = (i % u8::MAX as usize) as u8;
             let expected = *page.data();
 
-            pager.write_page(idx, page).await?;
+            pager.write_page(page).await?;
             let page = pager.read_page(idx).await?;
             assert_eq!(page.data().as_ref(), expected.as_ref());
         }

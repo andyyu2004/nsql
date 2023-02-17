@@ -89,7 +89,7 @@ impl Pager for SingleFilePager {
         // }
 
         let next_index = PageIndex::new(self.page_count.fetch_add(1, atomic::Ordering::SeqCst));
-        self.write_page(next_index, Page::zeroed()).await?;
+        self.write_page(Page::zeroed(next_index)).await?;
         self.assert_page_in_bounds(next_index);
         Ok(next_index)
     }
@@ -103,8 +103,7 @@ impl Pager for SingleFilePager {
         self.assert_page_in_bounds(idx);
         let offset = self.offset_for_page(idx);
         let bytes = self.storage.read_at(offset).await?;
-        let page = Page::new(bytes);
-        // dbg!("b");
+        let page = Page::new(idx, bytes);
 
         let expected_checksum = page.expected_checksum();
         let computed_checksum = page.compute_checksum();
@@ -121,7 +120,8 @@ impl Pager for SingleFilePager {
         Ok(page)
     }
 
-    async fn write_page(&self, idx: PageIndex, mut page: Page) -> Result<()> {
+    async fn write_page(&self, mut page: Page) -> Result<()> {
+        let idx = page.idx();
         self.assert_page_in_bounds(idx);
         let offset = self.offset_for_page(idx);
         page.update_checksum();

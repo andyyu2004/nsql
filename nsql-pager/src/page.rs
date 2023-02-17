@@ -8,6 +8,7 @@ use crate::{CHECKSUM_LENGTH, PAGE_SIZE, RAW_PAGE_SIZE};
 
 #[derive(Clone)]
 pub struct Page {
+    idx: PageIndex,
     bytes: Arc<RwLock<[u8; RAW_PAGE_SIZE]>>,
 }
 
@@ -18,6 +19,11 @@ impl fmt::Debug for Page {
 }
 
 impl Page {
+    #[inline]
+    pub fn idx(&self) -> PageIndex {
+        self.idx
+    }
+
     /// Get an immutable reference to the data bytes of the page
     #[inline]
     pub fn data(&self) -> ReadonlyPageView<'_> {
@@ -32,13 +38,13 @@ impl Page {
     }
 
     #[inline]
-    pub(crate) fn new(bytes: [u8; RAW_PAGE_SIZE]) -> Self {
-        Self { bytes: Arc::new(RwLock::new(bytes)) }
+    pub(crate) fn new(idx: PageIndex, bytes: [u8; RAW_PAGE_SIZE]) -> Self {
+        Self { idx, bytes: Arc::new(RwLock::new(bytes)) }
     }
 
     #[inline]
-    pub(crate) fn zeroed() -> Self {
-        Self::new([0; RAW_PAGE_SIZE])
+    pub(crate) fn zeroed(idx: PageIndex) -> Self {
+        Self::new(idx, [0; RAW_PAGE_SIZE])
     }
 
     #[inline]

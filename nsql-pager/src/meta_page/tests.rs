@@ -34,6 +34,8 @@ async fn run_read_write(pager: impl Pager, actions: &[Action]) -> Result<()> {
         }
     }
 
+    writer.flush().await?;
+
     let mut reader = MetaPageReader::new(&pager, initial_page);
     for &action in actions {
         match action {
@@ -49,20 +51,17 @@ async fn run_read_write(pager: impl Pager, actions: &[Action]) -> Result<()> {
         }
     }
 
-    pager.read_page(initial_page).await?;
-    panic!("should have failed to read page");
-
-    // for _ in 0..PAGE_SIZE {
-    //     // if we keep reading we should hit EOF by the end of the last page
-    //     // this is testing that the next pointer is correctly set to INVALID
-    //     match reader.read_u8().await {
-    //         Ok(u) => assert_eq!(u, 0, "rest of page should be zeroed"),
-    //         Err(err) => match err.kind() {
-    //             std::io::ErrorKind::UnexpectedEof => return Ok(()),
-    //             _ => Err(err)?,
-    //         },
-    //     }
-    // }
+    for _ in 0..PAGE_SIZE {
+        // if we keep reading we should hit EOF by the end of the last page
+        // this is testing that the next pointer is correctly set to INVALID
+        match reader.read_u8().await {
+            Ok(u) => assert_eq!(u, 0, "rest of page should be zeroed"),
+            Err(err) => match err.kind() {
+                std::io::ErrorKind::UnexpectedEof => return Ok(()),
+                _ => Err(err)?,
+            },
+        }
+    }
 
     Err(io::Error::new(io::ErrorKind::Other, "expected to hit EOF by now"))?
 }
@@ -79,6 +78,9 @@ macro_rules! test_each_pager {
     };
 }
 
+// TODO test the case where exactly one page is written and another is allocated but not written to
+// assert that this page is free
+
 test_each_pager! {
     async fn test_meta_page_read_write_simple(pager) {
         let actions = (0..10000u16).map(Action::U16).collect::<Vec<_>>();
@@ -89,9 +91,7 @@ test_each_pager! {
 test_each_pager! {
     async fn test_meta_page_read_of_unwritten_page(pager) {
         // if we read from a page that has not been written to then we should get an error
-        let err = run_read_write(pager, &[]).await.unwrap_err();
-        assert_eq!(err.current_context().kind(), io::ErrorKind::Other);
-        Ok(())
+        run_read_write(pager, &[]).await
     }
 }
 

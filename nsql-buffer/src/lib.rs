@@ -74,7 +74,7 @@ impl<P: Pager> BufferPoolInterface for BufferPool<P> {
                 let page = Arc::try_unwrap(evicted.page)
                     .expect("evicted page was not the final reference");
                 // FIXME check whether page is dirty
-                inner.pager.write_page(index, page).await?;
+                inner.pager.write_page(page).await?;
                 value
             }
             lruk::InsertionResult::Inserted(value)

@@ -2,7 +2,7 @@ use parking_lot::RwLock;
 
 use crate::{Page, PageIndex, Pager, Result};
 
-#[derive(Default, Debug)]
+#[derive(Debug)]
 pub struct InMemoryPager {
     pages: RwLock<Vec<Page>>,
     free_pages: RwLock<Vec<PageIndex>>,
@@ -11,7 +11,17 @@ pub struct InMemoryPager {
 impl InMemoryPager {
     #[inline]
     pub fn new() -> Self {
-        Self::default()
+        Self {
+            // reserve the first page to match behaviour of file pager
+            pages: RwLock::new(vec![Page::zeroed(PageIndex::new(0))]),
+            free_pages: Default::default(),
+        }
+    }
+}
+
+impl Default for InMemoryPager {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -21,7 +31,8 @@ impl Pager for InMemoryPager {
         let mut pages = self.pages.write();
         let idx =
             self.free_pages.write().pop().unwrap_or_else(|| PageIndex::new(pages.len() as u32));
-        pages.push(Page::zeroed());
+        pages.push(Page::zeroed(idx));
+        assert!(idx.is_valid() && !idx.is_zero());
         Ok(idx)
     }
 
@@ -37,7 +48,8 @@ impl Pager for InMemoryPager {
     }
 
     #[inline]
-    async fn write_page(&self, idx: PageIndex, page: Page) -> Result<()> {
+    async fn write_page(&self, page: Page) -> Result<()> {
+        let idx = page.idx();
         self.pages.write()[idx.as_u32() as usize] = page;
         Ok(())
     }

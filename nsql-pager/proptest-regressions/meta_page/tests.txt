@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc a5428aafffa68dced789e92edad54c5ffd93c9b70890e3052e5adf5f9d6ec4cf # shrinks to input = _TestMetaPageReadWriteArgs { actions: [U8(0)] }
