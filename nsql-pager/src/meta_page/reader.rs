@@ -1,14 +1,15 @@
 use std::cell::Cell;
 use std::future::Future;
-use std::io;
 use std::pin::Pin;
 use std::task::{ready, Context, Poll};
+use std::{cmp, io};
 
 use bytes::Buf;
 use pin_utils::pin_mut;
 use tokio::io::{AsyncRead, ReadBuf};
 
-use crate::{Page, PageIndex, Pager, Result, PAGE_SIZE};
+use super::PAGE_IDX_SIZE;
+use crate::{Page, PageIndex, Pager, PAGE_SIZE};
 
 /// A meta page contains metadata and has the following format (excluding the usual checksum):
 /// [next_page_idx: 4 bytes][arbitrary data]
@@ -20,13 +21,11 @@ pub(crate) struct MetaPageReader<'a, P> {
 }
 
 impl<'a, P> MetaPageReader<'a, P> {
-    pub(crate) fn new(pager: &'a P, page_idx: PageIndex) -> Self {
+    pub fn new(pager: &'a P, page_idx: PageIndex) -> Self {
         assert!(page_idx.is_valid());
         Self { pager, next_page_idx: page_idx, page: None, byte_index: Cell::new(0) }
     }
 }
-
-const PAGE_IDX_SIZE: usize = std::mem::size_of::<PageIndex>();
 
 impl<'a, P: Pager> AsyncRead for MetaPageReader<'a, P> {
     fn poll_read(
@@ -44,6 +43,7 @@ impl<'a, P: Pager> AsyncRead for MetaPageReader<'a, P> {
             let page = ready!(fut.poll(cx))?;
             self.next_page_idx = PageIndex::new(page.data().as_ref().get_u32());
             self.page = Some(page);
+            self.byte_index.set(0);
         }
 
         debug_assert!(self.page.is_some());
@@ -51,7 +51,7 @@ impl<'a, P: Pager> AsyncRead for MetaPageReader<'a, P> {
 
         let index = self.byte_index.get();
         let data = &page.data()[PAGE_IDX_SIZE + index..];
-        let amt = std::cmp::min(data.len(), buf.remaining());
+        let amt = cmp::min(data.len(), buf.remaining());
         buf.put_slice(&data[..amt]);
         self.byte_index.set(index + amt);
 

@@ -4,7 +4,7 @@
 
 mod file;
 mod mem;
-mod meta_page_reader;
+mod meta_page;
 mod page;
 
 pub use nsql_storage::Result;

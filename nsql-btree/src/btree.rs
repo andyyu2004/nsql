@@ -1,3 +1,6 @@
+#![allow(dead_code)]
+// just to avoid warnings for now
+
 use std::io;
 
 use nsql_pager::SingleFilePager;

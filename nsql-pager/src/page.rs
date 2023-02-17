@@ -26,7 +26,7 @@ impl Page {
     }
 
     #[inline]
-    pub fn data_mut(&mut self) -> WriteablePageView<'_> {
+    pub fn data_mut(&self) -> WriteablePageView<'_> {
         let bytes = self.bytes.write();
         WriteablePageView { bytes }
     }
@@ -67,6 +67,7 @@ impl Page {
 }
 
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[repr(transparent)]
 pub struct PageIndex(u32);
 
 #[cfg(test)]

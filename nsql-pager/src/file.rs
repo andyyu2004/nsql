@@ -1,15 +1,17 @@
 use std::path::Path;
-use std::sync::atomic::{self, AtomicU32, AtomicU64};
+use std::sync::atomic::{self, AtomicU32};
 use std::{io, mem};
 
 use bytes::{Buf, BufMut};
 use nsql_storage::Storage;
+use nsql_util::static_assert;
+use tokio::io::{AsyncReadExt, BufReader};
 
-use crate::meta_page_reader::MetaPageReader;
-use crate::{Page, PageIndex, Pager, Result, CHECKSUM_LENGTH, RAW_PAGE_SIZE};
+use crate::meta_page::MetaPageReader;
+use crate::{Page, PageIndex, Pager, Result, RAW_PAGE_SIZE};
 
-const _: () = [(); 1][(mem::size_of::<DbHeader>() < PAGE_SIZE) as usize ^ 1];
-const _: () = [(); 1][(mem::size_of::<FileHeader>() < PAGE_SIZE) as usize ^ 1];
+static_assert!(mem::size_of::<FileHeader>() < PAGE_SIZE);
+static_assert!(mem::size_of::<DbHeader>() < PAGE_SIZE);
 
 pub const FILE_HEADER_START: u64 = 0;
 pub const DB_HEADER_START: u64 = RAW_PAGE_SIZE as u64;
@@ -114,7 +116,10 @@ impl Pager for SingleFilePager {
         let offset = self.offset_for_page(idx);
         page.update_checksum();
 
-        self.storage.write_at(offset, *page.bytes()).await?;
+        let bytes = *page.bytes();
+        // drop is important to avoid holding lock across await
+        drop(page);
+        self.storage.write_at(offset, bytes).await?;
         self.storage.sync().await?;
         Ok(())
     }
@@ -158,15 +163,20 @@ impl SingleFilePager {
         }
     }
 
-    async fn load_free_list(&self) -> Result<Vec<PageIndex>> {
+    async fn read_free_list(&self) -> Result<Vec<PageIndex>> {
         if !self.free_list_head.is_valid() {
             return Ok(vec![]);
         }
 
-        let reader = MetaPageReader::new(self, self.free_list_head);
+        let mut reader = BufReader::new(MetaPageReader::new(self, self.free_list_head));
+        let count = reader.read_u32().await?;
+        let mut free_list = Vec::with_capacity(count as usize);
+        for _ in 0..count {
+            let idx = PageIndex::new(reader.read_u32().await?);
+            free_list.push(idx);
+        }
 
-        let head = self.read_page(self.free_list_head).await?;
-        todo!()
+        Ok(free_list)
     }
 
     async fn read_database_header(storage: &Storage<PAGE_SIZE>) -> Result<DbHeader> {
