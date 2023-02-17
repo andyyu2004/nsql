@@ -10,7 +10,7 @@ nsql-error = { version = "0.1.0", path = "../nsql-error" }
 nsql-util = { version = "0.1.0", path = "../nsql-util" }
 parking_lot = { version = "0.12.1", default-features = false }
 pin-utils = "0.1.0"
-tokio = { version = "1.25.0", default-features = false, features = ["io-util"] }
+tokio = { version = "1.25.0", default-features = false, features = ["io-util", "sync"] }
 
 [dependencies.nsql-storage]
 path = "../nsql-storage"

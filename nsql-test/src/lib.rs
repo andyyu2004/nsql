@@ -19,7 +19,7 @@ macro_rules! mk_storage {
 #[macro_export]
 macro_rules! mk_file_pager {
     () => {
-        nsql_pager::SingleFilePager::create($crate::tmp!()).await?
+        SingleFilePager::create($crate::tmp!()).await?
     };
 }
 
@@ -31,8 +31,8 @@ pub fn start<F: Future>(fut: F) -> F::Output {
 #[macro_export]
 macro_rules! test_each_impl {
     (
-        fn $test_name:ident($var:ident) $body:block
-        for [$($impl_name:ident: $imp:expr),*]
+        async fn $test_name:ident($var:ident) $body:block
+        for [ $($impl_name:ident: $imp:expr),* ]
     ) => {
         mod $test_name {
             use super::*;
