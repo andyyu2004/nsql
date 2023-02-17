@@ -91,14 +91,19 @@ impl PageIndex {
     pub(crate) const INVALID: Self = Self(u32::MAX);
 
     #[inline]
-    pub(crate) const fn new(idx: u32) -> Self {
+    pub const fn new(idx: u32) -> Self {
         assert!(idx < u32::MAX, "page index is too large");
         Self(idx)
     }
 
     #[inline]
-    pub(crate) const fn new_maybe_invalid(idx: u32) -> Self {
+    pub const fn new_maybe_invalid(idx: u32) -> Self {
         Self(idx)
+    }
+
+    #[inline]
+    pub(crate) fn is_zero(self) -> bool {
+        self.0 == 0
     }
 
     #[inline]

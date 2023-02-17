@@ -10,6 +10,9 @@ use tokio::io::AsyncWrite;
 
 use super::PAGE_IDX_SIZE;
 use crate::{Page, PageIndex, Pager, PAGE_SIZE};
+
+/// You must write something with [`crate::meta_page::MetaPageWriter`] before it is valid to be read from.
+/// Just constructing this struct does not do anything.
 pub(crate) struct MetaPageWriter<'a, P> {
     pager: &'a P,
     page_idx: PageIndex,

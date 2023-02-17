@@ -44,6 +44,16 @@ impl<'a, P: Pager> AsyncRead for MetaPageReader<'a, P> {
             self.next_page_idx = PageIndex::new_maybe_invalid(page.data().as_ref().get_u32());
             self.page = Some(page);
             self.byte_index.set(0);
+
+            if self.next_page_idx.is_zero() {
+                return Poll::Ready(Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!(
+                        "`{}` is not a valid meta page (the `next_page_idx` has not been written)",
+                        self.next_page_idx
+                    ),
+                )));
+            }
         }
 
         debug_assert!(self.page.is_some());

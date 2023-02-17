@@ -1,9 +1,11 @@
+use std::io;
+
 use proptest::sample::size_range;
 use test_strategy::{proptest, Arbitrary};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 use super::{MetaPageReader, MetaPageWriter};
-use crate::{InMemoryPager, Pager, Result};
+use crate::{InMemoryPager, Pager, Result, PAGE_SIZE};
 
 #[derive(Debug, Clone, Copy, Arbitrary)]
 enum Action {
@@ -47,16 +49,18 @@ async fn run_read_write(actions: &[Action]) -> Result<()> {
         }
     }
 
-    loop {
+    for _ in 0..PAGE_SIZE {
         // if we keep reading we should eventually hit EOF
         // this is testing that the next pointer is correctly set to INVALID
         if let Err(err) = reader.read_u8().await {
             match err.kind() {
-                std::io::ErrorKind::UnexpectedEof => break Ok(()),
+                std::io::ErrorKind::UnexpectedEof => return Ok(()),
                 _ => Err(err)?,
             }
         }
     }
+
+    Err(io::Error::new(io::ErrorKind::Other, "expected to hit EOF by now"))?
 }
 
 #[test]
@@ -67,7 +71,15 @@ fn test_meta_page_read_write_simple() -> Result<()> {
     })
 }
 
+#[test]
+fn test_meta_page_read_of_unwritten_page() -> Result<()> {
+    // if we read from a page that has not been written to then we should get an error
+    let err = nsql_test::start(async { run_read_write(&[]).await }).unwrap_err();
+    assert_eq!(err.current_context().kind(), io::ErrorKind::InvalidData);
+    Ok(())
+}
+
 #[proptest]
-fn test_meta_page_read_write(#[any(size_range(0..100).lift())] actions: Vec<Action>) {
+fn test_meta_page_read_write(#[any(size_range(1..100).lift())] actions: Vec<Action>) {
     nsql_test::start(async { run_read_write(&actions).await }).unwrap()
 }
