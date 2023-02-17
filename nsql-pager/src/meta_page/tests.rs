@@ -21,7 +21,6 @@ async fn run_read_write(actions: &[Action]) -> Result<()> {
     let pager = InMemoryPager::new();
     let initial_page = pager.alloc_page().await?;
 
-    const N: u32 = 100000;
     let mut writer = MetaPageWriter::new(&pager, initial_page);
     for &action in actions {
         match action {
@@ -48,7 +47,16 @@ async fn run_read_write(actions: &[Action]) -> Result<()> {
         }
     }
 
-    Ok(())
+    loop {
+        // if we keep reading we should eventually hit EOF
+        // this is testing that the next pointer is correctly set to INVALID
+        if let Err(err) = reader.read_u8().await {
+            match err.kind() {
+                std::io::ErrorKind::UnexpectedEof => break Ok(()),
+                _ => Err(err)?,
+            }
+        }
+    }
 }
 
 #[test]

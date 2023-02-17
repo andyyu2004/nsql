@@ -97,6 +97,11 @@ impl PageIndex {
     }
 
     #[inline]
+    pub(crate) const fn new_maybe_invalid(idx: u32) -> Self {
+        Self(idx)
+    }
+
+    #[inline]
     pub(crate) fn as_u32(self) -> u32 {
         self.0
     }

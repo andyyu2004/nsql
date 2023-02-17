@@ -36,7 +36,10 @@ impl<'a, P: Pager> AsyncWrite for MetaPageWriter<'a, P> {
             None => {
                 let fut = self.pager.read_page(self.page_idx);
                 pin_mut!(fut);
-                self.page = Some(ready!(fut.poll(cx))?);
+                let page = ready!(fut.poll(cx))?;
+                // initialize the next page index to invalid so the reader knows when it's finished
+                (&mut page.data_mut()[..PAGE_IDX_SIZE]).put_u32(PageIndex::INVALID.as_u32());
+                self.page = Some(page);
                 unsafe { self.page.as_ref().unwrap_unchecked() }
             }
         };
@@ -51,7 +54,7 @@ impl<'a, P: Pager> AsyncWrite for MetaPageWriter<'a, P> {
             let next_page_idx_fut = self.pager.alloc_page();
             pin_mut!(next_page_idx_fut);
             let next_page_idx = ready!(next_page_idx_fut.poll(cx))?;
-             (&mut page.data_mut()[..PAGE_IDX_SIZE]).put_u32(next_page_idx.as_u32());
+            (&mut page.data_mut()[..PAGE_IDX_SIZE]).put_u32(next_page_idx.as_u32());
             debug_assert_eq!(page.data()[..PAGE_IDX_SIZE], next_page_idx.as_u32().to_be_bytes());
 
             let fut = self.pager.write_page(self.page_idx, self.page.take().unwrap());

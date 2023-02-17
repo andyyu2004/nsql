@@ -41,7 +41,7 @@ impl<'a, P: Pager> AsyncRead for MetaPageReader<'a, P> {
             let fut = self.pager.read_page(self.next_page_idx);
             pin_mut!(fut);
             let page = ready!(fut.poll(cx))?;
-            self.next_page_idx = PageIndex::new(page.data().as_ref().get_u32());
+            self.next_page_idx = PageIndex::new_maybe_invalid(page.data().as_ref().get_u32());
             self.page = Some(page);
             self.byte_index.set(0);
         }
