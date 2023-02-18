@@ -2,12 +2,12 @@ use std::fmt;
 
 use test_strategy::proptest;
 
-use super::{DbHeader, FileHeader};
+use super::{FileHeader, PagerHeader};
 use crate::file::{Deserialize, Serialize};
 use crate::PAGE_SIZE;
 
 #[proptest]
-fn test_serde_db_header(expected: DbHeader) {
+fn test_serde_db_header(expected: PagerHeader) {
     test_serde(expected);
 }
 

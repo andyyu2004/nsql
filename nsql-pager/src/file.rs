@@ -12,7 +12,7 @@ use crate::meta_page::{MetaPageReader, MetaPageWriter};
 use crate::{Page, PageIndex, Pager, Result, RAW_PAGE_SIZE};
 
 static_assert!(mem::size_of::<FileHeader>() < PAGE_SIZE);
-static_assert!(mem::size_of::<DbHeader>() < PAGE_SIZE);
+static_assert!(mem::size_of::<PagerHeader>() < PAGE_SIZE);
 
 pub const FILE_HEADER_START: u64 = 0;
 pub const DB_HEADER_START: u64 = RAW_PAGE_SIZE as u64;
@@ -55,19 +55,19 @@ impl Deserialize for FileHeader {
 
 #[derive(Debug, PartialEq, Eq)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
-struct DbHeader {
+struct PagerHeader {
     free_list_head: PageIndex,
     page_count: PageIndex,
 }
 
-impl Serialize for DbHeader {
+impl Serialize for PagerHeader {
     fn serialize(&self, mut buf: &mut [u8]) {
         buf.put_u32(self.free_list_head.as_u32());
         buf.put_u32(self.page_count.as_u32());
     }
 }
 
-impl Deserialize for DbHeader {
+impl Deserialize for PagerHeader {
     fn deserialize(mut buf: &[u8]) -> Self {
         let free_list_head = PageIndex::new(buf.get_u32());
         let page_count = PageIndex::new(buf.get_u32());
@@ -84,9 +84,9 @@ pub struct SingleFilePager {
 
 impl Pager for SingleFilePager {
     async fn alloc_page(&self) -> Result<PageIndex> {
-        // if let Some(idx) = self.free_list().await?.write().await.pop() {
-        //     return Ok(idx);
-        // }
+        if let Some(idx) = self.free_list().await?.write().await.pop() {
+            return Ok(idx);
+        }
 
         let next_index = PageIndex::new(self.page_count.fetch_add(1, atomic::Ordering::SeqCst));
         self.write_page(Page::zeroed(next_index)).await?;
@@ -95,7 +95,7 @@ impl Pager for SingleFilePager {
     }
 
     async fn free_page(&self, idx: PageIndex) -> Result<()> {
-        // self.free_list().await?.write().await.push(idx);
+        self.free_list().await?.write().await.push(idx);
         Ok(())
     }
 
@@ -156,7 +156,7 @@ impl SingleFilePager {
         file_header.serialize(buf.as_mut());
         storage.write_at(FILE_HEADER_START, buf).await?;
 
-        let db_header = DbHeader {
+        let db_header = PagerHeader {
             free_list_head: PageIndex::INVALID,
             page_count: PageIndex::new(N_RESERVED_PAGES),
         };
@@ -167,7 +167,7 @@ impl SingleFilePager {
     }
 
     #[inline]
-    fn new(storage: Storage<PAGE_SIZE>, db_header: DbHeader) -> Self {
+    fn new(storage: Storage<PAGE_SIZE>, db_header: PagerHeader) -> Self {
         Self {
             storage,
             page_count: AtomicU32::new(db_header.page_count.as_u32()),
@@ -177,8 +177,12 @@ impl SingleFilePager {
     }
 
     async fn write_free_list(&self) -> Result<()> {
-        let initial_block = self.alloc_page().await?;
         let free_list = self.free_list().await?.read().await;
+        if free_list.is_empty() {
+            return Ok(());
+        }
+
+        let initial_block = self.alloc_page().await?;
 
         let mut writer = MetaPageWriter::new(self, initial_block);
         writer.write_u32(free_list.len() as u32).await?;
@@ -186,11 +190,12 @@ impl SingleFilePager {
             writer.write_u32(idx.as_u32()).await?;
         }
 
+        writer.flush().await?;
+
         Ok(())
     }
 
     async fn free_list(&self) -> Result<&RwLock<Vec<PageIndex>>> {
-        todo!();
         self.free_list
             .get_or_try_init(|| async {
                 if !self.free_list_head.is_valid() {
@@ -210,9 +215,9 @@ impl SingleFilePager {
             .await
     }
 
-    async fn read_database_header(storage: &Storage<PAGE_SIZE>) -> Result<DbHeader> {
+    async fn read_database_header(storage: &Storage<PAGE_SIZE>) -> Result<PagerHeader> {
         let buf = storage.read_at(DB_HEADER_START).await?;
-        let db_header = DbHeader::deserialize(&buf);
+        let db_header = PagerHeader::deserialize(&buf);
         Ok(db_header)
     }
 
