@@ -3,5 +3,6 @@ name = "nsql-btree"
 version = "0.1.0"
 edition = "2021"
 
-[dependencies.nsql-pager]
-path = "../nsql-pager"
+[dependencies]
+nsql-buffer = { version = "0.1.0", path = "../nsql-buffer" }
+nsql-pager = { path = "../nsql-pager" }

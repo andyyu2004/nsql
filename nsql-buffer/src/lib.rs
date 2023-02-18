@@ -31,11 +31,11 @@ impl RefCounted for BufferHandle {
     }
 }
 
-pub struct BufferPool<P: Pager> {
+pub struct BufferPool<P> {
     inner: Arc<Inner<P>>,
 }
 
-struct Inner<P: Pager> {
+struct Inner<P> {
     pager: P,
     cache: RwLock<LruK<PageIndex, BufferHandle, Clock>>,
 }

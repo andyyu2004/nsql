@@ -3,30 +3,36 @@
 
 use std::io;
 
-use nsql_pager::SingleFilePager;
+use nsql_buffer::BufferPool;
+use nsql_pager::PageIndex;
 
-pub struct BTree {
-    pager: SingleFilePager,
+pub struct BTree<P, K, V> {
+    pool: BufferPool<P>,
+    root: Node<K, V>,
 }
 
-impl BTree {
-    pub fn open() -> io::Result<Self> {
-        todo!()
-        // let pager = SingleFilePager::open(path)?;
-        // Ok(Self { pager })
+impl<P, K, V> BTree<P, K, V> {
+    pub fn new(pool: BufferPool<P>) -> io::Result<Self> {
+        Ok(Self { pool, root: todo!() })
     }
 }
-
-struct Offset(usize);
 
 struct Key(Vec<u8>);
 struct Value(Vec<u8>);
 
-struct Node {
-    node_type: NodeType,
+enum Node<K, V> {
+    Internal(InternalNode<K>),
+    Leaf(Vec<(K, V)>),
 }
 
-enum NodeType {
-    Internal(Vec<Offset>, Vec<Key>),
-    Leaf(Vec<(Key, Value)>),
+struct InternalNode<K> {
+    keys: Vec<K>,
+    children: Vec<PageIndex>,
+}
+
+struct LeafNode<K, V> {
+    keys: Vec<K>,
+    values: Vec<V>,
+    prev: Option<PageIndex>,
+    next: Option<PageIndex>,
 }

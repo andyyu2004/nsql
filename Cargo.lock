@@ -563,6 +563,7 @@ version = "0.1.0"
 name = "nsql-btree"
 version = "0.1.0"
 dependencies = [
+ "nsql-buffer",
  "nsql-pager",
 ]
 
