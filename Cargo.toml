@@ -9,6 +9,7 @@ members = [
     "nsql-ir",
     "nsql-pager",
     "nsql-parse",
+    "nsql-serde",
     "nsql-storage",
     "nsql-test",
     "nsql-util",

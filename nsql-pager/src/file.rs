@@ -3,6 +3,7 @@ use std::sync::atomic::{self, AtomicU32};
 use std::{io, mem};
 
 use bytes::{Buf, BufMut};
+use nsql_serde::{Deserialize, DeserializeSync, Serialize, SerializeSync};
 use nsql_storage::Storage;
 use nsql_util::static_assert;
 use tokio::io::{AsyncReadExt, AsyncWriteExt, BufReader};
@@ -22,14 +23,6 @@ const N_RESERVED_PAGES: u32 = 3;
 
 pub const CURRENT_VERSION: u32 = 1;
 
-trait Serialize {
-    fn serialize(&self, buf: &mut [u8]);
-}
-
-trait Deserialize {
-    fn deserialize(buf: &[u8]) -> Self;
-}
-
 #[derive(Debug, PartialEq, Eq)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 pub struct FileHeader {
@@ -37,15 +30,15 @@ pub struct FileHeader {
     version: u32,
 }
 
-impl Serialize for FileHeader {
-    fn serialize(&self, mut buf: &mut [u8]) {
+impl SerializeSync for FileHeader {
+    fn serialize_sync(&self, mut buf: &mut dyn BufMut) {
         buf.put_slice(&self.magic);
         buf.put_u32(self.version);
     }
 }
 
-impl Deserialize for FileHeader {
-    fn deserialize(mut buf: &[u8]) -> Self {
+impl DeserializeSync for FileHeader {
+    fn deserialize_sync(buf: &mut dyn Buf) -> Self {
         let mut magic = [0; 4];
         buf.copy_to_slice(&mut magic);
         let version = buf.get_u32();
@@ -60,15 +53,15 @@ struct PagerHeader {
     page_count: PageIndex,
 }
 
-impl Serialize for PagerHeader {
-    fn serialize(&self, mut buf: &mut [u8]) {
-        buf.put_u32(self.free_list_head.as_u32());
-        buf.put_u32(self.page_count.as_u32());
+impl SerializeSync for PagerHeader {
+    fn serialize_sync(&self, buf: &mut dyn BufMut) {
+        self.free_list_head.serialize_sync(buf);
+        self.page_count.serialize_sync(buf);
     }
 }
 
-impl Deserialize for PagerHeader {
-    fn deserialize(mut buf: &[u8]) -> Self {
+impl DeserializeSync for PagerHeader {
+    fn deserialize_sync(mut buf: &mut dyn Buf) -> Self {
         let free_list_head = PageIndex::new(buf.get_u32());
         let page_count = PageIndex::new(buf.get_u32());
         Self { free_list_head, page_count }
@@ -153,7 +146,7 @@ impl SingleFilePager {
 
         let mut buf = [0; PAGE_SIZE];
         let file_header = FileHeader { magic: MAGIC, version: CURRENT_VERSION };
-        file_header.serialize(buf.as_mut());
+        file_header.serialize_sync(&mut buf.as_mut());
         storage.write_at(FILE_HEADER_START, buf).await?;
 
         let db_header = PagerHeader {
@@ -187,7 +180,7 @@ impl SingleFilePager {
         let mut writer = MetaPageWriter::new(self, initial_block);
         writer.write_u32(free_list.len() as u32).await?;
         for idx in free_list.iter() {
-            writer.write_u32(idx.as_u32()).await?;
+            idx.serialize(&mut writer).await?;
         }
 
         writer.flush().await?;
@@ -206,7 +199,7 @@ impl SingleFilePager {
                 let count = reader.read_u32().await?;
                 let mut free_list = Vec::with_capacity(count as usize);
                 for _ in 0..count {
-                    let idx = PageIndex::new(reader.read_u32().await?);
+                    let idx = PageIndex::deserialize(&mut reader).await?;
                     free_list.push(idx);
                 }
 
@@ -217,13 +210,13 @@ impl SingleFilePager {
 
     async fn read_database_header(storage: &Storage<PAGE_SIZE>) -> Result<PagerHeader> {
         let buf = storage.read_at(DB_HEADER_START).await?;
-        let db_header = PagerHeader::deserialize(&buf);
+        let db_header = PagerHeader::deserialize_sync(&mut &buf[..]);
         Ok(db_header)
     }
 
     async fn check_file_header(storage: &Storage<PAGE_SIZE>) -> Result<()> {
         let buf = storage.read_at(FILE_HEADER_START).await?;
-        let file_header = FileHeader::deserialize(&buf);
+        let file_header = FileHeader::deserialize_sync(&mut &buf[..]);
 
         if file_header.magic != MAGIC {
             Err(io::Error::new(

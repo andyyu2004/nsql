@@ -2,7 +2,9 @@ use std::fmt;
 use std::ops::{Deref, DerefMut};
 use std::sync::Arc;
 
+use nsql_serde::{DeserializeSync, SerializeSync};
 use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
+use tokio::io::AsyncWriteExt;
 
 use crate::{CHECKSUM_LENGTH, PAGE_SIZE, RAW_PAGE_SIZE};
 
@@ -76,6 +78,18 @@ impl Page {
 #[repr(transparent)]
 pub struct PageIndex(u32);
 
+impl SerializeSync for PageIndex {
+    fn serialize_sync(&self, buf: &mut dyn bytes::BufMut) {
+        buf.put_u32(self.0);
+    }
+}
+
+impl DeserializeSync for PageIndex {
+    fn deserialize_sync(buf: &mut dyn bytes::Buf) -> Self {
+        Self(buf.get_u32())
+    }
+}
+
 #[cfg(test)]
 impl proptest::arbitrary::Arbitrary for PageIndex {
     type Parameters = ();
@@ -113,13 +127,13 @@ impl PageIndex {
     }
 
     #[inline]
-    pub(crate) fn as_u32(self) -> u32 {
-        self.0
+    pub(crate) fn is_valid(self) -> bool {
+        self != Self::INVALID
     }
 
     #[inline]
-    pub(crate) fn is_valid(self) -> bool {
-        self != Self::INVALID
+    pub(super) fn as_u32(self) -> u32 {
+        self.0
     }
 }
 

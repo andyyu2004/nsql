@@ -7,6 +7,7 @@ edition = "2021"
 bytes = "1.4.0"
 crc = "3.0"
 nsql-error = { version = "0.1.0", path = "../nsql-error" }
+nsql-serde = { version = "0.1.0", path = "../nsql-serde" }
 nsql-util = { version = "0.1.0", path = "../nsql-util" }
 parking_lot = "0.12.1"
 pin-utils = "0.1.0"
