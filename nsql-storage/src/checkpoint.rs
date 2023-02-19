@@ -1,5 +1,6 @@
 use nsql_catalog::Catalog;
 use nsql_pager::{MetaPageWriter, Pager};
+use nsql_serde::Serialize;
 use nsql_transaction::Transaction;
 
 use crate::Result;
@@ -16,8 +17,11 @@ impl<'a, P> Checkpointer<'a, P> {
 
 impl<P: Pager> Checkpointer<'_, P> {
     pub async fn checkpoint(&self, tx: &Transaction, catalog: &Catalog) -> Result<()> {
-        let page = self.pager.alloc_page().await?;
-        let writer = MetaPageWriter::new(self.pager, page);
+        let meta_page = self.pager.alloc_page().await?;
+        let writer = MetaPageWriter::new(self.pager, meta_page);
+
+        let schemas = catalog.schemas(tx);
+        // schemas.serialize(writer).await?;
         Ok(())
     }
 }

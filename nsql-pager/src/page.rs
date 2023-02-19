@@ -78,13 +78,13 @@ impl Page {
 pub struct PageIndex(u32);
 
 impl SerializeSync for PageIndex {
-    fn serialize_sync(&self, buf: &mut dyn bytes::BufMut) {
+    fn serialize_sync(&self, buf: &mut dyn nsql_serde::BufMut) {
         buf.put_u32(self.0);
     }
 }
 
 impl DeserializeSync for PageIndex {
-    fn deserialize_sync(buf: &mut dyn bytes::Buf) -> Self {
+    fn deserialize_sync(buf: &mut dyn nsql_serde::Buf) -> Self {
         Self(buf.get_u32())
     }
 }

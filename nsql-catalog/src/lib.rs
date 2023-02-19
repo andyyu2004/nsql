@@ -1,15 +1,20 @@
 #![feature(never_type)]
+#![feature(async_fn_in_trait)]
+#![allow(incomplete_features)]
 
 mod entry;
 mod schema;
 mod set;
 
+use std::sync::Arc;
+
+use nsql_serde::{Deserialize, Serialize};
 use nsql_transaction::Transaction;
 use parking_lot::RwLock;
 
 use self::entry::EntryName;
 pub use self::schema::Schema;
-use self::set::{CatalogEntry, CatalogSet};
+use self::set::CatalogSet;
 
 pub type Result<T, E = !> = std::result::Result<T, E>;
 
@@ -17,30 +22,21 @@ pub struct Catalog {
     schemas: RwLock<CatalogSet<Schema>>,
 }
 
-trait CatalogEntity {
+trait CatalogEntity: Serialize + Deserialize {
     fn name(&self) -> &EntryName;
 }
 
 impl Catalog {
-    pub fn schemas(&self, tx: &Transaction) -> Result<Vec<CatalogEntry<Schema>>> {
-        Ok(self.schemas.read().entries(tx).cloned().collect())
+    pub fn schemas(&self, tx: &Transaction) -> Result<Vec<Arc<Schema>>> {
+        Ok(self.schemas.read().entries(tx).collect())
     }
 
-    pub fn schema(&self, tx: &Transaction, name: &str) -> Result<Option<CatalogEntry<Schema>>> {
-        Ok(self.schemas.read().find(tx, name).cloned())
+    pub fn schema(&self, tx: &Transaction, name: &str) -> Result<Option<Arc<Schema>>> {
+        Ok(self.schemas.read().find(tx, name))
     }
 
     pub fn create_schema(&self, tx: &Transaction, name: impl Into<EntryName>) -> Result<()> {
-        self.schemas.write().insert(tx, Schema::new(name.into(), false));
-        Ok(())
-    }
-
-    pub fn create_internal_schema(
-        &self,
-        tx: &Transaction,
-        name: impl Into<EntryName>,
-    ) -> Result<()> {
-        self.schemas.write().insert(tx, Schema::new(name.into(), true));
+        self.schemas.write().insert(tx, Schema::new(name.into()));
         Ok(())
     }
 }

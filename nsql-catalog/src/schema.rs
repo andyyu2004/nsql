@@ -1,14 +1,35 @@
+use nsql_serde::{Deserialize, Deserializer, Serialize, Serializer};
+
 use crate::{CatalogEntity, EntryName};
 
 #[derive(Clone)]
 pub struct Schema {
-    pub name: EntryName,
-    pub is_internal: bool,
+    name: EntryName,
 }
 
 impl Schema {
-    pub(crate) fn new(name: EntryName, is_internal: bool) -> Self {
-        Self { name, is_internal }
+    pub(crate) fn new(name: EntryName) -> Self {
+        Self { name }
+    }
+
+    pub fn name(&self) -> &EntryName {
+        &self.name
+    }
+}
+
+impl Serialize for Schema {
+    type Error = std::io::Error;
+
+    async fn serialize(&self, writer: &mut dyn Serializer) -> Result<(), Self::Error> {
+        todo!()
+    }
+}
+
+impl Deserialize for Schema {
+    type Error = std::io::Error;
+
+    async fn deserialize(reader: &mut dyn Deserializer) -> Result<Self, Self::Error> {
+        todo!()
     }
 }
 

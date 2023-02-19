@@ -5,18 +5,50 @@
 
 use std::io;
 
-use bytes::{Buf, BufMut};
-use nsql_error::Result;
-use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
+pub use bytes::{Buf, BufMut};
+use tokio::io::{AsyncRead, AsyncReadExt as _, AsyncWrite, AsyncWriteExt as _};
+
+pub trait Serializer: AsyncWrite + Unpin {}
+
+impl<W: AsyncWrite + Unpin> Serializer for W {}
+
+pub trait Deserializer: AsyncRead + Unpin {}
+
+impl<R: AsyncRead + Unpin> Deserializer for R {}
 
 pub trait Serialize {
-    type Error = io::Error;
-    async fn serialize(&self, writer: &mut (dyn AsyncWrite + Unpin)) -> Result<(), Self::Error>;
+    type Error: From<io::Error> = io::Error;
+    async fn serialize(&self, writer: &mut dyn Serializer) -> Result<(), Self::Error>;
 }
 
 pub trait Deserialize: Sized {
-    type Error = io::Error;
-    async fn deserialize(reader: &mut (dyn AsyncRead + Unpin)) -> Result<Self, Self::Error>;
+    type Error: From<io::Error> = io::Error;
+    async fn deserialize(reader: &mut dyn Deserializer) -> Result<Self, Self::Error>;
+}
+
+impl<S: Serialize> Serialize for Vec<S> {
+    type Error = S::Error;
+
+    async fn serialize(&self, writer: &mut dyn Serializer) -> Result<(), Self::Error> {
+        writer.write_u32(self.len() as u32).await?;
+        for item in self {
+            item.serialize(writer).await?;
+        }
+        Ok(())
+    }
+}
+
+impl<D: Deserialize> Deserialize for Vec<D> {
+    type Error = D::Error;
+
+    async fn deserialize(reader: &mut dyn Deserializer) -> Result<Self, Self::Error> {
+        let len = reader.read_u32().await? as usize;
+        let mut items = Vec::with_capacity(len);
+        for _ in 0..len {
+            items.push(D::deserialize(reader).await?);
+        }
+        Ok(items)
+    }
 }
 
 pub trait SerializeSync {
@@ -31,7 +63,7 @@ pub trait DeserializeSync: Sized {
 impl<S: SerializeSync> Serialize for S {
     type Error = io::Error;
 
-    async fn serialize(&self, writer: &mut (dyn AsyncWrite + Unpin)) -> Result<(), Self::Error> {
+    async fn serialize(&self, writer: &mut dyn Serializer) -> Result<(), Self::Error> {
         let mut buf = bytes::BytesMut::new();
         self.serialize_sync(&mut buf);
         writer.write_all(&buf).await?;
@@ -42,7 +74,7 @@ impl<S: SerializeSync> Serialize for S {
 impl<D: DeserializeSync> Deserialize for D {
     type Error = io::Error;
 
-    async fn deserialize(mut reader: &mut (dyn AsyncRead + Unpin)) -> Result<Self, Self::Error> {
+    async fn deserialize(mut reader: &mut dyn Deserializer) -> Result<Self, Self::Error> {
         let mut buf = bytes::BytesMut::new();
         (&mut reader).read_buf(&mut buf).await?;
         Ok(Self::deserialize_sync(&mut buf))

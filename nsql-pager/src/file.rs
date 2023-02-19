@@ -2,11 +2,10 @@ use std::path::Path;
 use std::sync::atomic::{self, AtomicU32};
 use std::{io, mem};
 
-use bytes::{Buf, BufMut};
 use nsql_fs::File;
-use nsql_serde::{Deserialize, DeserializeSync, Serialize, SerializeSync};
+use nsql_serde::{Buf, BufMut, Deserialize, DeserializeSync, Serialize, SerializeSync};
 use nsql_util::static_assert;
-use tokio::io::{AsyncReadExt, AsyncWriteExt, BufReader};
+use tokio::io::{AsyncWriteExt, BufReader};
 use tokio::sync::{OnceCell, RwLock};
 
 use crate::meta_page::{MetaPageReader, MetaPageWriter};
@@ -169,7 +168,8 @@ impl SingleFilePager {
         }
     }
 
-    async fn write_free_list(&self) -> Result<()> {
+    // FIXME
+    async fn _write_free_list(&self) -> Result<()> {
         let free_list = self.free_list().await?.read().await;
         if free_list.is_empty() {
             return Ok(());
@@ -178,10 +178,7 @@ impl SingleFilePager {
         let initial_block = self.alloc_page().await?;
 
         let mut writer = MetaPageWriter::new(self, initial_block);
-        writer.write_u32(free_list.len() as u32).await?;
-        for idx in free_list.iter() {
-            idx.serialize(&mut writer).await?;
-        }
+        free_list.serialize(&mut writer).await?;
 
         writer.flush().await?;
 
@@ -196,12 +193,7 @@ impl SingleFilePager {
                 }
 
                 let mut reader = BufReader::new(MetaPageReader::new(self, self.free_list_head));
-                let count = reader.read_u32().await?;
-                let mut free_list = Vec::with_capacity(count as usize);
-                for _ in 0..count {
-                    let idx = PageIndex::deserialize(&mut reader).await?;
-                    free_list.push(idx);
-                }
+                let free_list = Vec::<PageIndex>::deserialize(&mut reader).await?;
 
                 Ok(RwLock::new(free_list))
             })
