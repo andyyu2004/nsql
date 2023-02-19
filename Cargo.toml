@@ -1,10 +1,14 @@
 [workspace]
 members = [
     "nsql",
+    "nsql-bind",
     "nsql-btree",
     "nsql-buffer",
+    "nsql-catalog",
     "nsql-error",
+    "nsql-ir",
     "nsql-pager",
+    "nsql-parse",
     "nsql-storage",
     "nsql-test",
     "nsql-util",

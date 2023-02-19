@@ -12,8 +12,9 @@ pub struct BTree<P, K, V> {
 }
 
 impl<P, K, V> BTree<P, K, V> {
-    pub fn new(pool: BufferPool<P>) -> io::Result<Self> {
-        Ok(Self { pool, root: todo!() })
+    pub fn new(_pool: BufferPool<P>) -> io::Result<Self> {
+        todo!()
+        // Ok(Self { pool, root: todo!() })
     }
 }
 

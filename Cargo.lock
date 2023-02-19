@@ -558,6 +558,15 @@ dependencies = [
 [[package]]
 name = "nsql"
 version = "0.1.0"
+dependencies = [
+ "nsql-buffer",
+ "nsql-error",
+ "nsql-pager",
+]
+
+[[package]]
+name = "nsql-bind"
+version = "0.1.0"
 
 [[package]]
 name = "nsql-btree"
@@ -579,11 +588,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "nsql-catalog"
+version = "0.1.0"
+
+[[package]]
 name = "nsql-error"
 version = "0.1.0"
 dependencies = [
  "error-stack",
 ]
+
+[[package]]
+name = "nsql-ir"
+version = "0.1.0"
 
 [[package]]
 name = "nsql-pager"
@@ -600,6 +617,13 @@ dependencies = [
  "proptest",
  "test-strategy",
  "tokio",
+]
+
+[[package]]
+name = "nsql-parse"
+version = "0.1.0"
+dependencies = [
+ "sqlparser",
 ]
 
 [[package]]
@@ -986,6 +1010,15 @@ checksum = "02e2d2db9033d13a1567121ddd7a095ee144db4e1ca1b1bda3419bc0da294ebd"
 dependencies = [
  "libc",
  "winapi",
+]
+
+[[package]]
+name = "sqlparser"
+version = "0.30.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "db67dc6ef36edb658196c3fef0464a80b53dbbc194a904e81f9bd4190f9ecc5b"
+dependencies = [
+ "log",
 ]
 
 [[package]]

@@ -7,7 +7,8 @@ use std::sync::Arc;
 
 use coarsetime::Duration;
 use lruk::{LruK, RefCounted};
-use nsql_pager::{Page, PageIndex, Pager, Result, PAGE_SIZE};
+pub use nsql_pager::Result;
+use nsql_pager::{Page, PageIndex, Pager, PAGE_SIZE};
 use parking_lot::RwLock;
 
 trait BufferPoolInterface {
