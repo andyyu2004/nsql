@@ -590,6 +590,9 @@ dependencies = [
 [[package]]
 name = "nsql-catalog"
 version = "0.1.0"
+dependencies = [
+ "nsql-transaction",
+]
 
 [[package]]
 name = "nsql-error"
@@ -655,6 +658,10 @@ dependencies = [
  "tempfile",
  "tokio-uring",
 ]
+
+[[package]]
+name = "nsql-transaction"
+version = "0.1.0"
 
 [[package]]
 name = "nsql-util"
