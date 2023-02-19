@@ -1,5 +1,5 @@
 [package]
-name = "nsql-storage"
+name = "nsql-fs"
 version = "0.1.0"
 edition = "2021"
 

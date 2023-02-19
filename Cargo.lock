@@ -602,6 +602,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "nsql-fs"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "nsql-error",
+ "nsql-test",
+ "proptest",
+ "test-strategy",
+ "tokio-uring",
+]
+
+[[package]]
 name = "nsql-ir"
 version = "0.1.0"
 
@@ -612,8 +624,8 @@ dependencies = [
  "bytes",
  "crc",
  "nsql-error",
+ "nsql-fs",
  "nsql-serde",
- "nsql-storage",
  "nsql-test",
  "nsql-util",
  "parking_lot",
@@ -637,18 +649,6 @@ dependencies = [
  "bytes",
  "nsql-error",
  "tokio",
-]
-
-[[package]]
-name = "nsql-storage"
-version = "0.1.0"
-dependencies = [
- "libc",
- "nsql-error",
- "nsql-test",
- "proptest",
- "test-strategy",
- "tokio-uring",
 ]
 
 [[package]]

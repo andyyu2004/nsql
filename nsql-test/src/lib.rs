@@ -12,7 +12,7 @@ macro_rules! tmp {
 #[macro_export]
 macro_rules! mk_storage {
     () => {
-        nsql_storage::Storage::create($crate::tmp!()).await?
+        nsql_fs::File::create($crate::tmp!()).await?
     };
 }
 

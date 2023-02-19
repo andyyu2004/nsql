@@ -4,23 +4,18 @@
 
 use std::path::Path;
 
-use tokio_uring::fs::{File, OpenOptions};
+use tokio_uring::fs::{self, OpenOptions};
 
-/// `Storage` provides the low-level interface to the underlying file
+/// `File` provides the low-level interface to the underlying file
 /// `N` represents block size
-pub struct Storage<const N: usize> {
-    file: File,
+pub struct File<const N: usize> {
+    file: fs::File,
 }
 
 pub type Result<T, E = std::io::Error> = nsql_error::Result<T, E>;
 
 // FIXME we could probably use fixed iouring buffers
-impl<const N: usize> Storage<N> {
-    fn new(file: File) -> Self {
-        assert!(N.is_power_of_two(), "N must be a power of two");
-        Self { file }
-    }
-
+impl<const N: usize> File<N> {
     #[inline]
     pub async fn create(path: impl AsRef<Path>) -> Result<Self> {
         let file = OpenOptions::new()
@@ -66,6 +61,11 @@ impl<const N: usize> Storage<N> {
     pub async fn sync(&self) -> Result<()> {
         self.file.sync_all().await?;
         Ok(())
+    }
+
+    fn new(file: fs::File) -> Self {
+        assert!(N.is_power_of_two(), "N must be a power of two");
+        Self { file }
     }
 
     fn assert_aligned(pos: u64) {

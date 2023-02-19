@@ -1,4 +1,4 @@
-use nsql_storage::Result;
+use nsql_fs::Result;
 use nsql_test::mk_storage;
 use proptest::collection::vec;
 use test_strategy::proptest;
@@ -6,7 +6,7 @@ use test_strategy::proptest;
 const SIZE: usize = 4096;
 
 #[test]
-fn test_new_storage() -> Result<()> {
+fn test_new_file() -> Result<()> {
     nsql_test::start(async {
         let storage = mk_storage!();
         let mut buf = [0; SIZE];

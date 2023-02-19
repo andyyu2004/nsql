@@ -10,7 +10,7 @@ members = [
     "nsql-pager",
     "nsql-parse",
     "nsql-serde",
-    "nsql-storage",
+    "nsql-fs",
     "nsql-test",
     "nsql-transaction",
     "nsql-util",

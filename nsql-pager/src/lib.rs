@@ -10,7 +10,7 @@ mod page;
 use std::future::Future;
 use std::pin::Pin;
 
-pub use nsql_storage::Result;
+pub use nsql_fs::Result;
 
 pub use self::file::SingleFilePager;
 pub use self::mem::InMemoryPager;

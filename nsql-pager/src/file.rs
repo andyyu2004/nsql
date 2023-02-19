@@ -3,8 +3,8 @@ use std::sync::atomic::{self, AtomicU32};
 use std::{io, mem};
 
 use bytes::{Buf, BufMut};
+use nsql_fs::File;
 use nsql_serde::{Deserialize, DeserializeSync, Serialize, SerializeSync};
-use nsql_storage::Storage;
 use nsql_util::static_assert;
 use tokio::io::{AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::sync::{OnceCell, RwLock};
@@ -69,7 +69,7 @@ impl DeserializeSync for PagerHeader {
 }
 
 pub struct SingleFilePager {
-    storage: Storage<RAW_PAGE_SIZE>,
+    storage: File<RAW_PAGE_SIZE>,
     page_count: AtomicU32,
     free_list: OnceCell<RwLock<Vec<PageIndex>>>,
     free_list_head: PageIndex,
@@ -131,7 +131,7 @@ impl Pager for SingleFilePager {
 impl SingleFilePager {
     #[inline]
     pub async fn open(path: impl AsRef<Path>) -> Result<SingleFilePager> {
-        let storage = Storage::open(path).await?;
+        let storage = File::open(path).await?;
         Self::check_file_header(&storage).await?;
 
         let db_header = Self::read_database_header(&storage).await?;
@@ -142,7 +142,7 @@ impl SingleFilePager {
     // Create a new database file at the given path.
     #[inline]
     pub async fn create(path: impl AsRef<Path>) -> Result<SingleFilePager> {
-        let storage = Storage::create(path).await?;
+        let storage = File::create(path).await?;
 
         let mut buf = [0; PAGE_SIZE];
         let file_header = FileHeader { magic: MAGIC, version: CURRENT_VERSION };
@@ -160,7 +160,7 @@ impl SingleFilePager {
     }
 
     #[inline]
-    fn new(storage: Storage<PAGE_SIZE>, db_header: PagerHeader) -> Self {
+    fn new(storage: File<PAGE_SIZE>, db_header: PagerHeader) -> Self {
         Self {
             storage,
             page_count: AtomicU32::new(db_header.page_count.as_u32()),
@@ -208,13 +208,13 @@ impl SingleFilePager {
             .await
     }
 
-    async fn read_database_header(storage: &Storage<PAGE_SIZE>) -> Result<PagerHeader> {
+    async fn read_database_header(storage: &File<PAGE_SIZE>) -> Result<PagerHeader> {
         let buf = storage.read_at(DB_HEADER_START).await?;
         let db_header = PagerHeader::deserialize_sync(&mut &buf[..]);
         Ok(db_header)
     }
 
-    async fn check_file_header(storage: &Storage<PAGE_SIZE>) -> Result<()> {
+    async fn check_file_header(storage: &File<PAGE_SIZE>) -> Result<()> {
         let buf = storage.read_at(FILE_HEADER_START).await?;
         let file_header = FileHeader::deserialize_sync(&mut &buf[..]);
 
