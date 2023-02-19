@@ -10,7 +10,7 @@ use crate::{BoxFuture, Page, PageIndex, Pager, Result, PAGE_SIZE};
 
 /// A meta page contains metadata and has the following format (excluding the usual checksum):
 /// [next_page_idx: 4 bytes][arbitrary data]
-pub(crate) struct MetaPageReader<'a, P> {
+pub struct MetaPageReader<'a, P> {
     pager: &'a P,
     state: State<'a>,
 }

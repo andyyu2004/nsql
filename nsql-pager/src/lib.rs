@@ -9,11 +9,13 @@ mod page;
 
 use std::future::Future;
 use std::pin::Pin;
+use std::sync::Arc;
 
 pub use nsql_fs::Result;
 
 pub use self::file::SingleFilePager;
 pub use self::mem::InMemoryPager;
+pub use self::meta_page::{MetaPageReader, MetaPageWriter};
 pub use self::page::{Page, PageIndex};
 
 /// The size of a page in bytes minus the size of the page header.
@@ -32,4 +34,22 @@ pub trait Pager: 'static {
     async fn read_page(&self, idx: PageIndex) -> Result<Page>;
     /// Write the given page to the given index and fsync
     async fn write_page(&self, page: Page) -> Result<()>;
+}
+
+impl<P: Pager> Pager for Arc<P> {
+    async fn alloc_page(&self) -> Result<PageIndex> {
+        (**self).alloc_page().await
+    }
+
+    async fn free_page(&self, idx: PageIndex) -> Result<()> {
+        (**self).free_page(idx).await
+    }
+
+    async fn read_page(&self, idx: PageIndex) -> Result<Page> {
+        (**self).read_page(idx).await
+    }
+
+    async fn write_page(&self, page: Page) -> Result<()> {
+        (**self).write_page(page).await
+    }
 }

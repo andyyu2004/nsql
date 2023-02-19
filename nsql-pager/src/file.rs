@@ -31,7 +31,7 @@ pub struct FileHeader {
 }
 
 impl SerializeSync for FileHeader {
-    fn serialize_sync(&self, mut buf: &mut dyn BufMut) {
+    fn serialize_sync(&self, buf: &mut dyn BufMut) {
         buf.put_slice(&self.magic);
         buf.put_u32(self.version);
     }
@@ -61,7 +61,7 @@ impl SerializeSync for PagerHeader {
 }
 
 impl DeserializeSync for PagerHeader {
-    fn deserialize_sync(mut buf: &mut dyn Buf) -> Self {
+    fn deserialize_sync(buf: &mut dyn Buf) -> Self {
         let free_list_head = PageIndex::new(buf.get_u32());
         let page_count = PageIndex::new(buf.get_u32());
         Self { free_list_head, page_count }

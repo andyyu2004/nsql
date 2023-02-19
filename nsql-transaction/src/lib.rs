@@ -21,15 +21,25 @@ impl TransactionManager {
     }
 }
 
-/// Opaque transaction ID
+/// Opaque monotonically increasing transaction id
+#[derive(Debug, Clone, Copy)]
+#[repr(transparent)]
 pub struct Txid(u64);
 
 pub struct Transaction {
-    txid: Txid,
+    id: Txid,
 }
 
 impl Transaction {
-    fn new(txid: Txid) -> Transaction {
-        Self { txid }
+    fn new(id: Txid) -> Transaction {
+        Self { id }
+    }
+
+    pub fn id(&self) -> Txid {
+        self.id
+    }
+
+    pub fn can_see(&self, other: Txid) -> bool {
+        self.id.0 >= other.0
     }
 }

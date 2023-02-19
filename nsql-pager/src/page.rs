@@ -4,7 +4,6 @@ use std::sync::Arc;
 
 use nsql_serde::{DeserializeSync, SerializeSync};
 use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
-use tokio::io::AsyncWriteExt;
 
 use crate::{CHECKSUM_LENGTH, PAGE_SIZE, RAW_PAGE_SIZE};
 

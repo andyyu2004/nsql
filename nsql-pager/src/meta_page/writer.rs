@@ -10,7 +10,7 @@ use crate::{BoxFuture, Page, PageIndex, Pager, Result, PAGE_SIZE};
 
 /// You must write something with [`crate::meta_page::MetaPageWriter`] before it is valid to be read from.
 /// Just constructing this struct does not do anything.
-pub(crate) struct MetaPageWriter<'a, P> {
+pub struct MetaPageWriter<'a, P> {
     pager: &'a P,
     flushed: bool,
     state: State<'a>,

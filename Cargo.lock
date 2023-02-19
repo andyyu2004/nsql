@@ -592,6 +592,8 @@ name = "nsql-catalog"
 version = "0.1.0"
 dependencies = [
  "nsql-transaction",
+ "parking_lot",
+ "smol_str",
 ]
 
 [[package]]
@@ -649,6 +651,15 @@ dependencies = [
  "bytes",
  "nsql-error",
  "tokio",
+]
+
+[[package]]
+name = "nsql-storage"
+version = "0.1.0"
+dependencies = [
+ "nsql-catalog",
+ "nsql-pager",
+ "nsql-transaction",
 ]
 
 [[package]]
@@ -1018,6 +1029,15 @@ name = "smallvec"
 version = "1.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a507befe795404456341dfab10cef66ead4c041f62b8b11bbb92bffe5d0953e0"
+
+[[package]]
+name = "smol_str"
+version = "0.1.24"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fad6c857cbab2627dcf01ec85a623ca4e7dcb5691cbaa3d7fb7653671f0d09c9"
+dependencies = [
+ "serde",
+]
 
 [[package]]
 name = "socket2"

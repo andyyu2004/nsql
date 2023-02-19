@@ -2,8 +2,8 @@ mod reader;
 mod writer;
 
 use nsql_util::static_assert_eq;
-pub(crate) use reader::MetaPageReader;
-pub(crate) use writer::MetaPageWriter;
+pub use reader::MetaPageReader;
+pub use writer::MetaPageWriter;
 
 use crate::PageIndex;
 
