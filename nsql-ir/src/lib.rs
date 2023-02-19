@@ -1,3 +1,4 @@
+#![deny(rust_2018_idioms)]
 pub fn add(left: usize, right: usize) -> usize {
     left + right
 }

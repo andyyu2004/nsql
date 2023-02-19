@@ -650,6 +650,7 @@ version = "0.1.0"
 dependencies = [
  "bytes",
  "nsql-error",
+ "smol_str",
  "tokio",
 ]
 

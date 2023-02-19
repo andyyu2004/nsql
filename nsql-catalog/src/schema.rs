@@ -20,7 +20,7 @@ impl Schema {
 impl Serialize for Schema {
     type Error = std::io::Error;
 
-    async fn serialize(&self, writer: &mut dyn Serializer) -> Result<(), Self::Error> {
+    async fn serialize(&self, writer: &mut dyn Serializer<'_>) -> Result<(), Self::Error> {
         todo!()
     }
 }
@@ -28,7 +28,7 @@ impl Serialize for Schema {
 impl Deserialize for Schema {
     type Error = std::io::Error;
 
-    async fn deserialize(reader: &mut dyn Deserializer) -> Result<Self, Self::Error> {
+    async fn deserialize(reader: &mut dyn Deserializer<'_>) -> Result<Self, Self::Error> {
         todo!()
     }
 }

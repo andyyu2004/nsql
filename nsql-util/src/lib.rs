@@ -1,3 +1,5 @@
+#![deny(rust_2018_idioms)]
+
 #[macro_export]
 macro_rules! static_assert {
     ($cond:expr) => {
@@ -5,11 +7,9 @@ macro_rules! static_assert {
     };
 }
 
-
 #[macro_export]
 macro_rules! static_assert_eq {
     ($lhs:expr, $rhs:expr) => {
         $crate::static_assert!($lhs == $rhs);
     };
 }
-

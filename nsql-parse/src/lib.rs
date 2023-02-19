@@ -1,3 +1,5 @@
+#![deny(rust_2018_idioms)]
+
 pub use sqlparser::ast::*;
 use sqlparser::dialect::PostgreSqlDialect;
 use sqlparser::parser::{Parser, ParserError};
