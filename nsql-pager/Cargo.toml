@@ -5,12 +5,15 @@ edition = "2021"
 
 [dependencies]
 crc = "3.0"
-nsql-error = { version = "0.1.0", path = "../nsql-error" }
-nsql-serde = { version = "0.1.0", path = "../nsql-serde" }
-nsql-util = { version = "0.1.0", path = "../nsql-util" }
+nsql-error = { path = "../nsql-error" }
+nsql-serde = { path = "../nsql-serde" }
+nsql-util = { path = "../nsql-util" }
 parking_lot = "0.12.1"
 pin-utils = "0.1.0"
-tokio = { version = "1.25.0", default-features = false, features = ["io-util", "sync"] }
+tokio = { version = "1.25.0", default-features = false, features = [
+    "io-util",
+    "sync",
+] }
 
 [dependencies.nsql-fs]
 path = "../nsql-fs"

@@ -9,6 +9,8 @@ use nsql_pager::{InMemoryPager, Pager, SingleFilePager};
 use nsql_storage::Storage;
 use nsql_transaction::TransactionManager;
 
+pub type Error = std::io::Error;
+
 #[derive(Clone)]
 pub struct Nsql<P> {
     inner: Arc<Shared<P>>,

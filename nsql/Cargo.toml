@@ -4,9 +4,14 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-nsql-buffer = { version = "0.1.0", path = "../nsql-buffer" }
-nsql-catalog = { version = "0.1.0", path = "../nsql-catalog" }
-nsql-error = { version = "0.1.0", path = "../nsql-error" }
-nsql-pager = { version = "0.1.0", path = "../nsql-pager" }
-nsql-storage = { version = "0.1.0", path = "../nsql-storage" }
-nsql-transaction = { version = "0.1.0", path = "../nsql-transaction" }
+nsql-buffer = { path = "../nsql-buffer" }
+nsql-catalog = { path = "../nsql-catalog" }
+nsql-error = { path = "../nsql-error" }
+nsql-pager = { path = "../nsql-pager" }
+nsql-storage = { path = "../nsql-storage" }
+nsql-transaction = { path = "../nsql-transaction" }
+
+[dev-dependencies]
+tokio = { version = "1.25.0", features = ["time"] }
+sqllogictest = "0.13.0"
+async-trait = "0.1.64"

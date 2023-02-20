@@ -1,11 +1,12 @@
 #![cfg_attr(test, feature(test))]
 #![deny(rust_2018_idioms)]
 
-use std::cell::RefCell;
 use std::fmt::Debug;
 use std::hash::Hash;
 use std::ops::Sub;
 use std::sync::Arc;
+
+use parking_lot::RwLock;
 
 mod history;
 mod value_ordered_map;
@@ -36,9 +37,9 @@ impl<T: ?Sized> RefCounted for Arc<T> {
 // based off https://www.cs.cmu.edu/~natassa/courses/15-721/papers/p297-o_neil.pdf
 pub struct LruK<K, V, C: Clock, const N: usize = 2> {
     map: FxHashMap<K, V>,
-    kth_reference_times: RefCell<ValueOrderedMap<K, Option<C::Time>>>,
-    histories: RefCell<FxHashMap<K, History<C, N>>>,
-    last_accessed: RefCell<FxHashMap<K, C::Time>>,
+    kth_reference_times: RwLock<ValueOrderedMap<K, Option<C::Time>>>,
+    histories: RwLock<FxHashMap<K, History<C, N>>>,
+    last_accessed: RwLock<FxHashMap<K, C::Time>>,
     capacity: usize,
     clock: C,
     retained_information_period: C::Duration,
@@ -170,31 +171,31 @@ where
 
     // update required metadata
     fn register_access_at(&self, k: K, at: C::Time) {
-        self.last_accessed.borrow_mut().insert(k, at);
+        self.last_accessed.write().insert(k, at);
 
-        let mut histories = self.histories.borrow_mut();
+        let mut histories = self.histories.write();
         let hist =
             histories.entry(k).or_insert_with(|| History::new(self.correlated_reference_period));
         hist.register_access_at(at);
 
-        self.kth_reference_times.borrow_mut().insert(k, hist.kth());
+        self.kth_reference_times.write().insert(k, hist.kth());
     }
 
     #[track_caller]
     fn is_overfull(&self) -> bool {
         assert!(self.map.len() <= self.capacity + 1, "map is overfull by more than one element");
         assert!(
-            self.last_accessed.borrow().len() <= self.capacity + 2,
+            self.last_accessed.read().len() <= self.capacity + 2,
             "last_accessed has not been cleaned properly"
         );
         self.map.len() > self.capacity
     }
 
     fn find_eviction_candidate(&mut self, at: C::Time) -> Option<K> {
-        let last_accessed = self.last_accessed.borrow();
+        let last_accessed = self.last_accessed.read();
         // find key with the maximum kth reference time that matches the critieria
         self.kth_reference_times
-            .borrow()
+            .read()
             .keys()
             .find(|k| self.is_key_safe_for_eviction(&last_accessed, k, at))
     }
@@ -221,12 +222,12 @@ where
 
         let key = victim?;
 
-        let mut last_accessed = self.last_accessed.borrow_mut();
+        let mut last_accessed = self.last_accessed.write();
         let value = self.map.remove(&key).unwrap();
         assert_eq!(value.ref_count(), 1, "eviction victim has outstanding references");
         last_accessed.remove(&key);
         drop(last_accessed);
-        assert!(self.kth_reference_times.borrow_mut().remove(&key).is_some());
+        assert!(self.kth_reference_times.write().remove(&key).is_some());
         // not removing from history as we want to retain the history using a separate parameter
         assert!(!self.is_overfull());
 
@@ -235,7 +236,7 @@ where
 
     // drop any entries for keys that have not been referenced in the last `retained_information_period`
     fn prune_history(&mut self, at: C::Time) {
-        self.histories.borrow_mut().retain(|_, hist| match hist.latest_uncorrelated_access() {
+        self.histories.write().retain(|_, hist| match hist.latest_uncorrelated_access() {
             Some(last) => at - last < self.retained_information_period,
             None => false,
         });
