@@ -14,30 +14,38 @@ use nsql_transaction::Transaction;
 use parking_lot::RwLock;
 
 use self::entry::EntryName;
-pub use self::schema::Schema;
+pub use self::schema::{CreateSchemaInfo, Schema};
 use self::set::CatalogSet;
 
-pub type Result<T, E = !> = std::result::Result<T, E>;
+pub type Result<T, E = std::io::Error> = std::result::Result<T, E>;
 
+#[derive(Default)]
 pub struct Catalog {
     schemas: RwLock<CatalogSet<Schema>>,
 }
 
-trait CatalogEntity: Serialize + Deserialize {
+trait CatalogEntity: Serialize {
+    type CreateInfo: Deserialize;
+
+    fn new(info: Self::CreateInfo) -> Self;
+
     fn name(&self) -> &EntryName;
 }
 
 impl Catalog {
+    #[tracing::instrument(skip(self))]
     pub fn schemas(&self, tx: &Transaction) -> Result<Vec<Arc<Schema>>> {
         Ok(self.schemas.read().entries(tx).collect())
     }
 
+    #[tracing::instrument(skip(self))]
     pub fn schema(&self, tx: &Transaction, name: &str) -> Result<Option<Arc<Schema>>> {
         Ok(self.schemas.read().find(tx, name))
     }
 
-    pub fn create_schema(&self, tx: &Transaction, name: impl Into<EntryName>) -> Result<()> {
-        self.schemas.write().insert(tx, Schema::new(name.into()));
+    #[tracing::instrument(skip(self))]
+    pub fn create_schema(&self, tx: &Transaction, info: CreateSchemaInfo) -> Result<()> {
+        self.schemas.write().insert(tx, Schema::new(info));
         Ok(())
     }
 }

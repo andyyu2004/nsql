@@ -11,6 +11,12 @@ pub(crate) struct CatalogSet<T> {
     name_mapping: HashMap<EntryName, Oid>,
 }
 
+impl<T> Default for CatalogSet<T> {
+    fn default() -> Self {
+        Self { entries: Default::default(), name_mapping: Default::default() }
+    }
+}
+
 struct VersionedEntry<T> {
     versions: Vec<CatalogEntry<T>>,
 }

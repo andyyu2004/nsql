@@ -14,6 +14,12 @@ impl TransactionManager {
     }
 }
 
+impl Default for TransactionManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl TransactionManager {
     fn next_txid(&self) -> Txid {
         let id = self.current_txid.fetch_add(1, atomic::Ordering::SeqCst);
@@ -26,6 +32,7 @@ impl TransactionManager {
 #[repr(transparent)]
 pub struct Txid(u64);
 
+#[derive(Debug)]
 pub struct Transaction {
     id: Txid,
 }
@@ -42,4 +49,8 @@ impl Transaction {
     pub fn can_see(&self, other: Txid) -> bool {
         self.id.0 >= other.0
     }
+
+    pub async fn commit(self) {}
+
+    pub async fn rollback(self) {}
 }

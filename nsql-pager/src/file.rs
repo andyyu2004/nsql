@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{self, AtomicU32};
 use std::{io, mem};
 
@@ -49,27 +49,32 @@ impl DeserializeSync for FileHeader {
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 struct PagerHeader {
     free_list_head: PageIndex,
+    meta_page_head: PageIndex,
     page_count: PageIndex,
 }
 
 impl SerializeSync for PagerHeader {
     fn serialize_sync(&self, buf: &mut dyn BufMut) {
         self.free_list_head.serialize_sync(buf);
+        self.meta_page_head.serialize_sync(buf);
         self.page_count.serialize_sync(buf);
     }
 }
 
 impl DeserializeSync for PagerHeader {
     fn deserialize_sync(buf: &mut dyn Buf) -> Self {
-        let free_list_head = PageIndex::new(buf.get_u32());
-        let page_count = PageIndex::new(buf.get_u32());
-        Self { free_list_head, page_count }
+        let free_list_head = PageIndex::deserialize_sync(buf);
+        let meta_page_head = PageIndex::deserialize_sync(buf);
+        let page_count = PageIndex::deserialize_sync(buf);
+        Self { free_list_head, meta_page_head, page_count }
     }
 }
 
 pub struct SingleFilePager {
+    path: PathBuf,
     storage: File<RAW_PAGE_SIZE>,
     page_count: AtomicU32,
+    meta_page_head: PageIndex,
     free_list: OnceCell<RwLock<Vec<PageIndex>>>,
     free_list_head: PageIndex,
 }
@@ -129,19 +134,28 @@ impl Pager for SingleFilePager {
 
 impl SingleFilePager {
     #[inline]
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
+
+    pub fn meta_page_reader(&self) -> MetaPageReader<'_, Self> {
+        MetaPageReader::new(self, self.meta_page_head)
+    }
+
+    #[inline]
     pub async fn open(path: impl AsRef<Path>) -> Result<SingleFilePager> {
-        let storage = File::open(path).await?;
+        let storage = File::open(&path).await?;
         Self::check_file_header(&storage).await?;
 
         let db_header = Self::read_database_header(&storage).await?;
 
-        Ok(Self::new(storage, db_header))
+        Ok(Self::new(path.as_ref(), storage, db_header))
     }
 
     // Create a new database file at the given path.
     #[inline]
     pub async fn create(path: impl AsRef<Path>) -> Result<SingleFilePager> {
-        let storage = File::create(path).await?;
+        let storage = File::create(&path).await?;
 
         let mut buf = [0; PAGE_SIZE];
         let file_header = FileHeader { magic: MAGIC, version: CURRENT_VERSION };
@@ -150,19 +164,22 @@ impl SingleFilePager {
 
         let db_header = PagerHeader {
             free_list_head: PageIndex::INVALID,
+            meta_page_head: PageIndex::INVALID,
             page_count: PageIndex::new(N_RESERVED_PAGES),
         };
         storage.write_at(DB_HEADER_START, buf).await?;
         storage.sync().await?;
 
-        Ok(Self::new(storage, db_header))
+        Ok(Self::new(path, storage, db_header))
     }
 
     #[inline]
-    fn new(storage: File<PAGE_SIZE>, db_header: PagerHeader) -> Self {
+    fn new(path: impl AsRef<Path>, storage: File<PAGE_SIZE>, db_header: PagerHeader) -> Self {
         Self {
+            path: path.as_ref().to_path_buf(),
             storage,
             page_count: AtomicU32::new(db_header.page_count.as_u32()),
+            meta_page_head: db_header.meta_page_head,
             free_list_head: db_header.free_list_head,
             free_list: OnceCell::new(),
         }

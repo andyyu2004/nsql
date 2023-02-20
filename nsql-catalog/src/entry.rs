@@ -15,6 +15,12 @@ impl Oid {
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct EntryName(SmolStr);
 
+impl EntryName {
+    pub(crate) fn as_str(&self) -> &str {
+        self.0.as_str()
+    }
+}
+
 impl<S> From<S> for EntryName
 where
     S: AsRef<str>,

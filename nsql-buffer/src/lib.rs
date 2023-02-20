@@ -37,14 +37,14 @@ pub struct BufferPool<P> {
 }
 
 struct Inner<P> {
-    pager: P,
+    pager: Arc<P>,
     cache: RwLock<LruK<PageIndex, BufferHandle, Clock>>,
 }
 
 impl<P: Pager> BufferPool<P> {
     // Create a new buffer pool with the given pager implementation.
     // Returns the buffer pool and a future that must be polled to completion.
-    pub fn new(pager: P) -> Self {
+    pub fn new(pager: Arc<P>) -> Self {
         let max_memory_bytes = if cfg!(test) { 1024 * 1024 } else { 128 * 1024 * 1024 };
         let max_pages = max_memory_bytes / PAGE_SIZE;
 
