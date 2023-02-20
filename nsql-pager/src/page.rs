@@ -183,6 +183,7 @@ impl DerefMut for WriteablePageView<'_> {
         unsafe { &mut *(self.bytes[CHECKSUM_LENGTH..].as_mut_ptr() as *mut [u8; PAGE_SIZE]) }
     }
 }
+
 fn checksum(data: impl AsRef<[u8]>) -> u64 {
     crc::Crc::<u64>::new(&crc::CRC_64_WE).checksum(data.as_ref())
 }

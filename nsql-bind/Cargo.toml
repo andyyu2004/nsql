@@ -6,3 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+anyhow = "1.0.69"
+nsql-catalog = { version = "0.1.0", path = "../nsql-catalog" }
+nsql-ir = { version = "0.1.0", path = "../nsql-ir" }
+nsql-parse = { version = "0.1.0", path = "../nsql-parse" }

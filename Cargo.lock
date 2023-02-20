@@ -788,19 +788,30 @@ name = "nsql"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "nsql-bind",
  "nsql-buffer",
  "nsql-catalog",
  "nsql-error",
  "nsql-pager",
+ "nsql-parse",
  "nsql-storage",
+ "nsql-test",
  "nsql-transaction",
  "sqllogictest",
+ "thiserror",
  "tokio",
+ "walkdir",
 ]
 
 [[package]]
 name = "nsql-bind"
 version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "nsql-catalog",
+ "nsql-ir",
+ "nsql-parse",
+]
 
 [[package]]
 name = "nsql-btree"

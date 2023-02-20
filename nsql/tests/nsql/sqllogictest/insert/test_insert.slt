@@ -1,0 +1,3 @@
+statement ok
+CREATE TABLE xs(x int)
+

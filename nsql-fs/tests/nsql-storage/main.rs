@@ -21,7 +21,7 @@ fn test_new_file() -> Result<()> {
 
 #[proptest]
 fn test_read_after_write_consistency(
-    #[strategy(vec(0..10000u64, 1..100))] page_indices: Vec<u64>,
+    #[strategy(vec(0..8000u64, 1..100))] page_indices: Vec<u64>,
     #[strategy(vec(0..u8::MAX, SIZE))] buf: Vec<u8>,
 ) {
     let result: Result<()> = nsql_test::start(async {

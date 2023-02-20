@@ -3,21 +3,53 @@
 use std::path::Path;
 use std::sync::Arc;
 
-use nsql_buffer::{BufferPool, Result};
+use nsql_bind::Binder;
+use nsql_buffer::BufferPool;
 use nsql_catalog::Catalog;
 use nsql_pager::{InMemoryPager, Pager, SingleFilePager};
 use nsql_storage::Storage;
 use nsql_transaction::TransactionManager;
+use thiserror::Error;
 
-pub type Error = std::io::Error;
+pub type Result<T, E = Error> = std::result::Result<T, E>;
+
+#[derive(Debug, Error)]
+pub enum Error {
+    #[error(transparent)]
+    Parse(#[from] nsql_parse::Error),
+    #[error("{0}")]
+    Io(nsql_error::Report<std::io::Error>),
+    #[error(transparent)]
+    Bind(#[from] nsql_bind::Error),
+}
+
+impl From<nsql_error::Report<std::io::Error>> for Error {
+    fn from(err: nsql_error::Report<std::io::Error>) -> Self {
+        Self::Io(err)
+    }
+}
 
 #[derive(Clone)]
 pub struct Nsql<P> {
     inner: Arc<Shared<P>>,
 }
 
+pub struct MaterializedQueryOutput {}
+
 impl<P: Pager> Nsql<P> {
-    pub fn query(&self, query: &str) -> Result<()> {
+    pub fn query(&self, query: &str) -> Result<MaterializedQueryOutput> {
+        let statements = nsql_parse::parse_statements(query)?;
+        if statements.is_empty() {
+            return Ok(MaterializedQueryOutput {});
+        }
+
+        if statements.len() > 1 {
+            todo!();
+        }
+
+        let statement = &statements[0];
+        let binder = Binder::new(&self.inner.catalog);
+        binder.bind(statement)?;
         todo!()
     }
 }
