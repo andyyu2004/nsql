@@ -12,7 +12,7 @@ pub struct File<const N: usize> {
     file: fs::File,
 }
 
-pub type Result<T, E = std::io::Error> = nsql_error::Result<T, E>;
+pub type Result<T, E = std::io::Error> = std::result::Result<T, E>;
 
 // FIXME we could probably use fixed iouring buffers
 impl<const N: usize> File<N> {

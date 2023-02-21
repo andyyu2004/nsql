@@ -1,4 +1,4 @@
-use nsql_catalog::{Catalog, CreateSchemaInfo};
+use nsql_catalog::{Catalog, CreateSchemaInfo, Schema};
 use nsql_pager::{MetaPageReader, MetaPageWriter, Pager};
 use nsql_serde::{Deserialize, Serialize};
 use nsql_transaction::Transaction;
@@ -24,7 +24,7 @@ impl<P: Pager> Checkpointer<'_, P> {
         let meta_page = self.pager.alloc_page().await?;
         let mut writer = MetaPageWriter::new(self.pager, meta_page);
 
-        let schemas = match catalog.schemas(tx) {
+        let schemas = match catalog.all::<Schema>(tx) {
             Ok(schemas) => schemas,
             Err(_) => todo!(),
         };
@@ -50,7 +50,7 @@ impl<P: Pager> Checkpointer<'_, P> {
         let catalog = Catalog::default();
         let schemas = Vec::<CreateSchemaInfo>::deserialize(reader).await?;
         for schema in schemas {
-            catalog.create_schema(tx, schema)?;
+            catalog.create::<Schema>(tx, schema)?;
         }
         Ok(catalog)
     }

@@ -3,12 +3,24 @@
 mod checkpoint;
 mod wal;
 
+use std::io;
 use std::sync::Arc;
 
-use nsql_pager::{Pager, Result, SingleFilePager};
+use nsql_pager::{Pager, SingleFilePager};
 use nsql_transaction::Transaction;
+use thiserror::Error;
 
 use self::checkpoint::{Checkpoint, Checkpointer};
+
+pub type Result<T, E = Error> = std::result::Result<T, E>;
+
+#[derive(Debug, Error)]
+pub enum Error {
+    #[error(transparent)]
+    Catalog(#[from] nsql_catalog::Error),
+    #[error(transparent)]
+    Fs(#[from] io::Error),
+}
 
 pub struct Storage<P> {
     pager: Arc<P>,

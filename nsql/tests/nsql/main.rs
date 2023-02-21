@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use nsql::Nsql;
-use nsql_pager::Pager;
+use nsql_pager::{InMemoryPager, Pager};
 use sqllogictest::{AsyncDB, ColumnType, DBOutput, Runner, TestError};
 use walkdir::WalkDir;
 
@@ -28,12 +28,8 @@ fn nsql_sqllogictest() -> nsql::Result<(), Vec<TestError>> {
     })
 }
 
-pub struct TestDb<P>(Nsql<P>);
-
-// FIXME this isn't actually safe of course, but I don't think `AsyncDb` current actually uses the fact
-// that `AsyncDB: Send` so it's fine for now. i.e. the crate will still compile with the `Send` bound removed.
-// It might be one day that we have to get a sync implementation of `SingleFilePager` anyway for other reasons
-unsafe impl<P: Pager> Send for TestDb<P> {}
+// FIXME we need to test the single file pager too, but it's currently not `Send` due to `tokio_uring::File` not being send
+pub struct TestDb(Nsql<InMemoryPager>);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Type {}
@@ -49,13 +45,13 @@ impl ColumnType for Type {
 }
 
 #[async_trait]
-impl<P: Pager> AsyncDB for TestDb<P> {
+impl AsyncDB for TestDb {
     type Error = nsql::Error;
 
     type ColumnType = Type;
 
     async fn run(&mut self, sql: &str) -> Result<DBOutput<Self::ColumnType>, Self::Error> {
-        self.0.query(sql)?;
+        self.0.query(sql).await?;
         todo!()
     }
 

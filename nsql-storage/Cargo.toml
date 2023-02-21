@@ -10,3 +10,4 @@ nsql-catalog = { path = "../nsql-catalog" }
 nsql-pager = { path = "../nsql-pager" }
 nsql-serde = { path = "../nsql-serde" }
 nsql-transaction = { path = "../nsql-transaction" }
+thiserror = "1.0.38"

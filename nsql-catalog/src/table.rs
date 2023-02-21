@@ -10,18 +10,18 @@ use crate::set::CatalogSet;
 use crate::{Catalog, CatalogEntity, EntryName};
 
 #[derive(Clone)]
-pub struct Schema {
+pub struct Table {
     name: EntryName,
 }
 
 #[derive(Debug)]
-pub struct CreateSchemaInfo {
+pub struct CreateTableInfo {
     name: EntryName,
 }
 
-impl Schema {
+impl Table {
     #[inline]
-    pub(crate) fn new(info: CreateSchemaInfo) -> Self {
+    pub(crate) fn new(info: CreateTableInfo) -> Self {
         Self { name: info.name }
     }
 
@@ -31,7 +31,7 @@ impl Schema {
     }
 }
 
-impl Serialize for Schema {
+impl Serialize for Table {
     type Error = std::io::Error;
 
     async fn serialize(&self, ser: &mut dyn Serializer<'_>) -> Result<(), Self::Error> {
@@ -39,28 +39,26 @@ impl Serialize for Schema {
     }
 }
 
-impl Deserialize for CreateSchemaInfo {
+impl Deserialize for CreateTableInfo {
     async fn deserialize(de: &mut dyn Deserializer<'_>) -> Result<Self, Self::Error> {
         let s = de.read_str().await?;
         Ok(Self { name: EntryName::from(s.as_str()) })
     }
 }
 
-impl Sealed for Schema {
+impl Sealed for Table {
     fn catalog_set(catalog: &Catalog) -> &RwLock<CatalogSet<Self>> {
-        &catalog.schemas
+        &catalog.tables
     }
 }
 
-impl CatalogEntity for Schema {
-    type CreateInfo = CreateSchemaInfo;
+impl CatalogEntity for Table {
+    type CreateInfo = CreateTableInfo;
 
-    #[inline]
     fn new(info: Self::CreateInfo) -> Self {
         Self { name: info.name }
     }
 
-    #[inline]
     fn name(&self) -> &EntryName {
         &self.name
     }

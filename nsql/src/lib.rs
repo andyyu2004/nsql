@@ -17,16 +17,12 @@ pub type Result<T, E = Error> = std::result::Result<T, E>;
 pub enum Error {
     #[error(transparent)]
     Parse(#[from] nsql_parse::Error),
-    #[error("{0}")]
-    Io(nsql_error::Report<std::io::Error>),
+    #[error(transparent)]
+    Storage(#[from] nsql_storage::Error),
     #[error(transparent)]
     Bind(#[from] nsql_bind::Error),
-}
-
-impl From<nsql_error::Report<std::io::Error>> for Error {
-    fn from(err: nsql_error::Report<std::io::Error>) -> Self {
-        Self::Io(err)
-    }
+    #[error(transparent)]
+    Io(#[from] std::io::Error),
 }
 
 #[derive(Clone)]
@@ -37,7 +33,8 @@ pub struct Nsql<P> {
 pub struct MaterializedQueryOutput {}
 
 impl<P: Pager> Nsql<P> {
-    pub fn query(&self, query: &str) -> Result<MaterializedQueryOutput> {
+    pub async fn query(&self, query: &str) -> Result<MaterializedQueryOutput> {
+        let tx = self.inner.txm.begin().await;
         let statements = nsql_parse::parse_statements(query)?;
         if statements.is_empty() {
             return Ok(MaterializedQueryOutput {});
@@ -48,8 +45,10 @@ impl<P: Pager> Nsql<P> {
         }
 
         let statement = &statements[0];
-        let binder = Binder::new(&self.inner.catalog);
+        let binder = Binder::new(&self.inner.catalog, &tx);
         binder.bind(statement)?;
+        tx.commit().await;
+
         todo!()
     }
 }
@@ -84,7 +83,7 @@ impl Nsql<SingleFilePager> {
         let storage = Storage::new(Arc::clone(&pager));
         let buffer_pool = BufferPool::new(pager);
 
-        let tx = txm.begin();
+        let tx = txm.begin().await;
         let checkpoint = storage.load(&tx).await?;
         tx.commit().await;
         let catalog = checkpoint.catalog;

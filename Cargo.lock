@@ -791,7 +791,6 @@ dependencies = [
  "nsql-bind",
  "nsql-buffer",
  "nsql-catalog",
- "nsql-error",
  "nsql-pager",
  "nsql-parse",
  "nsql-storage",
@@ -807,10 +806,12 @@ dependencies = [
 name = "nsql-bind"
 version = "0.1.0"
 dependencies = [
- "anyhow",
  "nsql-catalog",
  "nsql-ir",
  "nsql-parse",
+ "nsql-transaction",
+ "smol_str",
+ "thiserror",
 ]
 
 [[package]]
@@ -840,6 +841,7 @@ dependencies = [
  "nsql-transaction",
  "parking_lot",
  "smol_str",
+ "thiserror",
  "tracing",
 ]
 
@@ -855,7 +857,6 @@ name = "nsql-fs"
 version = "0.1.0"
 dependencies = [
  "libc",
- "nsql-error",
  "nsql-test",
  "proptest",
  "test-strategy",
@@ -865,13 +866,15 @@ dependencies = [
 [[package]]
 name = "nsql-ir"
 version = "0.1.0"
+dependencies = [
+ "nsql-catalog",
+]
 
 [[package]]
 name = "nsql-pager"
 version = "0.1.0"
 dependencies = [
  "crc",
- "nsql-error",
  "nsql-fs",
  "nsql-serde",
  "nsql-test",
@@ -895,7 +898,6 @@ name = "nsql-serde"
 version = "0.1.0"
 dependencies = [
  "bytes",
- "nsql-error",
  "smol_str",
  "tokio",
 ]
@@ -908,6 +910,7 @@ dependencies = [
  "nsql-pager",
  "nsql-serde",
  "nsql-transaction",
+ "thiserror",
 ]
 
 [[package]]

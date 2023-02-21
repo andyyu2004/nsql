@@ -1,20 +1,36 @@
 #![deny(rust_2018_idioms)]
 
-pub use anyhow::Error;
-use anyhow::{bail, ensure};
-use nsql_catalog::Catalog;
+use nsql_catalog::{Catalog, CatalogEntity, Schema};
 use nsql_ir as ir;
 use nsql_parse::ast::{self, HiveDistributionStyle};
+use nsql_transaction::Transaction;
+use smol_str::SmolStr;
+use thiserror::Error;
 
-pub struct Binder<'c> {
-    catalog: &'c Catalog,
+pub struct Binder<'a> {
+    catalog: &'a Catalog,
+    tx: &'a Transaction,
+}
+
+#[derive(Debug, Error)]
+pub enum Error {
+    #[error("unimplemented: {0}")]
+    Unimplemented(&'static str),
+}
+
+macro_rules! ensure {
+    ($cond:expr) => {
+        if !$cond {
+            return Err($crate::Error::Unimplemented(stringify!($cond)).into());
+        }
+    };
 }
 
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 
-impl<'c> Binder<'c> {
-    pub fn new(catalog: &'c Catalog) -> Self {
-        Self { catalog }
+impl<'a> Binder<'a> {
+    pub fn new(catalog: &'a Catalog, tx: &'a Transaction) -> Self {
+        Self { catalog, tx }
     }
 
     pub fn bind(&self, stmt: &ast::Statement) -> Result<ir::Statement> {
@@ -65,9 +81,40 @@ impl<'c> Binder<'c> {
                 ensure!(collation.is_none());
                 ensure!(on_commit.is_none());
                 ensure!(on_cluster.is_none());
-                ir::Statement::CreateTable { name, columns }
+                let name = self.bind_name(name)?;
+                let columns = todo!();
+                Ok(ir::Statement::CreateTable { name, columns })
             }
-            _ => bail!("not implemented"),
+            _ => return Err(Error::Unimplemented("")),
         }
     }
+
+    fn bind_name<T: CatalogEntity>(&self, name: &ast::ObjectName) -> Result<ir::Oid<T>> {
+        let ident = self.lower_name(name)?;
+        match ident {
+            Ident::Qualified { schema, name } => {
+                self.catalog.find::<Schema>(self.tx, &schema);
+                todo!()
+            }
+            Ident::Unqualified { name } => todo!(),
+        }
+    }
+
+    fn lower_name(&self, name: &ast::ObjectName) -> Result<Ident> {
+        // FIXME naive impl for now
+        match &name.0[..] {
+            [] => unreachable!("empty name?"),
+            [name] => Ok(Ident::Unqualified { name: name.value.as_str().into() }),
+            [schema, name] => Ok(Ident::Qualified {
+                schema: schema.value.as_str().into(),
+                name: name.value.as_str().into(),
+            }),
+            [_, _, ..] => Err(Error::Unimplemented("x.y.z name"))?,
+        }
+    }
+}
+
+enum Ident {
+    Qualified { schema: SmolStr, name: SmolStr },
+    Unqualified { name: SmolStr },
 }

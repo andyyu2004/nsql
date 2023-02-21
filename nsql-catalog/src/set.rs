@@ -6,9 +6,9 @@ use nsql_transaction::{Transaction, Txid};
 use crate::entry::{EntryName, Oid};
 use crate::CatalogEntity;
 
-pub(crate) struct CatalogSet<T> {
-    entries: HashMap<Oid, VersionedEntry<T>>,
-    name_mapping: HashMap<EntryName, Oid>,
+pub struct CatalogSet<T> {
+    entries: HashMap<Oid<T>, VersionedEntry<T>>,
+    name_mapping: HashMap<EntryName, Oid<T>>,
 }
 
 impl<T> Default for CatalogSet<T> {
@@ -37,26 +37,29 @@ impl<T> VersionedEntry<T> {
     }
 }
 
+pub type EntriesIterator<'a, T: CatalogEntity + 'a> = impl Iterator<Item = Arc<T>> + 'a;
+
 impl<T: CatalogEntity> CatalogSet<T> {
-    pub(crate) fn entries<'a>(&'a self, tx: &'a Transaction) -> impl Iterator<Item = Arc<T>> + 'a {
+    pub(crate) fn entries<'a>(&'a self, tx: &'a Transaction) -> EntriesIterator<'a, T> {
         self.entries.values().flat_map(|entry| entry.version_for_tx(tx)).map(CatalogEntry::item)
     }
 
-    pub(crate) fn find(&self, tx: &Transaction, name: impl AsRef<str>) -> Option<Arc<T>> {
-        self.name_mapping
-            .get(name.as_ref())
-            .map(|oid| self.entries.get(oid).expect("mapping points to non-existent entry"))
-            .and_then(|entry| entry.version_for_tx(tx))
-            .map(CatalogEntry::item)
+    pub(crate) fn get(&self, tx: &Transaction, oid: Oid<T>) -> Option<Arc<T>> {
+        self.entries.get(&oid).and_then(|entry| entry.version_for_tx(tx)).map(CatalogEntry::item)
     }
 
-    pub(crate) fn insert(&mut self, tx: &Transaction, value: T) {
+    pub(crate) fn find(&self, tx: &Transaction, name: impl AsRef<str>) -> Option<Oid<T>> {
+        self.name_mapping.get(name.as_ref()).copied()
+    }
+
+    pub(crate) fn insert(&mut self, tx: &Transaction, value: T) -> Oid<T> {
         let oid = self.next_oid();
         self.name_mapping.insert(value.name().clone(), oid);
         self.entries.entry(oid).or_default().push_version(CatalogEntry::new(tx, value));
+        oid
     }
 
-    fn next_oid(&self) -> Oid {
+    fn next_oid(&self) -> Oid<T> {
         assert_eq!(self.entries.len(), self.name_mapping.len());
         Oid::new(self.entries.len() as u64)
     }

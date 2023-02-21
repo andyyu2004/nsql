@@ -9,7 +9,7 @@ impl TransactionManager {
         Self { current_txid: AtomicU64::new(0) }
     }
 
-    pub fn begin(&self) -> Transaction {
+    pub async fn begin(&self) -> Transaction {
         Transaction::new(self.next_txid())
     }
 }

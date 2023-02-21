@@ -5,7 +5,7 @@ edition = "2021"
 
 [dependencies]
 crc = "3.0"
-nsql-error = { path = "../nsql-error" }
+
 nsql-serde = { path = "../nsql-serde" }
 nsql-util = { path = "../nsql-util" }
 parking_lot = "0.12.1"
