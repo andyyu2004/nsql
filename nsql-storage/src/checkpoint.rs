@@ -1,4 +1,4 @@
-use nsql_catalog::{Catalog, CreateSchemaInfo, Schema};
+use nsql_catalog::{Catalog, Container, CreateSchemaInfo, Schema};
 use nsql_pager::{MetaPageReader, MetaPageWriter, Pager};
 use nsql_serde::{Deserialize, Serialize};
 use nsql_transaction::Transaction;
@@ -47,7 +47,7 @@ impl<P: Pager> Checkpointer<'_, P> {
         tx: &Transaction,
         reader: &mut MetaPageReader<'_, P>,
     ) -> Result<Catalog> {
-        let catalog = Catalog::default();
+        let catalog = Catalog::new(tx)?;
         let schemas = Vec::<CreateSchemaInfo>::deserialize(reader).await?;
         for schema in schemas {
             catalog.create::<Schema>(tx, schema)?;

@@ -1,5 +1,3 @@
-#![feature(never_type)]
-#![feature(type_alias_impl_trait)]
 #![feature(async_fn_in_trait)]
 #![allow(incomplete_features)]
 #![deny(rust_2018_idioms)]
@@ -11,13 +9,13 @@ mod table;
 
 use std::sync::Arc;
 
-use nsql_serde::{Deserialize, Serialize};
+use nsql_serde::Deserialize;
 use nsql_transaction::Transaction;
-use parking_lot::RwLock;
 use thiserror::Error;
 
-use self::entry::{EntryName, Oid};
-pub use self::schema::{CreateSchemaInfo, Schema};
+pub use self::entry::{Name, Oid};
+use self::private::CatalogEntity;
+pub use self::schema::{CreateSchemaInfo, Schema, SchemaEntity};
 use self::set::CatalogSet;
 pub use self::table::{CreateTableInfo, Table};
 
@@ -26,66 +24,111 @@ pub type Result<T, E = Error> = std::result::Result<T, E>;
 #[derive(Debug, Error)]
 pub enum Error {}
 
-#[derive(Default)]
+#[derive(Debug)]
 pub struct Catalog {
-    schemas: RwLock<CatalogSet<Schema>>,
-    tables: RwLock<CatalogSet<Table>>,
+    schemas: CatalogSet<Schema>,
 }
 
-pub trait CatalogEntity: private::Sealed + Serialize {
-    type CreateInfo: Deserialize;
-
-    fn new(info: Self::CreateInfo) -> Self;
-
-    fn name(&self) -> &EntryName;
-
-    #[inline]
-    fn insert(self, catalog: &Catalog, tx: &Transaction) -> Oid<Self> {
-        Self::catalog_set(catalog).write().insert(tx, self)
-    }
-
-    #[inline]
-    fn get(catalog: &Catalog, tx: &Transaction, oid: Oid<Self>) -> Option<Arc<Self>> {
-        Self::catalog_set(catalog).read().get(tx, oid)
-    }
-
-    #[inline]
-    fn find(catalog: &Catalog, tx: &Transaction, name: &str) -> Option<Oid<Self>> {
-        Self::catalog_set(catalog).read().find(tx, name)
-    }
-
-    #[inline]
-    fn all<'a>(catalog: &'a Catalog, tx: &'a Transaction) -> Vec<Arc<Self>> {
-        Self::catalog_set(catalog).read().entries(tx).collect()
-    }
-}
-
-pub(crate) mod private {
-    use parking_lot::RwLock;
-
-    use crate::set::CatalogSet;
-    use crate::Catalog;
-
-    pub trait Sealed: Sized {
-        fn catalog_set(catalog: &Catalog) -> &RwLock<CatalogSet<Self>>;
-    }
-}
+pub const DEFAULT_SCHEMA: &str = "main";
 
 impl Catalog {
-    pub fn create<T: CatalogEntity>(&self, tx: &Transaction, info: T::CreateInfo) -> Result<()> {
+    pub fn new(tx: &Transaction) -> Result<Self> {
+        let catalog = Self { schemas: Default::default() };
+        catalog.create::<Schema>(tx, CreateSchemaInfo { name: DEFAULT_SCHEMA.into() })?;
+        Ok(catalog)
+    }
+}
+
+impl Container for Catalog {}
+
+pub trait Entity {
+    fn desc() -> &'static str;
+
+    fn name(&self) -> &Name;
+}
+
+pub trait Container {
+    fn create<T: CatalogEntity<Container = Self>>(
+        &self,
+        tx: &Transaction,
+        info: T::CreateInfo,
+    ) -> Result<()> {
         T::new(info).insert(self, tx);
         Ok(())
     }
 
-    pub fn get<T: CatalogEntity>(&self, tx: &Transaction, oid: Oid<T>) -> Result<Option<Arc<T>>> {
+    fn get<T: CatalogEntity<Container = Self>>(
+        &self,
+        tx: &Transaction,
+        oid: Oid<T>,
+    ) -> Result<Option<Arc<T>>> {
         Ok(T::get(self, tx, oid))
     }
 
-    pub fn find<T: CatalogEntity>(&self, tx: &Transaction, name: &str) -> Result<Option<Oid<T>>> {
-        Ok(T::find(self, tx, name))
+    fn get_by_name<T: CatalogEntity<Container = Self>>(
+        &self,
+        tx: &Transaction,
+        name: impl AsRef<str>,
+    ) -> Result<Option<Arc<T>>> {
+        Ok(T::get_by_name(self, tx, name.as_ref()))
     }
 
-    pub fn all<'a, T: CatalogEntity>(&'a self, tx: &'a Transaction) -> Result<Vec<Arc<T>>> {
+    fn find<T: CatalogEntity<Container = Self>>(&self, name: &str) -> Result<Option<Oid<T>>> {
+        Ok(T::find(self, name))
+    }
+
+    fn all<'a, T: CatalogEntity<Container = Self>>(
+        &'a self,
+        tx: &'a Transaction,
+    ) -> Result<Vec<Arc<T>>> {
         Ok(T::all(self, tx))
+    }
+}
+
+pub(crate) mod private {
+    use nsql_serde::Serialize;
+
+    use super::*;
+
+    /// This trait is sealed and cannot be implemented for types outside of this crate.
+    /// These method should also not be visible to users of this crate.
+    pub trait CatalogEntity: Entity + Serialize + Sized {
+        type Container;
+
+        type CreateInfo: Deserialize;
+
+        /// extract the `CatalogSet` from the `container` for `Self`
+        fn catalog_set(container: &Self::Container) -> &CatalogSet<Self>;
+
+        fn new(info: Self::CreateInfo) -> Self;
+
+        #[inline]
+        fn insert(self, container: &Self::Container, tx: &Transaction) -> Oid<Self> {
+            Self::catalog_set(container).insert(tx, self)
+        }
+
+        #[inline]
+        fn get(container: &Self::Container, tx: &Transaction, oid: Oid<Self>) -> Option<Arc<Self>> {
+            Self::catalog_set(container).get(tx, oid)
+        }
+
+        #[inline]
+        fn get_by_name(
+            container: &Self::Container,
+            tx: &Transaction,
+            name: &str,
+        ) -> Option<Arc<Self>> {
+            Self::catalog_set(container).get_by_name(tx, name)
+        }
+
+        #[inline]
+        fn find(container: &Self::Container, name: &str) -> Option<Oid<Self>> {
+            Self::catalog_set(container).find(name)
+        }
+
+        #[inline]
+        fn all(container: &Self::Container, tx: &Transaction) -> Vec<Arc<Self>> {
+            Self::catalog_set(container).entries(tx)
+        }
     }
 }

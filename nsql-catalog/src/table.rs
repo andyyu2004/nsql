@@ -1,34 +1,17 @@
-use std::sync::Arc;
-
 use nsql_serde::{Deserialize, Deserializer, Serialize, Serializer};
-use nsql_transaction::Transaction;
-use parking_lot::RwLock;
 
-use crate::entry::Oid;
-use crate::private::Sealed;
+use crate::private::CatalogEntity;
 use crate::set::CatalogSet;
-use crate::{Catalog, CatalogEntity, EntryName};
+use crate::{Entity, Name, Schema};
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Table {
-    name: EntryName,
+    name: Name,
 }
 
 #[derive(Debug)]
 pub struct CreateTableInfo {
-    name: EntryName,
-}
-
-impl Table {
-    #[inline]
-    pub(crate) fn new(info: CreateTableInfo) -> Self {
-        Self { name: info.name }
-    }
-
-    #[inline]
-    pub fn name(&self) -> &EntryName {
-        &self.name
-    }
+    name: Name,
 }
 
 impl Serialize for Table {
@@ -42,24 +25,30 @@ impl Serialize for Table {
 impl Deserialize for CreateTableInfo {
     async fn deserialize(de: &mut dyn Deserializer<'_>) -> Result<Self, Self::Error> {
         let s = de.read_str().await?;
-        Ok(Self { name: EntryName::from(s.as_str()) })
+        Ok(Self { name: Name::from(s.as_str()) })
     }
 }
 
-impl Sealed for Table {
-    fn catalog_set(catalog: &Catalog) -> &RwLock<CatalogSet<Self>> {
-        &catalog.tables
+impl Entity for Table {
+    fn name(&self) -> &Name {
+        &self.name
+    }
+
+    fn desc() -> &'static str {
+        "table"
     }
 }
 
 impl CatalogEntity for Table {
+    type Container = Schema;
+
     type CreateInfo = CreateTableInfo;
+
+    fn catalog_set(container: &Self::Container) -> &CatalogSet<Self> {
+        &container.tables
+    }
 
     fn new(info: Self::CreateInfo) -> Self {
         Self { name: info.name }
-    }
-
-    fn name(&self) -> &EntryName {
-        &self.name
     }
 }

@@ -1,13 +1,19 @@
 use std::borrow::Borrow;
+use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::marker::PhantomData;
 
 use smol_str::SmolStr;
 
-#[derive(Debug)]
 pub struct Oid<T: ?Sized> {
     oid: u64,
     marker: PhantomData<fn() -> T>,
+}
+
+impl<T: ?Sized> fmt::Debug for Oid<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Oid<{}>({})", std::any::type_name::<T>(), self.oid)
+    }
 }
 
 impl<T: ?Sized> Copy for Oid<T> {}
@@ -40,15 +46,21 @@ impl<T> Oid<T> {
 
 /// Lowercase name of a catalog entry (for case insensitive lookup)
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub struct EntryName(SmolStr);
+pub struct Name(SmolStr);
 
-impl EntryName {
+impl Name {
     pub(crate) fn as_str(&self) -> &str {
         self.0.as_str()
     }
 }
 
-impl<S> From<S> for EntryName
+impl fmt::Display for Name {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl<S> From<S> for Name
 where
     S: AsRef<str>,
 {
@@ -57,7 +69,7 @@ where
     }
 }
 
-impl Borrow<str> for EntryName {
+impl Borrow<str> for Name {
     fn borrow(&self) -> &str {
         self.0.as_ref()
     }

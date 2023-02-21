@@ -1,6 +1,10 @@
 #![deny(rust_2018_idioms)]
 
-use nsql_catalog::{Catalog, CatalogEntity, Schema};
+use std::fmt;
+
+use nsql_catalog::{
+    Catalog, Container, Entity, Name, Oid, Schema, SchemaEntity, Table, DEFAULT_SCHEMA,
+};
 use nsql_ir as ir;
 use nsql_parse::ast::{self, HiveDistributionStyle};
 use nsql_transaction::Transaction;
@@ -15,13 +19,22 @@ pub struct Binder<'a> {
 #[derive(Debug, Error)]
 pub enum Error {
     #[error("unimplemented: {0}")]
-    Unimplemented(&'static str),
+    Unimplemented(String),
+
+    #[error(transparent)]
+    Catalog(#[from] nsql_catalog::Error),
+
+    #[error("unbound {kind} in `{ident}`")]
+    Unbound { kind: &'static str, ident: Ident },
+
+    #[error("{kind} already exists: `{ident}`")]
+    AlreadyExists { kind: &'static str, ident: Ident },
 }
 
 macro_rules! ensure {
     ($cond:expr) => {
         if !$cond {
-            return Err($crate::Error::Unimplemented(stringify!($cond)).into());
+            return Err($crate::Error::Unimplemented(stringify!($cond).into()).into());
         }
     };
 }
@@ -45,7 +58,7 @@ impl<'a> Binder<'a> {
                 columns,
                 constraints,
                 hive_distribution,
-                hive_formats,
+                hive_formats: _,
                 table_properties,
                 with_options,
                 file_format,
@@ -67,7 +80,6 @@ impl<'a> Binder<'a> {
                 ensure!(!if_not_exists);
                 ensure!(constraints.is_empty());
                 ensure!(*hive_distribution == HiveDistributionStyle::NONE);
-                ensure!(hive_formats.is_none());
                 ensure!(table_properties.is_empty());
                 ensure!(with_options.is_empty());
                 ensure!(file_format.is_none());
@@ -81,22 +93,75 @@ impl<'a> Binder<'a> {
                 ensure!(collation.is_none());
                 ensure!(on_commit.is_none());
                 ensure!(on_cluster.is_none());
-                let name = self.bind_name(name)?;
-                let columns = todo!();
-                Ok(ir::Statement::CreateTable { name, columns })
+
+                let ident = self.lower_name(name)?;
+                match self.bind_ident::<Table>(&ident) {
+                    Ok(_oid) => {
+                        Err(Error::AlreadyExists { kind: Table::desc(), ident: ident.clone() })
+                    }
+                    Err(_) => {
+                        let schema = self.bind_schema(&ident)?;
+                        let columns = self.lower_columns(columns)?;
+                        Ok(ir::Statement::CreateTable { schema, name: ident.name(), columns })
+                    }
+                }
             }
-            _ => return Err(Error::Unimplemented("")),
+            _ => Err(Error::Unimplemented("unimplemented stmt".into())),
         }
     }
 
-    fn bind_name<T: CatalogEntity>(&self, name: &ast::ObjectName) -> Result<ir::Oid<T>> {
+    fn lower_columns(&self, columns: &[ast::ColumnDef]) -> Result<Vec<ir::ColumnDef>> {
+        columns.iter().map(|c| self.lower_column(c)).collect()
+    }
+
+    fn lower_column(&self, column: &ast::ColumnDef) -> Result<ir::ColumnDef> {
+        Ok(ir::ColumnDef {
+            name: column.name.value.as_str().into(),
+            ty: self.lower_ty(&column.data_type)?,
+        })
+    }
+
+    fn lower_ty(&self, ty: &ast::DataType) -> Result<ir::Ty> {
+        match ty {
+            ast::DataType::Int(width) if width.is_none() => Ok(ir::Ty::Int),
+            ty => Err(Error::Unimplemented(format!("type {ty:?}")))?,
+        }
+    }
+
+    fn bind_name<T: SchemaEntity>(&self, name: &ast::ObjectName) -> Result<Oid<T>> {
         let ident = self.lower_name(name)?;
+        self.bind_ident(&ident)
+    }
+
+    fn bind_schema(&self, ident: &Ident) -> Result<Oid<Schema>> {
+        match ident {
+            Ident::Qualified { schema, .. } => self
+                .catalog
+                .find::<Schema>(schema.as_str())?
+                .ok_or_else(|| Error::Unbound { kind: Schema::desc(), ident: ident.clone() }),
+            Ident::Unqualified { name } => self.bind_schema(&Ident::Qualified {
+                schema: DEFAULT_SCHEMA.into(),
+                name: name.clone(),
+            }),
+        }
+    }
+
+    fn bind_ident<T: SchemaEntity>(&self, ident: &Ident) -> Result<Oid<T>> {
         match ident {
             Ident::Qualified { schema, name } => {
-                self.catalog.find::<Schema>(self.tx, &schema);
-                todo!()
+                let schema = self
+                    .catalog
+                    .get_by_name::<Schema>(self.tx, schema.as_str())?
+                    .ok_or_else(|| Error::Unbound { kind: Schema::desc(), ident: ident.clone() })?;
+
+                schema
+                    .find(name)?
+                    .ok_or_else(|| Error::Unbound { kind: T::desc(), ident: ident.clone() })
             }
-            Ident::Unqualified { name } => todo!(),
+            Ident::Unqualified { name } => self.bind_ident(&Ident::Qualified {
+                schema: DEFAULT_SCHEMA.into(),
+                name: name.clone(),
+            }),
         }
     }
 
@@ -109,12 +174,38 @@ impl<'a> Binder<'a> {
                 schema: schema.value.as_str().into(),
                 name: name.value.as_str().into(),
             }),
-            [_, _, ..] => Err(Error::Unimplemented("x.y.z name"))?,
+            [_, _, ..] => Err(Error::Unimplemented("x.y.z name".into()))?,
         }
     }
 }
 
-enum Ident {
+#[derive(Debug, Clone)]
+pub enum Ident {
     Qualified { schema: SmolStr, name: SmolStr },
     Unqualified { name: SmolStr },
+}
+
+impl Ident {
+    pub fn schema(&self) -> Option<Name> {
+        match self {
+            Ident::Qualified { schema, .. } => Some(schema.as_str().into()),
+            Ident::Unqualified { .. } => None,
+        }
+    }
+
+    pub fn name(&self) -> Name {
+        match self {
+            Ident::Qualified { name, .. } => name.as_str().into(),
+            Ident::Unqualified { name } => name.as_str().into(),
+        }
+    }
+}
+
+impl fmt::Display for Ident {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Ident::Qualified { schema, name: object } => write!(f, "{schema}.{object}"),
+            Ident::Unqualified { name } => write!(f, "{name}"),
+        }
+    }
 }

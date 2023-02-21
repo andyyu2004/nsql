@@ -1,34 +1,30 @@
-use std::sync::Arc;
-
 use nsql_serde::{Deserialize, Deserializer, Serialize, Serializer};
-use nsql_transaction::Transaction;
-use parking_lot::RwLock;
 
-use crate::entry::Oid;
-use crate::private::Sealed;
+use crate::private::CatalogEntity;
 use crate::set::CatalogSet;
-use crate::{Catalog, CatalogEntity, EntryName};
+use crate::{Catalog, Container, Entity, Name, Table};
 
-#[derive(Clone)]
+#[derive(Debug)]
 pub struct Schema {
-    name: EntryName,
+    name: Name,
+    pub(crate) tables: CatalogSet<Table>,
+}
+
+pub trait SchemaEntity: CatalogEntity<Container = Schema> {}
+
+impl<T: CatalogEntity<Container = Schema>> SchemaEntity for T {}
+
+impl Container for Schema {}
+
+pub(crate) mod private {
+    use super::*;
+
+    pub trait SchemaEntity: Entity + Sized {}
 }
 
 #[derive(Debug)]
 pub struct CreateSchemaInfo {
-    name: EntryName,
-}
-
-impl Schema {
-    #[inline]
-    pub(crate) fn new(info: CreateSchemaInfo) -> Self {
-        Self { name: info.name }
-    }
-
-    #[inline]
-    pub fn name(&self) -> &EntryName {
-        &self.name
-    }
+    pub name: Name,
 }
 
 impl Serialize for Schema {
@@ -42,26 +38,34 @@ impl Serialize for Schema {
 impl Deserialize for CreateSchemaInfo {
     async fn deserialize(de: &mut dyn Deserializer<'_>) -> Result<Self, Self::Error> {
         let s = de.read_str().await?;
-        Ok(Self { name: EntryName::from(s.as_str()) })
-    }
-}
-
-impl Sealed for Schema {
-    fn catalog_set(catalog: &Catalog) -> &RwLock<CatalogSet<Self>> {
-        &catalog.schemas
+        Ok(Self { name: Name::from(s.as_str()) })
     }
 }
 
 impl CatalogEntity for Schema {
+    type Container = Catalog;
+
     type CreateInfo = CreateSchemaInfo;
 
     #[inline]
-    fn new(info: Self::CreateInfo) -> Self {
-        Self { name: info.name }
+    fn catalog_set(catalog: &Catalog) -> &CatalogSet<Self> {
+        &catalog.schemas
     }
 
     #[inline]
-    fn name(&self) -> &EntryName {
+    fn new(info: Self::CreateInfo) -> Self {
+        Self { name: info.name, tables: Default::default() }
+    }
+}
+
+impl Entity for Schema {
+    #[inline]
+    fn desc() -> &'static str {
+        "schema"
+    }
+
+    #[inline]
+    fn name(&self) -> &Name {
         &self.name
     }
 }

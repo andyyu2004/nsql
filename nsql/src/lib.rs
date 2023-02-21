@@ -22,6 +22,8 @@ pub enum Error {
     #[error(transparent)]
     Bind(#[from] nsql_bind::Error),
     #[error(transparent)]
+    Catalog(#[from] nsql_catalog::Error),
+    #[error(transparent)]
     Io(#[from] std::io::Error),
 }
 
@@ -41,12 +43,13 @@ impl<P: Pager> Nsql<P> {
         }
 
         if statements.len() > 1 {
-            todo!();
+            todo!("multiple statements");
         }
 
-        let statement = &statements[0];
+        let stmt = &statements[0];
         let binder = Binder::new(&self.inner.catalog, &tx);
-        binder.bind(statement)?;
+        let bound_stmt = binder.bind(stmt)?;
+        dbg!(bound_stmt);
         tx.commit().await;
 
         todo!()
@@ -67,12 +70,17 @@ struct Shared<P> {
 }
 
 impl Nsql<InMemoryPager> {
-    pub fn mem() -> Self {
+    pub async fn mem() -> Result<Self> {
         let txm = TransactionManager::default();
         let pager = Arc::new(InMemoryPager::default());
         let storage = Storage::new(Arc::clone(&pager));
         let buffer_pool = BufferPool::new(pager);
-        Self::new(Shared { storage, buffer_pool, txm, catalog: Catalog::default() })
+
+        let tx = txm.begin().await;
+        let catalog = Catalog::new(&tx)?;
+        tx.commit().await;
+
+        Ok(Self::new(Shared { storage, buffer_pool, txm, catalog }))
     }
 }
 

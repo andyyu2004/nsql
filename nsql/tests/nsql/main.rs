@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use nsql::Nsql;
-use nsql_pager::{InMemoryPager, Pager};
+use nsql_pager::InMemoryPager;
 use sqllogictest::{AsyncDB, ColumnType, DBOutput, Runner, TestError};
 use walkdir::WalkDir;
 
@@ -13,7 +13,7 @@ use walkdir::WalkDir;
 fn nsql_sqllogictest() -> nsql::Result<(), Vec<TestError>> {
     nsql_test::start(async {
         let mut errors = vec![];
-        let db = TestDb(Nsql::mem());
+        let db = TestDb(Nsql::mem().await.unwrap());
         let mut tester = Runner::new(db);
         let test_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/nsql/sqllogictest");
         for entry in WalkDir::new(test_path) {
@@ -24,7 +24,8 @@ fn nsql_sqllogictest() -> nsql::Result<(), Vec<TestError>> {
                 }
             }
         }
-        Ok(())
+
+        if !errors.is_empty() { Err(errors) } else { Ok(()) }
     })
 }
 

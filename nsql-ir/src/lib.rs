@@ -1,15 +1,19 @@
 #![deny(rust_2018_idioms)]
 
-use std::marker::PhantomData;
+use nsql_catalog::{Name, Oid, Schema};
 
-use nsql_catalog::{CatalogEntity, Table};
-
+#[derive(Debug)]
 pub enum Statement {
-    CreateTable { name: Oid<Table>, columns: Vec<ColumnDef> },
+    CreateTable { schema: Oid<Schema>, name: Name, columns: Vec<ColumnDef> },
 }
 
-pub struct Oid<T: CatalogEntity> {
-    phantom: PhantomData<fn() -> T>,
+#[derive(Debug)]
+pub struct ColumnDef {
+    pub name: Name,
+    pub ty: Ty,
 }
 
-pub struct ColumnDef {}
+#[derive(Debug)]
+pub enum Ty {
+    Int,
+}
