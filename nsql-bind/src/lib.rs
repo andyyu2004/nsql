@@ -3,7 +3,8 @@
 use std::fmt;
 
 use nsql_catalog::{
-    Catalog, Container, Entity, Name, Oid, Schema, SchemaEntity, Table, DEFAULT_SCHEMA,
+    Catalog, Container, CreateColumnInfo, CreateTableInfo, Entity, Name, Oid, Schema, SchemaEntity,
+    Table, Ty, DEFAULT_SCHEMA,
 };
 use nsql_ir as ir;
 use nsql_parse::ast::{self, HiveDistributionStyle};
@@ -46,7 +47,7 @@ impl<'a> Binder<'a> {
         Self { catalog, tx }
     }
 
-    pub fn bind(&self, stmt: &ast::Statement) -> Result<ir::Statement> {
+    pub fn bind(&self, stmt: &ast::Statement) -> Result<ir::Stmt> {
         match stmt {
             ast::Statement::CreateTable {
                 or_replace,
@@ -102,7 +103,8 @@ impl<'a> Binder<'a> {
                     Err(_) => {
                         let schema = self.bind_schema(&ident)?;
                         let columns = self.lower_columns(columns)?;
-                        Ok(ir::Statement::CreateTable { schema, name: ident.name(), columns })
+                        let info = CreateTableInfo { name: ident.name(), columns };
+                        Ok(ir::Stmt::CreateTable { schema, info })
                     }
                 }
             }
@@ -110,27 +112,22 @@ impl<'a> Binder<'a> {
         }
     }
 
-    fn lower_columns(&self, columns: &[ast::ColumnDef]) -> Result<Vec<ir::ColumnDef>> {
+    fn lower_columns(&self, columns: &[ast::ColumnDef]) -> Result<Vec<CreateColumnInfo>> {
         columns.iter().map(|c| self.lower_column(c)).collect()
     }
 
-    fn lower_column(&self, column: &ast::ColumnDef) -> Result<ir::ColumnDef> {
-        Ok(ir::ColumnDef {
+    fn lower_column(&self, column: &ast::ColumnDef) -> Result<CreateColumnInfo> {
+        Ok(CreateColumnInfo {
             name: column.name.value.as_str().into(),
             ty: self.lower_ty(&column.data_type)?,
         })
     }
 
-    fn lower_ty(&self, ty: &ast::DataType) -> Result<ir::Ty> {
+    fn lower_ty(&self, ty: &ast::DataType) -> Result<Ty> {
         match ty {
-            ast::DataType::Int(width) if width.is_none() => Ok(ir::Ty::Int),
+            ast::DataType::Int(width) if width.is_none() => Ok(Ty::Int),
             ty => Err(Error::Unimplemented(format!("type {ty:?}")))?,
         }
-    }
-
-    fn bind_name<T: SchemaEntity>(&self, name: &ast::ObjectName) -> Result<Oid<T>> {
-        let ident = self.lower_name(name)?;
-        self.bind_ident(&ident)
     }
 
     fn bind_schema(&self, ident: &Ident) -> Result<Oid<Schema>> {

@@ -804,8 +804,11 @@ dependencies = [
  "nsql-bind",
  "nsql-buffer",
  "nsql-catalog",
+ "nsql-execution",
+ "nsql-opt",
  "nsql-pager",
  "nsql-parse",
+ "nsql-plan",
  "nsql-storage",
  "nsql-test",
  "nsql-transaction",
@@ -866,6 +869,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "nsql-execution"
+version = "0.1.0"
+dependencies = [
+ "nsql-catalog",
+ "nsql-plan",
+ "nsql-transaction",
+ "thiserror",
+]
+
+[[package]]
 name = "nsql-fs"
 version = "0.1.0"
 dependencies = [
@@ -881,6 +894,13 @@ name = "nsql-ir"
 version = "0.1.0"
 dependencies = [
  "nsql-catalog",
+]
+
+[[package]]
+name = "nsql-opt"
+version = "0.1.0"
+dependencies = [
+ "nsql-plan",
 ]
 
 [[package]]
@@ -904,6 +924,14 @@ name = "nsql-parse"
 version = "0.1.0"
 dependencies = [
  "sqlparser",
+]
+
+[[package]]
+name = "nsql-plan"
+version = "0.1.0"
+dependencies = [
+ "nsql-catalog",
+ "nsql-ir",
 ]
 
 [[package]]

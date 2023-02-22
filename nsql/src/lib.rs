@@ -6,7 +6,10 @@ use std::sync::Arc;
 use nsql_bind::Binder;
 use nsql_buffer::BufferPool;
 use nsql_catalog::Catalog;
+use nsql_execution::PhysicalPlanner;
+use nsql_opt::optimize;
 use nsql_pager::{InMemoryPager, Pager, SingleFilePager};
+use nsql_plan::Planner;
 use nsql_storage::Storage;
 use nsql_transaction::TransactionManager;
 use thiserror::Error;
@@ -47,9 +50,13 @@ impl<P: Pager> Nsql<P> {
         }
 
         let stmt = &statements[0];
-        let binder = Binder::new(&self.inner.catalog, &tx);
-        let bound_stmt = binder.bind(stmt)?;
-        dbg!(bound_stmt);
+        let stmt = Binder::new(&self.inner.catalog, &tx).bind(stmt)?;
+
+        let plan = Planner::default().plan(stmt);
+        let plan = optimize(plan);
+
+        let physical_plan = PhysicalPlanner::default().plan(plan);
+
         tx.commit().await;
 
         todo!()

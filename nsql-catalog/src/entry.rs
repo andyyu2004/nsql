@@ -3,6 +3,7 @@ use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::marker::PhantomData;
 
+use nsql_serde::{Deserialize, Deserializer};
 use smol_str::SmolStr;
 
 pub struct Oid<T: ?Sized> {
@@ -47,6 +48,15 @@ impl<T> Oid<T> {
 /// Lowercase name of a catalog entry (for case insensitive lookup)
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Name(SmolStr);
+
+impl Deserialize for Name {
+    type Error = std::io::Error;
+
+    async fn deserialize(de: &mut dyn Deserializer<'_>) -> Result<Self, Self::Error> {
+        let s = de.read_str().await?;
+        Ok(Self::from(s.as_str()))
+    }
+}
 
 impl Name {
     pub(crate) fn as_str(&self) -> &str {

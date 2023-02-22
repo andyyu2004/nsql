@@ -1,0 +1,12 @@
+[package]
+name = "nsql-execution"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+nsql-catalog = { version = "0.1.0", path = "../nsql-catalog" }
+nsql-plan = { version = "0.1.0", path = "../nsql-plan" }
+nsql-transaction = { version = "0.1.0", path = "../nsql-transaction" }
+thiserror = "1.0.38"

@@ -2,16 +2,33 @@ use nsql_serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::private::CatalogEntity;
 use crate::set::CatalogSet;
-use crate::{Entity, Name, Schema};
+use crate::{Entity, Name, Schema, Ty};
 
 #[derive(Debug, Clone)]
 pub struct Table {
     name: Name,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct CreateTableInfo {
-    name: Name,
+    pub name: Name,
+    pub columns: Vec<CreateColumnInfo>,
+}
+
+#[derive(Debug, Clone)]
+pub struct CreateColumnInfo {
+    pub name: Name,
+    pub ty: Ty,
+}
+
+impl Deserialize for CreateColumnInfo {
+    type Error = std::io::Error;
+
+    async fn deserialize(de: &mut dyn Deserializer<'_>) -> Result<Self, Self::Error> {
+        let name = Name::deserialize(de).await?;
+        let ty = Ty::deserialize(de).await?;
+        Ok(Self { name, ty })
+    }
 }
 
 impl Serialize for Table {
@@ -24,8 +41,9 @@ impl Serialize for Table {
 
 impl Deserialize for CreateTableInfo {
     async fn deserialize(de: &mut dyn Deserializer<'_>) -> Result<Self, Self::Error> {
-        let s = de.read_str().await?;
-        Ok(Self { name: Name::from(s.as_str()) })
+        let name = Name::deserialize(de).await?;
+        let columns = Vec::<CreateColumnInfo>::deserialize(de).await?;
+        Ok(Self { name, columns })
     }
 }
 

@@ -31,14 +31,14 @@ impl<'s, W: AsyncWrite + Unpin + 's> Serializer<'s> for W {
     }
 }
 
-pub trait Deserializer<'d>: AsyncRead + Unpin {
-    fn read_str(self) -> Pin<Box<dyn Future<Output = io::Result<SmolStr>> + 'd>>
+pub trait Deserializer<'de>: AsyncRead + Unpin {
+    fn read_str(self) -> Pin<Box<dyn Future<Output = io::Result<SmolStr>> + 'de>>
     where
         Self: Sized + Unpin;
 }
 
-impl<'d, D: AsyncRead + Unpin + 'd> Deserializer<'d> for D {
-    fn read_str(mut self) -> Pin<Box<dyn Future<Output = io::Result<SmolStr>> + 'd>>
+impl<'de, D: AsyncRead + Unpin + 'de> Deserializer<'de> for D {
+    fn read_str(mut self) -> Pin<Box<dyn Future<Output = io::Result<SmolStr>> + 'de>>
     where
         Self: Sized + Unpin,
     {
