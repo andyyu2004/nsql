@@ -9,7 +9,7 @@ use crate::PhysicalNode;
 pub struct PhysicalPlanner {}
 
 impl PhysicalPlanner {
-    pub fn plan(&self, plan: Plan) -> Box<dyn PhysicalNode> {
+    pub fn plan(&self, plan: Plan) -> PhysicalNode {
         match plan {
             Plan::CreateTable { schema, info } => PhysicalCreateTable::make(schema, info),
         }

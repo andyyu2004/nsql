@@ -2,7 +2,9 @@ use std::sync::atomic::{self, AtomicBool};
 
 use nsql_catalog::{Container, CreateTableInfo, Oid, Schema, Table};
 
-use crate::{ExecutionContext, ExecutionResult, PhysicalNode, PhysicalSource, Tuple};
+use crate::{
+    ExecutionContext, ExecutionResult, PhysicalNode, PhysicalNodeBase, PhysicalSource, Tuple,
+};
 
 #[derive(Debug)]
 pub struct PhysicalCreateTable {
@@ -12,25 +14,29 @@ pub struct PhysicalCreateTable {
 }
 
 impl PhysicalCreateTable {
-    pub(crate) fn make(schema: Oid<Schema>, info: CreateTableInfo) -> Box<dyn PhysicalNode> {
-        Box::new(Self { finished: AtomicBool::new(false), schema, info })
+    pub(crate) fn make(schema: Oid<Schema>, info: CreateTableInfo) -> PhysicalNode {
+        PhysicalNode::source(Self { finished: AtomicBool::new(false), schema, info })
     }
 }
 
-impl PhysicalNode for PhysicalCreateTable {
+impl PhysicalNodeBase for PhysicalCreateTable {
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+
     fn estimated_cardinality(&self) -> usize {
         0
+    }
+
+    fn children(&self) -> &[PhysicalNode] {
+        &[]
     }
 }
 
 impl PhysicalSource for PhysicalCreateTable {
-    fn source(
-        &self,
-        ctx: &dyn ExecutionContext,
-        _out: Option<&mut dyn Tuple>,
-    ) -> ExecutionResult<()> {
+    fn source(&self, ctx: &ExecutionContext<'_>) -> ExecutionResult<Option<Box<dyn Tuple>>> {
         if self.finished.load(atomic::Ordering::Relaxed) {
-            return Ok(());
+            return Ok(None);
         }
 
         let catalog = ctx.catalog();
@@ -39,6 +45,6 @@ impl PhysicalSource for PhysicalCreateTable {
             .expect("schema not found during execution");
         schema.create::<Table>(ctx.tx(), self.info.clone())?;
 
-        Ok(())
+        Ok(None)
     }
 }

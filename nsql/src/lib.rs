@@ -6,7 +6,7 @@ use std::sync::Arc;
 use nsql_bind::Binder;
 use nsql_buffer::BufferPool;
 use nsql_catalog::Catalog;
-use nsql_execution::PhysicalPlanner;
+use nsql_execution::{PhysicalPlanner, Tuple};
 use nsql_opt::optimize;
 use nsql_pager::{InMemoryPager, Pager, SingleFilePager};
 use nsql_plan::Planner;
@@ -16,50 +16,40 @@ use thiserror::Error;
 
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 
-#[derive(Debug, Error)]
-pub enum Error {
-    #[error(transparent)]
-    Parse(#[from] nsql_parse::Error),
-    #[error(transparent)]
-    Storage(#[from] nsql_storage::Error),
-    #[error(transparent)]
-    Bind(#[from] nsql_bind::Error),
-    #[error(transparent)]
-    Catalog(#[from] nsql_catalog::Error),
-    #[error(transparent)]
-    Io(#[from] std::io::Error),
-}
-
 #[derive(Clone)]
 pub struct Nsql<P> {
     inner: Arc<Shared<P>>,
 }
 
-pub struct MaterializedQueryOutput {}
+pub struct MaterializedQueryOutput {
+    tuples: Vec<Box<dyn Tuple>>,
+}
 
 impl<P: Pager> Nsql<P> {
     pub async fn query(&self, query: &str) -> Result<MaterializedQueryOutput> {
         let tx = self.inner.txm.begin().await;
         let statements = nsql_parse::parse_statements(query)?;
         if statements.is_empty() {
-            return Ok(MaterializedQueryOutput {});
+            return Ok(MaterializedQueryOutput { tuples: vec![] });
         }
 
         if statements.len() > 1 {
             todo!("multiple statements");
         }
 
+        let catalog = &self.inner.catalog;
         let stmt = &statements[0];
-        let stmt = Binder::new(&self.inner.catalog, &tx).bind(stmt)?;
+        let stmt = Binder::new(&tx, &self.inner.catalog).bind(stmt)?;
 
         let plan = Planner::default().plan(stmt);
         let plan = optimize(plan);
 
         let physical_plan = PhysicalPlanner::default().plan(plan);
+        let tuples = nsql_execution::execute(&tx, catalog, physical_plan)?;
 
         tx.commit().await;
 
-        todo!()
+        Ok(MaterializedQueryOutput { tuples })
     }
 }
 
@@ -105,4 +95,20 @@ impl Nsql<SingleFilePager> {
 
         Ok(Self::new(Shared { storage, buffer_pool, txm, catalog }))
     }
+}
+
+#[derive(Debug, Error)]
+pub enum Error {
+    #[error(transparent)]
+    Parse(#[from] nsql_parse::Error),
+    #[error(transparent)]
+    Storage(#[from] nsql_storage::Error),
+    #[error(transparent)]
+    Bind(#[from] nsql_bind::Error),
+    #[error(transparent)]
+    Catalog(#[from] nsql_catalog::Error),
+    #[error(transparent)]
+    Io(#[from] std::io::Error),
+    #[error(transparent)]
+    Execution(#[from] nsql_execution::Error),
 }

@@ -43,7 +43,7 @@ macro_rules! ensure {
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 
 impl<'a> Binder<'a> {
-    pub fn new(catalog: &'a Catalog, tx: &'a Transaction) -> Self {
+    pub fn new(tx: &'a Transaction, catalog: &'a Catalog) -> Self {
         Self { catalog, tx }
     }
 
