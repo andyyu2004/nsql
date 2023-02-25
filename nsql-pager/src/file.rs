@@ -3,7 +3,7 @@ use std::sync::atomic::{self, AtomicU32};
 use std::{io, mem};
 
 use nsql_fs::File;
-use nsql_serde::{Buf, BufMut, Deserialize, DeserializeSync, Serialize, SerializeSync};
+use nsql_serde::{Deserialize, DeserializeSync, Serialize, SerializeSync};
 use nsql_util::static_assert;
 use tokio::io::{AsyncWriteExt, BufReader};
 use tokio::sync::{OnceCell, RwLock};
@@ -36,6 +36,11 @@ struct PagerHeader {
     meta_page_head: PageIndex,
     page_count: PageIndex,
 }
+
+// FIXME this is completely unsafe, we need to make uring::File Send + Sync to fix this
+// adding this just to get the project to compile while we work with the in memory storage
+unsafe impl Send for SingleFilePager {}
+unsafe impl Sync for SingleFilePager {}
 
 pub struct SingleFilePager {
     path: PathBuf,

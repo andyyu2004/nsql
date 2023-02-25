@@ -10,7 +10,6 @@ mod ty;
 
 use std::sync::Arc;
 
-use nsql_serde::{Deserialize, DeserializeWith, Deserializer, Serialize};
 use nsql_transaction::Transaction;
 use thiserror::Error;
 
@@ -18,7 +17,7 @@ pub use self::entry::{Name, Oid};
 use self::private::CatalogEntity;
 pub use self::schema::{CreateSchemaInfo, Schema, SchemaEntity};
 use self::set::CatalogSet;
-pub use self::table::{CreateColumnInfo, CreateTableInfo, Table};
+pub use self::table::{CreateColumnInfo, CreateTableInfo, Table, TableStorage};
 pub use self::ty::Ty;
 
 pub type Result<T, E = Error> = std::result::Result<T, E>;
@@ -26,21 +25,9 @@ pub type Result<T, E = Error> = std::result::Result<T, E>;
 #[derive(Debug, Error)]
 pub enum Error {}
 
-#[derive(Debug, Serialize)]
+#[derive(Debug)]
 pub struct Catalog {
     schemas: CatalogSet<Schema>,
-}
-
-impl DeserializeWith for Catalog {
-    type Context = Transaction;
-
-    async fn deserialize_with(
-        tx: &Self::Context,
-        de: &mut dyn Deserializer<'_>,
-    ) -> Result<Self, Self::Error> {
-        let schemas = CatalogSet::deserialize_with(tx, de).await?;
-        Ok(Self { schemas })
-    }
 }
 
 pub const DEFAULT_SCHEMA: &str = "main";
@@ -110,7 +97,7 @@ pub(crate) mod private {
     pub trait CatalogEntity: Entity + Serialize + Sized {
         type Container;
 
-        type CreateInfo: Deserialize;
+        type CreateInfo;
 
         /// extract the `CatalogSet` from the `container` for `Self`
         fn catalog_set(container: &Self::Container) -> &CatalogSet<Self>;

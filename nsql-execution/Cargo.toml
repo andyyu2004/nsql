@@ -8,7 +8,9 @@ edition = "2021"
 [dependencies]
 nsql-catalog = { version = "0.1.0", path = "../nsql-catalog" }
 nsql-ir = { version = "0.1.0", path = "../nsql-ir" }
+nsql-pager = { version = "0.1.0", path = "../nsql-pager" }
 nsql-plan = { version = "0.1.0", path = "../nsql-plan" }
+nsql-storage = { version = "0.1.0", path = "../nsql-storage" }
 nsql-transaction = { version = "0.1.0", path = "../nsql-transaction" }
 parking_lot = "0.12.1"
 thiserror = "1.0.38"

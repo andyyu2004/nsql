@@ -1,10 +1,10 @@
-use nsql_catalog::{CreateTableInfo, Oid, Schema, Table};
+use nsql_catalog::{Oid, Schema, Table};
 use nsql_ir as ir;
 
 pub enum Plan {
     CreateTable {
         schema: Oid<Schema>,
-        info: CreateTableInfo,
+        info: ir::CreateTableInfo,
     },
     Insert {
         schema: Oid<Schema>,

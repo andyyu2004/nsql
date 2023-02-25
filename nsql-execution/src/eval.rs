@@ -1,6 +1,5 @@
 use nsql_ir::Expr;
-
-use crate::{Tuple, Value};
+use nsql_storage::tuple::{Tuple, Value};
 
 pub(crate) struct Evaluator {}
 

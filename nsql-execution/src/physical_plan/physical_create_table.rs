@@ -2,6 +2,8 @@ use std::sync::atomic::{self, AtomicBool};
 use std::sync::Arc;
 
 use nsql_catalog::{Container, CreateTableInfo, Oid, Schema, Table};
+use nsql_pager::Pager;
+use nsql_storage::TableStorage;
 
 use super::*;
 
@@ -13,7 +15,16 @@ pub struct PhysicalCreateTable {
 }
 
 impl PhysicalCreateTable {
-    pub(crate) fn make(schema: Oid<Schema>, info: CreateTableInfo) -> Arc<dyn PhysicalNode> {
+    pub(crate) fn make<P: Pager>(
+        pager: Arc<P>,
+        schema: Oid<Schema>,
+        info: nsql_ir::CreateTableInfo,
+    ) -> Arc<dyn PhysicalNode> {
+        let info = CreateTableInfo {
+            name: info.name,
+            columns: info.columns,
+            storage: Arc::new(TableStorage::new(pager)),
+        };
         Arc::new(Self { finished: AtomicBool::new(false), schema, info })
     }
 }

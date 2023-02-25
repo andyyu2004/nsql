@@ -885,7 +885,9 @@ version = "0.1.0"
 dependencies = [
  "nsql-catalog",
  "nsql-ir",
+ "nsql-pager",
  "nsql-plan",
+ "nsql-storage",
  "nsql-transaction",
  "parking_lot",
  "thiserror",
@@ -971,6 +973,7 @@ name = "nsql-storage"
 version = "0.1.0"
 dependencies = [
  "nsql-catalog",
+ "nsql-ir",
  "nsql-pager",
  "nsql-serde",
  "nsql-transaction",

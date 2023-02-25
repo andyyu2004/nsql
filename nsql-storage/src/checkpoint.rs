@@ -1,6 +1,6 @@
-use nsql_catalog::{Catalog, Container, CreateSchemaInfo, Schema};
+use nsql_catalog::{Catalog, Container, Schema, Table};
 use nsql_pager::{MetaPageReader, MetaPageWriter, Pager};
-use nsql_serde::{Deserialize, DeserializeWith, Serialize};
+use nsql_serde::{DeserializeWith, Serialize};
 use nsql_transaction::Transaction;
 
 use crate::Result;
@@ -22,9 +22,13 @@ pub struct Checkpoint {
 impl<P: Pager> Checkpointer<'_, P> {
     pub async fn checkpoint(&self, tx: &Transaction, catalog: &Catalog) -> Result<()> {
         let meta_page = self.pager.alloc_page().await?;
-        let mut serializer = MetaPageWriter::new(self.pager, meta_page);
-        catalog.serialize(&mut serializer).await?;
-        Ok(())
+        let data_page = self.pager.alloc_page().await?;
+
+        let meta_writer = MetaPageWriter::new(self.pager, meta_page);
+        let data_writer = MetaPageWriter::new(self.pager, data_page);
+
+        let mut writer = CheckpointWriter::new(meta_writer, data_writer);
+        writer.write_catalog(tx, catalog).await
     }
 
     pub async fn load_checkpoint(
@@ -41,7 +45,38 @@ impl<P: Pager> Checkpointer<'_, P> {
         tx: &Transaction,
         reader: &mut MetaPageReader<'_, P>,
     ) -> Result<Catalog> {
-        let catalog = Catalog::deserialize_with(tx, reader).await?;
-        Ok(catalog)
+        todo!();
+        // let catalog = Catalog::deserialize_with(tx, reader).await?;
+        // Ok(catalog)
+    }
+}
+
+struct CheckpointWriter<'a, P> {
+    meta_writer: MetaPageWriter<'a, P>,
+    data_writer: MetaPageWriter<'a, P>,
+}
+
+impl<'a, P: Pager> CheckpointWriter<'a, P> {
+    fn new(meta_writer: MetaPageWriter<'a, P>, data_writer: MetaPageWriter<'a, P>) -> Self {
+        Self { meta_writer, data_writer }
+    }
+
+    async fn write_catalog(&mut self, tx: &Transaction, catalog: &Catalog) -> Result<()> {
+        for schema in catalog.all::<Schema>(tx)? {
+            self.write_schema(tx, &schema).await?;
+        }
+        Ok(())
+    }
+
+    async fn write_schema(&mut self, tx: &Transaction, schema: &Schema) -> Result<()> {
+        schema.serialize(&mut self.meta_writer).await?;
+        for table in schema.all::<Table>(tx)? {
+            self.write_table_data(tx, &table).await?;
+        }
+        Ok(())
+    }
+
+    async fn write_table_data(&self, tx: &Transaction, table: &Table) -> Result<()> {
+        todo!()
     }
 }

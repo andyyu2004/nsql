@@ -2,9 +2,15 @@
 
 mod expr;
 pub use bigdecimal::BigDecimal;
-use nsql_catalog::{CreateTableInfo, Oid, Schema, Table};
+use nsql_catalog::{CreateColumnInfo, Name, Oid, Schema, Table};
 
 pub use self::expr::{Expr, Literal, TableExpr, Values};
+
+#[derive(Debug, Clone)]
+pub struct CreateTableInfo {
+    pub name: Name,
+    pub columns: Vec<CreateColumnInfo>,
+}
 
 #[derive(Debug, Clone)]
 pub enum Stmt {

@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use nsql_catalog::Catalog;
+use nsql_storage::tuple::Tuple;
 use nsql_transaction::Transaction;
 use parking_lot::RwLock;
 
@@ -9,7 +10,7 @@ use crate::physical_plan::PhysicalPlan;
 use crate::pipeline::{MetaPipeline, Pipeline, PipelineArena};
 use crate::{
     build_pipelines, ExecutionContext, ExecutionResult, PhysicalNode, PhysicalOperator,
-    PhysicalSink, PhysicalSource, Tuple,
+    PhysicalSink, PhysicalSource,
 };
 
 pub(crate) struct Executor {

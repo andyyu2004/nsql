@@ -2,11 +2,19 @@ use proc_macro::TokenStream;
 use quote::quote;
 use syn::{parse_macro_input, DeriveInput};
 
-struct Data {}
+#[derive(Copy, Clone)]
+struct Symbol(&'static str);
 
-fn preprocess(
-    input: DeriveInput,
-) -> (syn::Ident, syn::punctuated::Punctuated<syn::Field, syn::token::Comma>) {
+const SERDE: Symbol = Symbol("serde");
+const SKIP: Symbol = Symbol("skip");
+
+impl PartialEq<Symbol> for syn::Path {
+    fn eq(&self, word: &Symbol) -> bool {
+        self.is_ident(word.0)
+    }
+}
+
+fn preprocess(input: DeriveInput) -> (syn::Ident, Vec<syn::Field>) {
     match input.data {
         syn::Data::Struct(strukt) => {
             let name = input.ident;
@@ -16,6 +24,18 @@ fn preprocess(
                 syn::Fields::Unnamed(fields) => fields.unnamed,
                 syn::Fields::Unit => todo!("serialize unit struct"),
             };
+            let fields = fields
+                .into_iter()
+                .filter(|f| {
+                    !f.attrs.iter().flat_map(get_serde_meta_items).any(|meta| {
+                        if let syn::NestedMeta::Meta(syn::Meta::Path(path)) = meta {
+                            path == SKIP
+                        } else {
+                            false
+                        }
+                    })
+                })
+                .collect::<Vec<_>>();
             (name, fields)
         }
         syn::Data::Enum(_) => unimplemented!(),
@@ -23,7 +43,19 @@ fn preprocess(
     }
 }
 
-#[proc_macro_derive(Serialize)]
+fn get_serde_meta_items(attr: &syn::Attribute) -> Vec<syn::NestedMeta> {
+    if attr.path != SERDE {
+        return Vec::new();
+    }
+
+    match attr.parse_meta() {
+        Ok(syn::Meta::List(meta)) => meta.nested.into_iter().collect(),
+        Ok(_other) => panic!("expected #[serde(...)]"),
+        Err(err) => panic!("error parsing serde attribute: {err}"),
+    }
+}
+
+#[proc_macro_derive(Serialize, attributes(serde))]
 pub fn derive_serialize(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
     let (name, fields) = preprocess(input);
@@ -61,7 +93,7 @@ pub fn derive_serialize_sync(input: TokenStream) -> TokenStream {
     .into()
 }
 
-#[proc_macro_derive(Deserialize)]
+#[proc_macro_derive(Deserialize, attributes(serde))]
 pub fn derive_deserialize(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
     let (name, fields) = preprocess(input);

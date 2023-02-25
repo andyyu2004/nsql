@@ -4,6 +4,7 @@ mod physical_values;
 
 use std::sync::Arc;
 
+use nsql_pager::Pager;
 use nsql_plan::Plan;
 
 use self::physical_create_table::PhysicalCreateTable;

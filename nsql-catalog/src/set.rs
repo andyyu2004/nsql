@@ -36,7 +36,11 @@ impl<T: Serialize> Serialize for CatalogSet<T> {
     }
 }
 
-impl<T: CatalogEntity> DeserializeWith for CatalogSet<T> {
+impl<T> DeserializeWith for CatalogSet<T>
+where
+    T: CatalogEntity,
+    T::CreateInfo: Deserialize,
+{
     type Context = Transaction;
     type Error = <T::CreateInfo as Deserialize>::Error;
 

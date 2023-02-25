@@ -5,8 +5,8 @@ use std::str::FromStr;
 
 use ir::BigDecimal;
 use nsql_catalog::{
-    Catalog, Container, CreateColumnInfo, CreateTableInfo, Entity, Name, Oid, Schema, SchemaEntity,
-    Table, Ty, DEFAULT_SCHEMA,
+    Catalog, Container, CreateColumnInfo, Entity, Name, Oid, Schema, SchemaEntity, Table, Ty,
+    DEFAULT_SCHEMA,
 };
 use nsql_ir as ir;
 use nsql_parse::ast::{self, HiveDistributionStyle};
@@ -108,7 +108,7 @@ impl<'a> Binder<'a> {
                     Err(_) => {
                         let schema = self.bind_schema(&ident)?;
                         let columns = self.lower_columns(columns)?;
-                        let info = CreateTableInfo { name: ident.name(), columns };
+                        let info = ir::CreateTableInfo { name: ident.name(), columns };
                         ir::Stmt::CreateTable { schema, info }
                     }
                 }
@@ -132,6 +132,7 @@ impl<'a> Binder<'a> {
                 ensure!(after_columns.is_empty());
                 ensure!(on.is_none());
                 ensure!(returning.is_none());
+                ensure!(columns.is_empty());
 
                 let (schema, table) = self.bind_name::<Table>(table_name)?;
                 let source = self.bind_query(source)?;
