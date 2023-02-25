@@ -47,12 +47,13 @@ impl PhysicalNode for PhysicalCreateTable {
     }
 }
 
+#[async_trait::async_trait]
 impl PhysicalSource for PhysicalCreateTable {
     fn estimated_cardinality(&self) -> usize {
         0
     }
 
-    fn source(&self, ctx: &ExecutionContext<'_>) -> ExecutionResult<Option<Tuple>> {
+    async fn source(&self, ctx: &ExecutionContext<'_>) -> ExecutionResult<Option<Tuple>> {
         if self.finished.load(atomic::Ordering::Relaxed) {
             return Ok(None);
         }

@@ -40,8 +40,9 @@ impl PhysicalNode for PhysicalInsert {
     }
 }
 
+#[async_trait::async_trait]
 impl PhysicalSink for PhysicalInsert {
-    fn sink(&self, ctx: &ExecutionContext<'_>, tuple: Tuple) -> ExecutionResult<()> {
+    async fn sink(&self, ctx: &ExecutionContext<'_>, tuple: Tuple) -> ExecutionResult<()> {
         let schema = ctx
             .catalog()
             .get::<Schema>(ctx.tx(), self.schema)?
@@ -51,18 +52,19 @@ impl PhysicalSink for PhysicalInsert {
             .get::<Table>(ctx.tx(), self.table)?
             .expect("table not found during insert execution");
 
-        // table.storage().append();
+        table.storage().append(ctx.tx(), tuple).await;
 
         Ok(())
     }
 }
 
+#[async_trait::async_trait]
 impl PhysicalSource for PhysicalInsert {
-    fn estimated_cardinality(&self) -> usize {
-        if self.returning.is_some() { todo!() } else { 0 }
+    async fn source(&self, ctx: &ExecutionContext<'_>) -> ExecutionResult<Option<Tuple>> {
+        todo!()
     }
 
-    fn source(&self, ctx: &ExecutionContext<'_>) -> ExecutionResult<Option<Tuple>> {
-        todo!()
+    fn estimated_cardinality(&self) -> usize {
+        if self.returning.is_some() { todo!() } else { 0 }
     }
 }

@@ -18,36 +18,41 @@ pub(crate) struct Executor {
 }
 
 impl Executor {
-    fn execute(&self, ctx: &ExecutionContext<'_>, root: Idx<MetaPipeline>) -> ExecutionResult<()> {
+    #[async_recursion::async_recursion]
+    async fn execute(
+        &self,
+        ctx: &ExecutionContext<'_>,
+        root: Idx<MetaPipeline>,
+    ) -> ExecutionResult<()> {
         let root = &self.arena[root];
         for &child in &root.children {
-            self.execute(ctx, child)?;
+            self.execute(ctx, child).await?;
         }
 
         for &pipeline in &root.pipelines {
-            self.execute_pipeline(ctx, pipeline)?;
+            self.execute_pipeline(ctx, pipeline).await?;
         }
 
         Ok(())
     }
 
-    fn execute_pipeline(
+    async fn execute_pipeline(
         &self,
         ctx: &ExecutionContext<'_>,
         pipeline: Idx<Pipeline>,
     ) -> ExecutionResult<()> {
         let pipeline = &self.arena[pipeline];
-        while let Some(mut tuple) = pipeline.source.source(ctx)? {
+        while let Some(mut tuple) = pipeline.source.source(ctx).await? {
             for op in &pipeline.operators {
-                tuple = op.execute(ctx, tuple)?;
+                tuple = op.execute(ctx, tuple).await?;
             }
-            pipeline.sink.sink(ctx, tuple)?;
+            pipeline.sink.sink(ctx, tuple).await?;
         }
         Ok(())
     }
 }
 
-fn execute_meta_pipeline(
+async fn execute_meta_pipeline(
     tx: &Transaction,
     catalog: &Catalog,
     arena: PipelineArena,
@@ -55,10 +60,10 @@ fn execute_meta_pipeline(
 ) -> ExecutionResult<()> {
     let ctx = ExecutionContext::new(tx, catalog);
     let executor = Executor { arena };
-    executor.execute(&ctx, root)
+    executor.execute(&ctx, root).await
 }
 
-pub fn execute(
+pub async fn execute(
     tx: &Transaction,
     catalog: &Catalog,
     plan: PhysicalPlan,
@@ -66,7 +71,7 @@ pub fn execute(
     let sink = Arc::new(OutputSink::default());
     let (arena, root) = build_pipelines(Arc::clone(&sink) as Arc<dyn PhysicalSink>, plan);
 
-    execute_meta_pipeline(tx, catalog, arena, root.cast())?;
+    execute_meta_pipeline(tx, catalog, arena, root.cast()).await?;
 
     Ok(Arc::try_unwrap(sink).expect("should be last reference").tuples.into_inner())
 }
@@ -94,18 +99,20 @@ impl PhysicalNode for OutputSink {
     }
 }
 
+#[async_trait::async_trait]
 impl PhysicalSource for OutputSink {
     fn estimated_cardinality(&self) -> usize {
         self.tuples.read().len()
     }
 
-    fn source(&self, _ctx: &ExecutionContext<'_>) -> ExecutionResult<Option<Tuple>> {
+    async fn source(&self, _ctx: &ExecutionContext<'_>) -> ExecutionResult<Option<Tuple>> {
         todo!()
     }
 }
 
+#[async_trait::async_trait]
 impl PhysicalSink for OutputSink {
-    fn sink(&self, _ctx: &ExecutionContext<'_>, tuple: Tuple) -> ExecutionResult<()> {
+    async fn sink(&self, _ctx: &ExecutionContext<'_>, tuple: Tuple) -> ExecutionResult<()> {
         self.tuples.write().push(tuple);
         Ok(())
     }

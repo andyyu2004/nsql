@@ -87,17 +87,21 @@ trait PhysicalNode: Send + Sync + fmt::Debug + 'static {
     }
 }
 
+#[async_trait::async_trait]
 trait PhysicalOperator: PhysicalNode {
-    fn execute(&self, ctx: &ExecutionContext<'_>, input: Tuple) -> ExecutionResult<Tuple>;
+    async fn execute(&self, ctx: &ExecutionContext<'_>, input: Tuple) -> ExecutionResult<Tuple>;
 }
 
+#[async_trait::async_trait]
 trait PhysicalSource: PhysicalNode {
+    async fn source(&self, ctx: &ExecutionContext<'_>) -> ExecutionResult<Option<Tuple>>;
+
     fn estimated_cardinality(&self) -> usize;
-    fn source(&self, ctx: &ExecutionContext<'_>) -> ExecutionResult<Option<Tuple>>;
 }
 
+#[async_trait::async_trait]
 trait PhysicalSink: PhysicalSource {
-    fn sink(&self, ctx: &ExecutionContext<'_>, tuple: Tuple) -> ExecutionResult<()>;
+    async fn sink(&self, ctx: &ExecutionContext<'_>, tuple: Tuple) -> ExecutionResult<()>;
 }
 
 struct ExecutionContext<'a> {
