@@ -52,8 +52,8 @@ impl<T: CatalogEntity> CatalogSet<T> {
         self.entries.get(&oid).and_then(|entry| entry.version_for_tx(tx)).map(|entry| entry.item())
     }
 
-    pub(crate) fn get_by_name(&self, tx: &Transaction, name: &str) -> Option<Arc<T>> {
-        self.find(name).and_then(|oid| self.get(tx, oid))
+    pub(crate) fn get_by_name(&self, tx: &Transaction, name: &str) -> Option<(Oid<T>, Arc<T>)> {
+        self.find(name).and_then(|oid| self.get(tx, oid).map(|item| (oid, item)))
     }
 
     pub(crate) fn find(&self, name: impl AsRef<str>) -> Option<Oid<T>> {

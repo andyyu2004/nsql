@@ -1,8 +1,21 @@
 #![deny(rust_2018_idioms)]
 
-use nsql_catalog::{CreateTableInfo, Oid, Schema};
+mod expr;
+pub use bigdecimal::BigDecimal;
+use nsql_catalog::{CreateTableInfo, Oid, Schema, Table};
+
+pub use self::expr::{Expr, Literal, TableExpr, Values};
 
 #[derive(Debug, Clone)]
 pub enum Stmt {
-    CreateTable { schema: Oid<Schema>, info: CreateTableInfo },
+    CreateTable {
+        schema: Oid<Schema>,
+        info: CreateTableInfo,
+    },
+    Insert {
+        schema: Oid<Schema>,
+        table: Oid<Table>,
+        source: TableExpr,
+        returning: Option<Vec<Expr>>,
+    },
 }

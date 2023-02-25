@@ -1,3 +1,9 @@
+#![deny(rust_2018_idioms)]
+#![feature(trait_upcasting)]
+
+mod arena;
+mod eval;
+mod executor;
 mod physical_plan;
 mod pipeline;
 
@@ -5,11 +11,17 @@ use std::fmt;
 use std::sync::Arc;
 
 use nsql_catalog::Catalog;
+use nsql_ir::Literal;
 use nsql_transaction::Transaction;
 pub use physical_plan::PhysicalPlanner;
 use thiserror::Error;
 
-use self::pipeline::{Pipeline, PipelineBuilder};
+use self::eval::Evaluator;
+pub use self::executor::execute;
+use self::physical_plan::PhysicalPlan;
+use self::pipeline::{
+    Idx, MetaPipeline, MetaPipelineBuilder, PipelineArena, PipelineBuilder, PipelineBuilderArena,
+};
 
 pub type ExecutionResult<T, E = Error> = std::result::Result<T, E>;
 
@@ -19,80 +31,76 @@ pub enum Error {
     Catalog(#[from] nsql_catalog::Error),
 }
 
-pub fn execute(
-    tx: &Transaction,
-    catalog: &Catalog,
-    node: PhysicalNode,
-) -> ExecutionResult<Vec<Box<dyn Tuple>>> {
-    let pipeline = build_pipeline(node);
-    execute_pipeline(tx, catalog, pipeline)
+fn build_pipelines(
+    sink: Arc<dyn PhysicalSink>,
+    plan: PhysicalPlan,
+) -> (PipelineArena, Idx<MetaPipeline>) {
+    let mut arena = PipelineBuilderArena::default();
+    let root = MetaPipelineBuilder::new(&mut arena, sink);
+    root.build(&mut arena, plan.root());
+    let arena = arena.finish();
+    (arena, root.cast())
 }
 
-fn execute_pipeline(
-    tx: &Transaction,
-    catalog: &Catalog,
-    pipeline: Pipeline,
-) -> ExecutionResult<Vec<Box<dyn Tuple>>> {
-    let source = pipeline.source;
-    let ctx = ExecutionContext::new(tx, catalog);
-    let tup = source.source(&ctx)?;
+trait PhysicalNode: Send + Sync + fmt::Debug + 'static {
+    fn children(&self) -> &[Arc<dyn PhysicalNode>];
 
-    if let Some(tup) = tup { Ok(vec![tup]) } else { Ok(vec![]) }
-}
+    // override the default implementation if the node is a source with `Ok(self)`, otherwise `Err(self)`
+    fn as_source(self: Arc<Self>) -> Result<Arc<dyn PhysicalSource>, Arc<dyn PhysicalNode>>;
 
-fn build_pipeline(node: PhysicalNode) -> Pipeline {
-    let mut builder = PipelineBuilder::default();
-    node.build_pipelines(&mut builder, ());
-    builder.build()
-}
+    fn as_sink(self: Arc<Self>) -> Result<Arc<dyn PhysicalSink>, Arc<dyn PhysicalNode>>;
 
-#[derive(Clone)]
-pub enum PhysicalNode {
-    Source(Arc<dyn PhysicalSource>),
-    Operator(Arc<dyn PhysicalOperator>),
-    Sink(Arc<dyn PhysicalSink>),
-}
+    fn as_operator(self: Arc<Self>) -> Result<Arc<dyn PhysicalOperator>, Arc<dyn PhysicalNode>>;
 
-impl PhysicalNode {
-    fn build_pipelines(&self, current: &mut PipelineBuilder, meta: ()) {
-        match self {
-            PhysicalNode::Source(source) => current.set_source(Arc::clone(source)),
-            PhysicalNode::Operator(_) => todo!(),
-            PhysicalNode::Sink(_) => todo!(),
+    fn build_pipelines(
+        self: Arc<Self>,
+        arena: &mut PipelineBuilderArena,
+        current: Idx<PipelineBuilder>,
+        meta_builder: Idx<MetaPipelineBuilder>,
+    ) {
+        match self.as_sink() {
+            Ok(op) => {
+                assert_eq!(
+                    op.children().len(),
+                    1,
+                    "default `build_pipelines` implementation only supports unary operators for sinks"
+                );
+                let child = Arc::clone(&op.children()[0]);
+                // If we have a sink `op` (which is also a source), we set the source of current to `op`
+                // and then build the pipeline for `op`'s child with `t` as the sink of the new pipeline
+                arena[current].set_source(Arc::clone(&op) as Arc<dyn PhysicalSource>);
+                let child_meta_builder = meta_builder.new_child_meta_pipeline(arena, current, op);
+                child_meta_builder.build(arena, child);
+            }
+            Err(node) => match node.as_source() {
+                Ok(source) => arena[current].set_source(source),
+                Err(node) => {
+                    let operator = node.as_operator().unwrap();
+                    assert_eq!(
+                        operator.children().len(),
+                        1,
+                        "default `build_pipelines` implementation only supports unary operators for operators"
+                    );
+                }
+            },
         }
     }
-
-    pub(crate) fn source(source: impl PhysicalSource) -> PhysicalNode {
-        PhysicalNode::Source(Arc::new(source))
-    }
 }
 
-pub trait PhysicalNodeBase: Send + Sync + fmt::Debug + 'static {
-    fn as_any(&self) -> &dyn std::any::Any;
+trait PhysicalOperator: PhysicalNode {
+    fn execute(&self, ctx: &ExecutionContext<'_>, input: Tuple) -> ExecutionResult<Tuple>;
+}
 
+trait PhysicalSource: PhysicalNode {
     fn estimated_cardinality(&self) -> usize;
-
-    fn children(&self) -> &[PhysicalNode];
+    fn source(&self, ctx: &ExecutionContext<'_>) -> ExecutionResult<Option<Tuple>>;
 }
 
-pub trait PhysicalOperator: PhysicalNodeBase {
-    fn execute(
-        &self,
-        ctx: &ExecutionContext<'_>,
-        input: Box<dyn Tuple>,
-        output: &mut dyn Tuple,
-    ) -> ExecutionResult<()>;
+trait PhysicalSink: PhysicalSource {
+    fn sink(&self, ctx: &ExecutionContext<'_>, tuple: Tuple) -> ExecutionResult<()>;
 }
 
-pub trait PhysicalSource: PhysicalNodeBase {
-    fn source(&self, ctx: &ExecutionContext<'_>) -> ExecutionResult<Option<Box<dyn Tuple>>>;
-}
-
-pub trait PhysicalSink: PhysicalNodeBase {
-    fn source(&self, ctx: &ExecutionContext<'_>, tuple: Box<dyn Tuple>) -> ExecutionResult<()>;
-}
-
-pub struct ExecutionContext<'a> {
+struct ExecutionContext<'a> {
     tx: &'a Transaction,
     catalog: &'a Catalog,
 }
@@ -102,13 +110,48 @@ impl<'a> ExecutionContext<'a> {
         Self { tx, catalog }
     }
 
+    #[inline]
     pub fn tx(&self) -> &Transaction {
         self.tx
     }
 
+    #[inline]
     pub fn catalog(&self) -> &Catalog {
         self.catalog
     }
 }
 
-pub trait Tuple: fmt::Debug + Send {}
+#[derive(Debug)]
+pub struct Tuple {
+    values: Box<[Value]>,
+}
+
+impl Tuple {
+    #[inline]
+    pub fn values(&self) -> &[Value] {
+        self.values.as_ref()
+    }
+}
+
+impl From<Vec<Value>> for Tuple {
+    fn from(values: Vec<Value>) -> Self {
+        Self { values: values.into_boxed_slice() }
+    }
+}
+
+impl FromIterator<Value> for Tuple {
+    fn from_iter<I: IntoIterator<Item = Value>>(iter: I) -> Self {
+        Self { values: iter.into_iter().collect::<Vec<_>>().into_boxed_slice() }
+    }
+}
+
+#[derive(Debug)]
+pub enum Value {
+    Literal(Literal),
+}
+
+impl fmt::Display for Value {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        Ok(())
+    }
+}

@@ -1,6 +1,6 @@
 use nsql_serde::Deserialize;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Eq, PartialEq, Clone)]
 pub enum Ty {
     Int,
 }

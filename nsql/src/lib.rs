@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use nsql_bind::Binder;
 use nsql_buffer::BufferPool;
-use nsql_catalog::Catalog;
+use nsql_catalog::{Catalog, Ty};
 use nsql_execution::{PhysicalPlanner, Tuple};
 use nsql_opt::optimize;
 use nsql_pager::{InMemoryPager, Pager, SingleFilePager};
@@ -22,7 +22,8 @@ pub struct Nsql<P> {
 }
 
 pub struct MaterializedQueryOutput {
-    tuples: Vec<Box<dyn Tuple>>,
+    pub types: Vec<Ty>,
+    pub tuples: Vec<Tuple>,
 }
 
 impl<P: Pager> Nsql<P> {
@@ -30,7 +31,7 @@ impl<P: Pager> Nsql<P> {
         let tx = self.inner.txm.begin().await;
         let statements = nsql_parse::parse_statements(query)?;
         if statements.is_empty() {
-            return Ok(MaterializedQueryOutput { tuples: vec![] });
+            return Ok(MaterializedQueryOutput { types: vec![], tuples: vec![] });
         }
 
         if statements.len() > 1 {
@@ -44,12 +45,12 @@ impl<P: Pager> Nsql<P> {
         let plan = Planner::default().plan(stmt);
         let plan = optimize(plan);
 
-        let physical_plan = PhysicalPlanner::default().plan(plan);
+        let physical_plan = PhysicalPlanner::default().plan(&plan);
         let tuples = nsql_execution::execute(&tx, catalog, physical_plan)?;
 
         tx.commit().await;
 
-        Ok(MaterializedQueryOutput { tuples })
+        Ok(MaterializedQueryOutput { types: vec![], tuples })
     }
 }
 

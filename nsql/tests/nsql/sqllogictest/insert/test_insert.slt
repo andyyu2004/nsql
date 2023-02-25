@@ -1,3 +1,6 @@
 statement ok
 CREATE TABLE xs(x int)
 
+statement ok
+INSERT INTO xs(x) VALUES (1), (2), (3)
+

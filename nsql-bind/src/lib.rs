@@ -1,7 +1,9 @@
 #![deny(rust_2018_idioms)]
 
 use std::fmt;
+use std::str::FromStr;
 
+use ir::BigDecimal;
 use nsql_catalog::{
     Catalog, Container, CreateColumnInfo, CreateTableInfo, Entity, Name, Oid, Schema, SchemaEntity,
     Table, Ty, DEFAULT_SCHEMA,
@@ -48,7 +50,7 @@ impl<'a> Binder<'a> {
     }
 
     pub fn bind(&self, stmt: &ast::Statement) -> Result<ir::Stmt> {
-        match stmt {
+        let stmt = match stmt {
             ast::Statement::CreateTable {
                 or_replace,
                 temporary,
@@ -98,18 +100,54 @@ impl<'a> Binder<'a> {
                 let ident = self.lower_name(name)?;
                 match self.bind_ident::<Table>(&ident) {
                     Ok(_oid) => {
-                        Err(Error::AlreadyExists { kind: Table::desc(), ident: ident.clone() })
+                        return Err(Error::AlreadyExists {
+                            kind: Table::desc(),
+                            ident: ident.clone(),
+                        });
                     }
                     Err(_) => {
                         let schema = self.bind_schema(&ident)?;
                         let columns = self.lower_columns(columns)?;
                         let info = CreateTableInfo { name: ident.name(), columns };
-                        Ok(ir::Stmt::CreateTable { schema, info })
+                        ir::Stmt::CreateTable { schema, info }
                     }
                 }
             }
-            _ => Err(Error::Unimplemented("unimplemented stmt".into())),
-        }
+            ast::Statement::Insert {
+                or,
+                into: _,
+                table_name,
+                columns,
+                overwrite,
+                source,
+                partitioned,
+                after_columns,
+                table: _,
+                on,
+                returning,
+            } => {
+                ensure!(or.is_none());
+                ensure!(!overwrite);
+                ensure!(partitioned.is_none());
+                ensure!(after_columns.is_empty());
+                ensure!(on.is_none());
+                ensure!(returning.is_none());
+
+                let (schema, table) = self.bind_name::<Table>(table_name)?;
+                let source = self.bind_query(source)?;
+                let returning = returning.as_ref().map(|items| {
+                    items
+                        .iter()
+                        .map(|selection| self.bind_select(selection))
+                        .collect::<Result<Vec<_>>>()
+                        .unwrap()
+                });
+                ir::Stmt::Insert { schema, table, source, returning }
+            }
+            _ => return Err(Error::Unimplemented("unimplemented stmt".into())),
+        };
+
+        Ok(stmt)
     }
 
     fn lower_columns(&self, columns: &[ast::ColumnDef]) -> Result<Vec<CreateColumnInfo>> {
@@ -143,23 +181,29 @@ impl<'a> Binder<'a> {
         }
     }
 
-    fn bind_ident<T: SchemaEntity>(&self, ident: &Ident) -> Result<Oid<T>> {
+    fn bind_ident<T: SchemaEntity>(&self, ident: &Ident) -> Result<(Oid<Schema>, Oid<T>)> {
         match ident {
             Ident::Qualified { schema, name } => {
-                let schema = self
+                let (schema_oid, schema) = self
                     .catalog
                     .get_by_name::<Schema>(self.tx, schema.as_str())?
                     .ok_or_else(|| Error::Unbound { kind: Schema::desc(), ident: ident.clone() })?;
 
-                schema
+                let entity_oid = schema
                     .find(name)?
-                    .ok_or_else(|| Error::Unbound { kind: T::desc(), ident: ident.clone() })
+                    .ok_or_else(|| Error::Unbound { kind: T::desc(), ident: ident.clone() })?;
+
+                Ok((schema_oid, entity_oid))
             }
             Ident::Unqualified { name } => self.bind_ident(&Ident::Qualified {
                 schema: DEFAULT_SCHEMA.into(),
                 name: name.clone(),
             }),
         }
+    }
+
+    fn bind_name<T: SchemaEntity>(&self, name: &ast::ObjectName) -> Result<(Oid<Schema>, Oid<T>)> {
+        self.bind_ident(&self.lower_name(name)?)
     }
 
     fn lower_name(&self, name: &ast::ObjectName) -> Result<Ident> {
@@ -172,6 +216,75 @@ impl<'a> Binder<'a> {
                 name: name.value.as_str().into(),
             }),
             [_, _, ..] => Err(Error::Unimplemented("x.y.z name".into()))?,
+        }
+    }
+
+    fn bind_query(&self, query: &ast::Query) -> Result<ir::TableExpr> {
+        let ast::Query { with, body, order_by, limit, offset, fetch, locks } = query;
+        ensure!(with.is_none());
+        ensure!(order_by.is_empty());
+        ensure!(limit.is_none());
+        ensure!(offset.is_none());
+        ensure!(fetch.is_none());
+        ensure!(locks.is_empty());
+
+        self.bind_table_expr(body)
+    }
+
+    fn bind_table_expr(&self, body: &ast::SetExpr) -> Result<ir::TableExpr> {
+        let expr = match body {
+            ast::SetExpr::Select(_) => todo!(),
+            ast::SetExpr::Query(_) => todo!(),
+            ast::SetExpr::SetOperation { .. } => todo!(),
+            ast::SetExpr::Values(values) => ir::TableExpr::Values(self.bind_values(values)?),
+            ast::SetExpr::Insert(_) => todo!(),
+            ast::SetExpr::Table(_) => todo!(),
+        };
+
+        Ok(expr)
+    }
+
+    fn bind_select(&self, select: &ast::SelectItem) -> Result<ir::Expr> {
+        match select {
+            ast::SelectItem::UnnamedExpr(expr) => self.bind_expr(expr),
+            _ => todo!(),
+        }
+    }
+
+    fn bind_values(&self, values: &ast::Values) -> Result<ir::Values> {
+        values.rows.iter().map(|row| self.bind_row(row)).collect()
+    }
+
+    fn bind_row(&self, row: &[ast::Expr]) -> Result<Vec<ir::Expr>> {
+        row.iter().map(|expr| self.bind_expr(expr)).collect()
+    }
+
+    fn bind_expr(&self, expr: &ast::Expr) -> Result<ir::Expr> {
+        let expr = match expr {
+            ast::Expr::Value(literal) => ir::Expr::Literal(self.bind_literal(literal)),
+            _ => todo!(),
+        };
+        Ok(expr)
+    }
+
+    fn bind_literal(&self, literal: &ast::Value) -> ir::Literal {
+        match literal {
+            ast::Value::Number(decimal, b) => {
+                assert!(!b, "what does this bool mean?");
+                let decimal = BigDecimal::from_str(decimal)
+                    .expect("this should be a parse error if the decimal is not valid");
+                ir::Literal::Number(decimal)
+            }
+            ast::Value::SingleQuotedString(_) => todo!(),
+            ast::Value::DollarQuotedString(_) => todo!(),
+            ast::Value::EscapedStringLiteral(_) => todo!(),
+            ast::Value::NationalStringLiteral(_) => todo!(),
+            ast::Value::HexStringLiteral(_) => todo!(),
+            ast::Value::DoubleQuotedString(_) => todo!(),
+            ast::Value::Boolean(b) => ir::Literal::Bool(*b),
+            ast::Value::Null => ir::Literal::Null,
+            ast::Value::Placeholder(_) => todo!(),
+            ast::Value::UnQuotedString(_) => todo!(),
         }
     }
 }

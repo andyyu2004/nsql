@@ -1,10 +1,9 @@
 use std::sync::atomic::{self, AtomicBool};
+use std::sync::Arc;
 
 use nsql_catalog::{Container, CreateTableInfo, Oid, Schema, Table};
 
-use crate::{
-    ExecutionContext, ExecutionResult, PhysicalNode, PhysicalNodeBase, PhysicalSource, Tuple,
-};
+use super::*;
 
 #[derive(Debug)]
 pub struct PhysicalCreateTable {
@@ -14,27 +13,35 @@ pub struct PhysicalCreateTable {
 }
 
 impl PhysicalCreateTable {
-    pub(crate) fn make(schema: Oid<Schema>, info: CreateTableInfo) -> PhysicalNode {
-        PhysicalNode::source(Self { finished: AtomicBool::new(false), schema, info })
+    pub(crate) fn make(schema: Oid<Schema>, info: CreateTableInfo) -> Arc<dyn PhysicalNode> {
+        Arc::new(Self { finished: AtomicBool::new(false), schema, info })
     }
 }
 
-impl PhysicalNodeBase for PhysicalCreateTable {
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
-    }
-
-    fn estimated_cardinality(&self) -> usize {
-        0
-    }
-
-    fn children(&self) -> &[PhysicalNode] {
+impl PhysicalNode for PhysicalCreateTable {
+    fn children(&self) -> &[Arc<dyn PhysicalNode>] {
         &[]
+    }
+
+    fn as_sink(self: Arc<Self>) -> Result<Arc<dyn crate::PhysicalSink>, Arc<dyn PhysicalNode>> {
+        Err(self)
+    }
+
+    fn as_operator(self: Arc<Self>) -> Result<Arc<dyn PhysicalOperator>, Arc<dyn PhysicalNode>> {
+        Err(self)
+    }
+
+    fn as_source(self: Arc<Self>) -> Result<Arc<dyn PhysicalSource>, Arc<dyn PhysicalNode>> {
+        Ok(self)
     }
 }
 
 impl PhysicalSource for PhysicalCreateTable {
-    fn source(&self, ctx: &ExecutionContext<'_>) -> ExecutionResult<Option<Box<dyn Tuple>>> {
+    fn estimated_cardinality(&self) -> usize {
+        0
+    }
+
+    fn source(&self, ctx: &ExecutionContext<'_>) -> ExecutionResult<Option<Tuple>> {
         if self.finished.load(atomic::Ordering::Relaxed) {
             return Ok(None);
         }

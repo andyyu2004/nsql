@@ -71,7 +71,7 @@ pub trait Container {
         &self,
         tx: &Transaction,
         name: impl AsRef<str>,
-    ) -> Result<Option<Arc<T>>> {
+    ) -> Result<Option<(Oid<T>, Arc<T>)>> {
         Ok(T::get_by_name(self, tx, name.as_ref()))
     }
 
@@ -119,7 +119,7 @@ pub(crate) mod private {
             container: &Self::Container,
             tx: &Transaction,
             name: &str,
-        ) -> Option<Arc<Self>> {
+        ) -> Option<(Oid<Self>, Arc<Self>)> {
             Self::catalog_set(container).get_by_name(tx, name)
         }
 

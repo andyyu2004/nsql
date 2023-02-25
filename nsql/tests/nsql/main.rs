@@ -5,6 +5,7 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use nsql::Nsql;
+use nsql_catalog::Ty;
 use nsql_pager::InMemoryPager;
 use sqllogictest::{AsyncDB, ColumnType, DBOutput, Runner, TestError};
 use walkdir::WalkDir;
@@ -32,16 +33,22 @@ fn nsql_sqllogictest() -> nsql::Result<(), Vec<TestError>> {
 // FIXME we need to test the single file pager too, but it's currently not `Send` due to `tokio_uring::File` not being send
 pub struct TestDb(Nsql<InMemoryPager>);
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Type {}
+#[derive(Debug, Eq, PartialEq, Clone)]
+pub struct TypeWrapper(Ty);
 
-impl ColumnType for Type {
+impl ColumnType for TypeWrapper {
     fn from_char(value: char) -> Option<Self> {
-        todo!()
+        let ty = match value {
+            'i' => Ty::Int,
+            _ => return None,
+        };
+        Some(TypeWrapper(ty))
     }
 
     fn to_char(&self) -> char {
-        todo!()
+        match self.0 {
+            Ty::Int => 'i',
+        }
     }
 }
 
@@ -49,11 +56,18 @@ impl ColumnType for Type {
 impl AsyncDB for TestDb {
     type Error = nsql::Error;
 
-    type ColumnType = Type;
+    type ColumnType = TypeWrapper;
 
     async fn run(&mut self, sql: &str) -> Result<DBOutput<Self::ColumnType>, Self::Error> {
-        self.0.query(sql).await?;
-        todo!()
+        let output = self.0.query(sql).await?;
+        Ok(DBOutput::Rows {
+            types: output.types.into_iter().map(TypeWrapper).collect(),
+            rows: output
+                .tuples
+                .iter()
+                .map(|t| t.values().iter().map(|v| v.to_string()).collect())
+                .collect(),
+        })
     }
 
     fn engine_name(&self) -> &str {

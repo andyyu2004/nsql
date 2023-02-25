@@ -8,5 +8,5 @@ nsql-catalog = { version = "0.1.0", path = "../nsql-catalog" }
 nsql-ir = { version = "0.1.0", path = "../nsql-ir" }
 nsql-parse = { version = "0.1.0", path = "../nsql-parse" }
 nsql-transaction = { version = "0.1.0", path = "../nsql-transaction" }
-smol_str = "0.1.24"
+smol_str = { version = "0.1.24", default-features = false }
 thiserror = "1"
