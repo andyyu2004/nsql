@@ -5,14 +5,12 @@ use nsql_transaction::Transaction;
 
 use crate::tuple::Tuple;
 
-pub struct TableStorage<P: Pager> {
-    pager: Arc<P>,
+pub struct TableStorage {
+    pager: Arc<dyn Pager>,
 }
 
-impl<P: Pager + Send + Sync> nsql_catalog::TableStorage for TableStorage<P> {}
-
-impl<P: Pager> TableStorage<P> {
-    pub fn new(pager: Arc<P>) -> Self {
+impl TableStorage {
+    pub fn new(pager: Arc<dyn Pager>) -> Self {
         Self { pager }
     }
 

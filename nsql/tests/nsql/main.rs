@@ -31,7 +31,7 @@ fn nsql_sqllogictest() -> nsql::Result<(), Vec<TestError>> {
 }
 
 // FIXME we need to test the single file pager too, but it's currently not `Send` due to `tokio_uring::File` not being send
-pub struct TestDb(Nsql<InMemoryPager>);
+pub struct TestDb(Nsql);
 
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub struct TypeWrapper(Ty);

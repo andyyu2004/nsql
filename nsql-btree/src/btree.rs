@@ -6,13 +6,13 @@ use std::io;
 use nsql_buffer::BufferPool;
 use nsql_pager::PageIndex;
 
-pub struct BTree<P, K, V> {
-    pool: BufferPool<P>,
+pub struct BTree<K, V> {
+    pool: BufferPool,
     root: Node<K, V>,
 }
 
-impl<P, K, V> BTree<P, K, V> {
-    pub fn new(_pool: BufferPool<P>) -> io::Result<Self> {
+impl<K, V> BTree<K, V> {
+    pub fn new(_pool: BufferPool) -> io::Result<Self> {
         todo!()
         // Ok(Self { pool, root: todo!() })
     }

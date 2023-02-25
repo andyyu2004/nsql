@@ -16,7 +16,7 @@ pub enum Expr {
 pub enum Literal {
     Null,
     Bool(bool),
-    Number(BigDecimal),
+    Decimal(BigDecimal),
 }
 
 impl fmt::Display for Literal {
@@ -24,7 +24,7 @@ impl fmt::Display for Literal {
         match self {
             Literal::Null => write!(f, "NULL"),
             Literal::Bool(b) => write!(f, "{b}"),
-            Literal::Number(n) => write!(f, "{n}"),
+            Literal::Decimal(n) => write!(f, "{n}"),
         }
     }
 }

@@ -1,9 +1,20 @@
+use std::io;
+
 use nsql_catalog::{Catalog, Container, Schema, Table};
 use nsql_pager::{MetaPageReader, MetaPageWriter, Pager};
 use nsql_serde::{DeserializeWith, Serialize};
 use nsql_transaction::Transaction;
+use thiserror::Error;
 
-use crate::Result;
+pub type Result<T, E = Error> = std::result::Result<T, E>;
+
+#[derive(Debug, Error)]
+pub enum Error {
+    #[error(transparent)]
+    Fs(#[from] io::Error),
+    #[error(transparent)]
+    Catalog(#[from] nsql_catalog::Error),
+}
 
 pub struct Checkpointer<'a, P> {
     pager: &'a P,

@@ -25,6 +25,7 @@ const CHECKSUM_LENGTH: usize = std::mem::size_of::<u64>();
 
 type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + 'a>>;
 
+#[async_trait::async_trait(?Send)]
 pub trait Pager: Send + Sync + 'static {
     /// Allocate a new unused [`crate::PageIndex`]
     async fn alloc_page(&self) -> Result<PageIndex>;
@@ -36,6 +37,7 @@ pub trait Pager: Send + Sync + 'static {
     async fn write_page(&self, page: Page) -> Result<()>;
 }
 
+#[async_trait::async_trait(?Send)]
 impl<P: Pager> Pager for Arc<P> {
     async fn alloc_page(&self) -> Result<PageIndex> {
         (**self).alloc_page().await

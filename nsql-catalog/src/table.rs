@@ -2,6 +2,7 @@ use std::fmt;
 use std::sync::Arc;
 
 use nsql_serde::{Deserialize, Serialize};
+use nsql_storage::TableStorage;
 
 use crate::private::CatalogEntity;
 use crate::set::CatalogSet;
@@ -11,7 +12,14 @@ use crate::{Entity, Name, Schema, Ty};
 pub struct Table {
     name: Name,
     #[serde(skip)]
-    storage: Arc<dyn TableStorage>,
+    storage: Arc<TableStorage>,
+}
+
+impl Table {
+    #[inline]
+    pub fn storage(&self) -> &TableStorage {
+        self.storage.as_ref()
+    }
 }
 
 impl fmt::Debug for Table {
@@ -20,15 +28,11 @@ impl fmt::Debug for Table {
     }
 }
 
-// this trait exists partially to break the cyclic dependency between `catalog` and `storage`
-// (if we were to depend on `nsql-storage` here)
-pub trait TableStorage: Send + Sync {}
-
 #[derive(Clone)]
 pub struct CreateTableInfo {
     pub name: Name,
     pub columns: Vec<CreateColumnInfo>,
-    pub storage: Arc<dyn TableStorage>,
+    pub storage: Arc<TableStorage>,
 }
 
 impl fmt::Debug for CreateTableInfo {

@@ -32,19 +32,19 @@ impl RefCounted for BufferHandle {
     }
 }
 
-pub struct BufferPool<P> {
-    inner: Arc<Inner<P>>,
+pub struct BufferPool {
+    inner: Arc<Inner>,
 }
 
-struct Inner<P> {
-    pager: Arc<P>,
+struct Inner {
+    pager: Arc<dyn Pager>,
     cache: RwLock<LruK<PageIndex, BufferHandle, Clock>>,
 }
 
-impl<P: Pager> BufferPool<P> {
+impl BufferPool {
     // Create a new buffer pool with the given pager implementation.
     // Returns the buffer pool and a future that must be polled to completion.
-    pub fn new(pager: Arc<P>) -> Self {
+    pub fn new(pager: Arc<dyn Pager>) -> Self {
         let max_memory_bytes = if cfg!(test) { 1024 * 1024 } else { 128 * 1024 * 1024 };
         let max_pages = max_memory_bytes / PAGE_SIZE;
 
@@ -61,7 +61,7 @@ impl<P: Pager> BufferPool<P> {
     }
 }
 
-impl<P: Pager> BufferPoolInterface for BufferPool<P> {
+impl BufferPoolInterface for BufferPool {
     async fn load(&self, index: PageIndex) -> Result<BufferHandle> {
         let inner = &self.inner;
         if let Some(handle) = inner.cache.read().get(index) {

@@ -866,10 +866,22 @@ version = "0.1.0"
 dependencies = [
  "dashmap",
  "nsql-serde",
+ "nsql-storage",
  "nsql-transaction",
  "smol_str",
  "thiserror",
  "tracing",
+]
+
+[[package]]
+name = "nsql-checkpoint"
+version = "0.1.0"
+dependencies = [
+ "nsql-catalog",
+ "nsql-pager",
+ "nsql-serde",
+ "nsql-transaction",
+ "thiserror",
 ]
 
 [[package]]
@@ -923,6 +935,7 @@ dependencies = [
 name = "nsql-pager"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "crc",
  "nsql-fs",
  "nsql-serde",
@@ -972,8 +985,7 @@ dependencies = [
 name = "nsql-storage"
 version = "0.1.0"
 dependencies = [
- "nsql-catalog",
- "nsql-ir",
+ "bigdecimal",
  "nsql-pager",
  "nsql-serde",
  "nsql-transaction",

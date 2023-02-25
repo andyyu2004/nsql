@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+async-trait = "0.1.64"
 crc = "3.0"
 
 nsql-serde = { path = "../nsql-serde" }

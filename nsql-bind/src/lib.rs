@@ -132,7 +132,7 @@ impl<'a> Binder<'a> {
                 ensure!(after_columns.is_empty());
                 ensure!(on.is_none());
                 ensure!(returning.is_none());
-                ensure!(columns.is_empty());
+                // ensure!(columns.is_empty());
 
                 let (schema, table) = self.bind_name::<Table>(table_name)?;
                 let source = self.bind_query(source)?;
@@ -274,7 +274,7 @@ impl<'a> Binder<'a> {
                 assert!(!b, "what does this bool mean?");
                 let decimal = BigDecimal::from_str(decimal)
                     .expect("this should be a parse error if the decimal is not valid");
-                ir::Literal::Number(decimal)
+                ir::Literal::Decimal(decimal)
             }
             ast::Value::SingleQuotedString(_) => todo!(),
             ast::Value::DollarQuotedString(_) => todo!(),

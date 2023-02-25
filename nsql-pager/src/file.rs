@@ -51,6 +51,7 @@ pub struct SingleFilePager {
     free_list_head: PageIndex,
 }
 
+#[async_trait::async_trait(?Send)]
 impl Pager for SingleFilePager {
     async fn alloc_page(&self) -> Result<PageIndex> {
         if let Some(idx) = self.free_list().await?.write().await.pop() {

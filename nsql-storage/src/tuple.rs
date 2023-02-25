@@ -1,6 +1,6 @@
 use std::fmt;
 
-use nsql_ir::Literal;
+use bigdecimal::BigDecimal;
 
 #[derive(Debug)]
 pub struct Tuple {
@@ -31,10 +31,27 @@ pub enum Value {
     Literal(Literal),
 }
 
+#[derive(Debug)]
+pub enum Literal {
+    Null,
+    Bool(bool),
+    Decimal(BigDecimal),
+}
+
 impl fmt::Display for Value {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Value::Literal(literal) => write!(f, "{literal}"),
+        }
+    }
+}
+
+impl fmt::Display for Literal {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Literal::Null => write!(f, "NULL"),
+            Literal::Bool(b) => write!(f, "{b}"),
+            Literal::Decimal(d) => write!(f, "{d}"),
         }
     }
 }

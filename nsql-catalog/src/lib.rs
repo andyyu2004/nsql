@@ -17,7 +17,7 @@ pub use self::entry::{Name, Oid};
 use self::private::CatalogEntity;
 pub use self::schema::{CreateSchemaInfo, Schema, SchemaEntity};
 use self::set::CatalogSet;
-pub use self::table::{CreateColumnInfo, CreateTableInfo, Table, TableStorage};
+pub use self::table::{CreateColumnInfo, CreateTableInfo, Table};
 pub use self::ty::Ty;
 
 pub type Result<T, E = Error> = std::result::Result<T, E>;

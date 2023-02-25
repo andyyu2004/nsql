@@ -15,8 +15,9 @@ use crate::{
     PhysicalSource, Tuple,
 };
 
-#[derive(Default)]
-pub struct PhysicalPlanner {}
+pub struct PhysicalPlanner {
+    pager: Arc<dyn Pager>,
+}
 
 /// Opaque physical plan that is ready to be executed
 pub struct PhysicalPlan(Arc<dyn PhysicalNode>);
@@ -28,13 +29,19 @@ impl PhysicalPlan {
 }
 
 impl PhysicalPlanner {
+    pub fn new(pager: Arc<dyn Pager>) -> Self {
+        Self { pager }
+    }
+
     pub fn plan(&self, plan: &Plan) -> PhysicalPlan {
         PhysicalPlan(self.plan_inner(plan))
     }
 
     fn plan_inner(&self, plan: &Plan) -> Arc<dyn PhysicalNode> {
         match plan {
-            Plan::CreateTable { schema, info } => PhysicalCreateTable::make(*schema, info.clone()),
+            Plan::CreateTable { schema, info } => {
+                PhysicalCreateTable::make(Arc::clone(&self.pager), *schema, info.clone())
+            }
             Plan::Insert { schema, table, source, returning } => {
                 let source = self.plan_inner(source);
                 PhysicalInsert::make(*schema, *table, source, returning.clone())

@@ -1,12 +1,10 @@
 [package]
-name = "nsql-storage"
+name = "nsql-checkpoint"
 version = "0.1.0"
 edition = "2021"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
-bigdecimal = "0.3.0"
+nsql-catalog = { path = "../nsql-catalog" }
 nsql-pager = { path = "../nsql-pager" }
 nsql-serde = { path = "../nsql-serde" }
 nsql-transaction = { path = "../nsql-transaction" }

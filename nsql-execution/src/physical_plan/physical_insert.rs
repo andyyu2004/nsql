@@ -51,6 +51,8 @@ impl PhysicalSink for PhysicalInsert {
             .get::<Table>(ctx.tx(), self.table)?
             .expect("table not found during insert execution");
 
+        // table.storage().append();
+
         Ok(())
     }
 }

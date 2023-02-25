@@ -15,8 +15,8 @@ pub struct PhysicalCreateTable {
 }
 
 impl PhysicalCreateTable {
-    pub(crate) fn make<P: Pager>(
-        pager: Arc<P>,
+    pub(crate) fn make(
+        pager: Arc<dyn Pager>,
         schema: Oid<Schema>,
         info: nsql_ir::CreateTableInfo,
     ) -> Arc<dyn PhysicalNode> {
@@ -34,7 +34,7 @@ impl PhysicalNode for PhysicalCreateTable {
         &[]
     }
 
-    fn as_sink(self: Arc<Self>) -> Result<Arc<dyn crate::PhysicalSink>, Arc<dyn PhysicalNode>> {
+    fn as_sink(self: Arc<Self>) -> Result<Arc<dyn PhysicalSink>, Arc<dyn PhysicalNode>> {
         Err(self)
     }
 
