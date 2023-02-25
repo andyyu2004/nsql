@@ -10,7 +10,7 @@ mod ty;
 
 use std::sync::Arc;
 
-use nsql_serde::Deserialize;
+use nsql_serde::{Deserialize, DeserializeWith, Deserializer, Serialize};
 use nsql_transaction::Transaction;
 use thiserror::Error;
 
@@ -26,15 +26,28 @@ pub type Result<T, E = Error> = std::result::Result<T, E>;
 #[derive(Debug, Error)]
 pub enum Error {}
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct Catalog {
     schemas: CatalogSet<Schema>,
+}
+
+impl DeserializeWith for Catalog {
+    type Context = Transaction;
+
+    async fn deserialize_with(
+        tx: &Self::Context,
+        de: &mut dyn Deserializer<'_>,
+    ) -> Result<Self, Self::Error> {
+        let schemas = CatalogSet::deserialize_with(tx, de).await?;
+        Ok(Self { schemas })
+    }
 }
 
 pub const DEFAULT_SCHEMA: &str = "main";
 
 impl Catalog {
-    pub fn new(tx: &Transaction) -> Result<Self> {
+    /// Create a blank catalog with the default schema
+    pub fn create(tx: &Transaction) -> Result<Self> {
         let catalog = Self { schemas: Default::default() };
         catalog.create::<Schema>(tx, CreateSchemaInfo { name: DEFAULT_SCHEMA.into() })?;
         Ok(catalog)

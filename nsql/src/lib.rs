@@ -75,7 +75,7 @@ impl Nsql<InMemoryPager> {
         let buffer_pool = BufferPool::new(pager);
 
         let tx = txm.begin().await;
-        let catalog = Catalog::new(&tx)?;
+        let catalog = Catalog::create(&tx)?;
         tx.commit().await;
 
         Ok(Self::new(Shared { storage, buffer_pool, txm, catalog }))

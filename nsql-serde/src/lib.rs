@@ -10,8 +10,10 @@ use std::pin::Pin;
 use std::sync::Arc;
 
 pub use bytes::{Buf, BufMut};
+pub use nsql_serde_derive::{Deserialize, DeserializeSync, Serialize, SerializeSync};
 use smol_str::SmolStr;
-use tokio::io::{AsyncRead, AsyncReadExt as _, AsyncWrite, AsyncWriteExt as _};
+use tokio::io::{AsyncRead, AsyncWrite};
+pub use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 pub trait Serializer<'s>: AsyncWrite + Unpin {
     fn write_str(self, s: &'s str) -> Pin<Box<dyn Future<Output = io::Result<()>> + 's>>
@@ -79,6 +81,29 @@ impl<S: Serialize> Serialize for Vec<S> {
     }
 }
 
+/// deserialization trait with context (analogous to serde::DeserializeSeed)
+pub trait DeserializeWith: Sized {
+    type Context;
+    type Error: From<io::Error> = io::Error;
+
+    async fn deserialize_with(
+        ctx: &Self::Context,
+        de: &mut dyn Deserializer<'_>,
+    ) -> Result<Self, Self::Error>;
+}
+
+impl<D: Deserialize> DeserializeWith for D {
+    type Context = ();
+    type Error = D::Error;
+
+    async fn deserialize_with(
+        _ctx: &Self::Context,
+        de: &mut dyn Deserializer<'_>,
+    ) -> Result<Self, Self::Error> {
+        D::deserialize(de).await
+    }
+}
+
 pub trait Deserialize: Sized {
     type Error: From<io::Error> = io::Error;
 
@@ -102,8 +127,38 @@ pub trait SerializeSync {
     fn serialize_sync(&self, buf: &mut dyn BufMut);
 }
 
+impl SerializeSync for u32 {
+    #[inline]
+    fn serialize_sync(&self, buf: &mut dyn BufMut) {
+        buf.put_u32(*self);
+    }
+}
+
+impl<const N: usize> SerializeSync for [u8; N] {
+    #[inline]
+    fn serialize_sync(&self, buf: &mut dyn BufMut) {
+        buf.put_slice(self);
+    }
+}
+
 pub trait DeserializeSync: Sized {
     fn deserialize_sync(buf: &mut dyn Buf) -> Self;
+}
+
+impl DeserializeSync for u32 {
+    #[inline]
+    fn deserialize_sync(buf: &mut dyn Buf) -> u32 {
+        buf.get_u32()
+    }
+}
+
+impl<const N: usize> DeserializeSync for [u8; N] {
+    #[inline]
+    fn deserialize_sync(buf: &mut dyn Buf) -> [u8; N] {
+        let mut bytes = [0; N];
+        buf.copy_to_slice(&mut bytes);
+        bytes
+    }
 }
 
 // FIXME these blanket impls aren't the most efficient as they read the entire payload into memory and then copy it over

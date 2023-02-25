@@ -1,3 +1,4 @@
+#![allow(unused)]
 //! Yet another index-based arena. (from rust-analyzer)
 
 use std::fmt;
@@ -76,10 +77,6 @@ impl<T> fmt::Debug for Idx<T> {
 }
 
 impl<T> Idx<T> {
-    pub fn new(raw: RawIdx) -> Self {
-        Self { raw, _ty: PhantomData }
-    }
-
     /// Creates a new index from a [`RawIdx`].
     pub fn from_raw(raw: RawIdx) -> Self {
         Idx { raw, _ty: PhantomData }

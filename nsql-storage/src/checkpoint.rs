@@ -1,6 +1,6 @@
 use nsql_catalog::{Catalog, Container, CreateSchemaInfo, Schema};
 use nsql_pager::{MetaPageReader, MetaPageWriter, Pager};
-use nsql_serde::{Deserialize, Serialize};
+use nsql_serde::{Deserialize, DeserializeWith, Serialize};
 use nsql_transaction::Transaction;
 
 use crate::Result;
@@ -22,14 +22,8 @@ pub struct Checkpoint {
 impl<P: Pager> Checkpointer<'_, P> {
     pub async fn checkpoint(&self, tx: &Transaction, catalog: &Catalog) -> Result<()> {
         let meta_page = self.pager.alloc_page().await?;
-        let mut writer = MetaPageWriter::new(self.pager, meta_page);
-
-        let schemas = match catalog.all::<Schema>(tx) {
-            Ok(schemas) => schemas,
-            Err(_) => todo!(),
-        };
-
-        schemas.serialize(&mut writer).await?;
+        let mut serializer = MetaPageWriter::new(self.pager, meta_page);
+        catalog.serialize(&mut serializer).await?;
         Ok(())
     }
 
@@ -47,11 +41,7 @@ impl<P: Pager> Checkpointer<'_, P> {
         tx: &Transaction,
         reader: &mut MetaPageReader<'_, P>,
     ) -> Result<Catalog> {
-        let catalog = Catalog::new(tx)?;
-        let schemas = Vec::<CreateSchemaInfo>::deserialize(reader).await?;
-        for schema in schemas {
-            catalog.create::<Schema>(tx, schema)?;
-        }
+        let catalog = Catalog::deserialize_with(tx, reader).await?;
         Ok(catalog)
     }
 }

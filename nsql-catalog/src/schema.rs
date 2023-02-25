@@ -1,10 +1,10 @@
-use nsql_serde::{Deserialize, Deserializer, Serialize, Serializer};
+use nsql_serde::{Deserialize, Deserializer, Serialize};
 
 use crate::private::CatalogEntity;
 use crate::set::CatalogSet;
 use crate::{Catalog, Container, Entity, Name, Table};
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct Schema {
     name: Name,
     pub(crate) tables: CatalogSet<Table>,
@@ -25,14 +25,6 @@ pub(crate) mod private {
 #[derive(Debug)]
 pub struct CreateSchemaInfo {
     pub name: Name,
-}
-
-impl Serialize for Schema {
-    type Error = std::io::Error;
-
-    async fn serialize(&self, ser: &mut dyn Serializer<'_>) -> Result<(), Self::Error> {
-        ser.write_str(self.name.as_str()).await
-    }
 }
 
 impl Deserialize for CreateSchemaInfo {

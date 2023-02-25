@@ -6,9 +6,7 @@ use parking_lot::RwLock;
 
 use crate::arena::Idx;
 use crate::physical_plan::PhysicalPlan;
-use crate::pipeline::{
-    MetaPipeline, MetaPipelineBuilder, Pipeline, PipelineArena, PipelineBuilderArena,
-};
+use crate::pipeline::{MetaPipeline, Pipeline, PipelineArena};
 use crate::{
     build_pipelines, ExecutionContext, ExecutionResult, PhysicalNode, PhysicalOperator,
     PhysicalSink, PhysicalSource, Tuple,
@@ -100,13 +98,13 @@ impl PhysicalSource for OutputSink {
         self.tuples.read().len()
     }
 
-    fn source(&self, ctx: &ExecutionContext<'_>) -> ExecutionResult<Option<Tuple>> {
+    fn source(&self, _ctx: &ExecutionContext<'_>) -> ExecutionResult<Option<Tuple>> {
         todo!()
     }
 }
 
 impl PhysicalSink for OutputSink {
-    fn sink(&self, ctx: &ExecutionContext<'_>, tuple: Tuple) -> ExecutionResult<()> {
+    fn sink(&self, _ctx: &ExecutionContext<'_>, tuple: Tuple) -> ExecutionResult<()> {
         self.tuples.write().push(tuple);
         Ok(())
     }

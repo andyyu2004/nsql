@@ -1,6 +1,9 @@
 use std::sync::Arc;
 
 use dashmap::DashMap;
+use nsql_serde::{
+    AsyncReadExt, AsyncWriteExt, Deserialize, DeserializeWith, Deserializer, Serialize, Serializer,
+};
 use nsql_transaction::{Transaction, Txid};
 
 use crate::entry::{Name, Oid};
@@ -10,6 +13,45 @@ use crate::private::CatalogEntity;
 pub struct CatalogSet<T> {
     entries: DashMap<Oid<T>, VersionedEntry<T>>,
     name_mapping: DashMap<Name, Oid<T>>,
+}
+
+impl<T> CatalogSet<T> {
+    fn with_capacity(capacity: usize) -> Self {
+        Self {
+            entries: DashMap::with_capacity(capacity),
+            name_mapping: DashMap::with_capacity(capacity),
+        }
+    }
+}
+
+impl<T: Serialize> Serialize for CatalogSet<T> {
+    type Error = T::Error;
+
+    async fn serialize(&self, ser: &mut dyn Serializer<'_>) -> Result<(), Self::Error> {
+        ser.write_u32(self.entries.len() as u32).await?;
+        for entry in self.entries.iter() {
+            entry.value().committed_version().item().serialize(ser).await?;
+        }
+        Ok(())
+    }
+}
+
+impl<T: CatalogEntity> DeserializeWith for CatalogSet<T> {
+    type Context = Transaction;
+    type Error = <T::CreateInfo as Deserialize>::Error;
+
+    async fn deserialize_with(
+        tx: &Transaction,
+        de: &mut dyn Deserializer<'_>,
+    ) -> Result<Self, Self::Error> {
+        let len = de.read_u32().await? as usize;
+        let set = Self::with_capacity(len);
+        for _ in 0..len {
+            let item = T::CreateInfo::deserialize(de).await?;
+            set.create(tx, item);
+        }
+        Ok(set)
+    }
 }
 
 impl<T> Default for CatalogSet<T> {
@@ -30,6 +72,10 @@ impl<T> Default for VersionedEntry<T> {
 }
 
 impl<T> VersionedEntry<T> {
+    fn committed_version(&self) -> CatalogEntry<T> {
+        todo!()
+    }
+
     fn version_for_tx(&self, tx: &Transaction) -> Option<CatalogEntry<T>> {
         self.versions.iter().rev().find(|version| tx.can_see(version.txid())).cloned()
     }
@@ -58,6 +104,11 @@ impl<T: CatalogEntity> CatalogSet<T> {
 
     pub(crate) fn find(&self, name: impl AsRef<str>) -> Option<Oid<T>> {
         Some(*self.name_mapping.get(name.as_ref())?.value())
+    }
+
+    #[inline]
+    fn create(&self, tx: &Transaction, info: T::CreateInfo) -> Oid<T> {
+        self.insert(tx, T::new(info))
     }
 
     pub(crate) fn insert(&self, tx: &Transaction, value: T) -> Oid<T> {

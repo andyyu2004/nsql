@@ -1,3 +1,5 @@
+use std::fmt;
+
 use bigdecimal::BigDecimal;
 
 #[derive(Debug, Clone)]
@@ -15,6 +17,16 @@ pub enum Literal {
     Null,
     Bool(bool),
     Number(BigDecimal),
+}
+
+impl fmt::Display for Literal {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Literal::Null => write!(f, "NULL"),
+            Literal::Bool(b) => write!(f, "{b}"),
+            Literal::Number(n) => write!(f, "{n}"),
+        }
+    }
 }
 
 pub type Values = Vec<Vec<Expr>>;

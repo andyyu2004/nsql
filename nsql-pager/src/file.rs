@@ -22,52 +22,19 @@ const N_RESERVED_PAGES: u32 = 3;
 
 pub const CURRENT_VERSION: u32 = 1;
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, DeserializeSync, SerializeSync)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 pub struct FileHeader {
     magic: [u8; 4],
     version: u32,
 }
 
-impl SerializeSync for FileHeader {
-    fn serialize_sync(&self, buf: &mut dyn BufMut) {
-        buf.put_slice(&self.magic);
-        buf.put_u32(self.version);
-    }
-}
-
-impl DeserializeSync for FileHeader {
-    fn deserialize_sync(buf: &mut dyn Buf) -> Self {
-        let mut magic = [0; 4];
-        buf.copy_to_slice(&mut magic);
-        let version = buf.get_u32();
-        Self { magic, version }
-    }
-}
-
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, SerializeSync, DeserializeSync)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 struct PagerHeader {
     free_list_head: PageIndex,
     meta_page_head: PageIndex,
     page_count: PageIndex,
-}
-
-impl SerializeSync for PagerHeader {
-    fn serialize_sync(&self, buf: &mut dyn BufMut) {
-        self.free_list_head.serialize_sync(buf);
-        self.meta_page_head.serialize_sync(buf);
-        self.page_count.serialize_sync(buf);
-    }
-}
-
-impl DeserializeSync for PagerHeader {
-    fn deserialize_sync(buf: &mut dyn Buf) -> Self {
-        let free_list_head = PageIndex::deserialize_sync(buf);
-        let meta_page_head = PageIndex::deserialize_sync(buf);
-        let page_count = PageIndex::deserialize_sync(buf);
-        Self { free_list_head, meta_page_head, page_count }
-    }
 }
 
 pub struct SingleFilePager {

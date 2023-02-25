@@ -152,6 +152,8 @@ pub enum Value {
 
 impl fmt::Display for Value {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        Ok(())
+        match self {
+            Value::Literal(literal) => write!(f, "{literal}"),
+        }
     }
 }

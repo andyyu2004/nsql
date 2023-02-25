@@ -3,7 +3,7 @@ use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::marker::PhantomData;
 
-use nsql_serde::{Deserialize, Deserializer};
+use nsql_serde::{Deserialize, Deserializer, Serialize, Serializer};
 use smol_str::SmolStr;
 
 pub struct Oid<T: ?Sized> {
@@ -50,16 +50,23 @@ impl<T> Oid<T> {
 pub struct Name(SmolStr);
 
 impl Deserialize for Name {
-    type Error = std::io::Error;
-
     async fn deserialize(de: &mut dyn Deserializer<'_>) -> Result<Self, Self::Error> {
         let s = de.read_str().await?;
         Ok(Self::from(s.as_str()))
     }
 }
 
+impl Serialize for Name {
+    type Error = std::io::Error;
+
+    async fn serialize(&self, ser: &mut dyn Serializer<'_>) -> Result<(), Self::Error> {
+        ser.write_str(self.0.as_str()).await
+    }
+}
+
 impl Name {
-    pub(crate) fn as_str(&self) -> &str {
+    #[inline]
+    pub fn as_str(&self) -> &str {
         self.0.as_str()
     }
 }
