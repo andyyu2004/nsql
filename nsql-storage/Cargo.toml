@@ -6,8 +6,12 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-bigdecimal = "0.3.0"
 nsql-pager = { path = "../nsql-pager" }
 nsql-serde = { path = "../nsql-serde" }
 nsql-transaction = { path = "../nsql-transaction" }
+nsql-util = { version = "0.1.0", path = "../nsql-util" }
+rust_decimal = { version = "1.28.1", default-features = false }
 thiserror = "1.0.38"
+
+[dev-dependencies]
+nsql-test = { path = "../nsql-test" }

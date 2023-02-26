@@ -9,7 +9,7 @@ mod wal;
 use std::io;
 use std::sync::Arc;
 
-use nsql_pager::{Pager, SingleFilePager};
+use nsql_pager::Pager;
 use nsql_transaction::Transaction;
 pub use table_storage::TableStorage;
 use thiserror::Error;
@@ -27,7 +27,7 @@ pub struct Storage {
 }
 
 impl Storage {
-    pub async fn load(&self, tx: &Transaction) -> Result<()> {
+    pub async fn load(&self, _tx: &Transaction) -> Result<()> {
         todo!()
         // let reader = self.pager.meta_page_reader();
         // let checkpointer = Checkpointer::new(self.pager.as_ref());

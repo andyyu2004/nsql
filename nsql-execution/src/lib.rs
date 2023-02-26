@@ -29,6 +29,8 @@ pub type ExecutionResult<T, E = Error> = std::result::Result<T, E>;
 pub enum Error {
     #[error(transparent)]
     Catalog(#[from] nsql_catalog::Error),
+    #[error(transparent)]
+    Storage(#[from] nsql_storage::Error),
 }
 
 fn build_pipelines(

@@ -4,13 +4,15 @@
 #![feature(associated_type_defaults)]
 #![feature(never_type)]
 
+use core::fmt;
 use std::future::Future;
 use std::io;
 use std::pin::Pin;
 use std::sync::Arc;
+use std::task::{Context, Poll};
 
-pub use bytes::{Buf, BufMut};
-pub use nsql_serde_derive::{Deserialize, DeserializeSync, Serialize, SerializeSync};
+pub use nsql_serde_derive::{Deserialize, Serialize};
+use rust_decimal::Decimal;
 use smol_str::SmolStr;
 use tokio::io::{AsyncRead, AsyncWrite};
 pub use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -56,9 +58,35 @@ impl<'de, D: AsyncRead + Unpin + 'de> Deserializer<'de> for D {
 }
 
 pub trait Serialize {
-    type Error: From<io::Error> = io::Error;
+    type Error: From<io::Error> + fmt::Debug = io::Error;
 
     async fn serialize(&self, ser: &mut dyn Serializer<'_>) -> Result<(), Self::Error>;
+
+    async fn serialized_size(&self) -> Result<usize, Self::Error> {
+        let mut counter = Counter::default();
+        self.serialize(&mut counter).await?;
+        Ok(counter.size)
+    }
+}
+
+impl<S: Serialize + ?Sized> Serialize for Box<S> {
+    type Error = S::Error;
+
+    async fn serialize(&self, ser: &mut dyn Serializer<'_>) -> Result<(), Self::Error> {
+        (**self).serialize(ser).await
+    }
+}
+
+impl<S: Serialize> Serialize for [S] {
+    type Error = S::Error;
+
+    async fn serialize(&self, ser: &mut dyn Serializer<'_>) -> Result<(), Self::Error> {
+        // NOTE: no length prefixed unlike the Vec<S> impl
+        for item in self {
+            item.serialize(ser).await?;
+        }
+        Ok(())
+    }
 }
 
 impl<S: Serialize> Serialize for Arc<S> {
@@ -105,7 +133,7 @@ impl<D: Deserialize> DeserializeWith for D {
 }
 
 pub trait Deserialize: Sized {
-    type Error: From<io::Error> = io::Error;
+    type Error: From<io::Error> + fmt::Debug = io::Error;
 
     async fn deserialize(de: &mut dyn Deserializer<'_>) -> Result<Self, Self::Error>;
 }
@@ -123,62 +151,123 @@ impl<D: Deserialize> Deserialize for Vec<D> {
     }
 }
 
-pub trait SerializeSync {
-    fn serialize_sync(&self, buf: &mut dyn BufMut);
+#[derive(Debug, Default)]
+struct Counter {
+    size: usize,
 }
 
-impl SerializeSync for u32 {
-    #[inline]
-    fn serialize_sync(&self, buf: &mut dyn BufMut) {
-        buf.put_u32(*self);
+impl AsyncWrite for Counter {
+    fn poll_write(
+        self: Pin<&mut Self>,
+        _cx: &mut Context<'_>,
+        buf: &[u8],
+    ) -> Poll<Result<usize, io::Error>> {
+        let this = self.get_mut();
+        this.size += buf.len();
+        Poll::Ready(Ok(buf.len()))
+    }
+
+    fn poll_flush(
+        self: Pin<&mut Self>,
+        _cx: &mut std::task::Context<'_>,
+    ) -> Poll<Result<(), io::Error>> {
+        Poll::Ready(Ok(()))
+    }
+
+    fn poll_shutdown(
+        self: Pin<&mut Self>,
+        _cx: &mut std::task::Context<'_>,
+    ) -> Poll<Result<(), io::Error>> {
+        Poll::Ready(Ok(()))
     }
 }
 
-impl<const N: usize> SerializeSync for [u8; N] {
+macro_rules! impl_serialize {
+    ($method:ident: $ty:ty) => {
+        impl Serialize for $ty {
+            #[inline]
+            async fn serialize(&self, buf: &mut dyn Serializer<'_>) -> Result<(), Self::Error> {
+                buf.$method(*self).await?;
+                Ok(())
+            }
+        }
+    };
+}
+
+impl_serialize!(write_u8: u8);
+impl_serialize!(write_u16: u16);
+impl_serialize!(write_u32: u32);
+impl_serialize!(write_u64: u64);
+
+impl<const N: usize> Serialize for [u8; N] {
     #[inline]
-    fn serialize_sync(&self, buf: &mut dyn BufMut) {
-        buf.put_slice(self);
-    }
-}
-
-pub trait DeserializeSync: Sized {
-    fn deserialize_sync(buf: &mut dyn Buf) -> Self;
-}
-
-impl DeserializeSync for u32 {
-    #[inline]
-    fn deserialize_sync(buf: &mut dyn Buf) -> u32 {
-        buf.get_u32()
-    }
-}
-
-impl<const N: usize> DeserializeSync for [u8; N] {
-    #[inline]
-    fn deserialize_sync(buf: &mut dyn Buf) -> [u8; N] {
-        let mut bytes = [0; N];
-        buf.copy_to_slice(&mut bytes);
-        bytes
-    }
-}
-
-// FIXME these blanket impls aren't the most efficient as they read the entire payload into memory and then copy it over
-impl<S: SerializeSync> Serialize for S {
-    type Error = io::Error;
-
-    async fn serialize(&self, ser: &mut dyn Serializer<'_>) -> Result<(), Self::Error> {
-        let mut buf = bytes::BytesMut::new();
-        self.serialize_sync(&mut buf);
-        ser.write_all(&buf).await?;
+    async fn serialize(&self, buf: &mut dyn Serializer<'_>) -> Result<(), Self::Error> {
+        buf.write_all(self).await?;
         Ok(())
     }
 }
 
-impl<D: DeserializeSync> Deserialize for D {
-    type Error = io::Error;
+impl Serialize for SmolStr {
+    async fn serialize(&self, ser: &mut dyn Serializer<'_>) -> Result<(), Self::Error> {
+        ser.write_str(self).await
+    }
+}
 
-    async fn deserialize(mut de: &mut dyn Deserializer<'_>) -> Result<Self, Self::Error> {
-        let mut buf = bytes::BytesMut::new();
-        (&mut de).read_buf(&mut buf).await?;
-        Ok(Self::deserialize_sync(&mut buf))
+impl Deserialize for SmolStr {
+    async fn deserialize(de: &mut dyn Deserializer<'_>) -> Result<Self, Self::Error> {
+        de.read_str().await
+    }
+}
+
+macro_rules! impl_deserialize {
+    ($method:ident: $ty:ty) => {
+        impl Deserialize for $ty {
+            #[inline]
+            async fn deserialize(de: &mut dyn Deserializer<'_>) -> Result<$ty, Self::Error> {
+                de.$method().await
+            }
+        }
+    };
+}
+
+impl_deserialize!(read_u8: u8);
+impl_deserialize!(read_u16: u16);
+impl_deserialize!(read_u32: u32);
+impl_deserialize!(read_u64: u64);
+
+impl Serialize for bool {
+    async fn serialize(&self, ser: &mut dyn Serializer<'_>) -> Result<(), Self::Error> {
+        ser.write_u8(*self as u8).await?;
+        Ok(())
+    }
+}
+
+impl Deserialize for bool {
+    async fn deserialize(de: &mut dyn Deserializer<'_>) -> Result<Self, Self::Error> {
+        Ok(de.read_u8().await? != 0)
+    }
+}
+
+impl<const N: usize> Deserialize for [u8; N] {
+    #[inline]
+    async fn deserialize(de: &mut dyn Deserializer<'_>) -> Result<Self, Self::Error> {
+        let mut buf = [0; N];
+        de.read_exact(&mut buf).await?;
+        Ok(buf)
+    }
+}
+
+impl Serialize for Decimal {
+    async fn serialize(&self, ser: &mut dyn Serializer<'_>) -> Result<(), Self::Error> {
+        ser.write_all(&self.serialize()).await?;
+        Ok(())
+    }
+}
+
+impl Deserialize for Decimal {
+    async fn deserialize(de: &mut dyn Deserializer<'_>) -> Result<Self, Self::Error> {
+        let mut buf = [0; 16];
+        de.read_exact(&mut buf).await?;
+        Ok(Decimal::deserialize(buf))
     }
 }

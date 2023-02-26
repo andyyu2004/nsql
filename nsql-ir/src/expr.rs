@@ -1,6 +1,6 @@
 use std::fmt;
 
-use bigdecimal::BigDecimal;
+use rust_decimal::Decimal;
 
 #[derive(Debug, Clone)]
 pub enum TableExpr {
@@ -16,7 +16,7 @@ pub enum Expr {
 pub enum Literal {
     Null,
     Bool(bool),
-    Decimal(BigDecimal),
+    Decimal(Decimal),
 }
 
 impl fmt::Display for Literal {

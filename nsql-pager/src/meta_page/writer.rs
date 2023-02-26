@@ -2,7 +2,7 @@ use std::pin::Pin;
 use std::task::{ready, Context, Poll};
 use std::{cmp, io};
 
-use nsql_serde::BufMut;
+use bytes::BufMut;
 use tokio::io::AsyncWrite;
 
 use super::PAGE_IDX_SIZE;

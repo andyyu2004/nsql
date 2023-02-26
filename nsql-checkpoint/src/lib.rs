@@ -2,7 +2,7 @@ use std::io;
 
 use nsql_catalog::{Catalog, Container, Schema, Table};
 use nsql_pager::{MetaPageReader, MetaPageWriter, Pager};
-use nsql_serde::{DeserializeWith, Serialize};
+use nsql_serde::Serialize;
 use nsql_transaction::Transaction;
 use thiserror::Error;
 
@@ -53,8 +53,8 @@ impl<P: Pager> Checkpointer<'_, P> {
 
     async fn load_catalog(
         &self,
-        tx: &Transaction,
-        reader: &mut MetaPageReader<'_, P>,
+        _tx: &Transaction,
+        _reader: &mut MetaPageReader<'_, P>,
     ) -> Result<Catalog> {
         todo!();
         // let catalog = Catalog::deserialize_with(tx, reader).await?;
@@ -87,7 +87,7 @@ impl<'a, P: Pager> CheckpointWriter<'a, P> {
         Ok(())
     }
 
-    async fn write_table_data(&self, tx: &Transaction, table: &Table) -> Result<()> {
+    async fn write_table_data(&self, _tx: &Transaction, _table: &Table) -> Result<()> {
         todo!()
     }
 }

@@ -6,7 +6,7 @@ use std::time::Duration;
 use async_trait::async_trait;
 use nsql::Nsql;
 use nsql_catalog::Ty;
-use nsql_pager::InMemoryPager;
+
 use sqllogictest::{AsyncDB, ColumnType, DBOutput, Runner, TestError};
 use walkdir::WalkDir;
 

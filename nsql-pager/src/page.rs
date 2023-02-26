@@ -2,7 +2,7 @@ use std::fmt;
 use std::ops::{Deref, DerefMut};
 use std::sync::Arc;
 
-use nsql_serde::{DeserializeSync, SerializeSync};
+use nsql_serde::{AsyncReadExt, AsyncWriteExt, Deserialize, Deserializer, Serialize, Serializer};
 use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use crate::{CHECKSUM_LENGTH, PAGE_SIZE, RAW_PAGE_SIZE};
@@ -77,15 +77,15 @@ impl Page {
 #[repr(transparent)]
 pub struct PageIndex(u32);
 
-impl SerializeSync for PageIndex {
-    fn serialize_sync(&self, buf: &mut dyn nsql_serde::BufMut) {
-        buf.put_u32(self.0);
+impl Serialize for PageIndex {
+    async fn serialize(&self, ser: &mut dyn Serializer<'_>) -> Result<(), Self::Error> {
+        ser.write_u32(self.0).await
     }
 }
 
-impl DeserializeSync for PageIndex {
-    fn deserialize_sync(buf: &mut dyn nsql_serde::Buf) -> Self {
-        Self(buf.get_u32())
+impl Deserialize for PageIndex {
+    async fn deserialize(de: &mut dyn Deserializer<'_>) -> Result<Self, Self::Error> {
+        Ok(Self(de.read_u32().await?))
     }
 }
 

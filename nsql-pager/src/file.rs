@@ -1,9 +1,10 @@
+use std::io::Cursor;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{self, AtomicU32};
 use std::{io, mem};
 
 use nsql_fs::File;
-use nsql_serde::{Deserialize, DeserializeSync, Serialize, SerializeSync};
+use nsql_serde::{Deserialize, Serialize};
 use nsql_util::static_assert;
 use tokio::io::{AsyncWriteExt, BufReader};
 use tokio::sync::{OnceCell, RwLock};
@@ -22,14 +23,14 @@ const N_RESERVED_PAGES: u32 = 3;
 
 pub const CURRENT_VERSION: u32 = 1;
 
-#[derive(Debug, PartialEq, Eq, DeserializeSync, SerializeSync)]
+#[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 pub struct FileHeader {
     magic: [u8; 4],
     version: u32,
 }
 
-#[derive(Debug, PartialEq, Eq, SerializeSync, DeserializeSync)]
+#[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 struct PagerHeader {
     free_list_head: PageIndex,
@@ -132,7 +133,7 @@ impl SingleFilePager {
 
         let mut buf = [0; PAGE_SIZE];
         let file_header = FileHeader { magic: MAGIC, version: CURRENT_VERSION };
-        file_header.serialize_sync(&mut buf.as_mut());
+        file_header.serialize(&mut Cursor::new(&mut buf[..])).await?;
         storage.write_at(FILE_HEADER_START, buf).await?;
 
         let db_header = PagerHeader {
@@ -140,6 +141,7 @@ impl SingleFilePager {
             meta_page_head: PageIndex::INVALID,
             page_count: PageIndex::new(N_RESERVED_PAGES),
         };
+        db_header.serialize(&mut Cursor::new(&mut buf[..])).await?;
         storage.write_at(DB_HEADER_START, buf).await?;
         storage.sync().await?;
 
@@ -192,13 +194,13 @@ impl SingleFilePager {
 
     async fn read_database_header(storage: &File<PAGE_SIZE>) -> Result<PagerHeader> {
         let buf = storage.read_at(DB_HEADER_START).await?;
-        let db_header = PagerHeader::deserialize_sync(&mut &buf[..]);
+        let db_header = PagerHeader::deserialize(&mut &buf[..]).await?;
         Ok(db_header)
     }
 
     async fn check_file_header(storage: &File<PAGE_SIZE>) -> Result<()> {
         let buf = storage.read_at(FILE_HEADER_START).await?;
-        let file_header = FileHeader::deserialize_sync(&mut &buf[..]);
+        let file_header = FileHeader::deserialize(&mut &buf[..]).await?;
 
         if file_header.magic != MAGIC {
             Err(io::Error::new(

@@ -88,10 +88,10 @@ impl Nsql {
         let txm = TransactionManager::default();
         let pager = Arc::new(SingleFilePager::open(path).await?) as Arc<dyn Pager>;
         let storage = Storage::new(Arc::clone(&pager));
-        let buffer_pool = BufferPool::new(pager);
+        let _buffer_pool = BufferPool::new(pager);
 
         let tx = txm.begin().await;
-        let checkpoint = storage.load(&tx).await?;
+        storage.load(&tx).await?;
         tx.commit().await;
         // let catalog = checkpoint.catalog;
         todo!()

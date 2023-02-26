@@ -1,8 +1,8 @@
 #![deny(rust_2018_idioms)]
 
 mod expr;
-pub use bigdecimal::BigDecimal;
 use nsql_catalog::{CreateColumnInfo, Name, Oid, Schema, Table};
+pub use rust_decimal::Decimal;
 
 pub use self::expr::{Expr, Literal, TableExpr, Values};
 

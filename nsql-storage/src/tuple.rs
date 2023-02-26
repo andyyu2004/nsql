@@ -1,13 +1,30 @@
 use std::fmt;
 
-use bigdecimal::BigDecimal;
+use nsql_serde::{DeserializeWith, Deserializer, Serialize};
+use rust_decimal::Decimal;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Serialize)]
 pub struct Tuple {
     values: Box<[Value]>,
 }
 
+impl DeserializeWith for Tuple {
+    type Context = ();
+
+    async fn deserialize_with(
+        _ctx: &Self::Context,
+        _de: &mut dyn Deserializer<'_>,
+    ) -> Result<Self, Self::Error> {
+        todo!()
+    }
+}
+
 impl Tuple {
+    pub fn new(values: Box<[Value]>) -> Self {
+        assert!(!values.is_empty(), "tuple must have at least one value");
+        Self { values }
+    }
+
     #[inline]
     pub fn values(&self) -> &[Value] {
         self.values.as_ref()
@@ -16,26 +33,27 @@ impl Tuple {
 
 impl From<Vec<Value>> for Tuple {
     fn from(values: Vec<Value>) -> Self {
-        Self { values: values.into_boxed_slice() }
+        Self::new(values.into_boxed_slice())
     }
 }
 
 impl FromIterator<Value> for Tuple {
     fn from_iter<I: IntoIterator<Item = Value>>(iter: I) -> Self {
-        Self { values: iter.into_iter().collect::<Vec<_>>().into_boxed_slice() }
+        Self::new(iter.into_iter().collect::<Vec<_>>().into_boxed_slice())
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Serialize)]
 pub enum Value {
     Literal(Literal),
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Serialize)]
 pub enum Literal {
+    #[serde(skip)]
     Null,
     Bool(bool),
-    Decimal(BigDecimal),
+    Decimal(Decimal),
 }
 
 impl fmt::Display for Value {

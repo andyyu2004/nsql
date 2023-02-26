@@ -3,7 +3,7 @@ use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::marker::PhantomData;
 
-use nsql_serde::{Deserialize, Deserializer, Serialize, Serializer};
+use nsql_serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
 
 pub struct Oid<T: ?Sized> {
@@ -46,34 +46,21 @@ impl<T> Oid<T> {
 }
 
 /// Lowercase name of a catalog entry (for case insensitive lookup)
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub struct Name(SmolStr);
-
-impl Deserialize for Name {
-    async fn deserialize(de: &mut dyn Deserializer<'_>) -> Result<Self, Self::Error> {
-        let s = de.read_str().await?;
-        Ok(Self::from(s.as_str()))
-    }
-}
-
-impl Serialize for Name {
-    type Error = std::io::Error;
-
-    async fn serialize(&self, ser: &mut dyn Serializer<'_>) -> Result<(), Self::Error> {
-        ser.write_str(self.0.as_str()).await
-    }
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct Name {
+    name: SmolStr,
 }
 
 impl Name {
     #[inline]
     pub fn as_str(&self) -> &str {
-        self.0.as_str()
+        self.name.as_str()
     }
 }
 
 impl fmt::Display for Name {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.0.fmt(f)
+        self.name.fmt(f)
     }
 }
 
@@ -82,12 +69,12 @@ where
     S: AsRef<str>,
 {
     fn from(s: S) -> Self {
-        Self(SmolStr::new(s.as_ref().to_lowercase()))
+        Self { name: SmolStr::new(s.as_ref().to_lowercase()) }
     }
 }
 
 impl Borrow<str> for Name {
     fn borrow(&self) -> &str {
-        self.0.as_ref()
+        self.name.as_ref()
     }
 }

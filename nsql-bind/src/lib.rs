@@ -3,7 +3,7 @@
 use std::fmt;
 use std::str::FromStr;
 
-use ir::BigDecimal;
+use ir::Decimal;
 use nsql_catalog::{
     Catalog, Container, CreateColumnInfo, Entity, Name, Oid, Schema, SchemaEntity, Table, Ty,
     DEFAULT_SCHEMA,
@@ -117,7 +117,7 @@ impl<'a> Binder<'a> {
                 or,
                 into: _,
                 table_name,
-                columns,
+                columns: _,
                 overwrite,
                 source,
                 partitioned,
@@ -272,7 +272,7 @@ impl<'a> Binder<'a> {
         match literal {
             ast::Value::Number(decimal, b) => {
                 assert!(!b, "what does this bool mean?");
-                let decimal = BigDecimal::from_str(decimal)
+                let decimal = Decimal::from_str(decimal)
                     .expect("this should be a parse error if the decimal is not valid");
                 ir::Literal::Decimal(decimal)
             }

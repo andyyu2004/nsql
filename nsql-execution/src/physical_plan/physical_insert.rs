@@ -52,7 +52,8 @@ impl PhysicalSink for PhysicalInsert {
             .get::<Table>(ctx.tx(), self.table)?
             .expect("table not found during insert execution");
 
-        table.storage().append(ctx.tx(), tuple).await;
+        let storage = table.storage();
+        storage.append(ctx.tx(), tuple).await?;
 
         Ok(())
     }
@@ -60,7 +61,7 @@ impl PhysicalSink for PhysicalInsert {
 
 #[async_trait::async_trait]
 impl PhysicalSource for PhysicalInsert {
-    async fn source(&self, ctx: &ExecutionContext<'_>) -> ExecutionResult<Option<Tuple>> {
+    async fn source(&self, _ctx: &ExecutionContext<'_>) -> ExecutionResult<Option<Tuple>> {
         todo!()
     }
 

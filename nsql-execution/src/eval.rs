@@ -18,7 +18,7 @@ impl Evaluator {
             Expr::Literal(lit) => match lit {
                 nsql_ir::Literal::Null => Value::Literal(Literal::Null),
                 nsql_ir::Literal::Bool(b) => Value::Literal(Literal::Bool(*b)),
-                nsql_ir::Literal::Decimal(d) => Value::Literal(Literal::Decimal(d.clone())),
+                nsql_ir::Literal::Decimal(d) => Value::Literal(Literal::Decimal(*d)),
             },
         }
     }
