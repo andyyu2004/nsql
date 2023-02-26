@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
-pub(crate) use crate::arena::{Arena, Idx};
+pub(crate) use nsql_arena::{Arena, Idx};
+
 use crate::{PhysicalNode, PhysicalOperator, PhysicalSink, PhysicalSource};
 
 pub(crate) struct MetaPipeline {
@@ -75,23 +76,27 @@ impl MetaPipelineBuilder {
     }
 }
 
-impl Idx<MetaPipelineBuilder> {
+impl MetaPipelineBuilder {
     pub(crate) fn new_child_meta_pipeline(
-        self,
         arena: &mut PipelineBuilderArena,
+        idx: Idx<Self>,
         current: Idx<PipelineBuilder>,
         sink: Arc<dyn PhysicalSink>,
     ) -> Idx<MetaPipelineBuilder> {
         let child = MetaPipelineBuilder::new(arena, sink);
-        arena[self].children.push(child);
-        arena[self].pipelines.push(current);
+        arena[idx].children.push(child);
+        arena[idx].pipelines.push(current);
         child
     }
 
-    pub(crate) fn build(self, arena: &mut PipelineBuilderArena, node: Arc<dyn PhysicalNode>) {
-        assert_eq!(arena[self].pipelines.len(), 1);
-        assert!(arena[self].children.is_empty());
-        node.build_pipelines(arena, arena[self].pipelines[0], self)
+    pub(crate) fn build(
+        arena: &mut PipelineBuilderArena,
+        idx: Idx<Self>,
+        node: Arc<dyn PhysicalNode>,
+    ) {
+        assert_eq!(arena[idx].pipelines.len(), 1);
+        assert!(arena[idx].children.is_empty());
+        node.build_pipelines(arena, arena[idx].pipelines[0], idx)
     }
 }
 

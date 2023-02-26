@@ -6,6 +6,8 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+nsql-arena = { version = "0.1.0", path = "../nsql-arena" }
+nsql-buffer = { version = "0.1.0", path = "../nsql-buffer" }
 nsql-core = { version = "0.1.0", path = "../nsql-core" }
 nsql-pager = { path = "../nsql-pager" }
 nsql-serde = { path = "../nsql-serde" }

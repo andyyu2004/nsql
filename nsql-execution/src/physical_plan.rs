@@ -4,7 +4,7 @@ mod physical_values;
 
 use std::sync::Arc;
 
-use nsql_pager::Pager;
+use nsql_buffer::BufferPool;
 use nsql_plan::Plan;
 
 use self::physical_create_table::PhysicalCreateTable;
@@ -16,7 +16,7 @@ use crate::{
 };
 
 pub struct PhysicalPlanner {
-    pager: Arc<dyn Pager>,
+    pool: BufferPool,
 }
 
 /// Opaque physical plan that is ready to be executed
@@ -29,8 +29,8 @@ impl PhysicalPlan {
 }
 
 impl PhysicalPlanner {
-    pub fn new(pager: Arc<dyn Pager>) -> Self {
-        Self { pager }
+    pub fn new(pool: BufferPool) -> Self {
+        Self { pool }
     }
 
     pub fn plan(&self, plan: &Plan) -> PhysicalPlan {
@@ -40,7 +40,7 @@ impl PhysicalPlanner {
     fn plan_inner(&self, plan: &Plan) -> Arc<dyn PhysicalNode> {
         match plan {
             Plan::CreateTable { namespace, info } => {
-                PhysicalCreateTable::make(Arc::clone(&self.pager), *namespace, info.clone())
+                PhysicalCreateTable::make(BufferPool::clone(&self.pool), *namespace, info.clone())
             }
             Plan::Insert { namespace, table, source, returning } => {
                 let source = self.plan_inner(source);

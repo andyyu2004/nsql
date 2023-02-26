@@ -11,6 +11,7 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
 
+use nsql_arena::{Idx, RawIdx};
 pub use nsql_serde_derive::{Deserialize, Serialize};
 use rust_decimal::Decimal;
 use smol_str::SmolStr;
@@ -269,5 +270,34 @@ impl Deserialize for Decimal {
         let mut buf = [0; 16];
         de.read_exact(&mut buf).await?;
         Ok(Decimal::deserialize(buf))
+    }
+}
+
+impl<T> Serialize for Idx<T> {
+    #[inline]
+    async fn serialize(&self, ser: &mut dyn Serializer<'_>) -> Result<(), Self::Error> {
+        self.into_raw().serialize(ser).await
+    }
+}
+
+impl Serialize for RawIdx {
+    #[inline]
+    async fn serialize(&self, ser: &mut dyn Serializer<'_>) -> Result<(), Self::Error> {
+        ser.write_u32(u32::from(*self)).await?;
+        Ok(())
+    }
+}
+
+impl<T> Deserialize for Idx<T> {
+    #[inline]
+    async fn deserialize(de: &mut dyn Deserializer<'_>) -> Result<Self, Self::Error> {
+        Ok(Idx::from_raw(RawIdx::deserialize(de).await?))
+    }
+}
+
+impl Deserialize for RawIdx {
+    #[inline]
+    async fn deserialize(de: &mut dyn Deserializer<'_>) -> Result<Self, Self::Error> {
+        Ok(RawIdx::from(de.read_u32().await?))
     }
 }

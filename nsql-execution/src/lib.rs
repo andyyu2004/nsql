@@ -1,7 +1,6 @@
 #![deny(rust_2018_idioms)]
 #![feature(trait_upcasting)]
 
-mod arena;
 mod eval;
 mod executor;
 mod physical_plan;
@@ -10,6 +9,7 @@ mod pipeline;
 use std::fmt;
 use std::sync::Arc;
 
+use nsql_arena::Idx;
 use nsql_catalog::Catalog;
 use nsql_storage::tuple::Tuple;
 use nsql_transaction::Transaction;
@@ -20,7 +20,7 @@ use self::eval::Evaluator;
 pub use self::executor::execute;
 use self::physical_plan::PhysicalPlan;
 use self::pipeline::{
-    Idx, MetaPipeline, MetaPipelineBuilder, PipelineArena, PipelineBuilder, PipelineBuilderArena,
+    MetaPipeline, MetaPipelineBuilder, PipelineArena, PipelineBuilder, PipelineBuilderArena,
 };
 
 pub type ExecutionResult<T, E = Error> = std::result::Result<T, E>;
@@ -39,7 +39,7 @@ fn build_pipelines(
 ) -> (PipelineArena, Idx<MetaPipeline>) {
     let mut arena = PipelineBuilderArena::default();
     let root = MetaPipelineBuilder::new(&mut arena, sink);
-    root.build(&mut arena, plan.root());
+    MetaPipelineBuilder::build(&mut arena, root, plan.root());
     let arena = arena.finish();
     (arena, root.cast())
 }
@@ -71,8 +71,9 @@ trait PhysicalNode: Send + Sync + fmt::Debug + 'static {
                 // If we have a sink `op` (which is also a source), we set the source of current to `op`
                 // and then build the pipeline for `op`'s child with `t` as the sink of the new pipeline
                 arena[current].set_source(Arc::clone(&op) as Arc<dyn PhysicalSource>);
-                let child_meta_builder = meta_builder.new_child_meta_pipeline(arena, current, op);
-                child_meta_builder.build(arena, child);
+                let child_meta_builder =
+                    MetaPipelineBuilder::new_child_meta_pipeline(arena, meta_builder, current, op);
+                MetaPipelineBuilder::build(arena, child_meta_builder, child);
             }
             Err(node) => match node.as_source() {
                 Ok(source) => arena[current].set_source(source),

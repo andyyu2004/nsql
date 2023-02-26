@@ -15,12 +15,21 @@ fn serde_tuple_page() -> Result<()> {
 
         let ctx = TupleDeserializationContext { schema };
         let mut page = HeapTuplePage::default();
-        page.insert(Tuple::from(vec![
+        page.insert_tuple(Tuple::from(vec![
             Value::Literal(Literal::Bool(true)),
             Value::Literal(Literal::Decimal(Decimal::new(42, 17))),
             Value::Literal(Literal::Bool(false)),
         ]))
-        .await?;
+        .await?
+        .unwrap();
+
+        page.insert_tuple(Tuple::from(vec![
+            Value::Literal(Literal::Bool(false)),
+            Value::Literal(Literal::Decimal(Decimal::new(42, 25))),
+            Value::Literal(Literal::Bool(true)),
+        ]))
+        .await?
+        .unwrap();
 
         let mut buf = vec![];
         page.serialize(&mut buf).await?;

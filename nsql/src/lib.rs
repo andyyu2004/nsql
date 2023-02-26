@@ -47,7 +47,8 @@ impl Nsql {
         let plan = Planner::default().plan(stmt);
         let plan = optimize(plan);
 
-        let physical_plan = PhysicalPlanner::new(self.inner.storage.pager()).plan(&plan);
+        let physical_plan =
+            PhysicalPlanner::new(BufferPool::clone(&self.inner.buffer_pool)).plan(&plan);
         let tuples = nsql_execution::execute(&tx, catalog, physical_plan).await?;
 
         tx.commit().await;

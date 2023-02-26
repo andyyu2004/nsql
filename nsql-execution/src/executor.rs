@@ -1,11 +1,11 @@
 use std::sync::Arc;
 
+use nsql_arena::Idx;
 use nsql_catalog::Catalog;
 use nsql_storage::tuple::Tuple;
 use nsql_transaction::Transaction;
 use parking_lot::RwLock;
 
-use crate::arena::Idx;
 use crate::physical_plan::PhysicalPlan;
 use crate::pipeline::{MetaPipeline, Pipeline, PipelineArena};
 use crate::{

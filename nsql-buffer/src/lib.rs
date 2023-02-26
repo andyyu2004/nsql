@@ -11,7 +11,11 @@ pub use nsql_pager::Result;
 use nsql_pager::{Page, PageIndex, Pager, PAGE_SIZE};
 use parking_lot::RwLock;
 
+// this trait is here just to have clear view of the interface of the buffer pool
 trait BufferPoolInterface {
+    // Create a new buffer pool with the given pager implementation.
+    // Returns the buffer pool and a future that must be polled to completion.
+    async fn alloc(&self) -> Result<BufferHandle>;
     async fn load(&self, index: PageIndex) -> Result<BufferHandle>;
 }
 
@@ -32,8 +36,16 @@ impl RefCounted for BufferHandle {
     }
 }
 
+#[derive(Clone)]
 pub struct BufferPool {
     inner: Arc<Inner>,
+}
+
+impl BufferPool {
+    #[inline]
+    pub fn pager(&self) -> Arc<dyn Pager> {
+        Arc::clone(&self.inner.pager)
+    }
 }
 
 struct Inner {
@@ -42,8 +54,6 @@ struct Inner {
 }
 
 impl BufferPool {
-    // Create a new buffer pool with the given pager implementation.
-    // Returns the buffer pool and a future that must be polled to completion.
     pub fn new(pager: Arc<dyn Pager>) -> Self {
         let max_memory_bytes = if cfg!(test) { 1024 * 1024 } else { 128 * 1024 * 1024 };
         let max_pages = max_memory_bytes / PAGE_SIZE;
@@ -62,6 +72,12 @@ impl BufferPool {
 }
 
 impl BufferPoolInterface for BufferPool {
+    #[inline]
+    async fn alloc(&self) -> Result<BufferHandle> {
+        let idx = self.inner.pager.alloc_page().await?;
+        self.load(idx).await
+    }
+
     async fn load(&self, index: PageIndex) -> Result<BufferHandle> {
         let inner = &self.inner;
         if let Some(handle) = inner.cache.read().get(index) {
