@@ -107,10 +107,10 @@ impl<'a> Binder<'a> {
                         });
                     }
                     Err(_) => {
-                        let schema = self.bind_schema(&ident)?;
+                        let namespace = self.bind_namespace(&ident)?;
                         let columns = self.lower_columns(columns)?;
                         let info = ir::CreateTableInfo { name: ident.name(), columns };
-                        ir::Stmt::CreateTable { schema, info }
+                        ir::Stmt::CreateTable { namespace, info }
                     }
                 }
             }
@@ -135,7 +135,7 @@ impl<'a> Binder<'a> {
                 ensure!(returning.is_none());
                 // ensure!(columns.is_empty());
 
-                let (schema, table) = self.bind_name::<Table>(table_name)?;
+                let (namespace, table) = self.bind_name::<Table>(table_name)?;
                 let source = self.bind_query(source)?;
                 let returning = returning.as_ref().map(|items| {
                     items
@@ -144,7 +144,7 @@ impl<'a> Binder<'a> {
                         .collect::<Result<Vec<_>>>()
                         .unwrap()
                 });
-                ir::Stmt::Insert { schema, table, source, returning }
+                ir::Stmt::Insert { namespace, table, source, returning }
             }
             _ => return Err(Error::Unimplemented("unimplemented stmt".into())),
         };
@@ -170,13 +170,13 @@ impl<'a> Binder<'a> {
         }
     }
 
-    fn bind_schema(&self, ident: &Ident) -> Result<Oid<Namespace>> {
+    fn bind_namespace(&self, ident: &Ident) -> Result<Oid<Namespace>> {
         match ident {
             Ident::Qualified { schema, .. } => self
                 .catalog
                 .find::<Namespace>(schema.as_str())?
                 .ok_or_else(|| Error::Unbound { kind: Namespace::desc(), ident: ident.clone() }),
-            Ident::Unqualified { name } => self.bind_schema(&Ident::Qualified {
+            Ident::Unqualified { name } => self.bind_namespace(&Ident::Qualified {
                 schema: DEFAULT_SCHEMA.into(),
                 name: name.clone(),
             }),

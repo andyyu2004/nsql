@@ -2,7 +2,7 @@ use std::sync::Arc;
 use std::{io, mem};
 
 use nsql_core::schema::Schema;
-use nsql_pager::{Pager, PAGE_SIZE};
+use nsql_pager::{PageIndex, Pager, PAGE_SIZE};
 use nsql_serde::{
     AsyncReadExt, AsyncWriteExt, Deserialize, DeserializeWith, Deserializer, Serialize, Serializer,
 };
@@ -18,7 +18,21 @@ pub struct TableStorage {
 }
 
 pub struct TableStorageInfo {
-    pub schema: Arc<Schema>,
+    schema: Arc<Schema>,
+    /// The index of the root page of the table if it has been allocated
+    root_page_idx: Option<PageIndex>,
+}
+
+impl TableStorageInfo {
+    #[inline]
+    pub fn new(schema: Arc<Schema>, root_page_idx: Option<PageIndex>) -> Self {
+        Self { schema, root_page_idx }
+    }
+
+    #[inline]
+    pub fn create(schema: Arc<Schema>) -> Self {
+        Self { schema, root_page_idx: None }
+    }
 }
 
 impl TableStorage {

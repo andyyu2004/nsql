@@ -39,12 +39,12 @@ impl PhysicalPlanner {
 
     fn plan_inner(&self, plan: &Plan) -> Arc<dyn PhysicalNode> {
         match plan {
-            Plan::CreateTable { schema, info } => {
-                PhysicalCreateTable::make(Arc::clone(&self.pager), *schema, info.clone())
+            Plan::CreateTable { namespace, info } => {
+                PhysicalCreateTable::make(Arc::clone(&self.pager), *namespace, info.clone())
             }
-            Plan::Insert { schema, table, source, returning } => {
+            Plan::Insert { namespace, table, source, returning } => {
                 let source = self.plan_inner(source);
-                PhysicalInsert::make(*schema, *table, source, returning.clone())
+                PhysicalInsert::make(*namespace, *table, source, returning.clone())
             }
             Plan::Values { values } => PhysicalValues::make(values.clone()),
         }

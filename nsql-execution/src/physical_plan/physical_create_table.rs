@@ -31,7 +31,7 @@ impl PhysicalCreateTable {
         let info = CreateTableInfo {
             name: info.name,
             columns: info.columns,
-            storage: Arc::new(TableStorage::new(TableStorageInfo { schema }, pager)),
+            storage: Arc::new(TableStorage::new(TableStorageInfo::create(schema), pager)),
         };
         Arc::new(Self { finished: AtomicBool::new(false), namespace, info })
     }

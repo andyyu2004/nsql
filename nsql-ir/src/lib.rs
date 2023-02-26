@@ -16,11 +16,11 @@ pub struct CreateTableInfo {
 #[derive(Debug, Clone)]
 pub enum Stmt {
     CreateTable {
-        schema: Oid<Namespace>,
+        namespace: Oid<Namespace>,
         info: CreateTableInfo,
     },
     Insert {
-        schema: Oid<Namespace>,
+        namespace: Oid<Namespace>,
         table: Oid<Table>,
         source: TableExpr,
         returning: Option<Vec<Expr>>,
