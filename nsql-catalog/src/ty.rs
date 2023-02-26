@@ -1,14 +1,23 @@
-use nsql_serde::Deserialize;
+use nsql_serde::{Deserialize, Deserializer};
+use nsql_storage::tuple::PhysicalType;
 
 #[derive(Debug, Eq, PartialEq, Clone)]
-pub enum Ty {
+pub enum LogicalType {
     Int,
 }
 
-impl Deserialize for Ty {
+impl<'a> From<&'a LogicalType> for PhysicalType {
+    fn from(val: &'a LogicalType) -> Self {
+        match val {
+            LogicalType::Int => PhysicalType::Int32,
+        }
+    }
+}
+
+impl Deserialize for LogicalType {
     type Error = std::io::Error;
 
-    async fn deserialize(_de: &mut dyn nsql_serde::Deserializer<'_>) -> Result<Self, Self::Error> {
+    async fn deserialize(_de: &mut dyn Deserializer<'_>) -> Result<Self, Self::Error> {
         todo!()
     }
 }

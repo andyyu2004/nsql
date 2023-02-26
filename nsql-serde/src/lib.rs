@@ -111,21 +111,21 @@ impl<S: Serialize> Serialize for Vec<S> {
 
 /// deserialization trait with context (analogous to serde::DeserializeSeed)
 pub trait DeserializeWith: Sized {
-    type Context;
+    type Context<'a>;
     type Error: From<io::Error> = io::Error;
 
     async fn deserialize_with(
-        ctx: &Self::Context,
+        ctx: &Self::Context<'_>,
         de: &mut dyn Deserializer<'_>,
     ) -> Result<Self, Self::Error>;
 }
 
 impl<D: Deserialize> DeserializeWith for D {
-    type Context = ();
+    type Context<'a> = ();
     type Error = D::Error;
 
     async fn deserialize_with(
-        _ctx: &Self::Context,
+        _ctx: &Self::Context<'_>,
         de: &mut dyn Deserializer<'_>,
     ) -> Result<Self, Self::Error> {
         D::deserialize(de).await

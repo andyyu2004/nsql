@@ -1,4 +1,4 @@
-use nsql_catalog::{Container, Oid, Schema, Table};
+use nsql_catalog::{Container, Namespace, Oid, Table};
 use nsql_ir::Expr;
 
 use super::*;
@@ -6,14 +6,14 @@ use super::*;
 #[derive(Debug)]
 pub(crate) struct PhysicalInsert {
     children: Vec<Arc<dyn PhysicalNode>>,
-    schema: Oid<Schema>,
+    schema: Oid<Namespace>,
     table: Oid<Table>,
     returning: Option<Vec<Expr>>,
 }
 
 impl PhysicalInsert {
     pub fn make(
-        schema: Oid<Schema>,
+        schema: Oid<Namespace>,
         table: Oid<Table>,
         source: Arc<dyn PhysicalNode>,
         returning: Option<Vec<Expr>>,
@@ -45,7 +45,7 @@ impl PhysicalSink for PhysicalInsert {
     async fn sink(&self, ctx: &ExecutionContext<'_>, tuple: Tuple) -> ExecutionResult<()> {
         let schema = ctx
             .catalog()
-            .get::<Schema>(ctx.tx(), self.schema)?
+            .get::<Namespace>(ctx.tx(), self.schema)?
             .expect("schema not found during insert execution");
 
         let table = schema

@@ -8,7 +8,7 @@ use nsql_serde::{
 use nsql_transaction::Transaction;
 use nsql_util::static_assert_eq;
 
-use crate::tuple::Tuple;
+use crate::tuple::{Tuple, TupleDeserializationContext};
 use crate::Result;
 
 pub struct TableStorage {
@@ -58,8 +58,13 @@ impl Serialize for HeapTuplePage {
     }
 }
 
-impl Deserialize for HeapTuplePage {
-    async fn deserialize(de: &mut dyn Deserializer<'_>) -> Result<Self, Self::Error> {
+impl DeserializeWith for HeapTuplePage {
+    type Context<'a> = TupleDeserializationContext<'a>;
+
+    async fn deserialize_with(
+        ctx: &Self::Context<'_>,
+        de: &mut dyn Deserializer<'_>,
+    ) -> Result<Self, Self::Error> {
         let header = HeapTuplePageHeader::deserialize(de).await?;
         let n = de.read_u16().await? as usize;
 
@@ -73,15 +78,16 @@ impl Deserialize for HeapTuplePage {
             de.read_u8().await?;
         }
 
-        let items = Vec::with_capacity(n);
+        let mut items = Vec::with_capacity(n);
         for offset in &item_offsets {
-            let _item_buf = de.take(offset.length as u64);
-            todo!();
-            // items.push(HeapTuple::deserialize(&mut item_buf).await?);
+            let mut tuple_de = de.take(offset.length as u64);
+            items.push(HeapTuple::deserialize_with(ctx, &mut tuple_de).await?);
         }
 
         Ok(Self { header, tuple_offsets: item_offsets, tuples: items })
     }
+
+    type Error = io::Error;
 }
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
@@ -138,10 +144,10 @@ struct HeapTuple {
 }
 
 impl DeserializeWith for HeapTuple {
-    type Context = ();
+    type Context<'a> = TupleDeserializationContext<'a>;
 
     async fn deserialize_with(
-        ctx: &Self::Context,
+        ctx: &Self::Context<'_>,
         de: &mut dyn Deserializer<'_>,
     ) -> Result<Self, Self::Error> {
         let header = HeapTupleHeader::deserialize(de).await?;

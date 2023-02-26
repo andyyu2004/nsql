@@ -5,8 +5,8 @@ use std::str::FromStr;
 
 use ir::Decimal;
 use nsql_catalog::{
-    Catalog, Container, CreateColumnInfo, Entity, Name, Oid, Schema, SchemaEntity, Table, Ty,
-    DEFAULT_SCHEMA,
+    Catalog, Container, CreateColumnInfo, Entity, LogicalType, Name, Namespace, NamespaceEntity,
+    Oid, Table, DEFAULT_SCHEMA,
 };
 use nsql_ir as ir;
 use nsql_parse::ast::{self, HiveDistributionStyle};
@@ -162,19 +162,19 @@ impl<'a> Binder<'a> {
         })
     }
 
-    fn lower_ty(&self, ty: &ast::DataType) -> Result<Ty> {
+    fn lower_ty(&self, ty: &ast::DataType) -> Result<LogicalType> {
         match ty {
-            ast::DataType::Int(width) if width.is_none() => Ok(Ty::Int),
+            ast::DataType::Int(width) if width.is_none() => Ok(LogicalType::Int),
             ty => Err(Error::Unimplemented(format!("type {ty:?}")))?,
         }
     }
 
-    fn bind_schema(&self, ident: &Ident) -> Result<Oid<Schema>> {
+    fn bind_schema(&self, ident: &Ident) -> Result<Oid<Namespace>> {
         match ident {
             Ident::Qualified { schema, .. } => self
                 .catalog
-                .find::<Schema>(schema.as_str())?
-                .ok_or_else(|| Error::Unbound { kind: Schema::desc(), ident: ident.clone() }),
+                .find::<Namespace>(schema.as_str())?
+                .ok_or_else(|| Error::Unbound { kind: Namespace::desc(), ident: ident.clone() }),
             Ident::Unqualified { name } => self.bind_schema(&Ident::Qualified {
                 schema: DEFAULT_SCHEMA.into(),
                 name: name.clone(),
@@ -182,13 +182,13 @@ impl<'a> Binder<'a> {
         }
     }
 
-    fn bind_ident<T: SchemaEntity>(&self, ident: &Ident) -> Result<(Oid<Schema>, Oid<T>)> {
+    fn bind_ident<T: NamespaceEntity>(&self, ident: &Ident) -> Result<(Oid<Namespace>, Oid<T>)> {
         match ident {
             Ident::Qualified { schema, name } => {
-                let (schema_oid, schema) = self
-                    .catalog
-                    .get_by_name::<Schema>(self.tx, schema.as_str())?
-                    .ok_or_else(|| Error::Unbound { kind: Schema::desc(), ident: ident.clone() })?;
+                let (schema_oid, schema) =
+                    self.catalog.get_by_name::<Namespace>(self.tx, schema.as_str())?.ok_or_else(
+                        || Error::Unbound { kind: Namespace::desc(), ident: ident.clone() },
+                    )?;
 
                 let entity_oid = schema
                     .find(name)?
@@ -203,7 +203,10 @@ impl<'a> Binder<'a> {
         }
     }
 
-    fn bind_name<T: SchemaEntity>(&self, name: &ast::ObjectName) -> Result<(Oid<Schema>, Oid<T>)> {
+    fn bind_name<T: NamespaceEntity>(
+        &self,
+        name: &ast::ObjectName,
+    ) -> Result<(Oid<Namespace>, Oid<T>)> {
         self.bind_ident(&self.lower_name(name)?)
     }
 

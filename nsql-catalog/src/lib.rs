@@ -3,7 +3,7 @@
 #![deny(rust_2018_idioms)]
 
 mod entry;
-mod schema;
+mod namespace;
 mod set;
 mod table;
 mod ty;
@@ -14,11 +14,11 @@ use nsql_transaction::Transaction;
 use thiserror::Error;
 
 pub use self::entry::{Name, Oid};
+pub use self::namespace::{CreateNamespaceInfo, Namespace, NamespaceEntity};
 use self::private::CatalogEntity;
-pub use self::schema::{CreateSchemaInfo, Schema, SchemaEntity};
 use self::set::CatalogSet;
 pub use self::table::{CreateColumnInfo, CreateTableInfo, Table};
-pub use self::ty::Ty;
+pub use self::ty::LogicalType;
 
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 
@@ -27,7 +27,7 @@ pub enum Error {}
 
 #[derive(Debug)]
 pub struct Catalog {
-    schemas: CatalogSet<Schema>,
+    schemas: CatalogSet<Namespace>,
 }
 
 pub const DEFAULT_SCHEMA: &str = "main";
@@ -36,7 +36,7 @@ impl Catalog {
     /// Create a blank catalog with the default schema
     pub fn create(tx: &Transaction) -> Result<Self> {
         let catalog = Self { schemas: Default::default() };
-        catalog.create::<Schema>(tx, CreateSchemaInfo { name: DEFAULT_SCHEMA.into() })?;
+        catalog.create::<Namespace>(tx, CreateNamespaceInfo { name: DEFAULT_SCHEMA.into() })?;
         Ok(catalog)
     }
 }

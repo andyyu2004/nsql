@@ -41,11 +41,11 @@ where
     T: CatalogEntity,
     T::CreateInfo: Deserialize,
 {
-    type Context = Transaction;
+    type Context<'a> = Transaction;
     type Error = <T::CreateInfo as Deserialize>::Error;
 
     async fn deserialize_with(
-        tx: &Transaction,
+        tx: &Self::Context<'_>,
         de: &mut dyn Deserializer<'_>,
     ) -> Result<Self, Self::Error> {
         let len = de.read_u32().await? as usize;

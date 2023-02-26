@@ -1,7 +1,7 @@
 use std::sync::atomic::{self, AtomicBool};
 use std::sync::Arc;
 
-use nsql_catalog::{Container, CreateTableInfo, Oid, Schema, Table};
+use nsql_catalog::{Container, CreateTableInfo, Namespace, Oid, Table};
 use nsql_pager::Pager;
 use nsql_storage::TableStorage;
 
@@ -10,14 +10,14 @@ use super::*;
 #[derive(Debug)]
 pub struct PhysicalCreateTable {
     finished: AtomicBool,
-    schema: Oid<Schema>,
+    schema: Oid<Namespace>,
     info: CreateTableInfo,
 }
 
 impl PhysicalCreateTable {
     pub(crate) fn make(
         pager: Arc<dyn Pager>,
-        schema: Oid<Schema>,
+        schema: Oid<Namespace>,
         info: nsql_ir::CreateTableInfo,
     ) -> Arc<dyn PhysicalNode> {
         let info = CreateTableInfo {
@@ -60,7 +60,7 @@ impl PhysicalSource for PhysicalCreateTable {
 
         let catalog = ctx.catalog();
         let schema = catalog
-            .get::<Schema>(ctx.tx(), self.schema)?
+            .get::<Namespace>(ctx.tx(), self.schema)?
             .expect("schema not found during execution");
         schema.create::<Table>(ctx.tx(), self.info.clone())?;
 

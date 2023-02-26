@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use nsql_bind::Binder;
 use nsql_buffer::BufferPool;
-use nsql_catalog::{Catalog, Ty};
+use nsql_catalog::{Catalog, LogicalType};
 use nsql_execution::PhysicalPlanner;
 use nsql_opt::optimize;
 use nsql_pager::{InMemoryPager, Pager, SingleFilePager};
@@ -23,7 +23,7 @@ pub struct Nsql {
 }
 
 pub struct MaterializedQueryOutput {
-    pub types: Vec<Ty>,
+    pub types: Vec<LogicalType>,
     pub tuples: Vec<Tuple>,
 }
 

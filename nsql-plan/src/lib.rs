@@ -1,13 +1,13 @@
-use nsql_catalog::{Oid, Schema, Table};
+use nsql_catalog::{Namespace, Oid, Table};
 use nsql_ir as ir;
 
 pub enum Plan {
     CreateTable {
-        schema: Oid<Schema>,
+        schema: Oid<Namespace>,
         info: ir::CreateTableInfo,
     },
     Insert {
-        schema: Oid<Schema>,
+        schema: Oid<Namespace>,
         table: Oid<Table>,
         source: Box<Plan>,
         returning: Option<Vec<ir::Expr>>,

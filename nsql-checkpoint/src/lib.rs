@@ -1,6 +1,6 @@
 use std::io;
 
-use nsql_catalog::{Catalog, Container, Schema, Table};
+use nsql_catalog::{Catalog, Container, Namespace, Table};
 use nsql_pager::{MetaPageReader, MetaPageWriter, Pager};
 use nsql_serde::Serialize;
 use nsql_transaction::Transaction;
@@ -73,13 +73,13 @@ impl<'a, P: Pager> CheckpointWriter<'a, P> {
     }
 
     async fn write_catalog(&mut self, tx: &Transaction, catalog: &Catalog) -> Result<()> {
-        for schema in catalog.all::<Schema>(tx)? {
+        for schema in catalog.all::<Namespace>(tx)? {
             self.write_schema(tx, &schema).await?;
         }
         Ok(())
     }
 
-    async fn write_schema(&mut self, tx: &Transaction, schema: &Schema) -> Result<()> {
+    async fn write_schema(&mut self, tx: &Transaction, schema: &Namespace) -> Result<()> {
         schema.serialize(&mut self.meta_writer).await?;
         for table in schema.all::<Table>(tx)? {
             self.write_table_data(tx, &table).await?;

@@ -1,7 +1,29 @@
 use std::fmt;
 
-use nsql_serde::{DeserializeWith, Deserializer, Serialize};
+use nsql_serde::{Deserialize, DeserializeWith, Deserializer, Serialize};
 use rust_decimal::Decimal;
+
+pub trait Schema {
+    fn attributes(&self) -> Box<dyn ExactSizeIterator<Item = &dyn AttributeSpec> + '_>;
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PhysicalType {
+    /// 8-bit boolean
+    Bool,
+    /// 32-bit signed integer
+    Int32,
+    /// 128-bit fixed-size decimal
+    Decimal,
+}
+
+pub trait AttributeSpec {
+    fn physical_type(&self) -> &PhysicalType;
+}
+
+pub struct TupleDeserializationContext<'a> {
+    pub schema: &'a dyn Schema,
+}
 
 #[derive(Debug, PartialEq, Serialize)]
 pub struct Tuple {
@@ -9,13 +31,31 @@ pub struct Tuple {
 }
 
 impl DeserializeWith for Tuple {
-    type Context = ();
+    type Context<'a> = TupleDeserializationContext<'a>;
 
     async fn deserialize_with(
-        _ctx: &Self::Context,
-        _de: &mut dyn Deserializer<'_>,
+        ctx: &Self::Context<'_>,
+        de: &mut dyn Deserializer<'_>,
     ) -> Result<Self, Self::Error> {
-        todo!()
+        let attributes = ctx.schema.attributes();
+        let mut values = Vec::with_capacity(attributes.len());
+
+        for attribute in attributes {
+            let value = match attribute.physical_type() {
+                PhysicalType::Bool => {
+                    let b = bool::deserialize(de).await?;
+                    Value::Literal(Literal::Bool(b))
+                }
+                PhysicalType::Decimal => {
+                    let d = <Decimal as Deserialize>::deserialize(de).await?;
+                    Value::Literal(Literal::Decimal(d))
+                }
+                PhysicalType::Int32 => todo!(),
+            };
+            values.push(value);
+        }
+
+        Ok(Self::from(values))
     }
 }
 

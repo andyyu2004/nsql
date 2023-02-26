@@ -4,7 +4,6 @@ use nsql_serde::{Deserialize, Serialize};
 use test_strategy::proptest;
 
 use super::{FileHeader, PagerHeader};
-use crate::PAGE_SIZE;
 
 #[proptest]
 fn test_serde_db_header(expected: PagerHeader) {

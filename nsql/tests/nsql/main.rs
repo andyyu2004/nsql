@@ -5,8 +5,7 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use nsql::Nsql;
-use nsql_catalog::Ty;
-
+use nsql_catalog::LogicalType;
 use sqllogictest::{AsyncDB, ColumnType, DBOutput, Runner, TestError};
 use walkdir::WalkDir;
 
@@ -34,12 +33,12 @@ fn nsql_sqllogictest() -> nsql::Result<(), Vec<TestError>> {
 pub struct TestDb(Nsql);
 
 #[derive(Debug, Eq, PartialEq, Clone)]
-pub struct TypeWrapper(Ty);
+pub struct TypeWrapper(LogicalType);
 
 impl ColumnType for TypeWrapper {
     fn from_char(value: char) -> Option<Self> {
         let ty = match value {
-            'i' => Ty::Int,
+            'i' => LogicalType::Int,
             _ => return None,
         };
         Some(TypeWrapper(ty))
@@ -47,7 +46,7 @@ impl ColumnType for TypeWrapper {
 
     fn to_char(&self) -> char {
         match self.0 {
-            Ty::Int => 'i',
+            LogicalType::Int => 'i',
         }
     }
 }

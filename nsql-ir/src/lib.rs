@@ -1,7 +1,7 @@
 #![deny(rust_2018_idioms)]
 
 mod expr;
-use nsql_catalog::{CreateColumnInfo, Name, Oid, Schema, Table};
+use nsql_catalog::{CreateColumnInfo, Name, Namespace, Oid, Table};
 pub use rust_decimal::Decimal;
 
 pub use self::expr::{Expr, Literal, TableExpr, Values};
@@ -15,11 +15,11 @@ pub struct CreateTableInfo {
 #[derive(Debug, Clone)]
 pub enum Stmt {
     CreateTable {
-        schema: Oid<Schema>,
+        schema: Oid<Namespace>,
         info: CreateTableInfo,
     },
     Insert {
-        schema: Oid<Schema>,
+        schema: Oid<Namespace>,
         table: Oid<Table>,
         source: TableExpr,
         returning: Option<Vec<Expr>>,

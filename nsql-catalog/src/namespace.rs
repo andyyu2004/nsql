@@ -5,39 +5,33 @@ use crate::set::CatalogSet;
 use crate::{Catalog, Container, Entity, Name, Table};
 
 #[derive(Debug, Serialize)]
-pub struct Schema {
+pub struct Namespace {
     name: Name,
     pub(crate) tables: CatalogSet<Table>,
 }
 
-pub trait SchemaEntity: CatalogEntity<Container = Schema> {}
+pub trait NamespaceEntity: CatalogEntity<Container = Namespace> {}
 
-impl<T: CatalogEntity<Container = Schema>> SchemaEntity for T {}
+impl<T: CatalogEntity<Container = Namespace>> NamespaceEntity for T {}
 
-impl Container for Schema {}
-
-pub(crate) mod private {
-    use super::*;
-
-    pub trait SchemaEntity: Entity + Sized {}
-}
+impl Container for Namespace {}
 
 #[derive(Debug)]
-pub struct CreateSchemaInfo {
+pub struct CreateNamespaceInfo {
     pub name: Name,
 }
 
-impl Deserialize for CreateSchemaInfo {
+impl Deserialize for CreateNamespaceInfo {
     async fn deserialize(de: &mut dyn Deserializer<'_>) -> Result<Self, Self::Error> {
         let s = de.read_str().await?;
         Ok(Self { name: Name::from(s.as_str()) })
     }
 }
 
-impl CatalogEntity for Schema {
+impl CatalogEntity for Namespace {
     type Container = Catalog;
 
-    type CreateInfo = CreateSchemaInfo;
+    type CreateInfo = CreateNamespaceInfo;
 
     #[inline]
     fn catalog_set(catalog: &Catalog) -> &CatalogSet<Self> {
@@ -50,9 +44,11 @@ impl CatalogEntity for Schema {
     }
 }
 
-impl Entity for Schema {
+impl Entity for Namespace {
     #[inline]
     fn desc() -> &'static str {
+        // we still call this a "schema" in the sql world, but not internally to avoid confusion
+        // with the other schema
         "schema"
     }
 
