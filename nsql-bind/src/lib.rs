@@ -5,13 +5,14 @@ use std::str::FromStr;
 
 use ir::Decimal;
 use nsql_catalog::{
-    Catalog, Container, CreateColumnInfo, Entity, LogicalType, Name, Namespace, NamespaceEntity,
-    Oid, Table, DEFAULT_SCHEMA,
+    Catalog, Container, CreateColumnInfo, Entity, Namespace, NamespaceEntity, Oid, Table,
+    DEFAULT_SCHEMA,
 };
+use nsql_core::schema::LogicalType;
+use nsql_core::Name;
 use nsql_ir as ir;
 use nsql_parse::ast::{self, HiveDistributionStyle};
 use nsql_transaction::Transaction;
-use smol_str::SmolStr;
 use thiserror::Error;
 
 pub struct Binder<'a> {
@@ -295,8 +296,8 @@ impl<'a> Binder<'a> {
 
 #[derive(Debug, Clone)]
 pub enum Ident {
-    Qualified { schema: SmolStr, name: SmolStr },
-    Unqualified { name: SmolStr },
+    Qualified { schema: Name, name: Name },
+    Unqualified { name: Name },
 }
 
 impl Ident {

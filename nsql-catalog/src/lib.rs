@@ -6,19 +6,18 @@ mod entry;
 mod namespace;
 mod set;
 mod table;
-mod ty;
 
 use std::sync::Arc;
 
+use nsql_core::Name;
 use nsql_transaction::Transaction;
 use thiserror::Error;
 
-pub use self::entry::{Name, Oid};
+pub use self::entry::Oid;
 pub use self::namespace::{CreateNamespaceInfo, Namespace, NamespaceEntity};
 use self::private::CatalogEntity;
 use self::set::CatalogSet;
 pub use self::table::{CreateColumnInfo, CreateTableInfo, Table};
-pub use self::ty::LogicalType;
 
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 

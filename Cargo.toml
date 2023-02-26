@@ -6,6 +6,7 @@ members = [
     "nsql-buffer",
     "nsql-catalog",
     "nsql-checkpoint",
+    "nsql-core",
     "nsql-error",
     "nsql-execution",
     "nsql-ir",

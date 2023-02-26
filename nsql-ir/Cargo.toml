@@ -7,4 +7,5 @@ edition = "2021"
 
 [dependencies]
 nsql-catalog = { version = "0.1.0", path = "../nsql-catalog" }
+nsql-core = { version = "0.1.0", path = "../nsql-core" }
 rust_decimal = { version = "1.28.1", default-features = false }

@@ -1,40 +1,18 @@
+use nsql_core::schema::{Attribute, LogicalType};
 use rust_decimal::Decimal;
 
 use super::*;
-use crate::tuple::{AttributeSpec, Literal, PhysicalType, Schema, Value};
-
-#[derive(Debug, PartialEq)]
-struct TestSchema {
-    attributes: Vec<TestAttribute>,
-}
-
-impl Schema for TestSchema {
-    fn attributes(&self) -> Box<dyn ExactSizeIterator<Item = &dyn AttributeSpec> + '_> {
-        Box::new(self.attributes.iter().map(|attr| attr as &dyn AttributeSpec))
-    }
-}
-
-#[derive(Debug, PartialEq)]
-struct TestAttribute {
-    ty: PhysicalType,
-}
-
-impl AttributeSpec for TestAttribute {
-    fn physical_type(&self) -> &PhysicalType {
-        &self.ty
-    }
-}
+use crate::tuple::{Literal, Value};
 
 #[test]
 fn serde_tuple_page() -> Result<()> {
     nsql_test::start(async {
-        let schema = &TestSchema {
-            attributes: vec![
-                TestAttribute { ty: PhysicalType::Bool },
-                TestAttribute { ty: PhysicalType::Decimal },
-                TestAttribute { ty: PhysicalType::Bool },
-            ],
-        };
+        let schema = Arc::new(Schema::new(vec![
+            Attribute::new("a", LogicalType::Bool),
+            Attribute::new("b", LogicalType::Decimal),
+            Attribute::new("c", LogicalType::Bool),
+        ]));
+
         let ctx = TupleDeserializationContext { schema };
         let mut page = HeapTuplePage::default();
         page.insert(Tuple::from(vec![

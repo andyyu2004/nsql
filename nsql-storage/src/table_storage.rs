@@ -1,6 +1,7 @@
 use std::sync::Arc;
 use std::{io, mem};
 
+use nsql_core::schema::Schema;
 use nsql_pager::{Pager, PAGE_SIZE};
 use nsql_serde::{
     AsyncReadExt, AsyncWriteExt, Deserialize, DeserializeWith, Deserializer, Serialize, Serializer,
@@ -13,6 +14,25 @@ use crate::Result;
 
 pub struct TableStorage {
     pager: Arc<dyn Pager>,
+    info: TableStorageInfo,
+}
+
+pub struct TableStorageInfo {
+    pub schema: Arc<Schema>,
+}
+
+impl TableStorage {
+    pub fn new(info: TableStorageInfo, pager: Arc<dyn Pager>) -> Self {
+        Self { info, pager }
+    }
+
+    pub async fn append(&self, _tx: &Transaction, _tuple: Tuple) -> Result<()> {
+        todo!()
+    }
+
+    pub async fn scan(_tx: &Transaction) -> Vec<Tuple> {
+        todo!()
+    }
 }
 
 #[derive(Debug, PartialEq)]
@@ -59,7 +79,7 @@ impl Serialize for HeapTuplePage {
 }
 
 impl DeserializeWith for HeapTuplePage {
-    type Context<'a> = TupleDeserializationContext<'a>;
+    type Context<'a> = TupleDeserializationContext;
 
     async fn deserialize_with(
         ctx: &Self::Context<'_>,
@@ -144,7 +164,7 @@ struct HeapTuple {
 }
 
 impl DeserializeWith for HeapTuple {
-    type Context<'a> = TupleDeserializationContext<'a>;
+    type Context<'a> = TupleDeserializationContext;
 
     async fn deserialize_with(
         ctx: &Self::Context<'_>,
@@ -160,20 +180,6 @@ impl HeapTuple {}
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 struct HeapTupleHeader {}
-
-impl TableStorage {
-    pub fn new(pager: Arc<dyn Pager>) -> Self {
-        Self { pager }
-    }
-
-    pub async fn append(&self, _tx: &Transaction, _tuple: Tuple) -> Result<()> {
-        todo!()
-    }
-
-    pub async fn scan(_tx: &Transaction) -> Vec<Tuple> {
-        todo!()
-    }
-}
 
 #[cfg(test)]
 mod tests;

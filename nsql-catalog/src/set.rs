@@ -1,12 +1,13 @@
 use std::sync::Arc;
 
 use dashmap::DashMap;
+use nsql_core::Name;
 use nsql_serde::{
     AsyncReadExt, AsyncWriteExt, Deserialize, DeserializeWith, Deserializer, Serialize, Serializer,
 };
 use nsql_transaction::{Transaction, Txid};
 
-use crate::entry::{Name, Oid};
+use crate::entry::Oid;
 use crate::private::CatalogEntity;
 
 #[derive(Debug)]

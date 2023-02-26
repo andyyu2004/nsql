@@ -1,28 +1,12 @@
 use std::fmt;
+use std::sync::Arc;
 
+use nsql_core::schema::{PhysicalType, Schema};
 use nsql_serde::{Deserialize, DeserializeWith, Deserializer, Serialize};
 use rust_decimal::Decimal;
 
-pub trait Schema {
-    fn attributes(&self) -> Box<dyn ExactSizeIterator<Item = &dyn AttributeSpec> + '_>;
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum PhysicalType {
-    /// 8-bit boolean
-    Bool,
-    /// 32-bit signed integer
-    Int32,
-    /// 128-bit fixed-size decimal
-    Decimal,
-}
-
-pub trait AttributeSpec {
-    fn physical_type(&self) -> &PhysicalType;
-}
-
-pub struct TupleDeserializationContext<'a> {
-    pub schema: &'a dyn Schema,
+pub struct TupleDeserializationContext {
+    pub schema: Arc<Schema>,
 }
 
 #[derive(Debug, PartialEq, Serialize)]
@@ -31,7 +15,7 @@ pub struct Tuple {
 }
 
 impl DeserializeWith for Tuple {
-    type Context<'a> = TupleDeserializationContext<'a>;
+    type Context<'a> = TupleDeserializationContext;
 
     async fn deserialize_with(
         ctx: &Self::Context<'_>,

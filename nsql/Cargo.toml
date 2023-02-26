@@ -7,6 +7,7 @@ edition = "2021"
 nsql-bind = { version = "0.1.0", path = "../nsql-bind" }
 nsql-buffer = { path = "../nsql-buffer" }
 nsql-catalog = { path = "../nsql-catalog" }
+nsql-core = { version = "0.1.0", path = "../nsql-core" }
 nsql-execution = { version = "0.1.0", path = "../nsql-execution" }
 nsql-opt = { version = "0.1.0", path = "../nsql-opt" }
 

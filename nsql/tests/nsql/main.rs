@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use nsql::Nsql;
-use nsql_catalog::LogicalType;
+use nsql_core::schema::LogicalType;
 use sqllogictest::{AsyncDB, ColumnType, DBOutput, Runner, TestError};
 use walkdir::WalkDir;
 
@@ -39,6 +39,8 @@ impl ColumnType for TypeWrapper {
     fn from_char(value: char) -> Option<Self> {
         let ty = match value {
             'i' => LogicalType::Int,
+            'b' => LogicalType::Bool,
+            'd' => LogicalType::Decimal,
             _ => return None,
         };
         Some(TypeWrapper(ty))
@@ -47,6 +49,8 @@ impl ColumnType for TypeWrapper {
     fn to_char(&self) -> char {
         match self.0 {
             LogicalType::Int => 'i',
+            LogicalType::Bool => 'b',
+            LogicalType::Decimal => 'd',
         }
     }
 }

@@ -2,30 +2,38 @@ use std::sync::atomic::{self, AtomicBool};
 use std::sync::Arc;
 
 use nsql_catalog::{Container, CreateTableInfo, Namespace, Oid, Table};
+use nsql_core::schema::{Attribute, Schema};
 use nsql_pager::Pager;
-use nsql_storage::TableStorage;
+use nsql_storage::{TableStorage, TableStorageInfo};
 
 use super::*;
 
 #[derive(Debug)]
 pub struct PhysicalCreateTable {
     finished: AtomicBool,
-    schema: Oid<Namespace>,
+    namespace: Oid<Namespace>,
     info: CreateTableInfo,
 }
 
 impl PhysicalCreateTable {
     pub(crate) fn make(
         pager: Arc<dyn Pager>,
-        schema: Oid<Namespace>,
+        namespace: Oid<Namespace>,
         info: nsql_ir::CreateTableInfo,
     ) -> Arc<dyn PhysicalNode> {
+        let attrs = info
+            .columns
+            .iter()
+            .map(|c| Attribute::new(c.name.clone(), c.ty.clone()))
+            .collect::<Vec<_>>();
+
+        let schema = Arc::new(Schema::new(attrs));
         let info = CreateTableInfo {
             name: info.name,
             columns: info.columns,
-            storage: Arc::new(TableStorage::new(pager)),
+            storage: Arc::new(TableStorage::new(TableStorageInfo { schema }, pager)),
         };
-        Arc::new(Self { finished: AtomicBool::new(false), schema, info })
+        Arc::new(Self { finished: AtomicBool::new(false), namespace, info })
     }
 }
 
@@ -60,7 +68,7 @@ impl PhysicalSource for PhysicalCreateTable {
 
         let catalog = ctx.catalog();
         let schema = catalog
-            .get::<Namespace>(ctx.tx(), self.schema)?
+            .get::<Namespace>(ctx.tx(), self.namespace)?
             .expect("schema not found during execution");
         schema.create::<Table>(ctx.tx(), self.info.clone())?;
 

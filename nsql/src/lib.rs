@@ -5,7 +5,8 @@ use std::sync::Arc;
 
 use nsql_bind::Binder;
 use nsql_buffer::BufferPool;
-use nsql_catalog::{Catalog, LogicalType};
+use nsql_catalog::Catalog;
+use nsql_core::schema::LogicalType;
 use nsql_execution::PhysicalPlanner;
 use nsql_opt::optimize;
 use nsql_pager::{InMemoryPager, Pager, SingleFilePager};

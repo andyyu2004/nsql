@@ -815,6 +815,7 @@ dependencies = [
  "nsql-bind",
  "nsql-buffer",
  "nsql-catalog",
+ "nsql-core",
  "nsql-execution",
  "nsql-opt",
  "nsql-pager",
@@ -834,10 +835,10 @@ name = "nsql-bind"
 version = "0.1.0"
 dependencies = [
  "nsql-catalog",
+ "nsql-core",
  "nsql-ir",
  "nsql-parse",
  "nsql-transaction",
- "smol_str",
  "thiserror",
 ]
 
@@ -865,10 +866,10 @@ name = "nsql-catalog"
 version = "0.1.0"
 dependencies = [
  "dashmap",
+ "nsql-core",
  "nsql-serde",
  "nsql-storage",
  "nsql-transaction",
- "smol_str",
  "thiserror",
  "tracing",
 ]
@@ -885,6 +886,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "nsql-core"
+version = "0.1.0"
+dependencies = [
+ "nsql-serde",
+ "smol_str",
+]
+
+[[package]]
 name = "nsql-error"
 version = "0.1.0"
 dependencies = [
@@ -898,6 +907,7 @@ dependencies = [
  "async-recursion",
  "async-trait",
  "nsql-catalog",
+ "nsql-core",
  "nsql-ir",
  "nsql-pager",
  "nsql-plan",
@@ -923,6 +933,7 @@ name = "nsql-ir"
 version = "0.1.0"
 dependencies = [
  "nsql-catalog",
+ "nsql-core",
  "rust_decimal",
 ]
 
@@ -988,6 +999,7 @@ dependencies = [
 name = "nsql-storage"
 version = "0.1.0"
 dependencies = [
+ "nsql-core",
  "nsql-pager",
  "nsql-serde",
  "nsql-test",

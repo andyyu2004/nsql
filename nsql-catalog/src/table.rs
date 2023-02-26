@@ -1,49 +1,19 @@
 use std::fmt;
 use std::sync::Arc;
 
+use nsql_core::schema::LogicalType;
 use nsql_serde::{Deserialize, Serialize};
-use nsql_storage::tuple::{AttributeSpec, PhysicalType};
-use nsql_storage::{tuple, TableStorage};
+use nsql_storage::TableStorage;
 
 use crate::private::CatalogEntity;
 use crate::set::CatalogSet;
-use crate::{Entity, LogicalType, Name, Namespace};
+use crate::{Entity, Name, Namespace};
 
 #[derive(Clone, Serialize)]
 pub struct Table {
     name: Name,
     #[serde(skip)]
     storage: Arc<TableStorage>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Schema {
-    attributes: Vec<Attribute>,
-}
-
-impl tuple::Schema for Schema {
-    fn attributes(&self) -> Box<dyn ExactSizeIterator<Item = &dyn AttributeSpec> + '_> {
-        Box::new(self.attributes.iter().map(|attr| attr as &dyn AttributeSpec))
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Attribute {
-    name: Name,
-    logical_type: LogicalType,
-    cached_physical_type: PhysicalType,
-}
-
-impl Attribute {
-    pub fn new(name: Name, logical_type: LogicalType) -> Self {
-        Self { name, cached_physical_type: (&logical_type).into(), logical_type }
-    }
-}
-
-impl AttributeSpec for Attribute {
-    fn physical_type(&self) -> &PhysicalType {
-        &self.cached_physical_type
-    }
 }
 
 impl Table {

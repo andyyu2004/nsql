@@ -11,7 +11,7 @@ use std::sync::Arc;
 
 use nsql_pager::Pager;
 use nsql_transaction::Transaction;
-pub use table_storage::TableStorage;
+pub use table_storage::{TableStorage, TableStorageInfo};
 use thiserror::Error;
 
 pub type Result<T, E = Error> = std::result::Result<T, E>;
