@@ -6,7 +6,7 @@ use test_strategy::{proptest, Arbitrary};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 use super::{MetaPageReader, MetaPageWriter};
-use crate::{InMemoryPager, Pager, Result, SingleFilePager, PAGE_SIZE};
+use crate::{InMemoryPager, Pager, Result, SingleFilePager, PAGE_DATA_SIZE};
 
 #[derive(Debug, Clone, Copy, Arbitrary)]
 enum Action {
@@ -51,7 +51,7 @@ async fn run_read_write(pager: impl Pager, actions: &[Action]) -> Result<()> {
         }
     }
 
-    for _ in 0..PAGE_SIZE {
+    for _ in 0..PAGE_DATA_SIZE {
         // if we keep reading we should hit EOF by the end of the last page
         // this is testing that the next pointer is correctly set to INVALID
         match reader.read_u8().await {

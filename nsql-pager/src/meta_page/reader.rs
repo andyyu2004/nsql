@@ -6,7 +6,7 @@ use bytes::Buf;
 use tokio::io::{AsyncRead, ReadBuf};
 
 use super::PAGE_IDX_SIZE;
-use crate::{BoxFuture, Page, PageIndex, Pager, Result, PAGE_SIZE};
+use crate::{BoxFuture, Page, PageIndex, Pager, Result, PAGE_DATA_SIZE};
 
 /// A meta page contains metadata and has the following format (excluding the usual checksum):
 /// [next_page_idx: 4 bytes][arbitrary data]
@@ -66,8 +66,8 @@ impl<P: Pager> AsyncRead for MetaPageReader<'_, P> {
                     *byte_index += amt;
                     drop(view);
 
-                    if *byte_index >= PAGE_SIZE - PAGE_IDX_SIZE {
-                        assert_eq!(*byte_index, PAGE_SIZE - PAGE_IDX_SIZE);
+                    if *byte_index >= PAGE_DATA_SIZE - PAGE_IDX_SIZE {
+                        assert_eq!(*byte_index, PAGE_DATA_SIZE - PAGE_IDX_SIZE);
                         let next_page_idx =
                             PageIndex::new_maybe_invalid(page.data().as_ref().get_u32());
                         self.state = State::NeedNext { next_page_idx };

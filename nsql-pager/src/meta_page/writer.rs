@@ -6,7 +6,7 @@ use bytes::BufMut;
 use tokio::io::AsyncWrite;
 
 use super::PAGE_IDX_SIZE;
-use crate::{BoxFuture, Page, PageIndex, Pager, Result, PAGE_SIZE};
+use crate::{BoxFuture, Page, PageIndex, Pager, Result, PAGE_DATA_SIZE};
 
 /// You must write something with [`crate::meta_page::MetaPageWriter`] before it is valid to be read from.
 /// Just constructing this struct does not do anything.
@@ -68,7 +68,7 @@ impl<'a, P: Pager> AsyncWrite for MetaPageWriter<'a, P> {
                     self.state = State::Write { page: Some(page), byte_index: PAGE_IDX_SIZE };
                 }
                 State::Write { page, byte_index } => {
-                    let amt = cmp::min(buf.len(), PAGE_SIZE - *byte_index);
+                    let amt = cmp::min(buf.len(), PAGE_DATA_SIZE - *byte_index);
                     page.as_ref().unwrap().data_mut()[*byte_index..*byte_index + amt]
                         .copy_from_slice(&buf[..amt]);
                     debug_assert_eq!(
@@ -77,8 +77,8 @@ impl<'a, P: Pager> AsyncWrite for MetaPageWriter<'a, P> {
                     );
                     *byte_index += amt;
 
-                    if *byte_index >= PAGE_SIZE {
-                        assert_eq!(*byte_index, PAGE_SIZE);
+                    if *byte_index >= PAGE_DATA_SIZE {
+                        assert_eq!(*byte_index, PAGE_DATA_SIZE);
                         self.state = State::PollAlloc {
                             page: Some(page.take().unwrap()),
                             alloc_fut: Box::pin(pager.alloc_page()),

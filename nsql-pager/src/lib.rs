@@ -16,11 +16,11 @@ pub use nsql_fs::Result;
 pub use self::file::SingleFilePager;
 pub use self::mem::InMemoryPager;
 pub use self::meta_page::{MetaPageReader, MetaPageWriter};
-pub use self::page::{Page, PageIndex};
+pub use self::page::{Page, PageIndex, PageOffset};
 
 /// The size of a page in bytes minus the size of the page header.
-pub const PAGE_SIZE: usize = RAW_PAGE_SIZE - CHECKSUM_LENGTH;
-const RAW_PAGE_SIZE: usize = 4096;
+pub const PAGE_DATA_SIZE: usize = PAGE_SIZE - CHECKSUM_LENGTH;
+pub const PAGE_SIZE: usize = 4096;
 const CHECKSUM_LENGTH: usize = std::mem::size_of::<u64>();
 
 type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + 'a>>;

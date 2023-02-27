@@ -2,7 +2,7 @@
 #![allow(incomplete_features)]
 #![feature(async_fn_in_trait)]
 
-use nsql_pager::{InMemoryPager, Pager, Result, SingleFilePager, PAGE_SIZE};
+use nsql_pager::{InMemoryPager, Pager, Result, SingleFilePager, PAGE_DATA_SIZE};
 
 macro_rules! test_each_pager {
     (async fn $test_name:ident($var:ident) $body:block) => {
@@ -21,7 +21,7 @@ test_each_pager! {
         for _ in 0..100 {
             let idx = pager.alloc_page().await?;
             let page = pager.read_page(idx).await?;
-            assert_eq!(page.data().as_ref(), [0u8; PAGE_SIZE]);
+            assert_eq!(page.data().as_ref(), [0u8; PAGE_DATA_SIZE]);
         }
 
         Ok(())
@@ -30,7 +30,7 @@ test_each_pager! {
 
 test_each_pager! {
     async fn test_pager_read_after_write(pager) {
-        for i in 0..PAGE_SIZE {
+        for i in 0..PAGE_DATA_SIZE {
             let idx = pager.alloc_page().await?;
             let page = pager.read_page(idx).await?;
 

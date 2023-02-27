@@ -1,16 +1,16 @@
 use std::fmt;
-use std::ops::{Deref, DerefMut};
+use std::ops::{Add, Deref, DerefMut};
 use std::sync::Arc;
 
-use nsql_serde::{AsyncReadExt, AsyncWriteExt, Deserialize, Deserializer, Serialize, Serializer};
+use nsql_serde::{Deserialize, Serialize};
 use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
-use crate::{CHECKSUM_LENGTH, PAGE_SIZE, RAW_PAGE_SIZE};
+use crate::{CHECKSUM_LENGTH, PAGE_DATA_SIZE, PAGE_SIZE};
 
 #[derive(Clone)]
 pub struct Page {
     idx: PageIndex,
-    bytes: Arc<RwLock<[u8; RAW_PAGE_SIZE]>>,
+    bytes: Arc<RwLock<[u8; PAGE_SIZE]>>,
 }
 
 impl fmt::Debug for Page {
@@ -39,17 +39,17 @@ impl Page {
     }
 
     #[inline]
-    pub(crate) fn new(idx: PageIndex, bytes: [u8; RAW_PAGE_SIZE]) -> Self {
+    pub(crate) fn new(idx: PageIndex, bytes: [u8; PAGE_SIZE]) -> Self {
         Self { idx, bytes: Arc::new(RwLock::new(bytes)) }
     }
 
     #[inline]
     pub(crate) fn zeroed(idx: PageIndex) -> Self {
-        Self::new(idx, [0; RAW_PAGE_SIZE])
+        Self::new(idx, [0; PAGE_SIZE])
     }
 
     #[inline]
-    pub(crate) fn bytes(&self) -> RwLockReadGuard<'_, [u8; RAW_PAGE_SIZE]> {
+    pub(crate) fn bytes(&self) -> RwLockReadGuard<'_, [u8; PAGE_SIZE]> {
         self.bytes.read()
     }
 
@@ -73,20 +73,10 @@ impl Page {
     }
 }
 
-#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[repr(transparent)]
-pub struct PageIndex(u32);
-
-impl Serialize for PageIndex {
-    async fn serialize(&self, ser: &mut dyn Serializer<'_>) -> Result<(), Self::Error> {
-        ser.write_u32(self.0).await
-    }
-}
-
-impl Deserialize for PageIndex {
-    async fn deserialize(de: &mut dyn Deserializer<'_>) -> Result<Self, Self::Error> {
-        Ok(Self(de.read_u32().await?))
-    }
+pub struct PageIndex {
+    idx: u32,
 }
 
 #[cfg(test)]
@@ -96,7 +86,7 @@ impl proptest::arbitrary::Arbitrary for PageIndex {
 
     fn arbitrary_with(_args: Self::Parameters) -> proptest::strategy::BoxedStrategy<Self> {
         use proptest::prelude::Strategy;
-        (0..1000u32).prop_map(PageIndex).boxed()
+        (0..1000u32).prop_map(PageIndex::new).boxed()
     }
 }
 
@@ -107,22 +97,22 @@ impl Default for PageIndex {
 }
 
 impl PageIndex {
-    pub(crate) const INVALID: Self = Self(u32::MAX);
+    pub(crate) const INVALID: Self = Self { idx: u32::MAX };
 
     #[inline]
-    pub const fn new(idx: u32) -> Self {
+    pub(crate) const fn new(idx: u32) -> Self {
         assert!(idx < u32::MAX, "page index is too large");
-        Self(idx)
+        Self { idx }
     }
 
     #[inline]
     pub const fn new_maybe_invalid(idx: u32) -> Self {
-        Self(idx)
+        Self { idx }
     }
 
     #[inline]
     pub(crate) fn is_zero(self) -> bool {
-        self.0 == 0
+        self.idx == 0
     }
 
     #[inline]
@@ -132,33 +122,33 @@ impl PageIndex {
 
     #[inline]
     pub(super) fn as_u32(self) -> u32 {
-        self.0
+        self.idx
     }
 }
 
 impl fmt::Display for PageIndex {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.0)
+        write!(f, "{}", self.idx)
     }
 }
 
 #[derive(Debug)]
 pub struct ReadonlyPageView<'a> {
-    bytes: RwLockReadGuard<'a, [u8; RAW_PAGE_SIZE]>,
+    bytes: RwLockReadGuard<'a, [u8; PAGE_SIZE]>,
 }
 
 impl Deref for ReadonlyPageView<'_> {
-    type Target = [u8; PAGE_SIZE];
+    type Target = [u8; PAGE_DATA_SIZE];
 
     fn deref(&self) -> &Self::Target {
-        unsafe { &*(self.bytes[CHECKSUM_LENGTH..].as_ptr() as *const [u8; PAGE_SIZE]) }
+        unsafe { &*(self.bytes[CHECKSUM_LENGTH..].as_ptr() as *const [u8; PAGE_DATA_SIZE]) }
     }
 }
 
 #[cfg(test)]
 impl<R> PartialEq<R> for ReadonlyPageView<'_>
 where
-    R: AsRef<[u8; PAGE_SIZE]>,
+    R: AsRef<[u8; PAGE_DATA_SIZE]>,
 {
     fn eq(&self, other: &R) -> bool {
         self.as_ref() == other.as_ref()
@@ -167,23 +157,48 @@ where
 
 #[derive(Debug)]
 pub struct WriteablePageView<'a> {
-    bytes: RwLockWriteGuard<'a, [u8; RAW_PAGE_SIZE]>,
+    bytes: RwLockWriteGuard<'a, [u8; PAGE_SIZE]>,
 }
 
 impl Deref for WriteablePageView<'_> {
-    type Target = [u8; PAGE_SIZE];
+    type Target = [u8; PAGE_DATA_SIZE];
 
     fn deref(&self) -> &Self::Target {
-        unsafe { &*(self.bytes[CHECKSUM_LENGTH..].as_ptr() as *const [u8; PAGE_SIZE]) }
+        unsafe { &*(self.bytes[CHECKSUM_LENGTH..].as_ptr() as *const [u8; PAGE_DATA_SIZE]) }
     }
 }
 
 impl DerefMut for WriteablePageView<'_> {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        unsafe { &mut *(self.bytes[CHECKSUM_LENGTH..].as_mut_ptr() as *mut [u8; PAGE_SIZE]) }
+        unsafe { &mut *(self.bytes[CHECKSUM_LENGTH..].as_mut_ptr() as *mut [u8; PAGE_DATA_SIZE]) }
     }
 }
 
 fn checksum(data: impl AsRef<[u8]>) -> u64 {
     crc::Crc::<u64>::new(&crc::CRC_64_WE).checksum(data.as_ref())
+}
+
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct PageOffset {
+    idx: u32,
+}
+
+impl PageOffset {
+    #[inline]
+    pub fn new(idx: u32) -> PageOffset {
+        Self { idx }
+    }
+
+    #[inline]
+    pub fn as_u32(self) -> u32 {
+        self.idx
+    }
+}
+
+impl Add<PageOffset> for PageIndex {
+    type Output = PageIndex;
+
+    fn add(self, rhs: PageOffset) -> Self::Output {
+        PageIndex::new(self.idx + rhs.idx)
+    }
 }

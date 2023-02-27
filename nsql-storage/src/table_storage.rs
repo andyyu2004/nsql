@@ -1,10 +1,12 @@
+mod fsm;
+
 use std::sync::Arc;
 use std::{io, mem};
 
 use nsql_arena::{Arena, Idx};
 use nsql_buffer::BufferPool;
 use nsql_core::schema::Schema;
-use nsql_pager::{PageIndex, PAGE_SIZE};
+use nsql_pager::{PageIndex, PAGE_DATA_SIZE};
 use nsql_serde::{
     AsyncReadExt, AsyncWriteExt, Deserialize, DeserializeWith, Deserializer, Serialize, Serializer,
 };
@@ -63,7 +65,7 @@ impl Default for HeapTuplePage {
         Self {
             header: HeapTuplePageHeader {
                 free_start: TUPLE_PAGE_HEADER_SIZE,
-                free_end: PAGE_SIZE as u16,
+                free_end: PAGE_DATA_SIZE as u16,
             },
             slots: Default::default(),
             tuples: Default::default(),
@@ -147,8 +149,8 @@ static_assert_eq!(TUPLE_PAGE_HEADER_SIZE, 4);
 const TUPLE_HEADER_SIZE: u16 = mem::size_of::<HeapTupleHeader>() as u16;
 static_assert_eq!(TUPLE_HEADER_SIZE, 0);
 
-const ITEM_OFFSET_SIZE: u16 = mem::size_of::<Slot>() as u16;
-static_assert_eq!(ITEM_OFFSET_SIZE, 4);
+const TUPLE_SLOT_SIZE: u16 = mem::size_of::<Slot>() as u16;
+static_assert_eq!(TUPLE_SLOT_SIZE, 4);
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 struct HeapTuplePageFull;
@@ -192,6 +194,11 @@ impl HeapTuplePageHeader {
 struct HeapTuple {
     header: HeapTupleHeader,
     tuple: Tuple,
+}
+
+impl HeapTuple {
+    /// The maximum size of a tuple that can be stored in a page
+    pub const MAX_SIZE: u16 = PAGE_DATA_SIZE as u16 - TUPLE_PAGE_HEADER_SIZE - TUPLE_SLOT_SIZE;
 }
 
 impl DeserializeWith for HeapTuple {

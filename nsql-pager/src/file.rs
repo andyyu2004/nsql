@@ -10,14 +10,13 @@ use tokio::io::{AsyncWriteExt, BufReader};
 use tokio::sync::{OnceCell, RwLock};
 
 use crate::meta_page::{MetaPageReader, MetaPageWriter};
-use crate::{Page, PageIndex, Pager, Result, RAW_PAGE_SIZE};
+use crate::{Page, PageIndex, Pager, Result, PAGE_SIZE};
 
 static_assert!(mem::size_of::<FileHeader>() < PAGE_SIZE);
 static_assert!(mem::size_of::<PagerHeader>() < PAGE_SIZE);
 
 pub const FILE_HEADER_START: u64 = 0;
-pub const DB_HEADER_START: u64 = RAW_PAGE_SIZE as u64;
-pub const PAGE_SIZE: usize = 4096;
+pub const DB_HEADER_START: u64 = PAGE_SIZE as u64;
 pub const MAGIC: [u8; 4] = *b"NSQL";
 const N_RESERVED_PAGES: u32 = 3;
 
@@ -45,7 +44,7 @@ unsafe impl Sync for SingleFilePager {}
 
 pub struct SingleFilePager {
     path: PathBuf,
-    storage: File<RAW_PAGE_SIZE>,
+    storage: File<PAGE_SIZE>,
     page_count: AtomicU32,
     meta_page_head: PageIndex,
     free_list: OnceCell<RwLock<Vec<PageIndex>>>,

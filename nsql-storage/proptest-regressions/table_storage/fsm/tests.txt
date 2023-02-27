@@ -1,0 +1,9 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 6babbfc857eb43b880996cf12fa82afb822702ac71705595601b657947d22bf6 # shrinks to input = _TestFsmPageCanFindSpaceArgs { required: 0, offset: 0 }
+cc 11ccbd5e33b97cfeaae31eb53ecde66096901c88d9e1820220cf2596324c02e2 # shrinks to input = _TestFsmPageDefaultHasNoFreeSpaceArgs { required: 0 }
+cc d6f4ed49eb824f8607af5ba87e34231b34c4f86042ed4da300366f169414a1e2 # shrinks to input = _TestFsmPageCanAlwaysFindSpaceOnEmptyPageArgs { required: 1, offset: 467 }

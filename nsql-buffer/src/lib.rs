@@ -8,7 +8,7 @@ use std::sync::Arc;
 use coarsetime::Duration;
 use lruk::{LruK, RefCounted};
 pub use nsql_pager::Result;
-use nsql_pager::{Page, PageIndex, Pager, PAGE_SIZE};
+use nsql_pager::{Page, PageIndex, Pager, PAGE_DATA_SIZE};
 use parking_lot::RwLock;
 
 // this trait is here just to have clear view of the interface of the buffer pool
@@ -56,7 +56,7 @@ struct Inner {
 impl BufferPool {
     pub fn new(pager: Arc<dyn Pager>) -> Self {
         let max_memory_bytes = if cfg!(test) { 1024 * 1024 } else { 128 * 1024 * 1024 };
-        let max_pages = max_memory_bytes / PAGE_SIZE;
+        let max_pages = max_memory_bytes / PAGE_DATA_SIZE;
 
         let inner = Arc::new(Inner {
             pager,

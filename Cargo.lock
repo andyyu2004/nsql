@@ -1014,7 +1014,9 @@ dependencies = [
  "nsql-test",
  "nsql-transaction",
  "nsql-util",
+ "proptest",
  "rust_decimal",
+ "test-strategy",
  "thiserror",
 ]
 
