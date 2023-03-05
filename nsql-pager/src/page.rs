@@ -1,9 +1,13 @@
-use std::fmt;
+use std::io::{Read, Write};
 use std::ops::{Add, Deref, DerefMut, Sub};
+use std::pin::Pin;
 use std::sync::Arc;
+use std::task::{Context, Poll};
+use std::{fmt, io};
 
-use nsql_serde::{Deserialize, Invalid, Serialize};
+use nsql_serde::{Deserialize, Invalid, Serialize, Serializer};
 use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
+use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 
 use crate::{CHECKSUM_LENGTH, PAGE_DATA_SIZE, PAGE_SIZE};
 
@@ -34,13 +38,13 @@ impl Page {
     #[inline]
     pub fn data(&self) -> ReadonlyPageView<'_> {
         let bytes = self.bytes.read();
-        ReadonlyPageView { bytes }
+        ReadonlyPageView { bytes, read_offset: 0 }
     }
 
     #[inline]
     pub fn data_mut(&self) -> WriteablePageView<'_> {
         let bytes = self.bytes.write();
-        WriteablePageView { bytes }
+        WriteablePageView { bytes, write_offset: 0 }
     }
 
     #[inline]
@@ -141,6 +145,22 @@ impl fmt::Display for PageIndex {
 #[derive(Debug)]
 pub struct ReadonlyPageView<'a> {
     bytes: RwLockReadGuard<'a, [u8; PAGE_SIZE]>,
+    read_offset: usize,
+}
+
+impl AsyncRead for ReadonlyPageView<'_> {
+    #[inline]
+    fn poll_read(
+        mut self: Pin<&mut Self>,
+        _cx: &mut Context<'_>,
+        buf: &mut ReadBuf<'_>,
+    ) -> Poll<io::Result<()>> {
+        let offset = self.read_offset;
+        let amt = buf.remaining().min(self.bytes.len() - offset);
+        buf.put_slice(&self.bytes[offset..offset + amt]);
+        self.read_offset += amt;
+        Poll::Ready(Ok(()))
+    }
 }
 
 impl Deref for ReadonlyPageView<'_> {
@@ -164,6 +184,35 @@ where
 #[derive(Debug)]
 pub struct WriteablePageView<'a> {
     bytes: RwLockWriteGuard<'a, [u8; PAGE_SIZE]>,
+    write_offset: usize,
+}
+
+impl AsyncWrite for WriteablePageView<'_> {
+    fn poll_write(
+        mut self: Pin<&mut Self>,
+        _cx: &mut Context<'_>,
+        buf: &[u8],
+    ) -> Poll<Result<usize, io::Error>> {
+        if self.write_offset + buf.len() > PAGE_DATA_SIZE {
+            return Poll::Ready(Err(io::Error::new(
+                io::ErrorKind::Other,
+                "write to page exceeds page size",
+            )));
+        }
+
+        let offset = self.write_offset;
+        let n = self.bytes[offset..].as_mut().write(buf)?;
+        self.write_offset += n;
+        Poll::Ready(Ok(n))
+    }
+
+    fn poll_flush(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Result<(), io::Error>> {
+        Poll::Ready(Ok(()))
+    }
+
+    fn poll_shutdown(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Result<(), io::Error>> {
+        Poll::Ready(Ok(()))
+    }
 }
 
 impl Deref for WriteablePageView<'_> {

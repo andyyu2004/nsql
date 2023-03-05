@@ -4,6 +4,12 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+arrayvec = "0.7.2"
+async-recursion = "1.0.2"
+bitflags = "2.0.0-rc.3"
 nsql-buffer = {  path = "../nsql-buffer" }
 nsql-pager = { path = "../nsql-pager" }
 nsql-serde = { version = "0.1.0", path = "../nsql-serde" }
+nsql-test = { version = "0.1.0", path = "../nsql-test" }
+nsql-util = { version = "0.1.0", path = "../nsql-util" }
+parking_lot = "0.12.1"

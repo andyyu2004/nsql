@@ -1,3 +1,5 @@
+use std::io;
+
 use nsql_serde::{Deserialize, Deserializer, Serialize};
 
 use crate::private::CatalogEntity;
@@ -22,7 +24,7 @@ pub struct CreateNamespaceInfo {
 }
 
 impl Deserialize for CreateNamespaceInfo {
-    async fn deserialize(de: &mut dyn Deserializer<'_>) -> Result<Self, Self::Error> {
+    async fn deserialize(de: &mut dyn Deserializer<'_>) -> Result<Self, io::Error> {
         let s = de.read_str().await?;
         Ok(Self { name: Name::from(s.as_str()) })
     }

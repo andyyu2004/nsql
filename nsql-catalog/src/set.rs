@@ -1,3 +1,4 @@
+use std::io;
 use std::sync::Arc;
 
 use dashmap::DashMap;
@@ -26,9 +27,7 @@ impl<T> CatalogSet<T> {
 }
 
 impl<T: Serialize> Serialize for CatalogSet<T> {
-    type Error = T::Error;
-
-    async fn serialize(&self, ser: &mut dyn Serializer<'_>) -> Result<(), Self::Error> {
+    async fn serialize(&self, ser: &mut dyn Serializer<'_>) -> Result<(), io::Error> {
         ser.write_u32(self.entries.len() as u32).await?;
         for entry in self.entries.iter() {
             entry.value().committed_version().item().serialize(ser).await?;
@@ -43,7 +42,6 @@ where
     T::CreateInfo: Deserialize,
 {
     type Context<'a> = Transaction;
-    type Error = <T::CreateInfo as Deserialize>::Error;
 
     async fn deserialize_with(
         tx: &Self::Context<'_>,

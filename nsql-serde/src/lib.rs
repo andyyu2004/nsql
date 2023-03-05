@@ -4,9 +4,9 @@
 #![feature(associated_type_defaults)]
 #![feature(min_specialization)]
 
-use core::fmt;
 use std::future::Future;
 use std::io;
+use std::marker::PhantomData;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
@@ -26,6 +26,7 @@ pub trait Serializer<'s>: AsyncWrite + Unpin {
 }
 
 impl<'s, W: AsyncWrite + Unpin + 's> Serializer<'s> for W {
+    #[inline]
     fn write_str(mut self, s: &'s str) -> Pin<Box<dyn Future<Output = io::Result<()>> + 's>>
     where
         Self: Sized + Unpin,
@@ -44,6 +45,7 @@ pub trait Deserializer<'de>: AsyncRead + Unpin {
 }
 
 impl<'de, D: AsyncRead + Unpin + 'de> Deserializer<'de> for D {
+    #[inline]
     fn read_str(mut self) -> Pin<Box<dyn Future<Output = io::Result<SmolStr>> + 'de>>
     where
         Self: Sized + Unpin,
@@ -59,12 +61,15 @@ impl<'de, D: AsyncRead + Unpin + 'de> Deserializer<'de> for D {
     }
 }
 
+pub trait FixedSizeSerialize: Serialize {
+    const SIZE: usize;
+}
+
 pub trait Serialize {
-    type Error: From<io::Error> + fmt::Debug = io::Error;
+    async fn serialize(&self, ser: &mut dyn Serializer<'_>) -> Result<(), io::Error>;
 
-    async fn serialize(&self, ser: &mut dyn Serializer<'_>) -> Result<(), Self::Error>;
-
-    async fn serialized_size(&self) -> Result<usize, Self::Error> {
+    #[inline]
+    async fn serialized_size(&self) -> Result<usize, io::Error> {
         let mut counter = Counter::default();
         self.serialize(&mut counter).await?;
         Ok(counter.size)
@@ -72,17 +77,15 @@ pub trait Serialize {
 }
 
 impl<S: Serialize + ?Sized> Serialize for Box<S> {
-    type Error = S::Error;
-
-    async fn serialize(&self, ser: &mut dyn Serializer<'_>) -> Result<(), Self::Error> {
+    #[inline]
+    async fn serialize(&self, ser: &mut dyn Serializer<'_>) -> Result<(), io::Error> {
         (**self).serialize(ser).await
     }
 }
 
 impl<S: Serialize> Serialize for [S] {
-    type Error = S::Error;
-
-    async fn serialize(&self, ser: &mut dyn Serializer<'_>) -> Result<(), Self::Error> {
+    #[inline]
+    async fn serialize(&self, ser: &mut dyn Serializer<'_>) -> Result<(), io::Error> {
         // NOTE: no length prefixed unlike the Vec<S> impl
         for item in self {
             item.serialize(ser).await?;
@@ -92,17 +95,14 @@ impl<S: Serialize> Serialize for [S] {
 }
 
 impl<S: Serialize> Serialize for Arc<S> {
-    type Error = S::Error;
-
-    async fn serialize(&self, ser: &mut dyn Serializer<'_>) -> Result<(), Self::Error> {
+    #[inline]
+    async fn serialize(&self, ser: &mut dyn Serializer<'_>) -> Result<(), io::Error> {
         (**self).serialize(ser).await
     }
 }
 
 impl<S: Serialize> Serialize for Vec<S> {
-    type Error = S::Error;
-
-    async fn serialize(&self, ser: &mut dyn Serializer<'_>) -> Result<(), Self::Error> {
+    async fn serialize(&self, ser: &mut dyn Serializer<'_>) -> Result<(), io::Error> {
         ser.write_u32(self.len() as u32).await?;
         for item in self {
             item.serialize(ser).await?;
@@ -119,31 +119,28 @@ pub trait DeserializeWith: Sized {
     async fn deserialize_with(
         ctx: &Self::Context<'_>,
         de: &mut dyn Deserializer<'_>,
-    ) -> Result<Self, Self::Error>;
+    ) -> Result<Self, io::Error>;
 }
 
 impl<D: Deserialize> DeserializeWith for D {
     type Context<'a> = ();
-    type Error = D::Error;
 
+    #[inline]
     async fn deserialize_with(
         _ctx: &Self::Context<'_>,
         de: &mut dyn Deserializer<'_>,
-    ) -> Result<Self, Self::Error> {
+    ) -> Result<Self, io::Error> {
         D::deserialize(de).await
     }
 }
 
 pub trait Deserialize: Sized {
-    type Error: From<io::Error> + fmt::Debug = io::Error;
-
-    async fn deserialize(de: &mut dyn Deserializer<'_>) -> Result<Self, Self::Error>;
+    async fn deserialize(de: &mut dyn Deserializer<'_>) -> Result<Self, io::Error>;
 }
 
 impl<D: Deserialize> Deserialize for Vec<D> {
-    type Error = D::Error;
-
-    async fn deserialize(de: &mut dyn Deserializer<'_>) -> Result<Self, Self::Error> {
+    #[inline]
+    async fn deserialize(de: &mut dyn Deserializer<'_>) -> Result<Self, io::Error> {
         let len = de.read_u32().await? as usize;
         let mut items = Vec::with_capacity(len);
         for _ in 0..len {
@@ -159,6 +156,7 @@ struct Counter {
 }
 
 impl AsyncWrite for Counter {
+    #[inline]
     fn poll_write(
         self: Pin<&mut Self>,
         _cx: &mut Context<'_>,
@@ -169,6 +167,7 @@ impl AsyncWrite for Counter {
         Poll::Ready(Ok(buf.len()))
     }
 
+    #[inline]
     fn poll_flush(
         self: Pin<&mut Self>,
         _cx: &mut std::task::Context<'_>,
@@ -176,6 +175,7 @@ impl AsyncWrite for Counter {
         Poll::Ready(Ok(()))
     }
 
+    #[inline]
     fn poll_shutdown(
         self: Pin<&mut Self>,
         _cx: &mut std::task::Context<'_>,
@@ -184,36 +184,50 @@ impl AsyncWrite for Counter {
     }
 }
 
-macro_rules! impl_serialize {
+macro_rules! impl_serialize_primitive {
     ($method:ident: $ty:ty) => {
         impl Serialize for $ty {
             #[inline]
-            async fn serialize(&self, buf: &mut dyn Serializer<'_>) -> Result<(), Self::Error> {
+            async fn serialize(&self, buf: &mut dyn Serializer<'_>) -> Result<(), io::Error> {
                 buf.$method(*self).await?;
                 Ok(())
             }
         }
+
+        impl FixedSizeSerialize for $ty {
+            const SIZE: usize = std::mem::size_of::<$ty>();
+        }
     };
 }
 
-impl_serialize!(write_u8: u8);
-impl_serialize!(write_u16: u16);
-impl_serialize!(write_u32: u32);
-impl_serialize!(write_u64: u64);
+impl_serialize_primitive!(write_u8: u8);
+impl_serialize_primitive!(write_u16: u16);
+impl_serialize_primitive!(write_u32: u32);
+impl_serialize_primitive!(write_u64: u64);
 
-impl<const N: usize> Serialize for [u8; N] {
+// spec disabled for now for async fn in trait
+// FIXME https://github.com/rust-lang/rust/pull/108551
+// impl<const N: usize> Serialize for [u8; N] {
+//     #[inline]
+//     async fn serialize(&self, buf: &mut dyn Serializer<'_>) -> Result<(), io::Error> {
+//         buf.write_all(self).await?;
+//         Ok(())
+//     }
+// }
+
+impl<const N: usize, T: Serialize> Serialize for [T; N] {
     #[inline]
-    async fn serialize(&self, buf: &mut dyn Serializer<'_>) -> Result<(), Self::Error> {
-        buf.write_all(self).await?;
+    async fn serialize(&self, ser: &mut dyn Serializer<'_>) -> Result<(), io::Error> {
+        for item in self {
+            item.serialize(ser).await?;
+        }
         Ok(())
     }
 }
 
-impl<const N: usize, T: Serialize> Serialize for [T; N] {
-    type Error = T::Error;
-
+impl<const N: usize, T: Serialize> Serialize for ArrayVec<T, N> {
     #[inline]
-    default async fn serialize(&self, ser: &mut dyn Serializer<'_>) -> Result<(), Self::Error> {
+    async fn serialize(&self, ser: &mut dyn Serializer<'_>) -> Result<(), io::Error> {
         for item in self {
             item.serialize(ser).await?;
         }
@@ -222,13 +236,15 @@ impl<const N: usize, T: Serialize> Serialize for [T; N] {
 }
 
 impl Serialize for SmolStr {
-    async fn serialize(&self, ser: &mut dyn Serializer<'_>) -> Result<(), Self::Error> {
+    #[inline]
+    async fn serialize(&self, ser: &mut dyn Serializer<'_>) -> Result<(), io::Error> {
         ser.write_str(self).await
     }
 }
 
 impl Deserialize for SmolStr {
-    async fn deserialize(de: &mut dyn Deserializer<'_>) -> Result<Self, Self::Error> {
+    #[inline]
+    async fn deserialize(de: &mut dyn Deserializer<'_>) -> Result<Self, io::Error> {
         de.read_str().await
     }
 }
@@ -237,7 +253,7 @@ macro_rules! impl_deserialize {
     ($method:ident: $ty:ty) => {
         impl Deserialize for $ty {
             #[inline]
-            async fn deserialize(de: &mut dyn Deserializer<'_>) -> Result<$ty, Self::Error> {
+            async fn deserialize(de: &mut dyn Deserializer<'_>) -> Result<$ty, io::Error> {
                 de.$method().await
             }
         }
@@ -250,49 +266,61 @@ impl_deserialize!(read_u32: u32);
 impl_deserialize!(read_u64: u64);
 
 impl Serialize for bool {
-    async fn serialize(&self, ser: &mut dyn Serializer<'_>) -> Result<(), Self::Error> {
+    #[inline]
+    async fn serialize(&self, ser: &mut dyn Serializer<'_>) -> Result<(), io::Error> {
         ser.write_u8(*self as u8).await?;
         Ok(())
     }
 }
 
 impl Deserialize for bool {
-    async fn deserialize(de: &mut dyn Deserializer<'_>) -> Result<Self, Self::Error> {
+    #[inline]
+    async fn deserialize(de: &mut dyn Deserializer<'_>) -> Result<Self, io::Error> {
         Ok(de.read_u8().await? != 0)
     }
 }
 
-impl<const N: usize> Deserialize for [u8; N] {
-    #[inline]
-    async fn deserialize(de: &mut dyn Deserializer<'_>) -> Result<Self, Self::Error> {
-        let mut buf = [0; N];
-        de.read_exact(&mut buf).await?;
-        Ok(buf)
-    }
-}
+// FIXME when specialization is fixed
+// impl<const N: usize> Deserialize for [u8; N] {
+//     #[inline]
+//     async fn deserialize(de: &mut dyn Deserializer<'_>) -> Result<Self, io::Error> {
+//         let mut buf = [0; N];
+//         de.read_exact(&mut buf).await?;
+//         Ok(buf)
+//     }
+// }
 
 impl<const N: usize, T: Deserialize> Deserialize for [T; N] {
-    type Error = T::Error;
-
-    default async fn deserialize(de: &mut dyn Deserializer<'_>) -> Result<Self, Self::Error> {
-        let mut xs = ArrayVec::new();
-        for _ in 0..N {
-            xs.push(T::deserialize(de).await?);
-        }
+    #[inline]
+    async fn deserialize(de: &mut dyn Deserializer<'_>) -> Result<Self, io::Error> {
+        let xs = ArrayVec::<T, N>::deserialize(de).await?;
         // SAFETY: we just initialized each item in the array
         Ok(unsafe { xs.into_inner_unchecked() })
     }
 }
 
+impl<const N: usize, T: Deserialize> Deserialize for ArrayVec<T, N> {
+    #[inline]
+    async fn deserialize(de: &mut dyn Deserializer<'_>) -> Result<Self, io::Error> {
+        let mut xs = ArrayVec::new();
+        for _ in 0..N {
+            xs.push(T::deserialize(de).await?);
+        }
+        Ok(xs)
+    }
+}
+
 impl Serialize for Decimal {
-    async fn serialize(&self, ser: &mut dyn Serializer<'_>) -> Result<(), Self::Error> {
+    #[inline]
+    async fn serialize(&self, ser: &mut dyn Serializer<'_>) -> Result<(), io::Error> {
         ser.write_all(&self.serialize()).await?;
         Ok(())
     }
 }
 
 impl Deserialize for Decimal {
-    async fn deserialize(de: &mut dyn Deserializer<'_>) -> Result<Self, Self::Error> {
+    #[inline]
+    async fn deserialize(de: &mut dyn Deserializer<'_>) -> Result<Self, io::Error> {
         let mut buf = [0; 16];
         de.read_exact(&mut buf).await?;
         Ok(Decimal::deserialize(buf))
@@ -301,14 +329,14 @@ impl Deserialize for Decimal {
 
 impl<T> Serialize for Idx<T> {
     #[inline]
-    async fn serialize(&self, ser: &mut dyn Serializer<'_>) -> Result<(), Self::Error> {
+    async fn serialize(&self, ser: &mut dyn Serializer<'_>) -> Result<(), io::Error> {
         self.into_raw().serialize(ser).await
     }
 }
 
 impl Serialize for RawIdx {
     #[inline]
-    async fn serialize(&self, ser: &mut dyn Serializer<'_>) -> Result<(), Self::Error> {
+    async fn serialize(&self, ser: &mut dyn Serializer<'_>) -> Result<(), io::Error> {
         ser.write_u32(u32::from(*self)).await?;
         Ok(())
     }
@@ -316,14 +344,14 @@ impl Serialize for RawIdx {
 
 impl<T> Deserialize for Idx<T> {
     #[inline]
-    async fn deserialize(de: &mut dyn Deserializer<'_>) -> Result<Self, Self::Error> {
+    async fn deserialize(de: &mut dyn Deserializer<'_>) -> Result<Self, io::Error> {
         Ok(Idx::from_raw(RawIdx::deserialize(de).await?))
     }
 }
 
 impl Deserialize for RawIdx {
     #[inline]
-    async fn deserialize(de: &mut dyn Deserializer<'_>) -> Result<Self, Self::Error> {
+    async fn deserialize(de: &mut dyn Deserializer<'_>) -> Result<Self, io::Error> {
         Ok(RawIdx::from(de.read_u32().await?))
     }
 }
@@ -337,10 +365,8 @@ impl<T> Serialize for Option<T>
 where
     T: Serialize + Invalid,
 {
-    type Error = T::Error;
-
     #[inline]
-    async fn serialize(&self, ser: &mut dyn Serializer<'_>) -> Result<(), Self::Error> {
+    async fn serialize(&self, ser: &mut dyn Serializer<'_>) -> Result<(), io::Error> {
         match self {
             Some(it) => it.serialize(ser).await,
             None => T::invalid().serialize(ser).await,
@@ -352,11 +378,23 @@ impl<T> Deserialize for Option<T>
 where
     T: Deserialize + Invalid + PartialEq,
 {
-    type Error = T::Error;
-
     #[inline]
-    async fn deserialize(de: &mut dyn Deserializer<'_>) -> Result<Self, Self::Error> {
+    async fn deserialize(de: &mut dyn Deserializer<'_>) -> Result<Self, io::Error> {
         let val = T::deserialize(de).await?;
         if val == T::invalid() { Ok(None) } else { Ok(Some(val)) }
+    }
+}
+
+impl<T> Serialize for PhantomData<T> {
+    #[inline]
+    async fn serialize(&self, _: &mut dyn Serializer<'_>) -> Result<(), io::Error> {
+        Ok(())
+    }
+}
+
+impl<T> Deserialize for PhantomData<T> {
+    #[inline]
+    async fn deserialize(_: &mut dyn Deserializer<'_>) -> Result<Self, io::Error> {
+        Ok(PhantomData)
     }
 }

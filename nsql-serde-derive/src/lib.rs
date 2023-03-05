@@ -73,10 +73,7 @@ pub fn derive_serialize(input: TokenStream) -> TokenStream {
     let type_params = data.generics.type_params();
     let extended_predicates = syn::parse::<syn::WhereClause>(
         quote! {
-        where #(
-                #type_params: ::nsql_serde::Serialize,
-                ::std::io::Error: From<<#type_params as ::nsql_serde::Serialize>::Error>
-            ),*
+            where #(#type_params: ::nsql_serde::Serialize),*
         }
         .into(),
     )
@@ -116,9 +113,7 @@ pub fn derive_serialize(input: TokenStream) -> TokenStream {
 
     quote! {
         impl #impl_generics ::nsql_serde::Serialize for #name #ty_generics #where_clause {
-            type Error = ::std::io::Error;
-
-            async fn serialize(&self, ser: &mut dyn ::nsql_serde::Serializer<'_>) -> ::std::result::Result<(), Self::Error> {
+            async fn serialize(&self, ser: &mut dyn ::nsql_serde::Serializer<'_>) -> ::std::result::Result<(), ::std::io::Error> {
                 #body
             }
         }
@@ -134,10 +129,7 @@ pub fn derive_deserialize(input: TokenStream) -> TokenStream {
     let type_params = data.generics.type_params();
     let extended_predicates = syn::parse::<syn::WhereClause>(
         quote! {
-        where #(
-                #type_params: ::nsql_serde::Deserialize,
-                ::std::io::Error: From<<#type_params as ::nsql_serde::Deserialize>::Error>
-            ),*
+        where #(#type_params: ::nsql_serde::Deserialize),*
         }
         .into(),
     )
@@ -152,9 +144,7 @@ pub fn derive_deserialize(input: TokenStream) -> TokenStream {
             let ty = fields.iter().map(|field| &field.ty);
             quote! {
                 impl #impl_generics ::nsql_serde::Deserialize for #name #ty_generics #where_clause {
-                    type Error = ::std::io::Error;
-
-                    async fn deserialize(de: &mut dyn ::nsql_serde::Deserializer<'_>) -> ::std::result::Result<Self, Self::Error> {
+                    async fn deserialize(de: &mut dyn ::nsql_serde::Deserializer<'_>) -> ::std::result::Result<Self, std::io::Error> {
                         use ::nsql_serde::Deserialize as _;
                         #(
                             let #field_name = <#ty as ::nsql_serde::Deserialize>::deserialize(de).await?;
