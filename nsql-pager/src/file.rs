@@ -37,11 +37,6 @@ struct PagerHeader {
     page_count: PageIndex,
 }
 
-// FIXME this is completely unsafe, we need to make uring::File Send + Sync to fix this
-// adding this just to get the project to compile while we work with the in memory storage
-unsafe impl Send for SingleFilePager {}
-unsafe impl Sync for SingleFilePager {}
-
 pub struct SingleFilePager {
     path: PathBuf,
     storage: File<PAGE_SIZE>,
@@ -51,7 +46,7 @@ pub struct SingleFilePager {
     free_list_head: PageIndex,
 }
 
-#[async_trait::async_trait(?Send)]
+#[async_trait::async_trait]
 impl Pager for SingleFilePager {
     async fn alloc_page(&self) -> Result<PageIndex> {
         if let Some(idx) = self.free_list().await?.write().await.pop() {

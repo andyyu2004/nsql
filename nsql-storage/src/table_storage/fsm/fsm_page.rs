@@ -17,19 +17,12 @@ pub(super) struct FsmPage {
     flags: u8,
 }
 
-// let i be the number of internal nodes
-// let l be the number of leaf nodes
-// we require that `1 * (i + l) + 4 * l = PAGE_DATA_SIZE`
-// = i + l + 4l
-// = i + 5l
-// n + 4m = PAGE_DATA_SIZE
-// m =
-
 // this is the biggest number that can make the structure fit in a page
 const NODES_PER_PAGE: u16 = 2455;
 static_assert_eq!(PAGE_DATA_SIZE, mem::size_of::<FsmPage>());
 
 impl FsmPage {
+    #[inline]
     pub fn from_bytes_mut(bytes: &mut [u8; PAGE_DATA_SIZE]) -> &mut Self {
         bytemuck::from_bytes_mut(bytes)
     }

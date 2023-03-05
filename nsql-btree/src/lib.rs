@@ -6,5 +6,5 @@
 mod btree;
 mod node;
 
-pub use btree::BTree;
+// pub use btree::BTree;
 pub use nsql_pager::Result;

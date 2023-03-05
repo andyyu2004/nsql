@@ -1,11 +1,11 @@
-use std::io::{Read, Write};
+use std::io::Write;
 use std::ops::{Add, Deref, DerefMut, Sub};
 use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::{fmt, io};
 
-use nsql_serde::{Deserialize, Invalid, Serialize, Serializer};
+use nsql_serde::{Deserialize, Invalid, Serialize};
 use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 

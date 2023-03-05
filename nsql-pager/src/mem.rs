@@ -25,7 +25,7 @@ impl Default for InMemoryPager {
     }
 }
 
-#[async_trait::async_trait(?Send)]
+#[async_trait::async_trait]
 impl Pager for InMemoryPager {
     #[inline]
     async fn alloc_page(&self) -> Result<PageIndex> {

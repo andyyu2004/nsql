@@ -2,9 +2,10 @@
 #![allow(incomplete_features)]
 #![feature(async_fn_in_trait)]
 
+// use tokio_uring::fs::{self, OpenOptions};
+use std::fs::{self, OpenOptions};
+use std::os::unix::fs::FileExt;
 use std::path::Path;
-
-use tokio_uring::fs::{self, OpenOptions};
 
 /// `File` provides the low-level interface to the underlying file
 /// `N` represents block size
@@ -23,8 +24,7 @@ impl<const N: usize> File<N> {
             .read(true)
             .write(true)
             // .custom_flags(libc::O_DIRECT) // FIXME
-            .open(path)
-            .await?;
+            .open(path)?;
 
         Ok(Self::new(file))
     }
@@ -36,8 +36,7 @@ impl<const N: usize> File<N> {
             .write(true)
             .create(false)
             // .custom_flags(libc::O_DIRECT)
-            .open(path)
-            .await?;
+            .open(path)?;
 
         Ok(Self::new(file))
     }
@@ -45,21 +44,27 @@ impl<const N: usize> File<N> {
     #[inline]
     pub async fn read_at(&self, pos: u64) -> Result<[u8; N]> {
         Self::assert_aligned(pos);
-        let (res, buf) = self.file.read_exact_at(vec![0; N], pos).await;
-        res?;
-        Ok(buf.try_into().expect("we specified the correct length"))
+        // uring impl
+        // let (res, buf) = self.file.read_exact_at(vec![0; N], pos).await;
+        // res?;
+        // Ok(buf.try_into().expect("we specified the correct length"))
+
+        let mut buf = [0; N];
+        self.file.read_at(&mut buf, pos)?;
+        Ok(buf)
     }
 
     #[inline]
     pub async fn write_at(&self, pos: u64, data: [u8; N]) -> Result<()> {
         Self::assert_aligned(pos);
-        self.file.write_all_at(data.to_vec(), pos).await.0?;
+        // self.file.write_all_at(data.to_vec(), pos).await.0?;
+        self.file.write_all_at(&data, pos)?;
         Ok(())
     }
 
     #[inline]
     pub async fn sync(&self) -> Result<()> {
-        self.file.sync_all().await?;
+        self.file.sync_all()?;
         Ok(())
     }
 

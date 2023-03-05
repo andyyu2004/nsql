@@ -26,11 +26,27 @@ impl TableStorage {
         Self { pool, info }
     }
 
-    pub async fn append(&self, _tx: &Transaction, _tuple: Tuple) -> Result<()> {
-        todo!()
+    pub async fn append(&self, _tx: &Transaction, tuple: Tuple) -> Result<()> {
+        let size = tuple.serialized_size().await?;
+        let idx = match self.find_free_space(size) {
+            Some(_) => todo!(),
+            None => self.pool.pager().alloc_page().await?,
+        };
+        let ctx = TupleDeserializationContext { schema: Arc::clone(&self.info.schema) };
+        let handle = self.pool.load(idx).await?;
+        let mut page = HeapTuplePage::deserialize_with(&ctx, &mut handle.page().data()).await?;
+        let _slot = match page.insert_tuple(tuple).await? {
+            Ok(slot) => slot,
+            Err(HeapTuplePageFull) => panic!("there should be enough space as we checked fsm"),
+        };
+        Ok(())
     }
 
     pub async fn scan(_tx: &Transaction) -> Vec<Tuple> {
+        todo!()
+    }
+
+    fn find_free_space(&self, size: usize) -> Option<PageIndex> {
         todo!()
     }
 }

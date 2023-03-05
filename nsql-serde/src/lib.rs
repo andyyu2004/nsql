@@ -19,13 +19,13 @@ use smol_str::SmolStr;
 use tokio::io::{AsyncRead, AsyncWrite};
 pub use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
-pub trait Serializer<'s>: AsyncWrite + Unpin {
+pub trait Serializer<'s>: AsyncWrite + Send + Unpin {
     fn write_str(self, s: &'s str) -> Pin<Box<dyn Future<Output = io::Result<()>> + 's>>
     where
         Self: Sized + Unpin;
 }
 
-impl<'s, W: AsyncWrite + Unpin + 's> Serializer<'s> for W {
+impl<'s, W: AsyncWrite + Send + Unpin + 's> Serializer<'s> for W {
     #[inline]
     fn write_str(mut self, s: &'s str) -> Pin<Box<dyn Future<Output = io::Result<()>> + 's>>
     where
@@ -38,13 +38,13 @@ impl<'s, W: AsyncWrite + Unpin + 's> Serializer<'s> for W {
     }
 }
 
-pub trait Deserializer<'de>: AsyncRead + Unpin {
+pub trait Deserializer<'de>: AsyncRead + Send + Unpin {
     fn read_str(self) -> Pin<Box<dyn Future<Output = io::Result<SmolStr>> + 'de>>
     where
         Self: Sized + Unpin;
 }
 
-impl<'de, D: AsyncRead + Unpin + 'de> Deserializer<'de> for D {
+impl<'de, D: AsyncRead + Send + Unpin + 'de> Deserializer<'de> for D {
     #[inline]
     fn read_str(mut self) -> Pin<Box<dyn Future<Output = io::Result<SmolStr>> + 'de>>
     where
@@ -59,10 +59,6 @@ impl<'de, D: AsyncRead + Unpin + 'de> Deserializer<'de> for D {
             Ok(SmolStr::from(s))
         })
     }
-}
-
-pub trait FixedSizeSerialize: Serialize {
-    const SIZE: usize;
 }
 
 pub trait Serialize {
@@ -192,10 +188,6 @@ macro_rules! impl_serialize_primitive {
                 buf.$method(*self).await?;
                 Ok(())
             }
-        }
-
-        impl FixedSizeSerialize for $ty {
-            const SIZE: usize = std::mem::size_of::<$ty>();
         }
     };
 }
