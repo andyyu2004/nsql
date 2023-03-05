@@ -2,7 +2,7 @@
 #![allow(incomplete_features)]
 #![feature(async_fn_in_trait)]
 #![feature(associated_type_defaults)]
-#![feature(never_type)]
+#![feature(min_specialization)]
 
 use core::fmt;
 use std::future::Future;
@@ -11,6 +11,7 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
 
+use arrayvec::ArrayVec;
 use nsql_arena::{Idx, RawIdx};
 pub use nsql_serde_derive::{Deserialize, Serialize};
 use rust_decimal::Decimal;
@@ -208,6 +209,18 @@ impl<const N: usize> Serialize for [u8; N] {
     }
 }
 
+impl<const N: usize, T: Serialize> Serialize for [T; N] {
+    type Error = T::Error;
+
+    #[inline]
+    default async fn serialize(&self, ser: &mut dyn Serializer<'_>) -> Result<(), Self::Error> {
+        for item in self {
+            item.serialize(ser).await?;
+        }
+        Ok(())
+    }
+}
+
 impl Serialize for SmolStr {
     async fn serialize(&self, ser: &mut dyn Serializer<'_>) -> Result<(), Self::Error> {
         ser.write_str(self).await
@@ -255,6 +268,19 @@ impl<const N: usize> Deserialize for [u8; N] {
         let mut buf = [0; N];
         de.read_exact(&mut buf).await?;
         Ok(buf)
+    }
+}
+
+impl<const N: usize, T: Deserialize> Deserialize for [T; N] {
+    type Error = T::Error;
+
+    default async fn deserialize(de: &mut dyn Deserializer<'_>) -> Result<Self, Self::Error> {
+        let mut xs = ArrayVec::new();
+        for _ in 0..N {
+            xs.push(T::deserialize(de).await?);
+        }
+        // SAFETY: we just initialized each item in the array
+        Ok(unsafe { xs.into_inner_unchecked() })
     }
 }
 

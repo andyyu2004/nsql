@@ -43,6 +43,7 @@ fn preprocess(input: DeriveInput) -> Data {
         }
         syn::Data::Union(_) => panic!("Unions are not supported"),
     };
+
     Data { name: input.ident, kind, generics: input.generics }
 }
 
@@ -67,9 +68,23 @@ fn get_serde_meta_items(attr: &syn::Attribute) -> Vec<syn::NestedMeta> {
 #[proc_macro_derive(Serialize, attributes(serde))]
 pub fn derive_serialize(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
-    let data = preprocess(input);
+    let mut data = preprocess(input);
+
     let type_params = data.generics.type_params();
-    let (_, ty_generics, _) = data.generics.split_for_impl();
+    let extended_predicates = syn::parse::<syn::WhereClause>(
+        quote! {
+        where #(
+                #type_params: ::nsql_serde::Serialize,
+                ::std::io::Error: From<<#type_params as ::nsql_serde::Serialize>::Error>
+            ),*
+        }
+        .into(),
+    )
+    .expect("should always be parseable")
+    .predicates;
+    data.generics.make_where_clause().predicates.extend(extended_predicates);
+
+    let (impl_generics, ty_generics, where_clause) = data.generics.split_for_impl();
 
     let name = data.name;
     let body = match data.kind {
@@ -100,10 +115,7 @@ pub fn derive_serialize(input: TokenStream) -> TokenStream {
     };
 
     quote! {
-        impl #ty_generics ::nsql_serde::Serialize for #name #ty_generics where #(
-                #type_params: ::nsql_serde::Serialize,
-                ::std::io::Error: From<<#type_params as ::nsql_serde::Serialize>::Error>
-            ),* {
+        impl #impl_generics ::nsql_serde::Serialize for #name #ty_generics #where_clause {
             type Error = ::std::io::Error;
 
             async fn serialize(&self, ser: &mut dyn ::nsql_serde::Serializer<'_>) -> ::std::result::Result<(), Self::Error> {
@@ -116,20 +128,30 @@ pub fn derive_serialize(input: TokenStream) -> TokenStream {
 #[proc_macro_derive(Deserialize, attributes(serde))]
 pub fn derive_deserialize(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
-    let data = preprocess(input);
+    let mut data = preprocess(input);
     let name = data.name;
+
     let type_params = data.generics.type_params();
-    let (_, ty_generics, _) = data.generics.split_for_impl();
+    let extended_predicates = syn::parse::<syn::WhereClause>(
+        quote! {
+        where #(
+                #type_params: ::nsql_serde::Deserialize,
+                ::std::io::Error: From<<#type_params as ::nsql_serde::Deserialize>::Error>
+            ),*
+        }
+        .into(),
+    )
+    .expect("should always be parseable")
+    .predicates;
+    data.generics.make_where_clause().predicates.extend(extended_predicates);
+    let (impl_generics, ty_generics, where_clause) = data.generics.split_for_impl();
 
     match data.kind {
         DataKind::Struct {  fields } => {
             let field_name = fields.iter().map(|f| f.ident.as_ref().unwrap()).collect::<Vec<_>>();
             let ty = fields.iter().map(|field| &field.ty);
             quote! {
-                impl #ty_generics ::nsql_serde::Deserialize for #name #ty_generics where #(
-                        #type_params: ::nsql_serde::Deserialize,
-                        ::std::io::Error: From<<#type_params as ::nsql_serde::Deserialize>::Error>
-                    ),* {
+                impl #impl_generics ::nsql_serde::Deserialize for #name #ty_generics #where_clause {
                     type Error = ::std::io::Error;
 
                     async fn deserialize(de: &mut dyn ::nsql_serde::Deserializer<'_>) -> ::std::result::Result<Self, Self::Error> {
