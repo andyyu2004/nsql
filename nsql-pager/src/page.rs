@@ -1,5 +1,5 @@
 use std::fmt;
-use std::ops::{Add, Deref, DerefMut};
+use std::ops::{Add, Deref, DerefMut, Sub};
 use std::sync::Arc;
 
 use nsql_serde::{Deserialize, Serialize};
@@ -23,6 +23,11 @@ impl Page {
     #[inline]
     pub fn idx(&self) -> PageIndex {
         self.idx
+    }
+
+    #[inline]
+    pub fn arced_data(&self) -> Arc<RwLock<[u8; PAGE_SIZE]>> {
+        Arc::clone(&self.bytes)
     }
 
     /// Get an immutable reference to the data bytes of the page
@@ -180,18 +185,18 @@ fn checksum(data: impl AsRef<[u8]>) -> u64 {
 
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct PageOffset {
-    idx: u32,
+    offset: u32,
 }
 
 impl PageOffset {
     #[inline]
-    pub fn new(idx: u32) -> PageOffset {
-        Self { idx }
+    pub fn new(offset: u32) -> PageOffset {
+        Self { offset }
     }
 
     #[inline]
     pub fn as_u32(self) -> u32 {
-        self.idx
+        self.offset
     }
 }
 
@@ -199,6 +204,22 @@ impl Add<PageOffset> for PageIndex {
     type Output = PageIndex;
 
     fn add(self, rhs: PageOffset) -> Self::Output {
-        PageIndex::new(self.idx + rhs.idx)
+        PageIndex::new(self.idx + rhs.offset)
+    }
+}
+
+impl Add for PageOffset {
+    type Output = PageOffset;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        PageOffset::new(self.offset + rhs.offset)
+    }
+}
+
+impl Sub<PageOffset> for PageIndex {
+    type Output = PageIndex;
+
+    fn sub(self, rhs: PageOffset) -> Self::Output {
+        PageIndex::new(self.idx - rhs.offset)
     }
 }

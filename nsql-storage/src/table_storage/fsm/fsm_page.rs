@@ -1,46 +1,57 @@
 use std::mem;
 
+use bytemuck::{Pod, Zeroable};
 use nsql_pager::{PageOffset, PAGE_DATA_SIZE, PAGE_SIZE};
-use nsql_serde::{Deserialize, Deserializer, Serialize, Serializer};
 use nsql_util::{static_assert, static_assert_eq};
 
 use crate::table_storage::HeapTuple;
 
 /// A single page in the free space map
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, Pod, Zeroable)]
+#[repr(C, packed)]
 pub(super) struct FsmPage {
-    nodes: [Bucket; Self::NODES as usize],
+    // page indexes that the leaf node corresponds to
+    // this field should come first so the u32s are aligned
+    leaves: [u32; LEAF_COUNT as usize],
+    nodes: [Bucket; NODES_PER_PAGE as usize],
+    flags: u8,
 }
 
-impl Serialize for FsmPage {
-    async fn serialize(&self, ser: &mut dyn Serializer<'_>) -> Result<(), Self::Error> {
-        // SAFETY: bucket is repr(transparent)
-        unsafe { mem::transmute::<_, [u8; Self::NODES as usize]>(self.nodes).serialize(ser).await }
-    }
-}
+// let i be the number of internal nodes
+// let l be the number of leaf nodes
+// we require that `1 * (i + l) + 4 * l = PAGE_DATA_SIZE`
+// = i + l + 4l
+// = i + 5l
+// n + 4m = PAGE_DATA_SIZE
+// m =
 
-impl Deserialize for FsmPage {
-    async fn deserialize(de: &mut dyn Deserializer<'_>) -> Result<Self, Self::Error> {
-        let nodes = <[u8; Self::NODES as usize]>::deserialize(de).await?;
-        Ok(Self { nodes: unsafe { mem::transmute(nodes) } })
+// this is the biggest number that can make the structure fit in a page
+const NODES_PER_PAGE: u16 = 2455;
+static_assert_eq!(PAGE_DATA_SIZE, mem::size_of::<FsmPage>());
+
+impl FsmPage {
+    pub fn from_bytes_mut(bytes: &mut [u8; PAGE_DATA_SIZE]) -> &mut Self {
+        bytemuck::from_bytes_mut(bytes)
     }
 }
 
 impl Default for FsmPage {
     fn default() -> Self {
-        Self { nodes: [Bucket::default(); Self::NODES as usize] }
+        Self {
+            nodes: [Bucket::default(); NODES_PER_PAGE as usize],
+            leaves: [0; LEAF_COUNT as usize],
+            flags: 0,
+        }
     }
 }
-
-static_assert_eq!(mem::size_of::<FsmPage>(), PAGE_DATA_SIZE);
 
 #[derive(Debug)]
 enum Node {
     Internal {
         /// the maximum bucket of its two children
         max: Bucket,
-        left: Option<u16>,
-        right: Option<u16>,
+        left: Option<NodeIndex>,
+        right: Option<NodeIndex>,
     },
     Leaf {
         offset: PageOffset,
@@ -56,19 +67,15 @@ static_assert!(HeapTuple::MAX_SIZE <= PAGE_DATA_SIZE as u16);
 
 type NodeIndex = u16;
 
-impl FsmPage {
-    /// The index of the root node
-    const ROOT_NODE_IDX: NodeIndex = 0;
+/// The index of the root node
+const ROOT_NODE_IDX: NodeIndex = 0;
 
-    /// The number of nodes in a page
-    pub(super) const NODES: NodeIndex = (PAGE_DATA_SIZE / mem::size_of::<u8>()) as NodeIndex;
-
-    pub(super) const FIRST_LEAF_IDX: NodeIndex = compute_first_leaf_idx(Self::NODES - 1);
-    pub(super) const MAX_OFFSET: NodeIndex = Self::NODES - Self::FIRST_LEAF_IDX - 1;
-}
+pub(super) const FIRST_LEAF_IDX: NodeIndex = compute_first_leaf_idx(NODES_PER_PAGE);
+pub(super) const LEAF_COUNT: NodeIndex = NODES_PER_PAGE - FIRST_LEAF_IDX;
+pub(super) const MAX_OFFSET: NodeIndex = LEAF_COUNT - 1;
 
 // this max offset should be in bounds
-static_assert!(FsmPage::FIRST_LEAF_IDX + FsmPage::MAX_OFFSET < FsmPage::NODES);
+static_assert!(FIRST_LEAF_IDX + MAX_OFFSET < NODES_PER_PAGE);
 
 /// Given number of nodes in a left-complete binary tree, return the index of the first leaf node
 const fn compute_first_leaf_idx(count: NodeIndex) -> NodeIndex {
@@ -94,14 +101,18 @@ const fn compute_first_leaf_idx(count: NodeIndex) -> NodeIndex {
     static_assert_eq!(compute_first_leaf_idx(8), 7);
     static_assert_eq!(compute_first_leaf_idx(15), 7);
     static_assert_eq!(compute_first_leaf_idx(16), 15);
+    static_assert_eq!(compute_first_leaf_idx(1023), 511);
+    static_assert_eq!(compute_first_leaf_idx(1024), 1023);
 
     assert!(count > 0);
     if count.is_power_of_two() { count - 1 } else { (count.next_power_of_two() / 2) - 1 }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Pod, Zeroable)]
 #[repr(transparent)]
 struct Bucket {
+    // SAFETY: we want this to remain endian independent which u8 is
+    // DO NOT change this to another type unless the serialization logic is also changed
     value: u8,
 }
 
@@ -134,7 +145,7 @@ impl FsmPage {
     /// The first leaf node is at offset 0, the next leaf node is at offset 1, etc.
     #[inline]
     pub fn find(&self, required_size: u16) -> Option<PageOffset> {
-        self.search_node(Self::ROOT_NODE_IDX, Self::size_to_bucket(required_size))
+        self.search_node(ROOT_NODE_IDX, Self::size_to_bucket(required_size))
     }
 
     #[inline]
@@ -147,7 +158,7 @@ impl FsmPage {
     /// update the free space map with the new free space on the page
     #[inline]
     pub fn update(&mut self, offset: PageOffset, free_space: u16) {
-        assert!(offset.as_u32() <= Self::MAX_OFFSET as u32);
+        assert!(offset.as_u32() <= MAX_OFFSET as u32);
         assert!(free_space <= HeapTuple::MAX_SIZE);
         let bucket = Self::size_to_bucket(free_space);
 
@@ -213,33 +224,33 @@ impl FsmPage {
     /// return the apge offset that the leaf node at `idx` represents
     fn idx_to_page_offset(&self, idx: NodeIndex) -> PageOffset {
         assert!(self.is_leaf(idx));
-        debug_assert!(self.is_leaf(Self::FIRST_LEAF_IDX));
-        assert!(idx >= Self::FIRST_LEAF_IDX);
-        PageOffset::new((idx - Self::FIRST_LEAF_IDX) as u32)
+        debug_assert!(self.is_leaf(FIRST_LEAF_IDX));
+        assert!(idx >= FIRST_LEAF_IDX);
+        PageOffset::new((idx - FIRST_LEAF_IDX) as u32)
     }
 
     fn page_offset_to_idx(&self, offset: PageOffset) -> NodeIndex {
-        debug_assert!(self.is_leaf(Self::FIRST_LEAF_IDX));
-        Self::FIRST_LEAF_IDX + offset.as_u32() as NodeIndex
+        debug_assert!(self.is_leaf(FIRST_LEAF_IDX));
+        FIRST_LEAF_IDX + offset.as_u32() as NodeIndex
     }
 
     fn is_leaf(&self, idx: NodeIndex) -> bool {
-        let is_leaf = idx > Self::ROOT_NODE_IDX;
+        let is_leaf = idx > ROOT_NODE_IDX;
         assert!(!is_leaf || self.left_child(idx).is_none() && self.right_child(idx).is_none());
         is_leaf
     }
 
     fn parent(&self, idx: NodeIndex) -> Option<NodeIndex> {
-        if idx == Self::ROOT_NODE_IDX { None } else { Some((idx - 1) / 2) }
+        if idx == ROOT_NODE_IDX { None } else { Some((idx - 1) / 2) }
     }
 
     fn left_child(&self, idx: NodeIndex) -> Option<NodeIndex> {
         let child = idx * 2 + 1;
-        if child < Self::NODES { Some(child) } else { None }
+        if child < NODES_PER_PAGE { Some(child) } else { None }
     }
 
     fn right_child(&self, idx: NodeIndex) -> Option<NodeIndex> {
         let child = idx * 2 + 2;
-        if child < Self::NODES { Some(child) } else { None }
+        if child < NODES_PER_PAGE { Some(child) } else { None }
     }
 }

@@ -11,28 +11,25 @@ pub use nsql_pager::Result;
 use nsql_pager::{Page, PageIndex, Pager, PAGE_DATA_SIZE};
 use parking_lot::RwLock;
 
-// this trait is here just to have clear view of the interface of the buffer pool
-trait BufferPoolInterface {
-    // Create a new buffer pool with the given pager implementation.
-    // Returns the buffer pool and a future that must be polled to completion.
-    async fn alloc(&self) -> Result<BufferHandle>;
-    async fn load(&self, index: PageIndex) -> Result<BufferHandle>;
-}
-
 #[derive(Clone)]
 pub struct BufferHandle {
-    page: Arc<Page>,
+    page: Page,
 }
 
 impl BufferHandle {
-    pub fn new(page: Page) -> Self {
-        Self { page: Arc::new(page) }
+    #[inline]
+    pub fn page(&self) -> &Page {
+        &self.page
+    }
+
+    fn new(page: Page) -> Self {
+        Self { page }
     }
 }
 
 impl RefCounted for BufferHandle {
     fn ref_count(&self) -> usize {
-        self.page.ref_count()
+        self.page.arced_data().ref_count()
     }
 }
 
@@ -43,8 +40,8 @@ pub struct BufferPool {
 
 impl BufferPool {
     #[inline]
-    pub fn pager(&self) -> Arc<dyn Pager> {
-        Arc::clone(&self.inner.pager)
+    pub fn pager(&self) -> &Arc<dyn Pager> {
+        &self.inner.pager
     }
 }
 
@@ -71,14 +68,14 @@ impl BufferPool {
     }
 }
 
-impl BufferPoolInterface for BufferPool {
+impl BufferPool {
     #[inline]
-    async fn alloc(&self) -> Result<BufferHandle> {
+    pub async fn alloc(&self) -> Result<BufferHandle> {
         let idx = self.inner.pager.alloc_page().await?;
         self.load(idx).await
     }
 
-    async fn load(&self, index: PageIndex) -> Result<BufferHandle> {
+    pub async fn load(&self, index: PageIndex) -> Result<BufferHandle> {
         let inner = &self.inner;
         if let Some(handle) = inner.cache.read().get(index) {
             return Ok(handle);
@@ -88,10 +85,13 @@ impl BufferPoolInterface for BufferPool {
         let result = inner.cache.write().insert(index, BufferHandle::new(page));
         let handle = match result {
             lruk::InsertionResult::InsertedWithEviction { value, evicted } => {
-                let page = Arc::try_unwrap(evicted.page)
-                    .expect("evicted page was not the final reference");
+                assert_eq!(
+                    evicted.page.arced_data().ref_count(),
+                    1,
+                    "evicted page was not the final reference"
+                );
                 // FIXME check whether page is dirty
-                inner.pager.write_page(page).await?;
+                inner.pager.write_page(evicted.page).await?;
                 value
             }
             lruk::InsertionResult::Inserted(value)

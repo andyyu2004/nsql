@@ -6,6 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+bytemuck = { version = "1.13.1", features = ["derive", "min_const_generics"] }
 nsql-arena = { version = "0.1.0", path = "../nsql-arena" }
 nsql-buffer = { version = "0.1.0", path = "../nsql-buffer" }
 nsql-core = { version = "0.1.0", path = "../nsql-core" }

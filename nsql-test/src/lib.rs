@@ -17,6 +17,13 @@ macro_rules! mk_storage {
 }
 
 #[macro_export]
+macro_rules! mk_mem_buffer_pool {
+    () => {
+        nsql_buffer::BufferPool::new(::std::sync::Arc::new(InMemoryPager::new()))
+    };
+}
+
+#[macro_export]
 macro_rules! mk_file_pager {
     () => {
         SingleFilePager::create($crate::tmp!()).await?
