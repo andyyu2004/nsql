@@ -301,3 +301,36 @@ impl Deserialize for RawIdx {
         Ok(RawIdx::from(de.read_u32().await?))
     }
 }
+
+/// A type that has a value that represents an invalid state that corresponds to `Option::None`
+pub trait Invalid {
+    fn invalid() -> Self;
+}
+
+impl<T> Serialize for Option<T>
+where
+    T: Serialize + Invalid,
+{
+    type Error = T::Error;
+
+    #[inline]
+    async fn serialize(&self, ser: &mut dyn Serializer<'_>) -> Result<(), Self::Error> {
+        match self {
+            Some(it) => it.serialize(ser).await,
+            None => T::invalid().serialize(ser).await,
+        }
+    }
+}
+
+impl<T> Deserialize for Option<T>
+where
+    T: Deserialize + Invalid + PartialEq,
+{
+    type Error = T::Error;
+
+    #[inline]
+    async fn deserialize(de: &mut dyn Deserializer<'_>) -> Result<Self, Self::Error> {
+        let val = T::deserialize(de).await?;
+        if val == T::invalid() { Ok(None) } else { Ok(Some(val)) }
+    }
+}

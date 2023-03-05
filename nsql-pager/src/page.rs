@@ -2,7 +2,7 @@ use std::fmt;
 use std::ops::{Add, Deref, DerefMut, Sub};
 use std::sync::Arc;
 
-use nsql_serde::{Deserialize, Serialize};
+use nsql_serde::{Deserialize, Invalid, Serialize};
 use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use crate::{CHECKSUM_LENGTH, PAGE_DATA_SIZE, PAGE_SIZE};
@@ -95,8 +95,9 @@ impl proptest::arbitrary::Arbitrary for PageIndex {
     }
 }
 
-impl Default for PageIndex {
-    fn default() -> Self {
+impl Invalid for PageIndex {
+    #[inline]
+    fn invalid() -> Self {
         Self::INVALID
     }
 }
