@@ -6,3 +6,4 @@ edition = "2021"
 [dependencies]
 nsql-buffer = {  path = "../nsql-buffer" }
 nsql-pager = { path = "../nsql-pager" }
+nsql-serde = { version = "0.1.0", path = "../nsql-serde" }

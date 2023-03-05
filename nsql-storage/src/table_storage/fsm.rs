@@ -15,7 +15,7 @@ pub struct FreeSpaceMap {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct FreeSpaceMapMeta {
     root_fsm_page: PageIndex,
-    pages: Vec<PageIndex>,
+    // pages: Vec<PageIndex>,
 }
 
 impl FreeSpaceMap {
