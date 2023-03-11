@@ -8,7 +8,6 @@ members = [
     "nsql-catalog",
     "nsql-checkpoint",
     "nsql-core",
-    "nsql-error",
     "nsql-execution",
     "nsql-ir",
     "nsql-fs",
