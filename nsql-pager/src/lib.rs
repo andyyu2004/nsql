@@ -1,6 +1,8 @@
 #![deny(rust_2018_idioms)]
 #![allow(incomplete_features)]
 #![feature(async_fn_in_trait)]
+#![feature(nonzero_min_max)]
+#![feature(const_option)]
 
 mod file;
 mod mem;

@@ -1,4 +1,5 @@
 use std::io::Write;
+use std::num::NonZeroU32;
 use std::ops::{Add, Deref, DerefMut, Sub};
 use std::pin::Pin;
 use std::sync::Arc;
@@ -82,10 +83,12 @@ impl Page {
     }
 }
 
+// Internally one indexed to enable niche optimization.
+// However, we do the adjustments on construction and retrieval to make it transparent to the user
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[repr(transparent)]
 pub struct PageIndex {
-    idx: u32,
+    idx: NonZeroU32,
 }
 
 #[cfg(test)]
@@ -107,22 +110,26 @@ impl Invalid for PageIndex {
 }
 
 impl PageIndex {
-    pub(crate) const INVALID: Self = Self { idx: u32::MAX };
+    pub(crate) const INVALID: Self = Self { idx: NonZeroU32::MAX };
 
     #[inline]
     pub(crate) const fn new(idx: u32) -> Self {
-        assert!(idx < u32::MAX, "page index is too large");
-        Self { idx }
+        assert!(
+            idx + 1 < u32::MAX,
+            "page index is too large for a valid page (use `new_maybe_invalid` instead)"
+        );
+        Self { idx: unsafe { NonZeroU32::new_unchecked(idx + 1) } }
     }
 
     #[inline]
     pub const fn new_maybe_invalid(idx: u32) -> Self {
-        Self { idx }
+        assert!(idx < u32::MAX, "page index is too large");
+        Self { idx: unsafe { NonZeroU32::new_unchecked(idx + 1) } }
     }
 
     #[inline]
     pub(crate) fn is_zero(self) -> bool {
-        self.idx == 0
+        self.as_u32() == 0
     }
 
     #[inline]
@@ -132,7 +139,8 @@ impl PageIndex {
 
     #[inline]
     pub(super) fn as_u32(self) -> u32 {
-        self.idx
+        // adjust for the fact that we are one indexed
+        self.idx.get() - 1
     }
 }
 
@@ -254,7 +262,7 @@ impl Add<PageOffset> for PageIndex {
     type Output = PageIndex;
 
     fn add(self, rhs: PageOffset) -> Self::Output {
-        PageIndex::new(self.idx + rhs.offset)
+        PageIndex::new(self.idx.get() + rhs.offset)
     }
 }
 
@@ -270,6 +278,6 @@ impl Sub<PageOffset> for PageIndex {
     type Output = PageIndex;
 
     fn sub(self, rhs: PageOffset) -> Self::Output {
-        PageIndex::new(self.idx - rhs.offset)
+        PageIndex::new(self.idx.get() - rhs.offset)
     }
 }

@@ -62,6 +62,3 @@ where
         Node::deserialize(&mut data).await
     }
 }
-
-struct Key(Vec<u8>);
-struct Value(Vec<u8>);

@@ -7,6 +7,7 @@
 use std::future::Future;
 use std::io;
 use std::marker::PhantomData;
+use std::num::NonZeroU32;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
@@ -293,6 +294,21 @@ impl Deserialize for bool {
     }
 }
 
+impl Serialize for NonZeroU32 {
+    #[inline]
+    async fn serialize(&self, ser: &mut dyn Serializer<'_>) -> Result<(), io::Error> {
+        ser.write_u32(self.get()).await?;
+        Ok(())
+    }
+}
+
+impl Deserialize for NonZeroU32 {
+    #[inline]
+    async fn deserialize(de: &mut dyn Deserializer<'_>) -> Result<Self, io::Error> {
+        Ok(NonZeroU32::new(de.read_u32().await?).unwrap())
+    }
+}
+
 // FIXME when specialization is fixed
 // impl<const N: usize> Deserialize for [u8; N] {
 //     #[inline]
@@ -432,5 +448,75 @@ impl<T: Deserialize> Deserialize for Arena<T> {
             arena.alloc(T::deserialize(de).await?);
         }
         Ok(arena)
+    }
+}
+
+impl<T: Serialize, U: Serialize> Serialize for (T, U) {
+    #[inline]
+    async fn serialize(&self, ser: &mut dyn Serializer<'_>) -> Result<(), io::Error> {
+        self.0.serialize(ser).await?;
+        self.1.serialize(ser).await?;
+        Ok(())
+    }
+}
+
+impl<T: Deserialize, U: Deserialize> Deserialize for (T, U) {
+    #[inline]
+    async fn deserialize(de: &mut dyn Deserializer<'_>) -> Result<Self, io::Error> {
+        let a = T::deserialize(de).await?;
+        let b = U::deserialize(de).await?;
+        Ok((a, b))
+    }
+}
+
+pub trait VecSerExt<T> {
+    /// Returns a wrapper around the vector that implements `Serialize` that will not prefix the length
+    /// The length must be serialized elsewhere to be able to deserialize this type
+    fn noninline_len(&self) -> NonInlineLengthVec<'_, T>;
+}
+
+pub trait VecDeExt<T> {
+    async fn deserialize_noninline_len(
+        de: &mut dyn Deserializer<'_>,
+        len: usize,
+    ) -> Result<Self, io::Error>
+    where
+        Self: Sized;
+}
+
+impl<T> VecSerExt<T> for Vec<T> {
+    fn noninline_len(&self) -> NonInlineLengthVec<'_, T> {
+        NonInlineLengthVec { data: self }
+    }
+}
+
+impl<T: Deserialize> VecDeExt<T> for Vec<T> {
+    async fn deserialize_noninline_len(
+        de: &mut dyn Deserializer<'_>,
+        len: usize,
+    ) -> Result<Self, io::Error>
+    where
+        Self: Sized,
+    {
+        let mut vec = Vec::with_capacity(len);
+        for _ in 0..len {
+            vec.push(T::deserialize(de).await?);
+        }
+        Ok(vec)
+    }
+}
+
+#[derive(Debug)]
+pub struct NonInlineLengthVec<'a, T> {
+    data: &'a [T],
+}
+
+impl<T: Serialize> Serialize for NonInlineLengthVec<'_, T> {
+    #[inline]
+    async fn serialize(&self, ser: &mut dyn Serializer<'_>) -> Result<(), io::Error> {
+        for v in self.data {
+            v.serialize(ser).await?;
+        }
+        Ok(())
     }
 }

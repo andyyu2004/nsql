@@ -1,10 +1,6 @@
-use nsql_pager::PageIndex;
-use nsql_serde::{
-    AsyncReadExt, AsyncWriteExt, Deserialize, DeserializeWith, Deserializer, Serialize,
-    SerializeWith, Serializer,
-};
+use nsql_serde::{AsyncReadExt, AsyncWriteExt, Deserialize, Deserializer, Serialize, Serializer};
 
-use crate::page::{DeserializeContext, InteriorPage, LeafPage};
+use crate::page::{InteriorPage, LeafPage};
 use crate::Result;
 
 #[derive(Debug)]
@@ -62,10 +58,9 @@ where
     V: Serialize,
 {
     async fn serialize(&self, ser: &mut dyn Serializer<'_>) -> Result<(), ::std::io::Error> {
-        let ctx = DeserializeContext::new(self.flags);
         self.flags.serialize(ser).await?;
         match &self.kind {
-            NodeKind::Internal(node) => node.serialize_with(&ctx, ser).await,
+            NodeKind::Internal(node) => node.serialize(ser).await,
             NodeKind::Leaf(node) => node.serialize(ser).await,
         }
     }
@@ -78,11 +73,10 @@ where
 {
     async fn deserialize(de: &mut dyn Deserializer<'_>) -> Result<Self, ::std::io::Error> {
         let flags = Flags::deserialize(de).await?;
-        let ctx = DeserializeContext::new(flags);
         let kind = if flags.contains(Flags::IS_LEAF) {
             NodeKind::Leaf(LeafPage::deserialize(de).await?)
         } else {
-            NodeKind::Internal(InteriorPage::deserialize_with(&ctx, de).await?)
+            NodeKind::Internal(InteriorPage::deserialize(de).await?)
         };
         Ok(Self { kind, flags })
     }
