@@ -6,7 +6,7 @@ use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::{fmt, io};
 
-use nsql_serde::{Deserialize, Invalid, Serialize};
+use nsql_serde::{Deserialize, Invalid, Serialize, SerializeSized};
 use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 
@@ -85,7 +85,7 @@ impl Page {
 
 // Internally one indexed to enable niche optimization.
 // However, we do the adjustments on construction and retrieval to make it transparent to the user
-#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord, Deserialize, SerializeSized)]
 #[repr(transparent)]
 pub struct PageIndex {
     idx: NonZeroU32,

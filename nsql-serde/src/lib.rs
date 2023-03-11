@@ -14,7 +14,7 @@ use std::task::{ready, Context, Poll};
 
 use arrayvec::ArrayVec;
 use nsql_arena::{Arena, Idx, RawIdx};
-pub use nsql_serde_derive::{Deserialize, Serialize};
+pub use nsql_serde_derive::{Deserialize, Serialize, SerializeSized};
 use rust_decimal::Decimal;
 use smol_str::SmolStr;
 use tokio::io::{AsyncRead, AsyncWrite};
@@ -127,6 +127,10 @@ pub trait Serialize {
     }
 }
 
+pub trait SerializeSized: Serialize {
+    const SERIALIZED_SIZE: usize;
+}
+
 impl<S: Serialize + ?Sized> Serialize for Box<S> {
     #[inline]
     async fn serialize(&self, ser: &mut dyn Serializer) -> Result<()> {
@@ -137,7 +141,7 @@ impl<S: Serialize + ?Sized> Serialize for Box<S> {
 impl<S: Serialize> Serialize for [S] {
     #[inline]
     async fn serialize(&self, ser: &mut dyn Serializer) -> Result<()> {
-        // NOTE: no length prefixed unlike the Vec<S> impl
+        ser.write_u32(self.len() as u32).await?;
         for item in self {
             item.serialize(ser).await?;
         }
@@ -154,11 +158,7 @@ impl<S: Serialize> Serialize for Arc<S> {
 
 impl<S: Serialize> Serialize for Vec<S> {
     async fn serialize(&self, ser: &mut dyn Serializer) -> Result<()> {
-        ser.write_u32(self.len() as u32).await?;
-        for item in self {
-            item.serialize(ser).await?;
-        }
-        Ok(())
+        self.as_slice().serialize(ser).await
     }
 }
 
@@ -256,6 +256,10 @@ macro_rules! impl_serialize_primitive {
                 Ok(())
             }
         }
+
+        impl SerializeSized for $ty {
+            const SERIALIZED_SIZE: usize = std::mem::size_of::<$ty>();
+        }
     };
 }
 
@@ -274,9 +278,14 @@ impl_serialize_primitive!(write_u64: u64);
 //     }
 // }
 
+impl<T: SerializeSized, const N: usize> SerializeSized for [T; N] {
+    const SERIALIZED_SIZE: usize = N * T::SERIALIZED_SIZE;
+}
+
 impl<const N: usize, T: Serialize> Serialize for [T; N] {
     #[inline]
     async fn serialize(&self, ser: &mut dyn Serializer) -> Result<()> {
+        // no need to serialize the length as it's encoded in the type
         for item in self {
             item.serialize(ser).await?;
         }
@@ -345,6 +354,10 @@ impl Serialize for NonZeroU32 {
         ser.write_u32(self.get()).await?;
         Ok(())
     }
+}
+
+impl SerializeSized for NonZeroU32 {
+    const SERIALIZED_SIZE: usize = std::mem::size_of::<NonZeroU32>();
 }
 
 impl Deserialize for NonZeroU32 {
@@ -448,6 +461,10 @@ where
     }
 }
 
+impl<T: SerializeSized + Invalid> SerializeSized for Option<T> {
+    const SERIALIZED_SIZE: usize = T::SERIALIZED_SIZE;
+}
+
 impl<T> Deserialize for Option<T>
 where
     T: Deserialize + Invalid + PartialEq,
@@ -514,25 +531,30 @@ impl<T: Deserialize, U: Deserialize> Deserialize for (T, U) {
     }
 }
 
-pub trait VecSerExt<T> {
+pub trait SliceSerExt<T> {
     /// Returns a wrapper around the vector that implements `Serialize` that will not prefix the length
     /// The length must be serialized elsewhere to be able to deserialize this type
-    fn noninline_len(&self) -> NonInlineLengthVec<'_, T>;
+    fn noninline_len(&self) -> NonInlineLengthSlice<'_, T>;
 }
 
-pub trait VecDeExt<T> {
+pub trait SliceDeExt<T> {
     async fn deserialize_noninline_len(de: &mut dyn Deserializer<'_>, len: usize) -> Result<Self>
     where
         Self: Sized;
 }
 
-impl<T> VecSerExt<T> for Vec<T> {
-    fn noninline_len(&self) -> NonInlineLengthVec<'_, T> {
-        NonInlineLengthVec { data: self }
+impl<S, T> SliceSerExt<T> for S
+where
+    S: AsRef<[T]>,
+{
+    #[inline]
+    fn noninline_len(&self) -> NonInlineLengthSlice<'_, T> {
+        NonInlineLengthSlice { data: self.as_ref() }
     }
 }
 
-impl<T: Deserialize> VecDeExt<T> for Vec<T> {
+impl<T: Deserialize> SliceDeExt<T> for Vec<T> {
+    #[inline]
     async fn deserialize_noninline_len(de: &mut dyn Deserializer<'_>, len: usize) -> Result<Self>
     where
         Self: Sized,
@@ -546,11 +568,11 @@ impl<T: Deserialize> VecDeExt<T> for Vec<T> {
 }
 
 #[derive(Debug)]
-pub struct NonInlineLengthVec<'a, T> {
+pub struct NonInlineLengthSlice<'a, T> {
     data: &'a [T],
 }
 
-impl<T: Serialize> Serialize for NonInlineLengthVec<'_, T> {
+impl<T: Serialize> Serialize for NonInlineLengthSlice<'_, T> {
     #[inline]
     async fn serialize(&self, ser: &mut dyn Serializer) -> Result<()> {
         for v in self.data {

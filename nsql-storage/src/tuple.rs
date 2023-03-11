@@ -1,17 +1,23 @@
+use std::fmt;
 use std::sync::Arc;
-use std::{fmt, io};
 
 use nsql_core::schema::{PhysicalType, Schema};
-use nsql_serde::{Deserialize, DeserializeWith, Deserializer, Serialize};
+use nsql_serde::{Deserialize, DeserializeWith, Deserializer, Serialize, Serializer, SliceSerExt};
 use rust_decimal::Decimal;
 
 pub struct TupleDeserializationContext {
     pub schema: Arc<Schema>,
 }
 
-#[derive(Debug, PartialEq, Serialize)]
+#[derive(Debug, PartialEq)]
 pub struct Tuple {
     values: Box<[Value]>,
+}
+
+impl Serialize for Tuple {
+    async fn serialize(&self, ser: &mut dyn Serializer) -> nsql_serde::Result<()> {
+        self.values.noninline_len().serialize(ser).await
+    }
 }
 
 impl DeserializeWith for Tuple {

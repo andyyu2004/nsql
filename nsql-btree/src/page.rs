@@ -3,8 +3,8 @@ use std::{io, mem};
 use nsql_arena::Arena;
 use nsql_pager::{PageIndex, PAGE_DATA_SIZE};
 use nsql_serde::{
-    AsyncReadExt, AsyncWriteExt, Deserialize, Deserializer, Serialize, Serializer, VecDeExt,
-    VecSerExt,
+    AsyncReadExt, AsyncWriteExt, Deserialize, Deserializer, Serialize, SerializeSized, Serializer,
+    SliceDeExt, SliceSerExt,
 };
 use nsql_util::static_assert_eq;
 
@@ -74,7 +74,7 @@ struct Slot {
     length: u16,
 }
 
-#[derive(Debug, PartialEq, Serialize)]
+#[derive(Debug, PartialEq, SerializeSized)]
 struct BTreeInteriorPageHeader {
     magic: [u8; 4],
     prev: Option<PageIndex>,

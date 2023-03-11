@@ -1,7 +1,7 @@
 mod fsm;
 
+use std::mem;
 use std::sync::Arc;
-use std::{io, mem};
 
 use nsql_arena::{Arena, Idx};
 use nsql_buffer::BufferPool;

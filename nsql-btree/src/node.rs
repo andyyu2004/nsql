@@ -1,7 +1,9 @@
 use std::mem;
 
 use nsql_pager::PAGE_DATA_SIZE;
-use nsql_serde::{AsyncReadExt, AsyncWriteExt, Deserialize, Deserializer, Serialize, Serializer};
+use nsql_serde::{
+    AsyncReadExt, AsyncWriteExt, Deserialize, Deserializer, Serialize, SerializeSized, Serializer,
+};
 
 use crate::page::{InteriorPage, LeafPage};
 
@@ -32,9 +34,13 @@ impl Deserialize for Flags {
     }
 }
 
+impl SerializeSized for Flags {
+    const SERIALIZED_SIZE: usize = mem::size_of::<Self>();
+}
+
 impl Node<(), ()> {
     /// amount of space available on the rest of the page
-    pub(crate) const REMAINING_SPACE: usize = PAGE_DATA_SIZE - mem::size_of::<Flags>();
+    pub(crate) const REMAINING_SPACE: usize = PAGE_DATA_SIZE - Flags::SERIALIZED_SIZE;
 }
 
 impl<K, V> Node<K, V> {

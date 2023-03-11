@@ -1,6 +1,4 @@
-use proc_macro::TokenStream;
 use quote::quote;
-use syn::{parse_macro_input, DeriveInput};
 
 #[derive(Copy, Clone)]
 struct Symbol(&'static str);
@@ -25,7 +23,7 @@ enum DataKind {
     Enum { variants: Vec<syn::Variant> },
 }
 
-fn preprocess(input: DeriveInput) -> Data {
+fn preprocess(input: syn::DeriveInput) -> Data {
     let kind = match input.data {
         syn::Data::Struct(strukt) => {
             let fields = strukt.fields;
@@ -66,8 +64,8 @@ fn get_serde_meta_items(attr: &syn::Attribute) -> Vec<syn::NestedMeta> {
 }
 
 #[proc_macro_derive(Serialize, attributes(serde))]
-pub fn derive_serialize(input: TokenStream) -> TokenStream {
-    let input = parse_macro_input!(input as DeriveInput);
+pub fn derive_serialize(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let input = syn::parse_macro_input!(input);
     let mut data = preprocess(input);
 
     let type_params = data.generics.type_params();
@@ -121,8 +119,8 @@ pub fn derive_serialize(input: TokenStream) -> TokenStream {
 }
 
 #[proc_macro_derive(Deserialize, attributes(serde))]
-pub fn derive_deserialize(input: TokenStream) -> TokenStream {
-    let input = parse_macro_input!(input as DeriveInput);
+pub fn derive_deserialize(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let input = syn::parse_macro_input!(input as syn::DeriveInput);
     let mut data = preprocess(input);
     let name = data.name;
 
@@ -157,6 +155,47 @@ pub fn derive_deserialize(input: TokenStream) -> TokenStream {
             }
         }
         DataKind::Enum { .. } => panic!("Enums are not implemented"),
+    }
+    .into()
+}
+
+#[proc_macro_derive(SerializeSized, attributes(serde))]
+pub fn derive_serialize_sized(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let serialize_impl = proc_macro2::TokenStream::from(derive_serialize(input.clone()));
+
+    let input = syn::parse_macro_input!(input as syn::DeriveInput);
+    let mut data = preprocess(input);
+
+    let type_params = data.generics.type_params();
+    let extended_predicates = syn::parse::<syn::WhereClause>(
+        quote! {
+            where #(#type_params: ::nsql_serde::Serialize),*
+        }
+        .into(),
+    )
+    .expect("should always be parseable")
+    .predicates;
+    data.generics.make_where_clause().predicates.extend(extended_predicates);
+
+    let (impl_generics, ty_generics, where_clause) = data.generics.split_for_impl();
+
+    let name = data.name;
+    let body = match data.kind {
+        DataKind::Struct { fields } => {
+            let ty = fields.iter().map(|field| &field.ty);
+            quote! {
+                const SERIALIZED_SIZE: usize =  0 #(+ <#ty as ::nsql_serde::SerializeSized>::SERIALIZED_SIZE)*;
+            }
+        }
+        DataKind::Enum { .. } => todo!(),
+    };
+
+    quote! {
+        #serialize_impl
+
+        impl #impl_generics ::nsql_serde::SerializeSized for #name #ty_generics #where_clause {
+            #body
+        }
     }
     .into()
 }
