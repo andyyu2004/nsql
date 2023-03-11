@@ -1,7 +1,9 @@
+use std::mem;
+
+use nsql_pager::PAGE_DATA_SIZE;
 use nsql_serde::{AsyncReadExt, AsyncWriteExt, Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::page::{InteriorPage, LeafPage};
-use crate::Result;
 
 #[derive(Debug)]
 pub(crate) struct Node<K, V> {
@@ -19,15 +21,20 @@ bitflags::bitflags! {
 }
 
 impl Serialize for Flags {
-    async fn serialize(&self, ser: &mut dyn Serializer) -> Result<(), ::std::io::Error> {
-        ser.write_u8(self.bits()).await
+    async fn serialize(&self, ser: &mut dyn Serializer) -> nsql_serde::Result<()> {
+        Ok(ser.write_u8(self.bits()).await?)
     }
 }
 
 impl Deserialize for Flags {
-    async fn deserialize(de: &mut dyn Deserializer<'_>) -> Result<Self, ::std::io::Error> {
+    async fn deserialize(de: &mut dyn Deserializer<'_>) -> nsql_serde::Result<Self> {
         Ok(Self::from_bits(de.read_u8().await?).unwrap())
     }
+}
+
+impl Node<(), ()> {
+    /// amount of space available on the rest of the page
+    pub(crate) const REMAINING_SPACE: usize = PAGE_DATA_SIZE - mem::size_of::<Flags>();
 }
 
 impl<K, V> Node<K, V> {
@@ -57,7 +64,8 @@ where
     K: Serialize,
     V: Serialize,
 {
-    async fn serialize(&self, ser: &mut dyn Serializer) -> Result<(), ::std::io::Error> {
+    async fn serialize(&self, ser: &mut dyn Serializer) -> nsql_serde::Result<()> {
+        let ser = &mut ser.limit(PAGE_DATA_SIZE);
         self.flags.serialize(ser).await?;
         match &self.kind {
             NodeKind::Internal(node) => node.serialize(ser).await,
@@ -71,7 +79,7 @@ where
     K: Deserialize,
     V: Deserialize,
 {
-    async fn deserialize(de: &mut dyn Deserializer<'_>) -> Result<Self, ::std::io::Error> {
+    async fn deserialize(de: &mut dyn Deserializer<'_>) -> nsql_serde::Result<Self> {
         let flags = Flags::deserialize(de).await?;
         let kind = if flags.contains(Flags::IS_LEAF) {
             NodeKind::Leaf(LeafPage::deserialize(de).await?)

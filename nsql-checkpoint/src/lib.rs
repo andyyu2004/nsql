@@ -11,9 +11,15 @@ pub type Result<T, E = Error> = std::result::Result<T, E>;
 #[derive(Debug, Error)]
 pub enum Error {
     #[error(transparent)]
-    Fs(#[from] io::Error),
+    Io(#[from] Box<dyn std::error::Error + Send + Sync>),
     #[error(transparent)]
     Catalog(#[from] nsql_catalog::Error),
+}
+
+impl From<error_stack::Report<io::Error>> for Error {
+    fn from(e: error_stack::Report<io::Error>) -> Self {
+        Self::Io(Box::new(e.into_error()))
+    }
 }
 
 pub struct Checkpointer<'a, P> {
@@ -39,7 +45,8 @@ impl<P: Pager> Checkpointer<'_, P> {
         let data_writer = MetaPageWriter::new(self.pager, data_page);
 
         let mut writer = CheckpointWriter::new(meta_writer, data_writer);
-        writer.write_catalog(tx, catalog).await
+        writer.write_catalog(tx, catalog).await?;
+        Ok(())
     }
 
     pub async fn load_checkpoint(

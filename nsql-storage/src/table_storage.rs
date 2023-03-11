@@ -26,7 +26,7 @@ impl TableStorage {
         Self { pool, info }
     }
 
-    pub async fn append(&self, _tx: &Transaction, tuple: Tuple) -> Result<()> {
+    pub async fn append(&self, _tx: &Transaction, tuple: Tuple) -> nsql_serde::Result<()> {
         let size = tuple.serialized_size().await?;
         let idx = match self.find_free_space(size) {
             Some(_) => todo!(),
@@ -90,7 +90,7 @@ impl Default for HeapTuplePage {
 }
 
 impl Serialize for HeapTuplePage {
-    async fn serialize(&self, ser: &mut dyn Serializer) -> Result<(), io::Error> {
+    async fn serialize(&self, ser: &mut dyn Serializer) -> nsql_serde::Result<()> {
         let ser = &mut ser.limit(PAGE_DATA_SIZE);
         self.header.serialize(ser).await?;
 
@@ -119,7 +119,7 @@ impl DeserializeWith for HeapTuplePage {
     async fn deserialize_with(
         ctx: &Self::Context<'_>,
         de: &mut dyn Deserializer<'_>,
-    ) -> Result<Self, io::Error> {
+    ) -> nsql_serde::Result<Self> {
         let header = HeapTuplePageHeader::deserialize(de).await?;
         let n = de.read_u16().await? as usize;
 
@@ -174,7 +174,7 @@ impl HeapTuplePage {
     async fn insert_tuple(
         &mut self,
         tuple: Tuple,
-    ) -> Result<Result<Idx<Slot>, HeapTuplePageFull>, io::Error> {
+    ) -> nsql_serde::Result<Result<Idx<Slot>, HeapTuplePageFull>> {
         let length = tuple.serialized_size().await? as u16;
         let heap_tuple = HeapTuple { header: HeapTupleHeader {}, tuple };
         if self.header.free_space() < length + TUPLE_HEADER_SIZE {
@@ -222,7 +222,7 @@ impl DeserializeWith for HeapTuple {
     async fn deserialize_with(
         ctx: &Self::Context<'_>,
         de: &mut dyn Deserializer<'_>,
-    ) -> Result<Self, io::Error> {
+    ) -> nsql_serde::Result<Self> {
         let header = HeapTupleHeader::deserialize(de).await?;
         let tuple = Tuple::deserialize_with(ctx, de).await?;
         Ok(Self { header, tuple })

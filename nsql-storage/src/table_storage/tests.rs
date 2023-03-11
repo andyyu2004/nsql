@@ -5,7 +5,7 @@ use super::*;
 use crate::tuple::{Literal, Value};
 
 #[test]
-fn serde_tuple_page() -> Result<()> {
+fn serde_tuple_page() -> nsql_serde::Result<()> {
     nsql_test::start(async {
         let schema = Arc::new(Schema::new(vec![
             Attribute::new("a", LogicalType::Bool),

@@ -1,8 +1,10 @@
 #![deny(rust_2018_idioms)]
 
+use std::io;
 use std::path::Path;
 use std::sync::Arc;
 
+use error_stack::Report;
 use nsql_bind::Binder;
 use nsql_buffer::BufferPool;
 use nsql_catalog::Catalog;
@@ -116,4 +118,10 @@ pub enum Error {
     Io(#[from] std::io::Error),
     #[error(transparent)]
     Execution(#[from] nsql_execution::Error),
+}
+
+impl From<Report<io::Error>> for Error {
+    fn from(report: Report<io::Error>) -> Self {
+        Error::Io(io::Error::new(report.current_context().kind(), report))
+    }
 }

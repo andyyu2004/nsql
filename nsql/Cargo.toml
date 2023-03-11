@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+error-stack = "0.3.1"
 nsql-bind = { version = "0.1.0", path = "../nsql-bind" }
 nsql-buffer = { path = "../nsql-buffer" }
 nsql-catalog = { path = "../nsql-catalog" }

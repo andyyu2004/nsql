@@ -113,7 +113,7 @@ pub fn derive_serialize(input: TokenStream) -> TokenStream {
 
     quote! {
         impl #impl_generics ::nsql_serde::Serialize for #name #ty_generics #where_clause {
-            async fn serialize(&self, ser: &mut dyn ::nsql_serde::Serializer) -> ::std::result::Result<(), ::std::io::Error> {
+            async fn serialize(&self, ser: &mut dyn ::nsql_serde::Serializer) -> ::nsql_serde::Result<()> {
                 #body
             }
         }
@@ -144,7 +144,7 @@ pub fn derive_deserialize(input: TokenStream) -> TokenStream {
             let ty = fields.iter().map(|field| &field.ty);
             quote! {
                 impl #impl_generics ::nsql_serde::Deserialize for #name #ty_generics #where_clause {
-                    async fn deserialize(de: &mut dyn ::nsql_serde::Deserializer<'_>) -> ::std::result::Result<Self, std::io::Error> {
+                    async fn deserialize(de: &mut dyn ::nsql_serde::Deserializer<'_>) -> ::nsql_serde::Result<Self> {
                         use ::nsql_serde::Deserialize as _;
                         #(
                             let #field_name = <#ty as ::nsql_serde::Deserialize>::deserialize(de).await?;

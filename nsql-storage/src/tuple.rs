@@ -20,7 +20,7 @@ impl DeserializeWith for Tuple {
     async fn deserialize_with(
         ctx: &Self::Context<'_>,
         de: &mut dyn Deserializer<'_>,
-    ) -> Result<Self, io::Error> {
+    ) -> nsql_serde::Result<Self> {
         let attributes = ctx.schema.attributes();
         let mut values = Vec::with_capacity(attributes.len());
 

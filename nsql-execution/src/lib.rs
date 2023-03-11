@@ -6,9 +6,10 @@ mod executor;
 mod physical_plan;
 mod pipeline;
 
-use std::fmt;
 use std::sync::Arc;
+use std::{fmt, io};
 
+use error_stack::Report;
 use nsql_arena::Idx;
 use nsql_catalog::Catalog;
 use nsql_storage::tuple::Tuple;
@@ -31,6 +32,14 @@ pub enum Error {
     Catalog(#[from] nsql_catalog::Error),
     #[error(transparent)]
     Storage(#[from] nsql_storage::Error),
+    #[error(transparent)]
+    Io(#[from] io::Error),
+}
+
+impl From<Report<io::Error>> for Error {
+    fn from(report: Report<io::Error>) -> Self {
+        Self::Io(io::Error::new(report.current_context().kind(), report))
+    }
 }
 
 fn build_pipelines(

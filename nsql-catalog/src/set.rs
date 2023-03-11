@@ -27,7 +27,7 @@ impl<T> CatalogSet<T> {
 }
 
 impl<T: Serialize> Serialize for CatalogSet<T> {
-    async fn serialize(&self, ser: &mut dyn Serializer) -> Result<(), io::Error> {
+    async fn serialize(&self, ser: &mut dyn Serializer) -> nsql_serde::Result<()> {
         ser.write_u32(self.entries.len() as u32).await?;
         for entry in self.entries.iter() {
             entry.value().committed_version().item().serialize(ser).await?;
@@ -46,7 +46,7 @@ where
     async fn deserialize_with(
         tx: &Self::Context<'_>,
         de: &mut dyn Deserializer<'_>,
-    ) -> Result<Self, io::Error> {
+    ) -> nsql_serde::Result<Self> {
         let len = de.read_u32().await? as usize;
         let set = Self::with_capacity(len);
         for _ in 0..len {

@@ -1,4 +1,3 @@
-use std::io;
 use std::sync::OnceLock;
 
 use nsql_serde::{Deserialize, Deserializer};
@@ -47,7 +46,7 @@ pub enum LogicalType {
 }
 
 impl Deserialize for LogicalType {
-    async fn deserialize(_de: &mut dyn Deserializer<'_>) -> Result<Self, io::Error> {
+    async fn deserialize(_de: &mut dyn Deserializer<'_>) -> nsql_serde::Result<Self> {
         todo!()
     }
 }

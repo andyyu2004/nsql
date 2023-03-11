@@ -5,7 +5,7 @@ use std::{cmp, io};
 use bytes::Buf;
 use tokio::io::{AsyncRead, ReadBuf};
 
-use super::PAGE_IDX_SIZE;
+use super::{try_io, PAGE_IDX_SIZE};
 use crate::{BoxFuture, Page, PageIndex, Pager, Result, PAGE_DATA_SIZE};
 
 /// A meta page contains metadata and has the following format (excluding the usual checksum):
@@ -55,7 +55,7 @@ impl<P: Pager> AsyncRead for MetaPageReader<'_, P> {
                     self.state = State::PollNext { fut };
                 }
                 State::PollNext { fut } => {
-                    let page = ready!(fut.as_mut().poll(cx))?;
+                    let page = try_io!(ready!(fut.as_mut().poll(cx)));
                     self.state = State::Read { page, byte_index: 0 };
                 }
                 State::Read { page, byte_index } => {

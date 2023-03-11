@@ -204,7 +204,10 @@ impl AsyncWrite for WriteablePageView<'_> {
         if self.write_offset + buf.len() > PAGE_DATA_SIZE {
             return Poll::Ready(Err(io::Error::new(
                 io::ErrorKind::Other,
-                "write to page exceeds page size",
+                format!(
+                    "write to page exceeds page size ({} > {PAGE_DATA_SIZE})",
+                    self.write_offset + buf.len()
+                ),
             )));
         }
 

@@ -29,6 +29,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4b46cbb362ab8752921c97e041f5e366ee6297bd428a31275b9fcf1e380f7299"
 
 [[package]]
+name = "anyhow"
+version = "1.0.69"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "224afbd727c3d6e4b90103ece64b8d1b67fbb1973b1046c2281eed3f3803f800"
+
+[[package]]
 name = "arrayvec"
 version = "0.7.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -469,6 +475,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "error-stack"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5f00447f331c7f726db5b8532ebc9163519eed03c6d7c8b73c90b3ff5646ac85"
+dependencies = [
+ "anyhow",
+ "rustc_version",
+]
+
+[[package]]
 name = "fastrand"
 version = "1.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -838,6 +854,7 @@ name = "nsql"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "error-stack",
  "nsql-bind",
  "nsql-buffer",
  "nsql-catalog",
@@ -917,6 +934,7 @@ dependencies = [
 name = "nsql-checkpoint"
 version = "0.1.0"
 dependencies = [
+ "error-stack",
  "nsql-catalog",
  "nsql-pager",
  "nsql-serde",
@@ -938,6 +956,7 @@ version = "0.1.0"
 dependencies = [
  "async-recursion",
  "async-trait",
+ "error-stack",
  "nsql-arena",
  "nsql-buffer",
  "nsql-catalog",
@@ -955,6 +974,7 @@ dependencies = [
 name = "nsql-fs"
 version = "0.1.0"
 dependencies = [
+ "error-stack",
  "libc",
  "nsql-test",
  "proptest",
@@ -1023,6 +1043,7 @@ name = "nsql-serde"
 version = "0.1.0"
 dependencies = [
  "arrayvec",
+ "error-stack",
  "nsql-arena",
  "nsql-serde-derive",
  "pin-project-lite",

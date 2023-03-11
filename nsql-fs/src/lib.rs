@@ -13,7 +13,7 @@ pub struct File<const N: usize> {
     file: fs::File,
 }
 
-pub type Result<T, E = std::io::Error> = std::result::Result<T, E>;
+pub type Result<T, E = error_stack::Report<std::io::Error>> = std::result::Result<T, E>;
 
 // FIXME we could probably use fixed iouring buffers
 impl<const N: usize> File<N> {

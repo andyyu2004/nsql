@@ -1,10 +1,8 @@
-use std::io;
-
 use nsql_btree::BTree;
 use nsql_test::mk_mem_buffer_pool;
 
 #[test]
-fn test_btree() -> io::Result<()> {
+fn test_btree() -> nsql_serde::Result<()> {
     nsql_test::start(async {
         let pool = mk_mem_buffer_pool!();
         let btree = BTree::<u32, u64>::create(pool).await?;

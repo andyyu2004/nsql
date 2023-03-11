@@ -8,6 +8,8 @@ use nsql_serde::{
 };
 use nsql_util::static_assert_eq;
 
+use crate::node::Node;
+
 const BTREE_INTERIOR_PAGE_MAGIC: [u8; 4] = *b"BTPI";
 const BTREE_LEAF_PAGE_MAGIC: [u8; 4] = *b"BTPL";
 
@@ -32,7 +34,7 @@ impl<K> InteriorPage<K> {
 }
 
 impl<K: Serialize> Serialize for InteriorPage<K> {
-    async fn serialize(&self, ser: &mut dyn Serializer) -> Result<(), io::Error> {
+    async fn serialize(&self, ser: &mut dyn Serializer) -> nsql_serde::Result<()> {
         let ser = &mut ser.limit(PAGE_DATA_SIZE);
         self.header.serialize(ser).await?;
         self.slots.serialize(ser).await?;
@@ -49,7 +51,7 @@ impl<K: Serialize> Serialize for InteriorPage<K> {
 }
 
 impl<K: Deserialize> Deserialize for InteriorPage<K> {
-    async fn deserialize(de: &mut dyn Deserializer<'_>) -> Result<Self, io::Error> {
+    async fn deserialize(de: &mut dyn Deserializer<'_>) -> nsql_serde::Result<Self> {
         let header = BTreeInteriorPageHeader::deserialize(de).await?;
         let slots = Arena::deserialize(de).await?;
 
@@ -83,15 +85,15 @@ struct BTreeInteriorPageHeader {
 static_assert_eq!(mem::size_of::<BTreeInteriorPageHeader>(), 16);
 
 impl Deserialize for BTreeInteriorPageHeader {
-    async fn deserialize(de: &mut dyn Deserializer<'_>) -> Result<Self, ::std::io::Error> {
+    async fn deserialize(de: &mut dyn Deserializer<'_>) -> nsql_serde::Result<Self> {
         let mut magic = [0; 4];
         de.read_exact(&mut magic).await?;
 
         if magic != BTREE_INTERIOR_PAGE_MAGIC {
-            return Err(io::Error::new(
+            Err(io::Error::new(
                 io::ErrorKind::InvalidData,
                 "invalid magic for interior btree page",
-            ));
+            ))?;
         }
 
         let free_space = de.read_u16().await?;
@@ -109,15 +111,12 @@ struct BTreeLeafPageHeader {
 }
 
 impl Deserialize for BTreeLeafPageHeader {
-    async fn deserialize(de: &mut dyn Deserializer<'_>) -> Result<Self, ::std::io::Error> {
+    async fn deserialize(de: &mut dyn Deserializer<'_>) -> nsql_serde::Result<Self> {
         let mut magic = [0; 4];
         de.read_exact(&mut magic).await?;
 
         if magic != BTREE_LEAF_PAGE_MAGIC {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                "invalid magic for leaf btree page",
-            ));
+            Err(io::Error::new(io::ErrorKind::InvalidData, "invalid magic for leaf btree page"))?;
         }
 
         let free_space = de.read_u16().await?;
@@ -155,8 +154,9 @@ impl<K, V> Default for LeafPage<K, V> {
         Self {
             header: BTreeInteriorPageHeader {
                 magic: BTREE_LEAF_PAGE_MAGIC,
-                // page size - header size - 4 bytes for the slot length
-                free_space: (PAGE_DATA_SIZE - mem::size_of::<BTreeLeafPageHeader>() - 4) as u16,
+                // remaining space - header size - 4 bytes for the slot length
+                free_space: (Node::REMAINING_SPACE - mem::size_of::<BTreeLeafPageHeader>() - 4)
+                    as u16,
                 prev: None,
                 next: None,
             },
@@ -168,8 +168,8 @@ impl<K, V> Default for LeafPage<K, V> {
 }
 
 impl<K: Serialize, V: Serialize> Serialize for LeafPage<K, V> {
-    async fn serialize(&self, ser: &mut dyn Serializer) -> Result<(), io::Error> {
-        let ser = &mut ser.limit(PAGE_DATA_SIZE);
+    async fn serialize(&self, ser: &mut dyn Serializer) -> nsql_serde::Result<()> {
+        let ser = &mut ser.limit(Node::REMAINING_SPACE);
         self.header.serialize(ser).await?;
         self.slots.serialize(ser).await?;
         for _ in 0..self.header.free_space {
@@ -187,7 +187,7 @@ impl<K: Serialize, V: Serialize> Serialize for LeafPage<K, V> {
 }
 
 impl<K: Deserialize, V: Deserialize> Deserialize for LeafPage<K, V> {
-    async fn deserialize(de: &mut dyn Deserializer<'_>) -> Result<Self, io::Error> {
+    async fn deserialize(de: &mut dyn Deserializer<'_>) -> nsql_serde::Result<Self> {
         let header = BTreeInteriorPageHeader::deserialize(de).await?;
         let slots = Vec::deserialize(de).await?;
         for _ in 0..header.free_space {
