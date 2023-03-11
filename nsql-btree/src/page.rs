@@ -77,12 +77,10 @@ struct Slot {
 #[derive(Debug, PartialEq, Serialize)]
 struct BTreeInteriorPageHeader {
     magic: [u8; 4],
-    free_space: u16,
     prev: Option<PageIndex>,
     next: Option<PageIndex>,
+    free_space: u16,
 }
-
-static_assert_eq!(mem::size_of::<BTreeInteriorPageHeader>(), 16);
 
 impl Deserialize for BTreeInteriorPageHeader {
     async fn deserialize(de: &mut dyn Deserializer<'_>) -> nsql_serde::Result<Self> {
@@ -109,6 +107,8 @@ struct BTreeLeafPageHeader {
     magic: [u8; 4],
     free_space: u16,
 }
+
+static_assert_eq!(mem::size_of::<BTreeLeafPageHeader>(), 6);
 
 impl Deserialize for BTreeLeafPageHeader {
     async fn deserialize(de: &mut dyn Deserializer<'_>) -> nsql_serde::Result<Self> {

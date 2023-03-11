@@ -27,23 +27,31 @@ pub trait Serializer: AsyncWrite + Send + Unpin {
     where
         Self: Sized + Unpin + 's;
 
-    fn limit(self, limit: usize) -> Take<Self>
+    fn limit(self, limit: usize) -> Limit<Self>
     where
         Self: Sized,
     {
-        Take { inner: self, limit }
+        Limit { inner: self, limit }
     }
 }
 
 pin_project_lite::pin_project! {
-    pub struct Take<S> {
+    pub struct Limit<S> {
         #[pin]
         inner: S,
         limit: usize,
     }
 }
 
-impl<S: Serializer> AsyncWrite for Take<S> {
+impl<S> Limit<S> {
+    /// Returns the number of bytes remaining before the limit is reached
+    #[inline]
+    pub fn remaining(&self) -> usize {
+        self.limit
+    }
+}
+
+impl<S: Serializer> AsyncWrite for Limit<S> {
     fn poll_write(
         self: Pin<&mut Self>,
         cx: &mut Context<'_>,
