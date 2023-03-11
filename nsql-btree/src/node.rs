@@ -19,7 +19,7 @@ bitflags::bitflags! {
 }
 
 impl Serialize for Flags {
-    async fn serialize(&self, ser: &mut dyn Serializer<'_>) -> Result<(), ::std::io::Error> {
+    async fn serialize(&self, ser: &mut dyn Serializer) -> Result<(), ::std::io::Error> {
         ser.write_u8(self.bits()).await
     }
 }
@@ -57,7 +57,7 @@ where
     K: Serialize,
     V: Serialize,
 {
-    async fn serialize(&self, ser: &mut dyn Serializer<'_>) -> Result<(), ::std::io::Error> {
+    async fn serialize(&self, ser: &mut dyn Serializer) -> Result<(), ::std::io::Error> {
         self.flags.serialize(ser).await?;
         match &self.kind {
             NodeKind::Internal(node) => node.serialize(ser).await,

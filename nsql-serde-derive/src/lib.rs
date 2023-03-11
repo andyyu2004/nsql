@@ -113,7 +113,7 @@ pub fn derive_serialize(input: TokenStream) -> TokenStream {
 
     quote! {
         impl #impl_generics ::nsql_serde::Serialize for #name #ty_generics #where_clause {
-            async fn serialize(&self, ser: &mut dyn ::nsql_serde::Serializer<'_>) -> ::std::result::Result<(), ::std::io::Error> {
+            async fn serialize(&self, ser: &mut dyn ::nsql_serde::Serializer) -> ::std::result::Result<(), ::std::io::Error> {
                 #body
             }
         }

@@ -1,5 +1,4 @@
 use std::io::Cursor;
-use std::num::NonZeroU32;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{self, AtomicU32};
 use std::{io, mem};

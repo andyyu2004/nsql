@@ -32,7 +32,7 @@ impl<K> InteriorPage<K> {
 }
 
 impl<K: Serialize> Serialize for InteriorPage<K> {
-    async fn serialize(&self, ser: &mut dyn Serializer<'_>) -> Result<(), io::Error> {
+    async fn serialize(&self, ser: &mut dyn Serializer) -> Result<(), io::Error> {
         self.header.serialize(ser).await?;
         self.slots.serialize(ser).await?;
 
@@ -167,7 +167,8 @@ impl<K, V> Default for LeafPage<K, V> {
 }
 
 impl<K: Serialize, V: Serialize> Serialize for LeafPage<K, V> {
-    async fn serialize(&self, ser: &mut dyn Serializer<'_>) -> Result<(), io::Error> {
+    async fn serialize(&self, ser: &mut dyn Serializer) -> Result<(), io::Error> {
+        let ser = &mut ser.limit(PAGE_DATA_SIZE);
         self.header.serialize(ser).await?;
         self.slots.serialize(ser).await?;
         for _ in 0..self.header.free_space {

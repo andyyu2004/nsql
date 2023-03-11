@@ -90,7 +90,7 @@ impl Default for HeapTuplePage {
 }
 
 impl Serialize for HeapTuplePage {
-    async fn serialize(&self, ser: &mut dyn Serializer<'_>) -> Result<(), io::Error> {
+    async fn serialize(&self, ser: &mut dyn Serializer) -> Result<(), io::Error> {
         self.header.serialize(ser).await?;
 
         ser.write_u16(self.slots.len() as u16).await?;

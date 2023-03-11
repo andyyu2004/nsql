@@ -1,4 +1,3 @@
-use nsql_pager::InMemoryPager;
 use nsql_test::mk_mem_buffer_pool;
 
 use super::FreeSpaceMap;
@@ -15,4 +14,3 @@ fn test_fsm() -> nsql_buffer::Result<()> {
         Ok(())
     })
 }
-
