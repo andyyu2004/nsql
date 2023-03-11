@@ -22,7 +22,7 @@ pub struct CreateNamespaceInfo {
 }
 
 impl Deserialize for CreateNamespaceInfo {
-    async fn deserialize(de: &mut dyn Deserializer<'_>) -> nsql_serde::Result<Self> {
+    async fn deserialize(de: &mut dyn Deserializer) -> nsql_serde::Result<Self> {
         let s = de.read_str().await?;
         Ok(Self { name: Name::from(s.as_str()) })
     }

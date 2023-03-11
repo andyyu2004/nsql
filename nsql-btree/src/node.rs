@@ -1,11 +1,11 @@
-use std::mem;
+use std::{io, mem};
 
 use nsql_pager::PAGE_DATA_SIZE;
 use nsql_serde::{
     AsyncReadExt, AsyncWriteExt, Deserialize, Deserializer, Serialize, SerializeSized, Serializer,
 };
 
-use crate::page::{InteriorPage, LeafPage};
+use crate::page::{InteriorPage, LeafPage, PageHeader};
 
 #[derive(Debug)]
 pub(crate) struct Node<K, V> {
@@ -13,34 +13,9 @@ pub(crate) struct Node<K, V> {
     flags: Flags,
 }
 
-bitflags::bitflags! {
-    #[derive(Debug, Clone, Copy)]
-    pub struct Flags: u8 {
-        const IS_ROOT = 1 << 0;
-        const IS_LEAF = 1 << 1;
-        const VARIABLE_SIZE_KEYS = 1 << 2;
-    }
-}
-
-impl Serialize for Flags {
-    async fn serialize(&self, ser: &mut dyn Serializer) -> nsql_serde::Result<()> {
-        Ok(ser.write_u8(self.bits()).await?)
-    }
-}
-
-impl Deserialize for Flags {
-    async fn deserialize(de: &mut dyn Deserializer<'_>) -> nsql_serde::Result<Self> {
-        Ok(Self::from_bits(de.read_u8().await?).unwrap())
-    }
-}
-
-impl SerializeSized for Flags {
-    const SERIALIZED_SIZE: usize = mem::size_of::<Self>();
-}
-
 impl Node<(), ()> {
     /// amount of space available on the rest of the page
-    pub(crate) const REMAINING_SPACE: usize = PAGE_DATA_SIZE - Flags::SERIALIZED_SIZE;
+    pub(crate) const PAGE_SIZE: u16 = PAGE_DATA_SIZE as u16 - Flags::SERIALIZED_SIZE;
 }
 
 impl<K, V> Node<K, V> {
@@ -71,8 +46,8 @@ where
     V: Serialize,
 {
     async fn serialize(&self, ser: &mut dyn Serializer) -> nsql_serde::Result<()> {
-        let ser = &mut ser.limit(PAGE_DATA_SIZE);
-        self.flags.serialize(ser).await?;
+        let ser = &mut ser.limit(PAGE_DATA_SIZE as u16);
+        PageHeader { flags: self.flags }.serialize(ser).await?;
         match &self.kind {
             NodeKind::Internal(node) => node.serialize(ser).await,
             NodeKind::Leaf(node) => node.serialize(ser).await,
@@ -80,24 +55,40 @@ where
     }
 }
 
-impl<K, V> Deserialize for Node<K, V>
-where
-    K: Deserialize,
-    V: Deserialize,
-{
-    async fn deserialize(de: &mut dyn Deserializer<'_>) -> nsql_serde::Result<Self> {
-        let flags = Flags::deserialize(de).await?;
-        let kind = if flags.contains(Flags::IS_LEAF) {
-            NodeKind::Leaf(LeafPage::deserialize(de).await?)
-        } else {
-            NodeKind::Internal(InteriorPage::deserialize(de).await?)
-        };
-        Ok(Self { kind, flags })
-    }
-}
-
 #[derive(Debug)]
 pub(crate) enum NodeKind<K, V> {
     Internal(InteriorPage<K>),
     Leaf(LeafPage<K, V>),
+}
+
+bitflags::bitflags! {
+    #[derive(Debug, Clone, Copy)]
+    pub struct Flags: u8 {
+        const IS_ROOT = 1 << 0;
+        const IS_LEAF = 1 << 1;
+        const VARIABLE_SIZE_KEYS = 1 << 2;
+    }
+}
+
+impl Serialize for Flags {
+    async fn serialize(&self, ser: &mut dyn Serializer) -> nsql_serde::Result<()> {
+        Ok(ser.write_u8(self.bits()).await?)
+    }
+}
+
+impl Deserialize for Flags {
+    async fn deserialize(de: &mut dyn Deserializer) -> nsql_serde::Result<Self> {
+        let bits = de.read_u8().await?;
+        match Self::from_bits(bits) {
+            Some(flags) => Ok(flags),
+            None => Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("invalid btree bitflags: {bits:#b}"),
+            ))?,
+        }
+    }
+}
+
+impl SerializeSized for Flags {
+    const SERIALIZED_SIZE: u16 = mem::size_of::<Self>() as u16;
 }

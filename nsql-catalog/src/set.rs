@@ -44,7 +44,7 @@ where
 
     async fn deserialize_with(
         tx: &Self::Context<'_>,
-        de: &mut dyn Deserializer<'_>,
+        de: &mut dyn Deserializer,
     ) -> nsql_serde::Result<Self> {
         let len = de.read_u32().await? as usize;
         let set = Self::with_capacity(len);

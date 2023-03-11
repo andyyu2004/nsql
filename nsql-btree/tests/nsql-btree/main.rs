@@ -6,7 +6,7 @@ fn test_btree() -> nsql_serde::Result<()> {
     nsql_test::start(async {
         let pool = mk_mem_buffer_pool!();
         let btree = BTree::<u32, u64>::create(pool).await?;
-        btree.insert(1, 2).await?;
+        assert!(btree.insert(1, 2).await?.is_none());
         assert_eq!(btree.get(&1).await?, Some(2));
         Ok(())
     })

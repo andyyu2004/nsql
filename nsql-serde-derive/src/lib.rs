@@ -142,7 +142,7 @@ pub fn derive_deserialize(input: proc_macro::TokenStream) -> proc_macro::TokenSt
             let ty = fields.iter().map(|field| &field.ty);
             quote! {
                 impl #impl_generics ::nsql_serde::Deserialize for #name #ty_generics #where_clause {
-                    async fn deserialize(de: &mut dyn ::nsql_serde::Deserializer<'_>) -> ::nsql_serde::Result<Self> {
+                    async fn deserialize(de: &mut dyn ::nsql_serde::Deserializer) -> ::nsql_serde::Result<Self> {
                         use ::nsql_serde::Deserialize as _;
                         #(
                             let #field_name = <#ty as ::nsql_serde::Deserialize>::deserialize(de).await?;
@@ -184,7 +184,7 @@ pub fn derive_serialize_sized(input: proc_macro::TokenStream) -> proc_macro::Tok
         DataKind::Struct { fields } => {
             let ty = fields.iter().map(|field| &field.ty);
             quote! {
-                const SERIALIZED_SIZE: usize =  0 #(+ <#ty as ::nsql_serde::SerializeSized>::SERIALIZED_SIZE)*;
+                const SERIALIZED_SIZE: u16 =  0 #(+ <#ty as ::nsql_serde::SerializeSized>::SERIALIZED_SIZE)*;
             }
         }
         DataKind::Enum { .. } => todo!(),

@@ -10,7 +10,7 @@ use nsql_serde::{Deserialize, Invalid, Serialize, SerializeSized};
 use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 
-use crate::{CHECKSUM_LENGTH, PAGE_DATA_SIZE, PAGE_SIZE};
+use crate::{PAGE_DATA_SIZE, PAGE_META_LENGTH, PAGE_SIZE};
 
 #[derive(Clone)]
 pub struct Page {
@@ -37,15 +37,15 @@ impl Page {
 
     /// Get an immutable reference to the data bytes of the page
     #[inline]
-    pub fn data(&self) -> ReadonlyPageView<'_> {
+    pub fn data(&self) -> PageView<'_> {
         let bytes = self.bytes.read();
-        ReadonlyPageView { bytes, read_offset: 0 }
+        PageView { bytes, read_offset: PAGE_META_LENGTH }
     }
 
     #[inline]
-    pub fn data_mut(&self) -> WriteablePageView<'_> {
+    pub fn data_mut(&self) -> PageViewMut<'_> {
         let bytes = self.bytes.write();
-        WriteablePageView { bytes, write_offset: 0 }
+        PageViewMut { bytes, write_offset: PAGE_META_LENGTH }
     }
 
     #[inline]
@@ -66,7 +66,7 @@ impl Page {
     /// Read the checksum from the page header
     #[inline]
     pub(crate) fn expected_checksum(&self) -> u64 {
-        u64::from_be_bytes(self.bytes()[..CHECKSUM_LENGTH].try_into().unwrap())
+        u64::from_be_bytes(self.bytes()[..PAGE_META_LENGTH].try_into().unwrap())
     }
 
     #[inline]
@@ -151,12 +151,12 @@ impl fmt::Display for PageIndex {
 }
 
 #[derive(Debug)]
-pub struct ReadonlyPageView<'a> {
+pub struct PageView<'a> {
     bytes: RwLockReadGuard<'a, [u8; PAGE_SIZE]>,
     read_offset: usize,
 }
 
-impl AsyncRead for ReadonlyPageView<'_> {
+impl AsyncRead for PageView<'_> {
     #[inline]
     fn poll_read(
         mut self: Pin<&mut Self>,
@@ -164,6 +164,9 @@ impl AsyncRead for ReadonlyPageView<'_> {
         buf: &mut ReadBuf<'_>,
     ) -> Poll<io::Result<()>> {
         let offset = self.read_offset;
+        if offset >= PAGE_SIZE {
+            return Poll::Ready(Ok(()));
+        }
         let amt = buf.remaining().min(self.bytes.len() - offset);
         buf.put_slice(&self.bytes[offset..offset + amt]);
         self.read_offset += amt;
@@ -171,16 +174,16 @@ impl AsyncRead for ReadonlyPageView<'_> {
     }
 }
 
-impl Deref for ReadonlyPageView<'_> {
+impl Deref for PageView<'_> {
     type Target = [u8; PAGE_DATA_SIZE];
 
     fn deref(&self) -> &Self::Target {
-        unsafe { &*(self.bytes[CHECKSUM_LENGTH..].as_ptr() as *const [u8; PAGE_DATA_SIZE]) }
+        unsafe { &*(self.bytes[PAGE_META_LENGTH..].as_ptr() as *const [u8; PAGE_DATA_SIZE]) }
     }
 }
 
 #[cfg(test)]
-impl<R> PartialEq<R> for ReadonlyPageView<'_>
+impl<R> PartialEq<R> for PageView<'_>
 where
     R: AsRef<[u8; PAGE_DATA_SIZE]>,
 {
@@ -190,28 +193,28 @@ where
 }
 
 #[derive(Debug)]
-pub struct WriteablePageView<'a> {
+pub struct PageViewMut<'a> {
     bytes: RwLockWriteGuard<'a, [u8; PAGE_SIZE]>,
     write_offset: usize,
 }
 
-impl AsyncWrite for WriteablePageView<'_> {
+impl AsyncWrite for PageViewMut<'_> {
     fn poll_write(
         mut self: Pin<&mut Self>,
         _cx: &mut Context<'_>,
         buf: &[u8],
     ) -> Poll<Result<usize, io::Error>> {
-        if self.write_offset + buf.len() > PAGE_DATA_SIZE {
+        let offset = self.write_offset;
+        if offset + buf.len() > PAGE_SIZE {
             return Poll::Ready(Err(io::Error::new(
                 io::ErrorKind::Other,
                 format!(
                     "write to page exceeds page size ({} > {PAGE_DATA_SIZE})",
-                    self.write_offset + buf.len()
+                    offset + buf.len()
                 ),
             )));
         }
 
-        let offset = self.write_offset;
         let n = self.bytes[offset..].as_mut().write(buf)?;
         self.write_offset += n;
         Poll::Ready(Ok(n))
@@ -226,17 +229,17 @@ impl AsyncWrite for WriteablePageView<'_> {
     }
 }
 
-impl Deref for WriteablePageView<'_> {
+impl Deref for PageViewMut<'_> {
     type Target = [u8; PAGE_DATA_SIZE];
 
     fn deref(&self) -> &Self::Target {
-        unsafe { &*(self.bytes[CHECKSUM_LENGTH..].as_ptr() as *const [u8; PAGE_DATA_SIZE]) }
+        unsafe { &*(self.bytes[PAGE_META_LENGTH..].as_ptr() as *const [u8; PAGE_DATA_SIZE]) }
     }
 }
 
-impl DerefMut for WriteablePageView<'_> {
+impl DerefMut for PageViewMut<'_> {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        unsafe { &mut *(self.bytes[CHECKSUM_LENGTH..].as_mut_ptr() as *mut [u8; PAGE_DATA_SIZE]) }
+        unsafe { &mut *(self.bytes[PAGE_META_LENGTH..].as_mut_ptr() as *mut [u8; PAGE_DATA_SIZE]) }
     }
 }
 

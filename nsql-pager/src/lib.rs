@@ -21,9 +21,10 @@ pub use self::meta_page::{MetaPageReader, MetaPageWriter};
 pub use self::page::{Page, PageIndex, PageOffset};
 
 /// The size of a page in bytes minus the size of the page header.
-pub const PAGE_DATA_SIZE: usize = PAGE_SIZE - CHECKSUM_LENGTH;
+pub const PAGE_DATA_SIZE: usize = PAGE_SIZE - PAGE_META_LENGTH;
 pub const PAGE_SIZE: usize = 4096;
-const CHECKSUM_LENGTH: usize = std::mem::size_of::<u64>();
+// currently just the checksum
+const PAGE_META_LENGTH: usize = std::mem::size_of::<u64>();
 
 type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 
