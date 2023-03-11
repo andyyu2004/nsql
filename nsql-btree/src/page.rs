@@ -1,4 +1,4 @@
-use std::{io, mem};
+use std::{io};
 
 use nsql_arena::Arena;
 use nsql_pager::{PageIndex, PAGE_DATA_SIZE};
@@ -6,7 +6,7 @@ use nsql_serde::{
     AsyncReadExt, AsyncWriteExt, Deserialize, Deserializer, Serialize, SerializeSized, Serializer,
     SliceDeExt, SliceSerExt,
 };
-use nsql_util::static_assert_eq;
+
 
 use crate::node::Node;
 
@@ -15,7 +15,7 @@ const BTREE_LEAF_PAGE_MAGIC: [u8; 4] = *b"BTPL";
 
 #[derive(Debug)]
 pub(crate) struct InteriorPage<K> {
-    header: BTreeInteriorPageHeader,
+    header: InteriorPageHeader,
     slots: Arena<Slot>,
     keys: Vec<K>,
     children: Vec<PageIndex>,
@@ -52,7 +52,7 @@ impl<K: Serialize> Serialize for InteriorPage<K> {
 
 impl<K: Deserialize> Deserialize for InteriorPage<K> {
     async fn deserialize(de: &mut dyn Deserializer<'_>) -> nsql_serde::Result<Self> {
-        let header = BTreeInteriorPageHeader::deserialize(de).await?;
+        let header = InteriorPageHeader::deserialize(de).await?;
         let slots = Arena::deserialize(de).await?;
 
         for _ in 0..header.free_space {
@@ -75,14 +75,12 @@ struct Slot {
 }
 
 #[derive(Debug, PartialEq, SerializeSized)]
-struct BTreeInteriorPageHeader {
+struct InteriorPageHeader {
     magic: [u8; 4],
-    prev: Option<PageIndex>,
-    next: Option<PageIndex>,
     free_space: u16,
 }
 
-impl Deserialize for BTreeInteriorPageHeader {
+impl Deserialize for InteriorPageHeader {
     async fn deserialize(de: &mut dyn Deserializer<'_>) -> nsql_serde::Result<Self> {
         let mut magic = [0; 4];
         de.read_exact(&mut magic).await?;
@@ -95,22 +93,20 @@ impl Deserialize for BTreeInteriorPageHeader {
         }
 
         let free_space = de.read_u16().await?;
-        let prev = Option::deserialize(de).await?;
-        let next = Option::deserialize(de).await?;
 
-        Ok(Self { magic, free_space, prev, next })
+        Ok(Self { magic, free_space })
     }
 }
 
-#[derive(Debug, PartialEq, Serialize)]
-struct BTreeLeafPageHeader {
+#[derive(Debug, PartialEq, SerializeSized)]
+struct LeafPageHeader {
     magic: [u8; 4],
     free_space: u16,
+    prev: Option<PageIndex>,
+    next: Option<PageIndex>,
 }
 
-static_assert_eq!(mem::size_of::<BTreeLeafPageHeader>(), 6);
-
-impl Deserialize for BTreeLeafPageHeader {
+impl Deserialize for LeafPageHeader {
     async fn deserialize(de: &mut dyn Deserializer<'_>) -> nsql_serde::Result<Self> {
         let mut magic = [0; 4];
         de.read_exact(&mut magic).await?;
@@ -120,14 +116,16 @@ impl Deserialize for BTreeLeafPageHeader {
         }
 
         let free_space = de.read_u16().await?;
+        let prev = Option::deserialize(de).await?;
+        let next = Option::deserialize(de).await?;
 
-        Ok(Self { magic, free_space })
+        Ok(Self { magic, free_space, prev, next })
     }
 }
 
 #[derive(Debug)]
 pub(crate) struct LeafPage<K, V> {
-    header: BTreeInteriorPageHeader,
+    header: LeafPageHeader,
     slots: Vec<Slot>,
     keys: Vec<K>,
     values: Vec<V>,
@@ -138,7 +136,7 @@ impl<K: Ord, V: Clone> LeafPage<K, V> {
         self.keys.binary_search(key).ok().map(|i| self.values[i].clone())
     }
 
-    pub(crate) fn insert(&mut self, key: K, value: V) -> Option<V> {
+    pub(crate) fn insert(&mut self, key: K, _value: V) -> Option<V> {
         match self.keys.binary_search(&key) {
             Ok(_i) => todo!(),
             Err(j) => {
@@ -152,11 +150,10 @@ impl<K: Ord, V: Clone> LeafPage<K, V> {
 impl<K, V> Default for LeafPage<K, V> {
     fn default() -> Self {
         Self {
-            header: BTreeInteriorPageHeader {
+            header: LeafPageHeader {
                 magic: BTREE_LEAF_PAGE_MAGIC,
                 // remaining space - header size - 4 bytes for the slot length
-                free_space: (Node::REMAINING_SPACE - mem::size_of::<BTreeLeafPageHeader>() - 4)
-                    as u16,
+                free_space: (Node::REMAINING_SPACE - LeafPageHeader::SERIALIZED_SIZE - 4) as u16,
                 prev: None,
                 next: None,
             },
@@ -188,7 +185,7 @@ impl<K: Serialize, V: Serialize> Serialize for LeafPage<K, V> {
 
 impl<K: Deserialize, V: Deserialize> Deserialize for LeafPage<K, V> {
     async fn deserialize(de: &mut dyn Deserializer<'_>) -> nsql_serde::Result<Self> {
-        let header = BTreeInteriorPageHeader::deserialize(de).await?;
+        let header = LeafPageHeader::deserialize(de).await?;
         let slots = Vec::deserialize(de).await?;
         for _ in 0..header.free_space {
             assert_eq!(de.read_u8().await?, 0);

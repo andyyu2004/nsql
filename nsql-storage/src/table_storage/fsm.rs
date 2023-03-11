@@ -39,14 +39,14 @@ impl FreeSpaceMap {
 
     async fn find_rec(
         &self,
-        fsm_page_idx: PageIndex,
+        _fsm_page_idx: PageIndex,
         required_size: u16,
-        level: usize,
+        _level: usize,
     ) -> nsql_buffer::Result<Option<PageIndex>> {
         let buffer = self.pool.load(self.meta.root_fsm_page).await?;
         let mut data = buffer.page().data_mut();
         let fsm_page = FsmPage::from_bytes_mut(&mut data);
-        let offset = fsm_page.find(required_size);
+        let _offset = fsm_page.find(required_size);
         drop(data);
 
         todo!()
@@ -60,14 +60,14 @@ impl FreeSpaceMap {
 
     async fn update_rec(
         &self,
-        fsm_page_idx: PageIndex,
-        level: u16,
-        page: PageIndex,
-        free_space: u16,
+        _fsm_page_idx: PageIndex,
+        _level: u16,
+        _page: PageIndex,
+        _free_space: u16,
     ) -> nsql_buffer::Result<()> {
         let buffer = self.pool.load(self.meta.root_fsm_page).await?;
         let mut data = buffer.page().data_mut();
-        let fsm_page = FsmPage::from_bytes_mut(&mut data);
+        let _fsm_page = FsmPage::from_bytes_mut(&mut data);
 
         // let current_page = level * NODES_PER_PAGE;
         // let relative_offset = page - PageIndex::new(current_page);

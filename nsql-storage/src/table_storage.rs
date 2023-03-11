@@ -46,7 +46,7 @@ impl TableStorage {
         todo!()
     }
 
-    fn find_free_space(&self, size: usize) -> Option<PageIndex> {
+    fn find_free_space(&self, _size: usize) -> Option<PageIndex> {
         todo!()
     }
 }
