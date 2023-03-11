@@ -1025,6 +1025,7 @@ dependencies = [
  "arrayvec",
  "nsql-arena",
  "nsql-serde-derive",
+ "pin-project-lite",
  "rust_decimal",
  "smol_str",
  "tokio",

@@ -10,7 +10,7 @@ use std::marker::PhantomData;
 use std::num::NonZeroU32;
 use std::pin::Pin;
 use std::sync::Arc;
-use std::task::{Context, Poll};
+use std::task::{ready, Context, Poll};
 
 use arrayvec::ArrayVec;
 use nsql_arena::{Arena, Idx, RawIdx};
@@ -33,9 +33,12 @@ pub trait Serializer: AsyncWrite + Send + Unpin {
     }
 }
 
-pub struct Take<S> {
-    inner: S,
-    limit: usize,
+pin_project_lite::pin_project! {
+    pub struct Take<S> {
+        #[pin]
+        inner: S,
+        limit: usize,
+    }
 }
 
 impl<S: Serializer> AsyncWrite for Take<S> {
@@ -44,15 +47,24 @@ impl<S: Serializer> AsyncWrite for Take<S> {
         cx: &mut Context<'_>,
         buf: &[u8],
     ) -> Poll<Result<usize, io::Error>> {
-        todo!()
+        let limit = self.limit;
+        if limit == 0 {
+            return Poll::Ready(Ok(0));
+        }
+
+        let this = self.project();
+        let buf = &buf[..limit.min(buf.len())];
+        let n = ready!(this.inner.poll_write(cx, buf))?;
+        *this.limit -= n;
+        Poll::Ready(Ok(n))
     }
 
     fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), io::Error>> {
-        todo!()
+        self.project().inner.poll_flush(cx)
     }
 
     fn poll_shutdown(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), io::Error>> {
-        todo!()
+        self.project().inner.poll_shutdown(cx)
     }
 }
 

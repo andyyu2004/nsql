@@ -10,5 +10,6 @@ nsql-serde-derive = { path = "../nsql-serde-derive" }
 rust_decimal = { version = "1.28.1", default-features = false }
 nsql-arena = { version = "0.1.0", path = "../nsql-arena" }
 arrayvec = "0.7.2"
+pin-project-lite = "0.2.9"
 
 

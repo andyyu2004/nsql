@@ -33,6 +33,7 @@ impl<K> InteriorPage<K> {
 
 impl<K: Serialize> Serialize for InteriorPage<K> {
     async fn serialize(&self, ser: &mut dyn Serializer) -> Result<(), io::Error> {
+        let ser = &mut ser.limit(PAGE_DATA_SIZE);
         self.header.serialize(ser).await?;
         self.slots.serialize(ser).await?;
 
