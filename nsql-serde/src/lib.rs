@@ -12,7 +12,7 @@ use std::sync::Arc;
 use std::task::{Context, Poll};
 
 use arrayvec::ArrayVec;
-use nsql_arena::{Idx, RawIdx};
+use nsql_arena::{Arena, Idx, RawIdx};
 pub use nsql_serde_derive::{Deserialize, Serialize};
 use rust_decimal::Decimal;
 use smol_str::SmolStr;
@@ -107,10 +107,31 @@ impl<S: Serialize> Serialize for Vec<S> {
     }
 }
 
+pub trait SerializeWith: Sized {
+    type Context<'a>;
+
+    async fn serialize_with(
+        &self,
+        ctx: &Self::Context<'_>,
+        ser: &mut dyn Serializer<'_>,
+    ) -> Result<(), io::Error>;
+}
+
+impl<S: Serialize> SerializeWith for S {
+    type Context<'a> = ();
+
+    async fn serialize_with(
+        &self,
+        _ctx: &Self::Context<'_>,
+        ser: &mut dyn Serializer<'_>,
+    ) -> Result<(), io::Error> {
+        self.serialize(ser).await
+    }
+}
+
 /// deserialization trait with context (analogous to serde::DeserializeSeed)
 pub trait DeserializeWith: Sized {
     type Context<'a>;
-    type Error: From<io::Error> = io::Error;
 
     async fn deserialize_with(
         ctx: &Self::Context<'_>,
@@ -388,5 +409,28 @@ impl<T> Deserialize for PhantomData<T> {
     #[inline]
     async fn deserialize(_: &mut dyn Deserializer<'_>) -> Result<Self, io::Error> {
         Ok(PhantomData)
+    }
+}
+
+impl<T: Serialize> Serialize for Arena<T> {
+    #[inline]
+    async fn serialize(&self, ser: &mut dyn Serializer<'_>) -> Result<(), io::Error> {
+        ser.write_u32(self.len() as u32).await?;
+        for (_idx, v) in self.iter() {
+            v.serialize(ser).await?;
+        }
+        Ok(())
+    }
+}
+
+impl<T: Deserialize> Deserialize for Arena<T> {
+    #[inline]
+    async fn deserialize(de: &mut dyn Deserializer<'_>) -> Result<Self, io::Error> {
+        let len = de.read_u32().await? as usize;
+        let mut arena = Arena::with_capacity(len);
+        for _ in 0..len {
+            arena.alloc(T::deserialize(de).await?);
+        }
+        Ok(arena)
     }
 }

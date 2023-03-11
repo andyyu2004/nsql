@@ -1,0 +1,8 @@
+[package]
+name = "nsql-rkyv"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+rkyv = { version = "0.7.40" }
+

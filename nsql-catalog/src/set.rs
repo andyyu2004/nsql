@@ -46,7 +46,7 @@ where
     async fn deserialize_with(
         tx: &Self::Context<'_>,
         de: &mut dyn Deserializer<'_>,
-    ) -> Result<Self, Self::Error> {
+    ) -> Result<Self, io::Error> {
         let len = de.read_u32().await? as usize;
         let set = Self::with_capacity(len);
         for _ in 0..len {

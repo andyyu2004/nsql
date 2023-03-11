@@ -118,7 +118,7 @@ impl DeserializeWith for HeapTuplePage {
     async fn deserialize_with(
         ctx: &Self::Context<'_>,
         de: &mut dyn Deserializer<'_>,
-    ) -> Result<Self, Self::Error> {
+    ) -> Result<Self, io::Error> {
         let header = HeapTuplePageHeader::deserialize(de).await?;
         let n = de.read_u16().await? as usize;
 
@@ -129,7 +129,7 @@ impl DeserializeWith for HeapTuplePage {
 
         // read the padding for free space
         for _ in 0..header.free_space() {
-            de.read_u8().await?;
+            assert_eq!(de.read_u8().await?, 0);
         }
 
         let mut tuples = Vec::with_capacity(n);
@@ -140,8 +140,6 @@ impl DeserializeWith for HeapTuplePage {
 
         Ok(Self { header, slots, tuples })
     }
-
-    type Error = io::Error;
 }
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
@@ -223,7 +221,7 @@ impl DeserializeWith for HeapTuple {
     async fn deserialize_with(
         ctx: &Self::Context<'_>,
         de: &mut dyn Deserializer<'_>,
-    ) -> Result<Self, Self::Error> {
+    ) -> Result<Self, io::Error> {
         let header = HeapTupleHeader::deserialize(de).await?;
         let tuple = Tuple::deserialize_with(ctx, de).await?;
         Ok(Self { header, tuple })

@@ -1,23 +1,24 @@
-use arrayvec::ArrayVec;
 use nsql_pager::PageIndex;
-use nsql_serde::{AsyncReadExt, AsyncWriteExt, Deserialize, Deserializer, Serialize, Serializer};
+use nsql_serde::{
+    AsyncReadExt, AsyncWriteExt, Deserialize, DeserializeWith, Deserializer, Serialize,
+    SerializeWith, Serializer,
+};
 
+use crate::page::{DeserializeContext, InteriorPage, LeafPage};
 use crate::Result;
 
 #[derive(Debug)]
-pub(crate) struct Node<K, V, const B: usize>
-where
-    [K; B]: Sized,
-{
-    kind: NodeKind<K, V, B>,
+pub(crate) struct Node<K, V> {
+    kind: NodeKind<K, V>,
     flags: Flags,
 }
 
 bitflags::bitflags! {
-    #[derive(Debug)]
+    #[derive(Debug, Clone, Copy)]
     pub struct Flags: u8 {
         const IS_ROOT = 1 << 0;
         const IS_LEAF = 1 << 1;
+        const VARIABLE_SIZE_KEYS = 1 << 2;
     }
 }
 
@@ -33,23 +34,20 @@ impl Deserialize for Flags {
     }
 }
 
-impl<K, V, const B: usize> Node<K, V, B>
-where
-    [K; B]: Sized,
-{
-    pub(crate) fn new_leaf(leaf: LeafNode<K, V>) -> Self {
+impl<K, V> Node<K, V> {
+    pub(crate) fn new_leaf(leaf: LeafPage<K, V>) -> Self {
         Self { kind: NodeKind::Leaf(leaf), flags: Flags::IS_LEAF }
     }
 
     pub(crate) fn new_root() -> Self {
-        Self { kind: NodeKind::Leaf(LeafNode::default()), flags: Flags::IS_LEAF | Flags::IS_ROOT }
+        Self { kind: NodeKind::Leaf(LeafPage::default()), flags: Flags::IS_LEAF | Flags::IS_ROOT }
     }
 
-    pub(crate) fn kind(&self) -> &NodeKind<K, V, B> {
+    pub(crate) fn kind(&self) -> &NodeKind<K, V> {
         &self.kind
     }
 
-    pub(crate) fn kind_mut(&mut self) -> &mut NodeKind<K, V, B> {
+    pub(crate) fn kind_mut(&mut self) -> &mut NodeKind<K, V> {
         &mut self.kind
     }
 
@@ -58,100 +56,40 @@ where
     }
 }
 
-impl<K, V, const B: usize> Serialize for Node<K, V, B>
+impl<K, V> Serialize for Node<K, V>
 where
-    [K; B]: Sized,
     K: Serialize,
     V: Serialize,
 {
     async fn serialize(&self, ser: &mut dyn Serializer<'_>) -> Result<(), ::std::io::Error> {
+        let ctx = DeserializeContext::new(self.flags);
         self.flags.serialize(ser).await?;
         match &self.kind {
-            NodeKind::Internal(node) => node.serialize(ser).await,
+            NodeKind::Internal(node) => node.serialize_with(&ctx, ser).await,
             NodeKind::Leaf(node) => node.serialize(ser).await,
         }
     }
 }
 
-impl<K, V, const B: usize> Deserialize for Node<K, V, B>
+impl<K, V> Deserialize for Node<K, V>
 where
-    [K; B]: Sized,
     K: Deserialize,
     V: Deserialize,
 {
     async fn deserialize(de: &mut dyn Deserializer<'_>) -> Result<Self, ::std::io::Error> {
         let flags = Flags::deserialize(de).await?;
+        let ctx = DeserializeContext::new(flags);
         let kind = if flags.contains(Flags::IS_LEAF) {
-            NodeKind::Leaf(LeafNode::deserialize(de).await?)
+            NodeKind::Leaf(LeafPage::deserialize(de).await?)
         } else {
-            NodeKind::Internal(InternalNode::deserialize(de).await?)
+            NodeKind::Internal(InteriorPage::deserialize_with(&ctx, de).await?)
         };
         Ok(Self { kind, flags })
     }
 }
 
 #[derive(Debug)]
-pub(crate) enum NodeKind<K, V, const B: usize>
-where
-    [K; B]: Sized,
-{
-    Internal(InternalNode<K, B>),
-    Leaf(LeafNode<K, V>),
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub(crate) struct InternalNode<K, const B: usize>
-where
-    [K; B]: Sized,
-{
-    keys: ArrayVec<K, B>,
-    // FIXME actually should be only B-1 used but run into issues with rustc and const generics if we try to do arithmetic
-    children: ArrayVec<PageIndex, B>,
-}
-
-impl<K, const B: usize> InternalNode<K, B>
-where
-    [K; B]: Sized,
-{
-    pub(crate) fn search(&self, key: &K) -> PageIndex
-    where
-        K: Ord,
-    {
-        match self.keys.binary_search(key) {
-            Ok(i) => self.children[i],
-            Err(i) => self.children[i],
-        }
-    }
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub(crate) struct LeafNode<K, V> {
-    keys: Vec<K>,
-    values: Vec<V>,
-    prev: Option<PageIndex>,
-    next: Option<PageIndex>,
-}
-
-impl<K: Ord, V: Clone> LeafNode<K, V> {
-    pub(crate) fn get(&self, key: &K) -> Option<V> {
-        self.keys.binary_search(key).ok().map(|i| self.values[i].clone())
-    }
-
-    pub(crate) fn insert(&mut self, key: K, value: V) -> Option<V> {
-        match self.keys.binary_search(&key) {
-            Ok(i) => {
-                todo!()
-            }
-            Err(j) => {
-                self.keys.insert(j, key);
-                None
-            }
-        }
-    }
-}
-
-impl<K, V> Default for LeafNode<K, V> {
-    fn default() -> Self {
-        Self { keys: Default::default(), values: Default::default(), prev: None, next: None }
-    }
+pub(crate) enum NodeKind<K, V> {
+    Internal(InteriorPage<K>),
+    Leaf(LeafPage<K, V>),
 }

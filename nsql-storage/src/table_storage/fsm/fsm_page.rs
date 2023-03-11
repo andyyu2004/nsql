@@ -1,14 +1,15 @@
 use std::mem;
+use std::pin::Pin;
 
-use bytemuck::{Pod, Zeroable};
 use nsql_pager::{PageOffset, PAGE_DATA_SIZE, PAGE_SIZE};
 use nsql_util::{static_assert, static_assert_eq};
+use rkyv::Archive;
 
 use crate::table_storage::HeapTuple;
 
 /// A single page in the free space map
-#[derive(Debug, Clone, Copy, Pod, Zeroable)]
-#[repr(C, packed)]
+#[derive(Debug, Clone, Copy, Archive)]
+#[archive(as = "Self")]
 pub(super) struct FsmPage {
     // page indexes that the leaf node corresponds to
     // this field should come first so the u32s are aligned
@@ -23,8 +24,8 @@ static_assert_eq!(PAGE_DATA_SIZE, mem::size_of::<FsmPage>());
 
 impl FsmPage {
     #[inline]
-    pub fn from_bytes_mut(bytes: &mut [u8; PAGE_DATA_SIZE]) -> &mut Self {
-        bytemuck::from_bytes_mut(bytes)
+    pub fn from_bytes_mut(bytes: &mut [u8; mem::size_of::<Self>()]) -> Pin<&mut Self> {
+        unsafe { nsql_rkyv::unarchive_mut::<Self>(Pin::new(bytes)) }
     }
 }
 
@@ -101,11 +102,10 @@ const fn compute_first_leaf_idx(count: NodeIndex) -> NodeIndex {
     if count.is_power_of_two() { count - 1 } else { (count.next_power_of_two() / 2) - 1 }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Pod, Zeroable)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Archive)]
+#[archive(as = "Self")]
 #[repr(transparent)]
-struct Bucket {
-    // SAFETY: we want this to remain endian independent which u8 is
-    // DO NOT change this to another type unless the serialization logic is also changed
+pub(super) struct Bucket {
     value: u8,
 }
 

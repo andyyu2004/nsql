@@ -1,5 +1,5 @@
-use std::fmt;
 use std::sync::Arc;
+use std::{fmt, io};
 
 use nsql_core::schema::{PhysicalType, Schema};
 use nsql_serde::{Deserialize, DeserializeWith, Deserializer, Serialize};
@@ -20,7 +20,7 @@ impl DeserializeWith for Tuple {
     async fn deserialize_with(
         ctx: &Self::Context<'_>,
         de: &mut dyn Deserializer<'_>,
-    ) -> Result<Self, Self::Error> {
+    ) -> Result<Self, io::Error> {
         let attributes = ctx.schema.attributes();
         let mut values = Vec::with_capacity(attributes.len());
 

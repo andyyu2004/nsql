@@ -6,15 +6,16 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-bytemuck = { version = "1.13.1", features = ["derive", "min_const_generics"] }
 nsql-arena = { version = "0.1.0", path = "../nsql-arena" }
 nsql-buffer = { version = "0.1.0", path = "../nsql-buffer" }
 nsql-core = { version = "0.1.0", path = "../nsql-core" }
 nsql-pager = { path = "../nsql-pager" }
+nsql-rkyv = { version = "0.1.0", path = "../nsql-rkyv" }
 nsql-serde = { path = "../nsql-serde" }
 nsql-transaction = { path = "../nsql-transaction" }
 nsql-util = { version = "0.1.0", path = "../nsql-util" }
 proptest = "1.1.0"
+rkyv = { version = "0.7.40", default-features = false }
 rust_decimal = { version = "1.28.1", default-features = false }
 test-strategy = "0.3.0"
 thiserror = "1.0.38"

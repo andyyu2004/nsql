@@ -15,6 +15,7 @@ members = [
     "nsql-parse",
     "nsql-plan",
     "nsql-opt",
+    "nsql-rkyv",
     "nsql-serde",
     "nsql-serde-derive",
     "nsql-storage",
