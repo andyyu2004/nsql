@@ -9,7 +9,6 @@ use crate::table_storage::HeapTuple;
 
 /// A single page in the free space map
 #[derive(Debug, Clone, Copy, Archive)]
-#[archive(as = "Self")]
 pub(super) struct FsmPage {
     // page indexes that the leaf node corresponds to
     // this field should come first so the u32s are aligned
@@ -24,7 +23,7 @@ static_assert_eq!(PAGE_DATA_SIZE, mem::size_of::<FsmPage>());
 
 impl FsmPage {
     #[inline]
-    pub fn from_bytes_mut(bytes: &mut [u8; mem::size_of::<Self>()]) -> Pin<&mut Self> {
+    pub fn from_bytes_mut(bytes: &mut [u8; mem::size_of::<Self>()]) -> Pin<&mut ArchivedFsmPage> {
         unsafe { nsql_rkyv::unarchive_mut::<Self>(Pin::new(bytes)) }
     }
 }

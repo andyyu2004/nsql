@@ -12,5 +12,6 @@ nsql-arena = { version = "0.1.0", path = "../nsql-arena" }
 arrayvec = "0.7.2"
 pin-project-lite = "0.2.9"
 error-stack = "0.3.1"
+rend = { version = "0.4.0", default-features = false }
 
 

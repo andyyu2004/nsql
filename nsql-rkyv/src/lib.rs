@@ -12,22 +12,35 @@ use rkyv::util::to_bytes;
 use rkyv::{archived_root_mut, Archive, Serialize};
 
 #[inline]
-pub fn archive<T>(value: &T) -> [u8; mem::size_of::<T>()]
+pub fn archive<T>(value: &T) -> rkyv::AlignedVec
 where
     T: Serialize<AllocSerializer<4096>>,
-    T: Archive<Archived = T>,
+    T: Archive,
 {
-    let d = to_bytes(value).unwrap();
-    debug_assert_eq!(d.len(), mem::size_of::<T>());
-    d.as_slice().try_into().unwrap()
+    to_bytes(value).expect("rkyv serialization failed")
 }
 
 /// # Safety
 /// See [`rkyv::archived_root_mut`]
 #[inline]
-pub unsafe fn unarchive_mut<T>(bytes: Pin<&mut [u8; mem::size_of::<T>()]>) -> Pin<&mut T::Archived>
+pub unsafe fn unarchive_root_mut<T>(
+    bytes: Pin<&mut [u8; mem::size_of::<T::Archived>()]>,
+) -> Pin<&mut T::Archived>
 where
-    T: Archive<Archived = T>,
+    T: Archive,
 {
     archived_root_mut::<T>(bytes)
 }
+
+// /// # Safety
+// /// See [`rkyv::archived_value_mut`]
+// #[inline]
+// pub unsafe fn unarchive_mut<T>(
+//     bytes: Pin<&mut [u8; mem::size_of::<T::Archived>()]>,
+// ) -> Pin<&mut T::Archived>
+// where
+//     T: Archive,
+//     Assert<{ mem::size_of::<T>() == mem::size_of::<T::Archived>() }>: True,
+// {
+//     archived_value_mut::<T>(bytes, mem::size_of::<T>())
+// }

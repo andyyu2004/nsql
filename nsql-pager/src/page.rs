@@ -8,6 +8,7 @@ use std::{fmt, io};
 
 use nsql_serde::{Deserialize, Invalid, Serialize, SerializeSized};
 use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
+use rkyv::Archive;
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 
 use crate::{PAGE_DATA_SIZE, PAGE_META_LENGTH, PAGE_SIZE};
@@ -85,8 +86,22 @@ impl Page {
 
 // Internally one indexed to enable niche optimization.
 // However, we do the adjustments on construction and retrieval to make it transparent to the user
-#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord, Deserialize, SerializeSized)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    Hash,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Deserialize,
+    SerializeSized,
+    Archive,
+    rkyv::Serialize,
+)]
 #[repr(transparent)]
+#[archive_attr(derive(Debug))]
 pub struct PageIndex {
     idx: NonZeroU32,
 }

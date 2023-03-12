@@ -12,6 +12,7 @@ nsql-serde = { path = "../nsql-serde" }
 nsql-util = { path = "../nsql-util" }
 parking_lot = { version = "0.12.1", features = ["send_guard"] }
 pin-utils = "0.1.0"
+rkyv = "0.7.40"
 tokio = { version = "1.25.0", default-features = false, features = [
     "io-util",
     "sync",

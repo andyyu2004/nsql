@@ -306,8 +306,8 @@ macro_rules! impl_serialize_primitive {
     ($method:ident: $ty:ty) => {
         impl Serialize for $ty {
             #[inline]
-            async fn serialize(&self, buf: &mut dyn Serializer) -> Result<()> {
-                buf.$method(*self).await?;
+            async fn serialize(&self, ser: &mut dyn Serializer) -> Result<()> {
+                ser.$method(*self).await?;
                 Ok(())
             }
         }
@@ -322,6 +322,25 @@ impl_serialize_primitive!(write_u8: u8);
 impl_serialize_primitive!(write_u16: u16);
 impl_serialize_primitive!(write_u32: u32);
 impl_serialize_primitive!(write_u64: u64);
+
+macro_rules! impl_serialize_big_endian_primitive {
+    ($ty:ty) => {
+        impl Serialize for rend::BigEndian<$ty> {
+            #[inline]
+            async fn serialize(&self, ser: &mut dyn Serializer) -> Result<()> {
+                self.value().serialize(ser).await
+            }
+        }
+
+        impl SerializeSized for rend::BigEndian<$ty> {
+            const SERIALIZED_SIZE: u16 = std::mem::size_of::<$ty>() as u16;
+        }
+    };
+}
+
+impl_serialize_big_endian_primitive!(u16);
+impl_serialize_big_endian_primitive!(u32);
+impl_serialize_big_endian_primitive!(u64);
 
 // spec disabled for now for async fn in trait
 // FIXME https://github.com/rust-lang/rust/pull/108551
@@ -372,7 +391,7 @@ impl Deserialize for SmolStr {
     }
 }
 
-macro_rules! impl_deserialize {
+macro_rules! impl_deserialize_primitive {
     ($method:ident: $ty:ty) => {
         impl Deserialize for $ty {
             #[inline]
@@ -383,10 +402,25 @@ macro_rules! impl_deserialize {
     };
 }
 
-impl_deserialize!(read_u8: u8);
-impl_deserialize!(read_u16: u16);
-impl_deserialize!(read_u32: u32);
-impl_deserialize!(read_u64: u64);
+impl_deserialize_primitive!(read_u8: u8);
+impl_deserialize_primitive!(read_u16: u16);
+impl_deserialize_primitive!(read_u32: u32);
+impl_deserialize_primitive!(read_u64: u64);
+
+macro_rules! impl_deserialize_big_endian_primitive {
+    ($ty:ty) => {
+        impl Deserialize for rend::BigEndian<$ty> {
+            #[inline]
+            async fn deserialize(de: &mut dyn Deserializer) -> Result<Self> {
+                <$ty>::deserialize(de).await.map(Self::new)
+            }
+        }
+    };
+}
+
+impl_deserialize_big_endian_primitive!(u16);
+impl_deserialize_big_endian_primitive!(u32);
+impl_deserialize_big_endian_primitive!(u64);
 
 impl Serialize for bool {
     #[inline]
@@ -418,7 +452,8 @@ impl SerializeSized for NonZeroU32 {
 impl Deserialize for NonZeroU32 {
     #[inline]
     async fn deserialize(de: &mut dyn Deserializer) -> Result<Self> {
-        Ok(NonZeroU32::new(de.read_u32().await?).unwrap())
+        Ok(NonZeroU32::new(de.read_u32().await?)
+            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "non-zero u32 is zero"))?)
     }
 }
 

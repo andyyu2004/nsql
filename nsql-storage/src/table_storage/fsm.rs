@@ -45,11 +45,10 @@ impl FreeSpaceMap {
     ) -> nsql_buffer::Result<Option<PageIndex>> {
         let buffer = self.pool.load(self.meta.root_fsm_page).await?;
         let mut data = buffer.page().data_mut();
-        let fsm_page = FsmPage::from_bytes_mut(&mut data);
-        let _offset = fsm_page.find(required_size);
+        let _fsm_page = FsmPage::from_bytes_mut(&mut data);
+        // let _offset = fsm_page.find(required_size);
         drop(data);
-
-        todo!()
+        todo!();
     }
 
     /// update the free space map with the new free space on the page
