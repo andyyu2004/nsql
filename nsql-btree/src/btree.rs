@@ -50,7 +50,7 @@ where
         let mut data = handle.page().data_mut();
         let node = unsafe { PageViewMut::<K, V>::create(&mut data).await? };
         match node {
-            PageViewMut::Leaf(leaf) => leaf.insert(key, value).await,
+            PageViewMut::Leaf(mut leaf) => leaf.insert(key, value).await,
         }
     }
 }

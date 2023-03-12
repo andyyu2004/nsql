@@ -163,6 +163,7 @@ pub trait Serialize {
         Ok(())
     }
 
+    // FIXME specialize impl for `SerializeSized` to use `SERIALIZED_SIZE`
     #[inline]
     async fn serialized_size(&self) -> Result<u16> {
         let mut counter = Counter::default();
