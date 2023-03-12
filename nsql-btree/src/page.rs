@@ -145,8 +145,6 @@ where
     }
 
     pub(crate) async fn get(&self, key: &K) -> nsql_serde::Result<Option<V>> {
-        // dbg!(&self.header);
-        // dbg!(&self.slots);
         self.slots.get(key).await
     }
 }
@@ -187,6 +185,10 @@ impl<'a, K, V> PageViewMut<'a, K, V> {
             todo!()
         }
     }
+
+    pub(crate) fn unwrap_leaf(self) -> LeafPageViewMut<'a, K, V> {
+        if let Self::Leaf(v) = self { v } else { panic!("node was not a leaf") }
+    }
 }
 
 #[derive(Debug)]
@@ -218,6 +220,10 @@ impl<'a, K, V> LeafPageViewMut<'a, K, V> {
         let slots = SlottedPageViewMut::create(data).await?;
         Ok(Self { header, slots })
     }
+
+    fn downgrade(&'a self) -> LeafPageView<'a, K, V> {
+        LeafPageView { header: &self.header, slots: self.slots.downgrade() }
+    }
 }
 
 impl<'a, K, V> LeafPageViewMut<'a, K, V>
@@ -231,6 +237,19 @@ where
         value: V,
     ) -> nsql_serde::Result<Result<Option<V>, PageFull>> {
         self.slots.insert(key, value).await
+    }
+
+    pub(crate) fn split_root_into(
+        &self,
+        left: LeafPageViewMut<'a, K, V>,
+        right: LeafPageViewMut<'a, K, V>,
+    ) -> nsql_serde::Result<()> {
+        let (lhs, rhs) = self.slots.slots.split_at(self.slots.slots.len() / 2);
+        for slot in lhs {
+            // self.downgrade().get();
+            // left.insert();
+        }
+        Ok(())
     }
 }
 
@@ -270,22 +289,42 @@ where
     }
 
     pub(crate) async fn get(&self, key: &K) -> nsql_serde::Result<Option<V>> {
-        for slot in self.slots.iter() {
-            let mut de = &self[slot.offset..];
-            let k = K::deserialize(&mut de).await?;
-            if &k == key {
-                return V::deserialize(&mut de).await.map(Some);
-            }
-        }
+        let offset = match self.offset_of(key).await? {
+            Some(offset) => offset,
+            None => return Ok(None),
+        };
 
+        let mut de = &self[offset..];
+        let k = K::deserialize(&mut de).await?;
+        assert!(&k == key);
+        V::deserialize(&mut de).await.map(Some)
+    }
+
+    async fn get_by_offset(&self, offset: &K) -> nsql_serde::Result<Option<V>> {
         Ok(None)
+    }
+
+    async fn slot_index_of(&self, key: &K) -> nsql_serde::Result<Result<usize, usize>> {
+        async_binary_search_by(self.slots, |slot| async {
+            let k = K::deserialize(&mut &self[slot.offset..]).await?;
+            Ok(k.cmp(key))
+        })
+        .await
+    }
+
+    async fn slot_of(&self, key: &K) -> nsql_serde::Result<Option<&Slot>> {
+        let offset = self.slot_index_of(key).await?;
+        Ok(offset.ok().map(|offset| &self.slots[offset]))
+    }
+
+    async fn offset_of(&self, key: &K) -> nsql_serde::Result<Option<SlotOffset>> {
+        self.slot_of(key).await.map(|slot| slot.map(|slot| slot.offset))
     }
 }
 
 impl<K, V> Index<RangeFrom<SlotOffset>> for SlottedPageView<'_, K, V> {
     type Output = [u8];
 
-    // see SlottedPageViewMut::index
     fn index(&self, offset: RangeFrom<SlotOffset>) -> &Self::Output {
         let adjusted_offset = offset.start - self.header.slot_len * sizeof!(ArchivedSlot);
         &self.data[adjusted_offset.0.value() as usize..]
@@ -381,6 +420,15 @@ impl<'a, K, V> SlottedPageViewMut<'a, K, V> {
 
         Ok(Self { header, slots, data, marker: PhantomData })
     }
+
+    fn downgrade(&'a self) -> SlottedPageView<'a, K, V> {
+        SlottedPageView {
+            header: &self.header,
+            slots: self.slots,
+            data: self.data,
+            marker: PhantomData,
+        }
+    }
 }
 
 pub(crate) struct PageFull;
@@ -406,11 +454,7 @@ where
             return Ok(Err(PageFull));
         }
 
-        let idx = async_binary_search_by(self.slots, |slot| async {
-            let k = K::deserialize(&mut &self[slot.offset..]).await?;
-            Ok(k.cmp(&key))
-        })
-        .await?;
+        let idx = self.downgrade().slot_index_of(&key).await?;
 
         let idx = match idx {
             Ok(idx) => todo!("handle case where key already exists {:?}", self.slots[idx]),
