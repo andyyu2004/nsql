@@ -38,7 +38,7 @@ where
     async fn search_node(&self, idx: PageIndex, key: &K) -> Result<Option<V>> {
         let handle = self.pool.load(idx).await?;
         let data = handle.page().data();
-        let node = PageView::<K, V>::create(&data).await?;
+        let node = unsafe { PageView::<K, V>::create(&data).await? };
         match node {
             // PageView::Internal(node) => self.search_node(node.search(key), key).await,
             PageView::Leaf(leaf) => leaf.get(key).await,
