@@ -6,7 +6,7 @@ use std::pin::Pin;
 use std::{cmp, fmt, io, mem, ptr, slice};
 
 use nsql_pager::{PageIndex, PAGE_DATA_SIZE};
-use nsql_serde::{Deserialize, Serialize, SerializeSized};
+use nsql_serde::{Deserialize, DeserializeSkip, Serialize, SerializeSized};
 use rkyv::rend::BigEndian;
 use rkyv::Archive;
 
@@ -105,7 +105,7 @@ pub(crate) enum PageView<'a, K, V> {
 
 impl<'a, K, V> PageView<'a, K, V>
 where
-    K: Ord + Deserialize,
+    K: Ord + DeserializeSkip,
     V: Deserialize,
 {
     pub(crate) async unsafe fn create(
@@ -129,7 +129,7 @@ pub(crate) struct LeafPageView<'a, K, V> {
 
 impl<'a, K, V> LeafPageView<'a, K, V>
 where
-    K: Ord + Deserialize,
+    K: Ord + DeserializeSkip,
     V: Deserialize,
 {
     pub(crate) async unsafe fn create(
@@ -228,7 +228,7 @@ impl<'a, K, V> LeafPageViewMut<'a, K, V> {
 
 impl<'a, K, V> LeafPageViewMut<'a, K, V>
 where
-    K: Serialize + Deserialize + Ord + fmt::Debug,
+    K: Serialize + DeserializeSkip + Ord + fmt::Debug,
     V: Serialize + Deserialize + fmt::Debug,
 {
     pub(crate) async fn insert(
@@ -239,15 +239,27 @@ where
         self.slots.insert(key, value).await
     }
 
-    pub(crate) fn split_root_into(
+    /// Intended for use when splitting a root node.
+    /// We keep the root node page number unchanged because it may be referenced as an identifier.
+    /// We allocate two new nodes to move the data into.
+    pub(crate) async fn split_root_into(
         &self,
-        left: LeafPageViewMut<'a, K, V>,
-        right: LeafPageViewMut<'a, K, V>,
+        mut left: LeafPageViewMut<'a, K, V>,
+        mut right: LeafPageViewMut<'a, K, V>,
     ) -> nsql_serde::Result<()> {
+        assert!(left.slots.downgrade().is_empty());
+        assert!(right.slots.downgrade().is_empty());
+
+        // FIXME use less naive algorithm for inserting into new pages
         let (lhs, rhs) = self.slots.slots.split_at(self.slots.slots.len() / 2);
         for slot in lhs {
-            // self.downgrade().get();
-            // left.insert();
+            let (key, value) = self.downgrade().slots.get_by_offset(slot.offset).await?;
+            left.insert(key, value).await?.unwrap();
+        }
+
+        for slot in rhs {
+            let (key, value) = self.downgrade().slots.get_by_offset(slot.offset).await?;
+            right.insert(key, value).await?.unwrap();
         }
         Ok(())
     }
@@ -271,9 +283,13 @@ impl<'a, K, V> fmt::Debug for SlottedPageView<'a, K, V> {
 
 impl<'a, K, V> SlottedPageView<'a, K, V>
 where
-    K: Deserialize + Ord,
+    K: DeserializeSkip + Ord,
     V: Deserialize,
 {
+    fn is_empty(&self) -> bool {
+        self.slots.is_empty()
+    }
+
     /// Safety: `buf` must contain a valid slotted page
     async unsafe fn create(buf: &'a [u8]) -> nsql_serde::Result<SlottedPageView<'a, K, V>> {
         let (header_bytes, buf) =
@@ -294,14 +310,16 @@ where
             None => return Ok(None),
         };
 
-        let mut de = &self[offset..];
-        let k = K::deserialize(&mut de).await?;
+        let (k, v) = self.get_by_offset(offset).await?;
         assert!(&k == key);
-        V::deserialize(&mut de).await.map(Some)
+        Ok(Some(v))
     }
 
-    async fn get_by_offset(&self, offset: &K) -> nsql_serde::Result<Option<V>> {
-        Ok(None)
+    async fn get_by_offset(&self, offset: SlotOffset) -> nsql_serde::Result<(K, V)> {
+        let mut de = &self[offset..];
+        let key = K::deserialize(&mut de).await?;
+        let value = V::deserialize(&mut de).await?;
+        Ok((key, value))
     }
 
     async fn slot_index_of(&self, key: &K) -> nsql_serde::Result<Result<usize, usize>> {
@@ -431,11 +449,12 @@ impl<'a, K, V> SlottedPageViewMut<'a, K, V> {
     }
 }
 
+#[derive(Debug)]
 pub(crate) struct PageFull;
 
 impl<'a, K, V> SlottedPageViewMut<'a, K, V>
 where
-    K: Serialize + Deserialize + Ord + fmt::Debug,
+    K: Serialize + DeserializeSkip + Ord + fmt::Debug,
     V: Serialize + Deserialize + fmt::Debug,
 {
     async fn insert(
@@ -443,8 +462,6 @@ where
         key: K,
         value: V,
     ) -> nsql_serde::Result<Result<Option<V>, PageFull>> {
-        debug_assert!(self.is_sorted().await?);
-
         // FIXME check whether key already exists
         // FIXME need to maintain sorted order in the slots
         let key_len = key.serialized_size().await?;
@@ -491,17 +508,29 @@ where
 
         self.header.free_start += sizeof!(ArchivedSlot);
 
+        // we have to shift over the slice of data as we expect it to start after the slots (at `free_start`)
+        // we some small tricks to avoid lifetime issues without using unsafe
+        // see https://stackoverflow.com/questions/61223234/can-i-reassign-a-mutable-slice-reference-to-a-sub-slice-of-itself
+        let data: &'a mut [u8] = mem::take(&mut self.data);
+        let (_, data) = data.split_array_mut::<{ mem::size_of::<ArchivedSlot>() }>();
+        self.data = data;
+
+        #[cfg(debug_assertions)]
+        self.assert_sorted().await?;
+
         Ok(Ok(None))
     }
 
     #[cfg(debug_assertions)]
-    async fn is_sorted(&self) -> nsql_serde::Result<bool> {
+    async fn assert_sorted(&self) -> nsql_serde::Result<()> {
         let mut keys = Vec::with_capacity(self.header.slot_len.value() as usize);
         for slot in self.slots.iter() {
             let k = K::deserialize(&mut &self[slot.offset..]).await?;
             keys.push(k);
         }
-        Ok(keys.is_sorted())
+
+        assert!(keys.is_sorted(), "{:?}", keys);
+        Ok(())
     }
 }
 

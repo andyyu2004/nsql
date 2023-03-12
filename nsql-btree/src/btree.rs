@@ -3,7 +3,7 @@ use std::marker::PhantomData;
 
 use nsql_buffer::BufferPool;
 use nsql_pager::PageIndex;
-use nsql_serde::{Deserialize, Serialize};
+use nsql_serde::{Deserialize, DeserializeSkip, Serialize};
 
 use crate::page::{PageFull, PageView, PageViewMut};
 use crate::Result;
@@ -18,7 +18,7 @@ pub struct BTree<K, V> {
 impl<K, V> BTree<K, V>
 where
     K: Ord + Send + Sync,
-    K: Serialize + Deserialize + Ord + fmt::Debug,
+    K: Serialize + DeserializeSkip + Ord + fmt::Debug,
     V: Serialize + Deserialize + Eq + Clone + fmt::Debug,
 {
     #[inline]
@@ -70,7 +70,7 @@ where
                     let right_child =
                         unsafe { PageViewMut::create(&mut right_data).await?.unwrap_leaf() };
 
-                    leaf.split_root_into(left_child, right_child)?;
+                    leaf.split_root_into(left_child, right_child).await?;
                     todo!();
 
                     // let (new_key, new_value) = leaf.split(&mut new_leaf).await?;

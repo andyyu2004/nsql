@@ -248,7 +248,7 @@ pub trait Deserialize: Sized {
 
 pub trait DeserializeSkip: Deserialize {
     /// read the data from the deserializer as if we were trying to deserialize Self but we don't care about the data
-    async fn skip(de: &mut dyn Deserializer) -> Result<()>;
+    async fn deserialize_skip(de: &mut dyn Deserializer) -> Result<()>;
 }
 
 impl<D> DeserializeSkip for D
@@ -257,7 +257,7 @@ where
     [(); D::SERIALIZED_SIZE as usize]: Sized,
 {
     #[inline]
-    async fn skip(de: &mut dyn Deserializer) -> Result<()> {
+    async fn deserialize_skip(de: &mut dyn Deserializer) -> Result<()> {
         de.read_exact(&mut [0; D::SERIALIZED_SIZE as usize]).await?;
         Ok(())
     }
