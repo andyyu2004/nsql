@@ -1,6 +1,6 @@
 #![feature(async_fn_in_trait)]
 #![feature(generic_const_exprs)]
-#![feature(trivial_bounds)]
+#![feature(is_sorted)]
 #![feature(split_array)]
 #![allow(incomplete_features)]
 #![deny(rust_2018_idioms)]

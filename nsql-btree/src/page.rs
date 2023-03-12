@@ -1,7 +1,9 @@
+use std::cmp::Ordering;
+use std::future::Future;
 use std::marker::PhantomData;
 use std::ops::{AddAssign, Index, IndexMut, RangeFrom, Sub, SubAssign};
 use std::pin::Pin;
-use std::{fmt, io, mem, ptr, slice};
+use std::{cmp, fmt, io, mem, ptr, slice};
 
 use nsql_pager::{PageIndex, PAGE_DATA_SIZE};
 use nsql_serde::{Deserialize, Serialize, SerializeSized};
@@ -155,10 +157,19 @@ pub(crate) enum PageViewMut<'a, K, V> {
 
 impl<'a, K, V> PageViewMut<'a, K, V> {
     pub(crate) async fn init_root(data: &'a mut [u8; PAGE_DATA_SIZE]) -> nsql_serde::Result<()> {
+        Self::init_leaf_inner(data, Flags::IS_LEAF | Flags::IS_ROOT).await
+    }
+
+    pub(crate) async fn init_leaf(data: &'a mut [u8; PAGE_DATA_SIZE]) -> nsql_serde::Result<()> {
+        Self::init_leaf_inner(data, Flags::IS_LEAF).await
+    }
+
+    async fn init_leaf_inner(
+        data: &'a mut [u8; PAGE_DATA_SIZE],
+        flags: Flags,
+    ) -> nsql_serde::Result<()> {
         data.fill(0);
-        PageHeader { flags: Flags::IS_LEAF | Flags::IS_ROOT, padding: [0; 3] }
-            .serialize_into(data)
-            .await?;
+        PageHeader { flags, padding: [0; 3] }.serialize_into(data).await?;
 
         LeafPageViewMut::<K, V>::init(&mut data[PageHeader::SERIALIZED_SIZE as usize..]).await?;
         Ok(())
@@ -212,11 +223,14 @@ impl<'a, K, V> LeafPageViewMut<'a, K, V> {
 impl<'a, K, V> LeafPageViewMut<'a, K, V>
 where
     K: Serialize + Deserialize + Ord + fmt::Debug,
-    V: Serialize + Deserialize + Eq + fmt::Debug,
+    V: Serialize + Deserialize + fmt::Debug,
 {
-    pub(crate) async fn insert(&mut self, key: K, value: V) -> nsql_serde::Result<Option<V>> {
-        self.slots.insert(key, value).await?;
-        Ok(None)
+    pub(crate) async fn insert(
+        &mut self,
+        key: K,
+        value: V,
+    ) -> nsql_serde::Result<Result<Option<V>, PageFull>> {
+        self.slots.insert(key, value).await
     }
 }
 
@@ -369,20 +383,39 @@ impl<'a, K, V> SlottedPageViewMut<'a, K, V> {
     }
 }
 
+pub(crate) struct PageFull;
+
 impl<'a, K, V> SlottedPageViewMut<'a, K, V>
 where
     K: Serialize + Deserialize + Ord + fmt::Debug,
-    V: Serialize + Deserialize + Eq + fmt::Debug,
+    V: Serialize + Deserialize + fmt::Debug,
 {
-    async fn insert(&mut self, key: K, value: V) -> nsql_serde::Result<()> {
-        // FIXME check there is sufficient space
-        // TODO check whether key already exists
+    async fn insert(
+        &mut self,
+        key: K,
+        value: V,
+    ) -> nsql_serde::Result<Result<Option<V>, PageFull>> {
+        debug_assert!(self.is_sorted().await?);
+
+        // FIXME check whether key already exists
+        // FIXME need to maintain sorted order in the slots
         let key_len = key.serialized_size().await?;
         let value_len = value.serialized_size().await?;
         let len = key_len + value_len;
         if len + sizeof!(ArchivedSlot) > self.header.free_end - self.header.free_start {
-            todo!()
+            return Ok(Err(PageFull));
         }
+
+        let idx = async_binary_search_by(self.slots, |slot| async {
+            let k = K::deserialize(&mut &self[slot.offset..]).await?;
+            Ok(k.cmp(&key))
+        })
+        .await?;
+
+        let idx = match idx {
+            Ok(idx) => todo!("handle case where key already exists {:?}", self.slots[idx]),
+            Err(idx) => idx,
+        };
 
         let key_offset = self.header.free_end - len;
         key.serialize_into(&mut self[key_offset..]).await?;
@@ -394,11 +427,18 @@ where
         self.header.slot_len += 1;
 
         unsafe {
-            // write the new slot at the conceptual end of the slot array and recreate the slice to include it
-            ptr::write(
-                self.slots.as_mut_ptr().add(self.slots.len()),
-                Slot { offset: self.header.free_end },
+            // write the new slot at index `idx` of the slot array and recreate the slice to include it
+
+            // shift everything right of `idx` to the right by 1 (inclusive)
+            ptr::copy(
+                self.slots.as_ptr().add(idx),
+                self.slots.as_mut_ptr().add(idx + 1),
+                self.slots.len() - idx,
             );
+
+            // write the new slot in the hole
+            ptr::write(self.slots.as_mut_ptr().add(idx), Slot { offset: self.header.free_end });
+
             self.slots = slice::from_raw_parts_mut(
                 self.slots.as_mut_ptr(),
                 self.header.slot_len.value() as usize,
@@ -407,6 +447,48 @@ where
 
         self.header.free_start += sizeof!(ArchivedSlot);
 
-        Ok(())
+        Ok(Ok(None))
     }
+
+    #[cfg(debug_assertions)]
+    async fn is_sorted(&self) -> nsql_serde::Result<bool> {
+        let mut keys = Vec::with_capacity(self.header.slot_len.value() as usize);
+        for slot in self.slots.iter() {
+            let k = K::deserialize(&mut &self[slot.offset..]).await?;
+            keys.push(k);
+        }
+        Ok(keys.is_sorted())
+    }
+}
+
+// adapted from std
+async fn async_binary_search_by<'a, T, F, Fut>(
+    xs: &'a [T],
+    f: F,
+) -> nsql_serde::Result<Result<usize, usize>>
+where
+    T: Copy,
+    F: Fn(&'a T) -> Fut + 'a,
+    Fut: Future<Output = nsql_serde::Result<Ordering>> + 'a,
+{
+    let mut size = xs.len();
+    let mut left = 0;
+    let mut right = size;
+    while left < right {
+        let mid = left + size / 2;
+
+        let cmp = f(unsafe { xs.get_unchecked(mid) }).await?;
+
+        if cmp == Ordering::Less {
+            left = mid + 1;
+        } else if cmp == Ordering::Greater {
+            right = mid;
+        } else {
+            return Ok(Ok(mid));
+        }
+
+        size = right - left;
+    }
+
+    Ok(Err(left))
 }

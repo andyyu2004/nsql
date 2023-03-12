@@ -24,7 +24,7 @@ static_assert_eq!(PAGE_DATA_SIZE, mem::size_of::<FsmPage>());
 impl FsmPage {
     #[inline]
     pub fn from_bytes_mut(bytes: &mut [u8; mem::size_of::<Self>()]) -> Pin<&mut ArchivedFsmPage> {
-        unsafe { nsql_rkyv::unarchive_root_mut::<Self>(Pin::new(bytes)) }
+        unsafe { rkyv::archived_root_mut::<Self>(Pin::new(bytes)) }
     }
 }
 

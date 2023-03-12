@@ -5,7 +5,7 @@ use nsql_buffer::BufferPool;
 use nsql_pager::PageIndex;
 use nsql_serde::{Deserialize, Serialize};
 
-use crate::page::{PageView, PageViewMut};
+use crate::page::{PageFull, PageView, PageViewMut};
 use crate::Result;
 
 /// A B+ tree
@@ -55,7 +55,25 @@ where
         let mut data = handle.page().data_mut();
         let node = unsafe { PageViewMut::<K, V>::create(&mut data).await? };
         match node {
-            PageViewMut::Leaf(mut leaf) => leaf.insert(key, value).await,
+            PageViewMut::Leaf(mut leaf) => match leaf.insert(key, value).await? {
+                Ok(value) => Ok(value),
+                Err(PageFull) => {
+                    todo!();
+                    // let left_page = self.pool.alloc().await?;
+                    // let mut left_data = left_page.page().data_mut();
+                    // let mut left_child = PageViewMut::<K, V>::init_leaf(&mut left_data).await?;
+
+                    // let right_page = self.pool.alloc().await?;
+                    // let mut right_data = right_page.page().data_mut();
+                    // let mut right_child = PageViewMut::<K, V>::init_leaf(&mut right_data).await?;
+
+                    // let (new_key, new_value) = leaf.split(&mut new_leaf).await?;
+                    // let new_idx = new_page.page().idx();
+                    // let mut parent = PageViewMut::<K, V>::init_root(&mut data).await?;
+                    // parent.insert_internal(new_key, new_idx).await?;
+                    // Ok(None)
+                }
+            },
         }
     }
 }
