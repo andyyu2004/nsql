@@ -20,18 +20,6 @@ where
     to_bytes(value).expect("rkyv serialization failed")
 }
 
-/// # Safety
-/// See [`rkyv::archived_root_mut`]
-#[inline]
-pub unsafe fn unarchive_root_mut<T>(
-    bytes: Pin<&mut [u8; mem::size_of::<T::Archived>()]>,
-) -> Pin<&mut T::Archived>
-where
-    T: Archive,
-{
-    archived_root_mut::<T>(bytes)
-}
-
 // /// # Safety
 // /// See [`rkyv::archived_value_mut`]
 // #[inline]

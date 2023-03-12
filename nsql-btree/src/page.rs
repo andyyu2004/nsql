@@ -1,4 +1,5 @@
 use std::marker::PhantomData;
+use std::ops::{AddAssign, Index, IndexMut, RangeFrom, Sub, SubAssign};
 use std::pin::Pin;
 use std::{fmt, io, mem, ptr, slice};
 
@@ -18,11 +19,50 @@ macro_rules! sizeof {
     };
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Archive, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Archive)]
 #[archive_attr(derive(Debug))]
 struct Slot {
     /// The offset of the entry from the start of the page
-    offset: BigEndian<u16>,
+    offset: SlotOffset,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Archive, rkyv::Serialize)]
+#[archive(as = "Self")]
+#[repr(transparent)]
+struct SlotOffset(BigEndian<u16>);
+
+impl AddAssign<u16> for SlotOffset {
+    fn add_assign(&mut self, rhs: u16) {
+        self.0 += rhs;
+    }
+}
+
+impl SubAssign<u16> for SlotOffset {
+    fn sub_assign(&mut self, rhs: u16) {
+        self.0 -= rhs;
+    }
+}
+
+impl From<u16> for SlotOffset {
+    fn from(offset: u16) -> Self {
+        Self(BigEndian::from(offset))
+    }
+}
+
+impl Sub for SlotOffset {
+    type Output = u16;
+
+    fn sub(self, rhs: Self) -> Self::Output {
+        self.0 - rhs.0
+    }
+}
+
+impl Sub<u16> for SlotOffset {
+    type Output = SlotOffset;
+
+    fn sub(self, rhs: u16) -> Self::Output {
+        Self::from(self.0 - rhs)
+    }
 }
 
 #[derive(Debug, PartialEq, Archive, rkyv::Serialize)]
@@ -82,7 +122,7 @@ where
 
 pub(crate) struct LeafPageView<'a, K, V> {
     header: &'a ArchivedLeafPageHeader,
-    slots: SlottedPageView<'a, (K, V)>,
+    slots: SlottedPageView<'a, K, V>,
 }
 
 impl<'a, K, V> LeafPageView<'a, K, V>
@@ -98,31 +138,14 @@ where
         let header = rkyv::archived_root::<LeafPageHeader>(header_bytes);
         header.check_magic()?;
 
-        if header.magic != BTREE_LEAF_PAGE_MAGIC {
-            Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                format!("invalid btree leaf header magic: {:?}", header.magic),
-            ))?;
-        }
-
-        let slots = SlottedPageView::<'a, (K, V)>::create(data).await?;
+        let slots = SlottedPageView::<'a, K, V>::create(data).await?;
         Ok(Self { header, slots })
     }
 
     pub(crate) async fn get(&self, key: &K) -> nsql_serde::Result<Option<V>> {
-        dbg!(&self.header);
-        dbg!(&self.slots);
-        todo!();
-        // for slot in self.slots.iter() {
-        //     let offset = slot.offset.value() as usize;
-        //     let mut de = &self.data[offset..];
-        //     let k = K::deserialize(&mut de).await?;
-        //     // FIXME better format so we don't have to deserialize values too
-        //     let v = V::deserialize(&mut de).await.ok();
-        //     if k == *key {
-        //         return Ok(v);
-        //     }
-        // }
+        // dbg!(&self.header);
+        // dbg!(&self.slots);
+        self.slots.get(key).await
     }
 }
 
@@ -144,8 +167,7 @@ impl<'a, K, V> PageViewMut<'a, K, V> {
     pub(crate) async unsafe fn create(
         data: &'a mut [u8; PAGE_DATA_SIZE],
     ) -> nsql_serde::Result<PageViewMut<'a, K, V>> {
-        let mut de = &data[..];
-        let header = PageHeader::deserialize(&mut de).await?;
+        let header = PageHeader::deserialize(&mut &data[..]).await?;
         if header.flags.contains(Flags::IS_LEAF) {
             LeafPageViewMut::create(&mut data[PageHeader::SERIALIZED_SIZE as usize..])
                 .await
@@ -159,18 +181,18 @@ impl<'a, K, V> PageViewMut<'a, K, V> {
 #[derive(Debug)]
 pub(crate) struct LeafPageViewMut<'a, K, V> {
     header: Pin<&'a mut ArchivedLeafPageHeader>,
-    slots: SlottedPageViewMut<'a, (K, V)>,
+    slots: SlottedPageViewMut<'a, K, V>,
 }
 
 impl<'a, K, V> LeafPageViewMut<'a, K, V> {
     /// initialize a new leaf page
     pub(crate) async fn init(data: &'a mut [u8]) -> nsql_serde::Result<()> {
-        let header_bytes = nsql_rkyv::archive(&LeafPageHeader::default());
-        data[0..header_bytes.len()].copy_from_slice(&header_bytes);
-        // the slots start after the page header and the leaf page header
         const HEADER_SIZE: u16 = mem::size_of::<ArchivedLeafPageHeader>() as u16;
+        let (header_bytes, data) = data.split_array_mut::<{ HEADER_SIZE as usize }>();
+        header_bytes.copy_from_slice(&nsql_rkyv::archive(&LeafPageHeader::default()));
+        // the slots start after the page header and the leaf page header
         let prefix_size = PageHeader::SERIALIZED_SIZE + HEADER_SIZE;
-        SlottedPageViewMut::<(K, V)>::init(&mut data[HEADER_SIZE as usize..], prefix_size).await?;
+        SlottedPageViewMut::<'a, K, V>::init(data, prefix_size).await?;
 
         Ok(())
     }
@@ -180,28 +202,32 @@ impl<'a, K, V> LeafPageViewMut<'a, K, V> {
     ) -> nsql_serde::Result<LeafPageViewMut<'a, K, V>> {
         let (header_bytes, data) =
             data.split_array_mut::<{ mem::size_of::<ArchivedLeafPageHeader>() }>();
-        let header = nsql_rkyv::unarchive_root_mut::<LeafPageHeader>(Pin::new(header_bytes));
+        let header = rkyv::archived_root_mut::<LeafPageHeader>(Pin::new(header_bytes));
         header.check_magic()?;
-        let view = SlottedPageViewMut::create(data).await?;
-        Ok(Self { header, slots: view })
+        let slots = SlottedPageViewMut::create(data).await?;
+        Ok(Self { header, slots })
     }
 }
 
-impl<'a, K: Serialize, V: Serialize> LeafPageViewMut<'a, K, V> {
+impl<'a, K, V> LeafPageViewMut<'a, K, V>
+where
+    K: Serialize + Deserialize + Ord + fmt::Debug,
+    V: Serialize + Deserialize + Eq + fmt::Debug,
+{
     pub(crate) async fn insert(&mut self, key: K, value: V) -> nsql_serde::Result<Option<V>> {
-        self.slots.insert((key, value)).await?;
+        self.slots.insert(key, value).await?;
         Ok(None)
     }
 }
 
-struct SlottedPageView<'a, T> {
+struct SlottedPageView<'a, K, V> {
     header: &'a ArchivedSlottedPageMeta,
     slots: &'a [Slot],
     data: &'a [u8],
-    marker: PhantomData<T>,
+    marker: PhantomData<(K, V)>,
 }
 
-impl<'a, T> fmt::Debug for SlottedPageView<'a, T> {
+impl<'a, K, V> fmt::Debug for SlottedPageView<'a, K, V> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("SlottedPageView")
             .field("header", &self.header)
@@ -210,9 +236,13 @@ impl<'a, T> fmt::Debug for SlottedPageView<'a, T> {
     }
 }
 
-impl<'a, T: Deserialize> SlottedPageView<'a, T> {
-    /// Safety: `data` must be a valid slotted page with the correct header type
-    async unsafe fn create(buf: &'a [u8]) -> nsql_serde::Result<SlottedPageView<'a, T>> {
+impl<'a, K, V> SlottedPageView<'a, K, V>
+where
+    K: Deserialize + Ord,
+    V: Deserialize,
+{
+    /// Safety: `buf` must contain a valid slotted page
+    async unsafe fn create(buf: &'a [u8]) -> nsql_serde::Result<SlottedPageView<'a, K, V>> {
         let (header_bytes, buf) =
             buf.split_array_ref::<{ mem::size_of::<ArchivedSlottedPageMeta>() }>();
         let header = unsafe { rkyv::archived_root::<SlottedPageMeta>(header_bytes) };
@@ -225,23 +255,58 @@ impl<'a, T: Deserialize> SlottedPageView<'a, T> {
         Ok(Self { header, slots, data, marker: PhantomData })
     }
 
-    pub(crate) async fn get(&mut self, idx: u16) -> nsql_serde::Result<T> {
-        let slot = self.slots[idx as usize];
-        let offset = slot.offset.value() as usize;
-        T::deserialize(&mut &self.data[offset..]).await
+    pub(crate) async fn get(&self, key: &K) -> nsql_serde::Result<Option<V>> {
+        for slot in self.slots.iter() {
+            let mut de = &self[slot.offset..];
+            let k = K::deserialize(&mut de).await?;
+            if &k == key {
+                return V::deserialize(&mut de).await.map(Some);
+            }
+        }
+
+        Ok(None)
+    }
+}
+
+impl<K, V> Index<RangeFrom<SlotOffset>> for SlottedPageView<'_, K, V> {
+    type Output = [u8];
+
+    // see SlottedPageViewMut::index
+    fn index(&self, offset: RangeFrom<SlotOffset>) -> &Self::Output {
+        let adjusted_offset = offset.start - self.header.slot_len * sizeof!(ArchivedSlot);
+        &self.data[adjusted_offset.0.value() as usize..]
+    }
+}
+
+impl<K, V> IndexMut<RangeFrom<SlotOffset>> for SlottedPageViewMut<'_, K, V> {
+    // see SlottedPageViewMut::index
+    fn index_mut(&mut self, offset: RangeFrom<SlotOffset>) -> &mut Self::Output {
+        let adjusted_offset = offset.start - self.header.slot_len * sizeof!(ArchivedSlot);
+        &mut self.data[adjusted_offset.0.value() as usize..]
     }
 }
 
 #[derive(Eq)]
 #[repr(C)]
-struct SlottedPageViewMut<'a, T> {
+struct SlottedPageViewMut<'a, K, V> {
     header: Pin<&'a mut ArchivedSlottedPageMeta>,
     slots: &'a mut [Slot],
     data: &'a mut [u8],
-    marker: PhantomData<T>,
+    marker: PhantomData<(K, V)>,
 }
 
-impl<'a, T> fmt::Debug for SlottedPageViewMut<'a, T> {
+impl<K, V> Index<RangeFrom<SlotOffset>> for SlottedPageViewMut<'_, K, V> {
+    type Output = [u8];
+
+    fn index(&self, offset: RangeFrom<SlotOffset>) -> &Self::Output {
+        // adjust the offset to be relative to the start of the slots
+        // as we keep shifting the slots and data around the actual offsets change dependending on the number of slots
+        let adjusted_offset = offset.start - self.header.slot_len * sizeof!(ArchivedSlot);
+        &self.data[adjusted_offset.0.value() as usize..]
+    }
+}
+
+impl<'a, K, V> fmt::Debug for SlottedPageViewMut<'a, K, V> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("SlottedPageViewMut")
             .field("header", &self.header)
@@ -251,7 +316,7 @@ impl<'a, T> fmt::Debug for SlottedPageViewMut<'a, T> {
     }
 }
 
-impl<'a, T> PartialEq for SlottedPageViewMut<'a, T> {
+impl<'a, K, V> PartialEq for SlottedPageViewMut<'a, K, V> {
     fn eq(&self, other: &Self) -> bool {
         self.header == other.header && self.slots == other.slots && self.data == other.data
     }
@@ -261,8 +326,9 @@ impl<'a, T> PartialEq for SlottedPageViewMut<'a, T> {
 #[archive_attr(derive(Debug, PartialEq, Eq))]
 #[archive(compare(PartialEq))]
 struct SlottedPageMeta {
-    free_start: u16,
-    free_end: u16,
+    // start offset initially starts from 0 and end offset is relative to that
+    free_start: SlotOffset,
+    free_end: SlotOffset,
     slot_len: u16,
 }
 
@@ -271,14 +337,15 @@ nsql_util::static_assert_eq!(
     mem::size_of::<ArchivedSlottedPageMeta>()
 );
 
-impl<'a, T> SlottedPageViewMut<'a, T> {
+impl<'a, K, V> SlottedPageViewMut<'a, K, V> {
     /// `prefix_size` is the size of the page header and the page-specific header` (and anything else that comes before the slots)
     /// slot offsets are relative to the initla value of `free_start`
     async fn init(buf: &'a mut [u8], prefix_size: u16) -> nsql_serde::Result<()> {
-        let free_start = prefix_size + sizeof!(SlottedPageMeta);
+        let free_end = PAGE_DATA_SIZE as u16 - prefix_size - sizeof!(ArchivedSlottedPageMeta);
+        assert_eq!(free_end, buf.len() as u16 - sizeof!(ArchivedSlottedPageMeta));
         let header = SlottedPageMeta {
-            free_start,
-            free_end: PAGE_DATA_SIZE as u16 - free_start,
+            free_start: SlotOffset::from(0),
+            free_end: SlotOffset::from(free_end),
             slot_len: 0,
         };
         let bytes = nsql_rkyv::archive(&header);
@@ -287,11 +354,10 @@ impl<'a, T> SlottedPageViewMut<'a, T> {
     }
 
     /// Safety: `buf` must point at the start of a valid slotted page
-    async unsafe fn create(buf: &'a mut [u8]) -> nsql_serde::Result<SlottedPageViewMut<'a, T>> {
+    async unsafe fn create(buf: &'a mut [u8]) -> nsql_serde::Result<SlottedPageViewMut<'a, K, V>> {
         let (header_bytes, buf) =
             buf.split_array_mut::<{ mem::size_of::<ArchivedSlottedPageMeta>() }>();
-        let header =
-            unsafe { nsql_rkyv::unarchive_root_mut::<SlottedPageMeta>(Pin::new(header_bytes)) };
+        let header = unsafe { rkyv::archived_root_mut::<SlottedPageMeta>(Pin::new(header_bytes)) };
 
         let slot_len = header.slot_len.value() as usize;
         let (slot_bytes, data) = buf.split_at_mut(slot_len * mem::size_of::<Slot>());
@@ -303,29 +369,44 @@ impl<'a, T> SlottedPageViewMut<'a, T> {
     }
 }
 
-impl<'a, T: Serialize> SlottedPageViewMut<'a, T> {
-    async fn insert(&mut self, value: T) -> nsql_serde::Result<()> {
+impl<'a, K, V> SlottedPageViewMut<'a, K, V>
+where
+    K: Serialize + Deserialize + Ord + fmt::Debug,
+    V: Serialize + Deserialize + Eq + fmt::Debug,
+{
+    async fn insert(&mut self, key: K, value: V) -> nsql_serde::Result<()> {
         // FIXME check there is sufficient space
         // TODO check whether key already exists
-        let length = value.serialized_size().await?;
-        if length + sizeof!(ArchivedSlot) > self.header.free_end - self.header.free_start {
+        let key_len = key.serialized_size().await?;
+        let value_len = value.serialized_size().await?;
+        let len = key_len + value_len;
+        if len + sizeof!(ArchivedSlot) > self.header.free_end - self.header.free_start {
             todo!()
         }
 
-        let start = self.header.free_end.value() as usize - length as usize;
-        value.serialize_into(&mut self.data[start..self.header.free_end.value() as usize]).await?;
-        self.header.free_end -= length;
+        let key_offset = self.header.free_end - len;
+        key.serialize_into(&mut self[key_offset..]).await?;
+
+        let value_offset = self.header.free_end - value_len;
+        value.serialize_into(&mut self[value_offset..]).await?;
+
+        self.header.free_end -= len;
         self.header.slot_len += 1;
+
         unsafe {
             // write the new slot at the conceptual end of the slot array and recreate the slice to include it
             ptr::write(
                 self.slots.as_mut_ptr().add(self.slots.len()),
                 Slot { offset: self.header.free_end },
             );
-            self.slots = slice::from_raw_parts_mut(self.slots.as_mut_ptr(), self.slots.len() + 1);
+            self.slots = slice::from_raw_parts_mut(
+                self.slots.as_mut_ptr(),
+                self.header.slot_len.value() as usize,
+            );
         }
 
         self.header.free_start += sizeof!(ArchivedSlot);
+
         Ok(())
     }
 }

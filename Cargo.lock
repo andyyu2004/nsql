@@ -412,6 +412,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "debugit"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2367905bd536c33554396370f16f7643083a14f95aebadb36572b66c6748f126"
+
+[[package]]
 name = "digest"
 version = "0.10.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -895,6 +901,7 @@ version = "0.1.0"
 dependencies = [
  "async-recursion",
  "bitflags 2.0.0-rc.3",
+ "debugit",
  "nsql-arena",
  "nsql-buffer",
  "nsql-pager",
@@ -904,6 +911,7 @@ dependencies = [
  "nsql-util",
  "parking_lot",
  "rkyv",
+ "test-strategy",
 ]
 
 [[package]]
