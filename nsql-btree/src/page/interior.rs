@@ -1,11 +1,14 @@
+use std::ops::Deref;
 use std::pin::Pin;
-use std::{io, mem};
+use std::{fmt, io, mem};
 
 use nsql_pager::PageIndex;
-use nsql_serde::SerializeSized;
+use nsql_serde::{DeserializeSkip, Serialize, SerializeSized};
+use nsql_util::static_assert_eq;
 use rkyv::Archive;
 
-use super::slotted::SlottedPageViewMut;
+use super::slotted::{SlotOffset, SlottedPageView, SlottedPageViewMut};
+use super::PageFull;
 use crate::page::PageHeader;
 
 const BTREE_INTERIOR_PAGE_MAGIC: [u8; 4] = *b"BTPI";
@@ -34,9 +37,61 @@ impl ArchivedInteriorPageHeader {
     }
 }
 
+// NOTE: must have the same layout as `InteriorPageViewMut`
+#[repr(C)]
+pub(crate) struct InteriorPageView<'a, K> {
+    header: &'a ArchivedInteriorPageHeader,
+    slotted_page: SlottedPageView<'a, K, PageIndex>,
+}
+
+impl<'a, K> InteriorPageView<'a, K>
+where
+    K: DeserializeSkip + Ord + fmt::Debug,
+{
+    pub(crate) async unsafe fn create(
+        data: &'a [u8],
+    ) -> nsql_serde::Result<InteriorPageView<'a, K>> {
+        const HEADER_SIZE: usize = mem::size_of::<ArchivedInteriorPageHeader>();
+        let (header_bytes, data) = data.split_array_ref::<{ HEADER_SIZE }>();
+        let header = rkyv::archived_root::<InteriorPageHeader>(header_bytes);
+        header.check_magic()?;
+
+        let slotted_page = SlottedPageView::create(data).await?;
+        Ok(Self { header, slotted_page })
+    }
+
+    pub(crate) async fn search(&self, key: &K) -> nsql_serde::Result<PageIndex> {
+        dbg!(key);
+        dbg!(self.slotted_page.key_values().await?);
+
+        let offset: SlotOffset = match self.slotted_page.slot_index_of(key).await? {
+            Ok(idx) | Err(idx) => self.slotted_page.slots()[idx].offset(),
+        };
+
+        let (_, idx) = self.slotted_page.get_by_offset(offset).await?;
+        Ok(idx)
+    }
+}
+
+// NOTE: must have the same layout as `InteriorPageView`
+#[repr(C)]
 pub(crate) struct InteriorPageViewMut<'a, K> {
     header: Pin<&'a mut ArchivedInteriorPageHeader>,
     slotted_page: SlottedPageViewMut<'a, K, PageIndex>,
+}
+
+impl<'a, K> Deref for InteriorPageViewMut<'a, K> {
+    type Target = InteriorPageView<'a, K>;
+
+    fn deref(&self) -> &Self::Target {
+        static_assert_eq!(
+            mem::size_of::<InteriorPageView<'a, ()>>(),
+            mem::size_of::<InteriorPageViewMut<'a, ()>>()
+        );
+        // SAFETY: the only difference between InteriorPageView and InteriorPageViewMut is the mutability of the pointers
+        // the layout is identical
+        unsafe { &*(&self.header as *const _ as *const Self::Target) }
+    }
 }
 
 impl<'a, K> InteriorPageViewMut<'a, K> {
@@ -66,5 +121,33 @@ impl<'a, K> InteriorPageViewMut<'a, K> {
 
         let slotted_page = SlottedPageViewMut::<'a, K, PageIndex>::create(data).await?;
         Ok(Self { header, slotted_page })
+    }
+}
+
+impl<'a, K> InteriorPageViewMut<'a, K>
+where
+    K: Serialize + DeserializeSkip + Ord + fmt::Debug,
+{
+    pub(crate) async fn insert(
+        &mut self,
+        sep: &K,
+        left: PageIndex,
+        right: PageIndex,
+        node_high_key: &K,
+    ) -> nsql_serde::Result<Result<(), PageFull>> {
+        // confusingly, we store the leftmost pointer alongside the node_high_key in the rightmost key slot
+        match self.slotted_page.insert(node_high_key, &left).await? {
+            Ok(Some(_)) => todo!("duplicate key in interior?"),
+            Ok(None) => {}
+            Err(PageFull) => return Ok(Err(PageFull)),
+        };
+
+        match self.slotted_page.insert(sep, &right).await? {
+            Ok(Some(_)) => todo!("duplicate key in interior?"),
+            Ok(None) => {}
+            Err(PageFull) => return Ok(Err(PageFull)),
+        };
+
+        Ok(Ok(()))
     }
 }

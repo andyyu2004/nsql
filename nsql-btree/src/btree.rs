@@ -1,6 +1,7 @@
 use std::fmt;
 use std::marker::PhantomData;
 
+use async_recursion::async_recursion;
 use nsql_buffer::BufferPool;
 use nsql_pager::PageIndex;
 use nsql_serde::{Deserialize, DeserializeSkip, Serialize};
@@ -37,15 +38,18 @@ where
         self.search_node(self.root_idx, key).await
     }
 
-    // #[async_recursion]
+    #[async_recursion(?Send)]
     #[inline]
     async fn search_node(&self, idx: PageIndex, key: &K) -> Result<Option<V>> {
         let handle = self.pool.load(idx).await?;
         let data = handle.page().data();
         let node = unsafe { PageView::<K, V>::create(&data).await? };
         match node {
-            // PageView::Internal(node) => self.search_node(node.search(key), key).await,
             PageView::Leaf(leaf) => leaf.get(key).await,
+            PageView::Interior(interior) => {
+                let child_idx = interior.search(key).await?;
+                self.search_node(child_idx, key).await
+            }
         }
     }
 
@@ -56,28 +60,38 @@ where
         let node = unsafe { PageViewMut::<K, V>::create(&mut data).await? };
         match node {
             PageViewMut::Interior(_) => todo!(),
-            PageViewMut::Leaf(mut leaf) => match leaf.insert(key, value).await? {
+            PageViewMut::Leaf(mut leaf) => match leaf.insert(&key, &value).await? {
                 Ok(value) => Ok(value),
                 Err(PageFull) => {
                     let left_page = self.pool.alloc().await?;
                     let mut left_data = left_page.page().data_mut();
-                    let left_child = PageViewMut::<K, V>::init_leaf(&mut left_data).await?;
+                    let mut left_child = PageViewMut::<K, V>::init_leaf(&mut left_data).await?;
 
                     let right_page = self.pool.alloc().await?;
                     let mut right_data = right_page.page().data_mut();
-                    let right_child = PageViewMut::<K, V>::init_leaf(&mut right_data).await?;
+                    let mut right_child = PageViewMut::<K, V>::init_leaf(&mut right_data).await?;
 
-                    leaf.split_root_into(left_child, right_child).await?;
+                    let sep = leaf.split_root_into(&mut left_child, &mut right_child).await?;
+
+                    // FIXME picking the largest value we have available as a random high key for now
+                    let hack_high_key_offset =
+                        right_child.slotted().slots().last().unwrap().offset();
+                    let (hack_high_key, _) =
+                        right_child.slotted().get_by_offset(hack_high_key_offset).await?;
 
                     // reinitialize the root to an interior node and add the two children
-                    let root = PageViewMut::<K, V>::init_root_interior(&mut data).await?;
-                    todo!();
+                    let mut root = PageViewMut::<K, V>::init_root_interior(&mut data).await?;
 
-                    // let (new_key, new_value) = leaf.split(&mut new_leaf).await?;
-                    // let new_idx = new_page.page().idx();
-                    // let mut parent = PageViewMut::<K, V>::init_root(&mut data).await?;
-                    // parent.insert_internal(new_key, new_idx).await?;
-                    // Ok(None)
+                    root.insert(
+                        &sep,
+                        left_page.page().idx(),
+                        right_page.page().idx(),
+                        &hack_high_key,
+                    )
+                    .await?
+                    .expect("new root should not be full");
+
+                    Ok(None)
                 }
             },
         }

@@ -1,17 +1,20 @@
 use std::cmp::Ordering;
 use std::future::Future;
 use std::marker::PhantomData;
-use std::ops::{AddAssign, Index, IndexMut, RangeFrom, Sub, SubAssign};
+use std::ops::{AddAssign, Deref, Index, IndexMut, RangeFrom, Sub, SubAssign};
 use std::pin::Pin;
 use std::{fmt, mem, ptr, slice};
 
 use nsql_pager::PAGE_DATA_SIZE;
 use nsql_serde::{Deserialize, DeserializeSkip, Serialize};
+use nsql_util::static_assert_eq;
 use rkyv::rend::BigEndian;
 use rkyv::Archive;
 
 use super::{sizeof, PageFull};
 
+// NOTE: the layout of this MUST match the layout of the mutable version
+#[repr(C)]
 pub(crate) struct SlottedPageView<'a, K, V> {
     header: &'a ArchivedSlottedPageMeta,
     slots: &'a [Slot],
@@ -35,6 +38,22 @@ where
 {
     pub fn is_empty(&self) -> bool {
         self.slots.is_empty()
+    }
+
+    pub fn len(&self) -> usize {
+        self.slots.len()
+    }
+
+    // mostly for debugging
+    pub(crate) async fn key_values(&self) -> nsql_serde::Result<Vec<(K, V)>> {
+        let mut data = Vec::with_capacity(self.slots.len());
+        for slot in self.slots {
+            let mut de = &self[slot.offset()..];
+            let key = K::deserialize(&mut de).await?;
+            let value = V::deserialize(&mut de).await?;
+            data.push((key, value));
+        }
+        Ok(data)
     }
 
     pub(crate) fn slots(&self) -> &'a [Slot] {
@@ -75,7 +94,7 @@ where
         Ok((key, value))
     }
 
-    async fn slot_index_of(&self, key: &K) -> nsql_serde::Result<Result<usize, usize>> {
+    pub(super) async fn slot_index_of(&self, key: &K) -> nsql_serde::Result<Result<usize, usize>> {
         async_binary_search_by(self.slots, |slot| async {
             let k = K::deserialize(&mut &self[slot.offset..]).await?;
             Ok(k.cmp(key))
@@ -110,7 +129,9 @@ impl<K, V> IndexMut<RangeFrom<SlotOffset>> for SlottedPageViewMut<'_, K, V> {
     }
 }
 
+// NOTE: must match the layout of `SlottedPageView`
 #[derive(Eq)]
+#[repr(C)]
 pub(crate) struct SlottedPageViewMut<'a, K, V> {
     header: Pin<&'a mut ArchivedSlottedPageMeta>,
     slots: &'a mut [Slot],
@@ -198,13 +219,27 @@ impl<'a, K, V> SlottedPageViewMut<'a, K, V> {
         Ok(Self { header, slots, data, marker: PhantomData })
     }
 
-    pub(crate) fn downgrade(&'a self) -> SlottedPageView<'a, K, V> {
-        SlottedPageView {
-            header: &self.header,
-            slots: self.slots,
-            data: self.data,
-            marker: PhantomData,
-        }
+    // pub(crate) fn downgrade(&'a self) -> SlottedPageView<'a, K, V> {
+    //     SlottedPageView {
+    //         header: &self.header,
+    //         slots: self.slots,
+    //         data: self.data,
+    //         marker: PhantomData,
+    //     }
+    // }
+}
+
+impl<'a, K, V> Deref for SlottedPageViewMut<'a, K, V> {
+    type Target = SlottedPageView<'a, K, V>;
+
+    fn deref(&self) -> &Self::Target {
+        static_assert_eq!(
+            mem::size_of::<SlottedPageView<'a, u16, u64>>(),
+            mem::size_of::<SlottedPageViewMut<'a, u16, u64>>()
+        );
+
+        // SAFETY this is safe because SlottedPageView and SlottedPageViewMut have the same layout
+        unsafe { &*(self as *const _ as *const Self::Target) }
     }
 }
 
@@ -215,8 +250,8 @@ where
 {
     pub(crate) async fn insert(
         &mut self,
-        key: K,
-        value: V,
+        key: &K,
+        value: &V,
     ) -> nsql_serde::Result<Result<Option<V>, PageFull>> {
         // FIXME check whether key already exists
         // FIXME need to maintain sorted order in the slots
@@ -227,7 +262,7 @@ where
             return Ok(Err(PageFull));
         }
 
-        let idx = self.downgrade().slot_index_of(&key).await?;
+        let idx = self.slot_index_of(key).await?;
 
         let idx = match idx {
             Ok(idx) => todo!("handle case where key already exists {:?}", self.slots[idx]),
@@ -322,6 +357,7 @@ impl SubAssign<u16> for SlotOffset {
 
 impl From<u16> for SlotOffset {
     fn from(offset: u16) -> Self {
+        assert!(offset < PAGE_DATA_SIZE as u16);
         Self(BigEndian::from(offset))
     }
 }

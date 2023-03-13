@@ -2,10 +2,12 @@ mod interior;
 mod leaf;
 mod slotted;
 
+use std::fmt;
+
 use nsql_pager::PAGE_DATA_SIZE;
 use nsql_serde::{Deserialize, DeserializeSkip, Serialize, SerializeSized};
 
-use self::interior::InteriorPageViewMut;
+use self::interior::{InteriorPageView, InteriorPageViewMut};
 use self::leaf::{LeafPageView, LeafPageViewMut};
 use crate::node::Flags;
 
@@ -27,12 +29,13 @@ pub(crate) struct PageHeader {
 }
 
 pub(crate) enum PageView<'a, K, V> {
+    Interior(InteriorPageView<'a, K>),
     Leaf(LeafPageView<'a, K, V>),
 }
 
 impl<'a, K, V> PageView<'a, K, V>
 where
-    K: Ord + DeserializeSkip,
+    K: Ord + DeserializeSkip + fmt::Debug,
     V: Deserialize,
 {
     pub(crate) async unsafe fn create(
@@ -44,7 +47,9 @@ where
                 .await
                 .map(Self::Leaf)
         } else {
-            todo!()
+            InteriorPageView::create(&data[PageHeader::SERIALIZED_SIZE as usize..])
+                .await
+                .map(Self::Interior)
         }
     }
 }

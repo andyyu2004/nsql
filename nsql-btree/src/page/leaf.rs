@@ -100,10 +100,6 @@ impl<'a, K, V> LeafPageViewMut<'a, K, V> {
         let slotted_page = SlottedPageViewMut::create(data).await?;
         Ok(Self { header, slotted_page })
     }
-
-    fn downgrade(&'a self) -> LeafPageView<'a, K, V> {
-        LeafPageView { header: &self.header, slots: self.slotted_page.downgrade() }
-    }
 }
 
 impl<'a, K, V> LeafPageViewMut<'a, K, V>
@@ -113,36 +109,42 @@ where
 {
     pub(crate) async fn insert(
         &mut self,
-        key: K,
-        value: V,
+        key: &K,
+        value: &V,
     ) -> nsql_serde::Result<Result<Option<V>, PageFull>> {
         self.slotted_page.insert(key, value).await
     }
 
     /// Intended for use when splitting a root node.
     /// We keep the root node page number unchanged because it may be referenced as an identifier.
-    /// We allocate two new nodes to move the data into.
     pub(crate) async fn split_root_into(
         &self,
-        mut left: LeafPageViewMut<'a, K, V>,
-        mut right: LeafPageViewMut<'a, K, V>,
-    ) -> nsql_serde::Result<()> {
-        assert!(left.slotted_page.downgrade().is_empty());
-        assert!(right.slotted_page.downgrade().is_empty());
+        left: &mut LeafPageViewMut<'a, K, V>,
+        right: &mut LeafPageViewMut<'a, K, V>,
+    ) -> nsql_serde::Result<K> {
+        assert!(left.slotted_page.is_empty());
+        assert!(right.slotted_page.is_empty());
+        assert!(self.slotted_page.len() > 1);
 
-        let slots = self.slotted_page.downgrade().slots();
+        let slots = self.slotted_page.slots();
         // FIXME use less naive algorithm for inserting into new pages
         let (lhs, rhs) = slots.split_at(slots.len() / 2);
         for slot in lhs {
-            let (key, value) = self.downgrade().slots.get_by_offset(slot.offset()).await?;
-            left.insert(key, value).await?.unwrap();
+            let (key, value) = self.slotted_page.get_by_offset(slot.offset()).await?;
+            left.insert(&key, &value).await?.unwrap();
         }
 
+        let mut sep = None;
         for slot in rhs {
-            let (key, value) = self.downgrade().slots.get_by_offset(slot.offset()).await?;
-            right.insert(key, value).await?.unwrap();
+            let (key, value) = self.slotted_page.get_by_offset(slot.offset()).await?;
+            right.insert(&key, &value).await?.unwrap();
+
+            // use the first key in the right page as the separator
+            if sep.is_none() {
+                sep = Some(key);
+            }
         }
 
-        Ok(())
+        Ok(sep.unwrap())
     }
 }
