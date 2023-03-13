@@ -27,7 +27,7 @@ where
         let page = handle.page();
         let mut data = page.data_mut();
 
-        PageViewMut::<K, V>::init_root(&mut data).await?;
+        PageViewMut::<K, V>::init_root_leaf(&mut data).await?;
         let root_idx = page.idx();
         Ok(Self { pool, root_idx, marker: PhantomData })
     }
@@ -71,6 +71,10 @@ where
                         unsafe { PageViewMut::create(&mut right_data).await?.unwrap_leaf() };
 
                     leaf.split_root_into(left_child, right_child).await?;
+
+                    // reinitialize the root to an interior node and add the two children
+                    PageViewMut::<K, V>::init_root_interior(&mut data).await?;
+
                     todo!();
 
                     // let (new_key, new_value) = leaf.split(&mut new_leaf).await?;

@@ -1,0 +1,1 @@
+const BTREE_INTERIOR_PAGE_MAGIC: [u8; 4] = *b"BTPI";
