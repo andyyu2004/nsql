@@ -65,8 +65,7 @@ where
         let slot_idx = match self.slotted_page.slot_index_of(key).await? {
             // special case of the lowest key being stored in the rightmost slot
             Err(idx) if idx == 0 => self.slotted_page.slots().len() - 1,
-            Ok(_idx) => todo!(),
-            // we need to shift the index left by one to get the correct slot due to the weird (key, value) layout
+            Ok(idx) => idx,
             Err(idx) => idx - 1,
         };
 
@@ -137,25 +136,32 @@ where
         sep: &K,
         page_idx: PageIndex,
     ) -> nsql_serde::Result<Result<(), PageFull>> {
-        todo!()
+        // FIXME is this even right?
+        match self.slotted_page.insert(sep, &page_idx).await? {
+            Ok(Some(_)) => todo!("duplicate sep in interior?"),
+            Ok(None) => Ok(Ok(())),
+            Err(PageFull) => Ok(Err(PageFull)),
+        }
     }
 
-    pub(crate) async fn insert_new(
+    pub(crate) async fn insert_initial(
         &mut self,
         sep: &K,
         left: PageIndex,
         right: PageIndex,
         node_high_key: &K,
     ) -> nsql_serde::Result<Result<(), PageFull>> {
+        assert!(self.slotted_page.slots().is_empty());
+
         // confusingly, we store the leftmost pointer alongside the node_high_key in the rightmost key slot
         match self.slotted_page.insert(node_high_key, &left).await? {
-            Ok(Some(_)) => todo!("duplicate key in interior?"),
+            Ok(Some(_)) => todo!("duplicate sep in interior?"),
             Ok(None) => {}
             Err(PageFull) => return Ok(Err(PageFull)),
         };
 
         match self.slotted_page.insert(sep, &right).await? {
-            Ok(Some(_)) => todo!("duplicate key in interior?"),
+            Ok(Some(_)) => todo!("duplicate sep in interior?"),
             Ok(None) => {}
             Err(PageFull) => return Ok(Err(PageFull)),
         };

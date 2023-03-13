@@ -133,7 +133,7 @@ where
 
                     let hack_high_key = K::MAX;
 
-                    root.insert_new(
+                    root.insert_initial(
                         &sep,
                         left_page.page().idx(),
                         right_page.page().idx(),
@@ -171,9 +171,9 @@ where
                     parent
                         .insert(&sep, new_page.page().idx())
                         .await?
-                        .expect("new root should not be full");
+                        .expect("todo handle parent split");
 
-                    todo!()
+                    Ok(None)
                 }
             }
         }

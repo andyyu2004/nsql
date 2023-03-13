@@ -1,7 +1,6 @@
 #![deny(rust_2018_idioms)]
 #![allow(incomplete_features)]
 #![feature(async_fn_in_trait)]
-#![feature(nonzero_min_max)]
 #![feature(const_option)]
 
 mod file;
@@ -22,7 +21,13 @@ pub use self::page::{Page, PageIndex, PageOffset};
 
 /// The size of a page in bytes minus the size of the page header.
 pub const PAGE_DATA_SIZE: usize = PAGE_SIZE - PAGE_META_LENGTH;
+
+// #[cfg(not(test))]
 pub const PAGE_SIZE: usize = 4096;
+
+// #[cfg(test)]
+// pub const PAGE_SIZE: usize = 256;
+
 // currently just the checksum
 const PAGE_META_LENGTH: usize = std::mem::size_of::<u64>();
 
