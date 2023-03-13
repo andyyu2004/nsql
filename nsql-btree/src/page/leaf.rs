@@ -40,13 +40,13 @@ impl Default for LeafPageHeader {
 
 pub(crate) struct LeafPageView<'a, K, V> {
     header: &'a ArchivedLeafPageHeader,
-    slots: SlottedPageView<'a, K, V>,
+    slotted_page: SlottedPageView<'a, K, V>,
 }
 
 impl<'a, K, V> LeafPageView<'a, K, V>
 where
-    K: Ord + DeserializeSkip,
-    V: Deserialize,
+    K: Ord + DeserializeSkip + fmt::Debug,
+    V: Deserialize + fmt::Debug,
 {
     pub(crate) async unsafe fn create(
         data: &'a [u8],
@@ -56,12 +56,12 @@ where
         let header = rkyv::archived_root::<LeafPageHeader>(header_bytes);
         header.check_magic()?;
 
-        let slots = SlottedPageView::<'a, K, V>::create(data).await?;
-        Ok(Self { header, slots })
+        let slotted_page = SlottedPageView::<'a, K, V>::create(data).await?;
+        Ok(Self { header, slotted_page })
     }
 
     pub(crate) async fn get(&self, key: &K) -> nsql_serde::Result<Option<V>> {
-        self.slots.get(key).await
+        self.slotted_page.get(key).await
     }
 }
 

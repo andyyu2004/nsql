@@ -36,7 +36,7 @@ pub(crate) enum PageView<'a, K, V> {
 impl<'a, K, V> PageView<'a, K, V>
 where
     K: Ord + DeserializeSkip + fmt::Debug,
-    V: Deserialize,
+    V: Deserialize + fmt::Debug,
 {
     pub(crate) async unsafe fn create(
         data: &'a [u8; PAGE_DATA_SIZE],
@@ -54,7 +54,12 @@ where
     }
 }
 
-pub(crate) enum PageViewMut<'a, K, V> {
+pub(crate) struct PageViewMut<'a, K, V> {
+    pub(crate) header: PageHeader,
+    pub(crate) kind: PageViewMutKind<'a, K, V>,
+}
+
+pub(crate) enum PageViewMutKind<'a, K, V> {
     Interior(InteriorPageViewMut<'a, K>),
     Leaf(LeafPageViewMut<'a, K, V>),
 }
@@ -94,20 +99,14 @@ impl<'a, K, V> PageViewMut<'a, K, V> {
         data: &'a mut [u8; PAGE_DATA_SIZE],
     ) -> nsql_serde::Result<PageViewMut<'a, K, V>> {
         let header = PageHeader::deserialize(&mut &data[..]).await?;
-        if header.flags.contains(Flags::IS_LEAF) {
-            LeafPageViewMut::create(&mut data[PageHeader::SERIALIZED_SIZE as usize..])
+        let kind = if header.flags.contains(Flags::IS_LEAF) {
+            LeafPageViewMut::<'a, K, V>::create(&mut data[PageHeader::SERIALIZED_SIZE as usize..])
                 .await
-                .map(Self::Leaf)
+                .map(PageViewMutKind::Leaf)
         } else {
             todo!()
-        }
-    }
+        }?;
 
-    pub(crate) fn unwrap_leaf(self) -> LeafPageViewMut<'a, K, V> {
-        if let Self::Leaf(v) = self { v } else { panic!("node was not a leaf") }
-    }
-
-    pub(crate) fn unwrap_interior(self) -> InteriorPageViewMut<'a, K> {
-        if let Self::Interior(v) = self { v } else { panic!("node was not an interior") }
+        Ok(PageViewMut { header, kind })
     }
 }

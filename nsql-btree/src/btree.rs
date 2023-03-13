@@ -6,7 +6,8 @@ use nsql_buffer::BufferPool;
 use nsql_pager::PageIndex;
 use nsql_serde::{Deserialize, DeserializeSkip, Serialize};
 
-use crate::page::{PageFull, PageView, PageViewMut};
+use crate::node::Flags;
+use crate::page::{PageFull, PageView, PageViewMut, PageViewMutKind};
 use crate::Result;
 
 /// A B+ tree
@@ -16,9 +17,18 @@ pub struct BTree<K, V> {
     marker: std::marker::PhantomData<fn() -> (K, V)>,
 }
 
+// hack trait to patch some implementation holes for now
+pub trait Max {
+    const MAX: Self;
+}
+
+impl Max for u32 {
+    const MAX: Self = u32::MAX;
+}
+
 impl<K, V> BTree<K, V>
 where
-    K: Ord + Send + Sync,
+    K: Ord + Send + Sync + Max,
     K: Serialize + DeserializeSkip + Ord + fmt::Debug,
     V: Serialize + Deserialize + Eq + Clone + fmt::Debug,
 {
@@ -53,45 +63,55 @@ where
         }
     }
 
-    #[inline]
     pub async fn insert(&self, key: K, value: V) -> Result<Option<V>> {
-        let handle = self.pool.load(self.root_idx).await?;
+        self.insert_rec(self.root_idx, key, value).await
+    }
+
+    #[inline]
+    async fn insert_rec(&self, page_idx: PageIndex, key: K, value: V) -> Result<Option<V>> {
+        let handle = self.pool.load(page_idx).await?;
         let mut data = handle.page().data_mut();
-        let node = unsafe { PageViewMut::<K, V>::create(&mut data).await? };
-        match node {
-            PageViewMut::Interior(_) => todo!(),
-            PageViewMut::Leaf(mut leaf) => match leaf.insert(&key, &value).await? {
+        let view = unsafe { PageViewMut::<K, V>::create(&mut data).await? };
+        match view.kind {
+            PageViewMutKind::Interior(_) => todo!(),
+            PageViewMutKind::Leaf(mut leaf) => match leaf.insert(&key, &value).await? {
                 Ok(value) => Ok(value),
                 Err(PageFull) => {
-                    let left_page = self.pool.alloc().await?;
-                    let mut left_data = left_page.page().data_mut();
-                    let mut left_child = PageViewMut::<K, V>::init_leaf(&mut left_data).await?;
+                    if view.header.flags.contains(Flags::IS_ROOT) {
+                        let left_page = self.pool.alloc().await?;
+                        let mut left_data = left_page.page().data_mut();
+                        let mut left_child = PageViewMut::<K, V>::init_leaf(&mut left_data).await?;
 
-                    let right_page = self.pool.alloc().await?;
-                    let mut right_data = right_page.page().data_mut();
-                    let mut right_child = PageViewMut::<K, V>::init_leaf(&mut right_data).await?;
+                        let right_page = self.pool.alloc().await?;
+                        let mut right_data = right_page.page().data_mut();
+                        let mut right_child =
+                            PageViewMut::<K, V>::init_leaf(&mut right_data).await?;
 
-                    let sep = leaf.split_root_into(&mut left_child, &mut right_child).await?;
+                        let sep = leaf.split_root_into(&mut left_child, &mut right_child).await?;
 
-                    // FIXME picking the largest value we have available as a random high key for now
-                    let hack_high_key_offset =
-                        right_child.slotted().slots().last().unwrap().offset();
-                    let (hack_high_key, _) =
-                        right_child.slotted().get_by_offset(hack_high_key_offset).await?;
+                        (if key < sep { left_child } else { right_child })
+                            .insert(&key, &value)
+                            .await?
+                            .expect("split child should not be full");
 
-                    // reinitialize the root to an interior node and add the two children
-                    let mut root = PageViewMut::<K, V>::init_root_interior(&mut data).await?;
+                        // reinitialize the root to an interior node and add the two children
+                        let mut root = PageViewMut::<K, V>::init_root_interior(&mut data).await?;
 
-                    root.insert(
-                        &sep,
-                        left_page.page().idx(),
-                        right_page.page().idx(),
-                        &hack_high_key,
-                    )
-                    .await?
-                    .expect("new root should not be full");
+                        let hack_high_key = K::MAX;
 
-                    Ok(None)
+                        root.insert(
+                            &sep,
+                            left_page.page().idx(),
+                            right_page.page().idx(),
+                            &hack_high_key,
+                        )
+                        .await?
+                        .expect("new root should not be full");
+
+                        Ok(None)
+                    } else {
+                        todo!()
+                    }
                 }
             },
         }

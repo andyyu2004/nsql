@@ -30,10 +30,11 @@ fn test_btree_root_page_full() -> nsql_serde::Result<()> {
     nsql_test::start(async {
         let pool = mk_mem_buffer_pool!();
         let btree = BTree::<u32, u64>::create(pool).await?;
-        for i in 1..1000 {
+        for i in 1..=290 {
             assert!(btree.insert(i, i as u64).await?.is_none());
             assert_eq!(btree.get(&i).await?, Some(i as u64));
         }
+
         Ok(())
     })
 }

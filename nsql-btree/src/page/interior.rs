@@ -61,15 +61,20 @@ where
     }
 
     pub(crate) async fn search(&self, key: &K) -> nsql_serde::Result<PageIndex> {
-        dbg!(key);
         dbg!(self.slotted_page.key_values().await?);
-
-        let offset: SlotOffset = match self.slotted_page.slot_index_of(key).await? {
-            Ok(idx) | Err(idx) => self.slotted_page.slots()[idx].offset(),
+        // FIXME add logic to handle the special case of the lowest key
+        let slot_idx = match self.slotted_page.slot_index_of(key).await? {
+            // special case of the lowest key being stored in the rightmost slot
+            Err(idx) if idx == 0 => self.slotted_page.slots().len() - 1,
+            Ok(_idx) => todo!(),
+            // we need to shift the index left by one to get the correct slot due to the weird (key, value) layout
+            Err(idx) => idx - 1,
         };
 
-        let (_, idx) = self.slotted_page.get_by_offset(offset).await?;
-        Ok(idx)
+        let offset = self.slotted_page.slots()[slot_idx].offset();
+
+        let (_, page_idx) = self.slotted_page.get_by_offset(offset).await?;
+        Ok(page_idx)
     }
 }
 
