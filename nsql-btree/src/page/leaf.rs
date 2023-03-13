@@ -115,6 +115,30 @@ where
         self.slotted_page.insert(key, value).await
     }
 
+    pub(crate) async fn split_into(
+        &mut self,
+        new: &mut LeafPageViewMut<'a, K, V>,
+    ) -> nsql_serde::Result<K> {
+        assert!(new.slotted_page.is_empty());
+        assert!(self.slotted_page.len() > 1);
+
+        let slots = self.slotted_page.slots();
+        let (lhs, rhs) = slots.split_at(slots.len() / 2);
+
+        let mut sep = None;
+        for slot in rhs {
+            let (key, value) = self.slotted_page.get_by_offset(slot.offset()).await?;
+            new.slotted_page.insert(&key, &value).await?.expect("new page should not be full");
+            if sep.is_none() {
+                sep = Some(key);
+            }
+        }
+
+        self.slotted_page.set_len(lhs.len() as u16);
+
+        Ok(sep.unwrap())
+    }
+
     /// Intended for use when splitting a root node.
     /// We keep the root node page number unchanged because it may be referenced as an identifier.
     pub(crate) async fn split_root_into(

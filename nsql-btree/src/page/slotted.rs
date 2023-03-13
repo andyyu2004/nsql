@@ -219,14 +219,9 @@ impl<'a, K, V> SlottedPageViewMut<'a, K, V> {
         Ok(Self { header, slots, data, marker: PhantomData })
     }
 
-    // pub(crate) fn downgrade(&'a self) -> SlottedPageView<'a, K, V> {
-    //     SlottedPageView {
-    //         header: &self.header,
-    //         slots: self.slots,
-    //         data: self.data,
-    //         marker: PhantomData,
-    //     }
-    // }
+    pub(crate) fn set_len(&mut self, len: u16) {
+        self.header.slot_len = len.into();
+    }
 }
 
 impl<'a, K, V> Deref for SlottedPageViewMut<'a, K, V> {

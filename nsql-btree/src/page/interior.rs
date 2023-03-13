@@ -61,7 +61,6 @@ where
     }
 
     pub(crate) async fn search(&self, key: &K) -> nsql_serde::Result<PageIndex> {
-        dbg!(self.slotted_page.key_values().await?);
         // FIXME add logic to handle the special case of the lowest key
         let slot_idx = match self.slotted_page.slot_index_of(key).await? {
             // special case of the lowest key being stored in the rightmost slot
@@ -134,6 +133,14 @@ where
     K: Serialize + DeserializeSkip + Ord + fmt::Debug,
 {
     pub(crate) async fn insert(
+        &mut self,
+        sep: &K,
+        page_idx: PageIndex,
+    ) -> nsql_serde::Result<Result<(), PageFull>> {
+        todo!()
+    }
+
+    pub(crate) async fn insert_new(
         &mut self,
         sep: &K,
         left: PageIndex,

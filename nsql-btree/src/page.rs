@@ -7,8 +7,8 @@ use std::fmt;
 use nsql_pager::PAGE_DATA_SIZE;
 use nsql_serde::{Deserialize, DeserializeSkip, Serialize, SerializeSized};
 
-use self::interior::{InteriorPageView, InteriorPageViewMut};
-use self::leaf::{LeafPageView, LeafPageViewMut};
+pub(crate) use self::interior::{InteriorPageView, InteriorPageViewMut};
+pub(crate) use self::leaf::{LeafPageView, LeafPageViewMut};
 use crate::node::Flags;
 
 macro_rules! sizeof {
@@ -104,7 +104,9 @@ impl<'a, K, V> PageViewMut<'a, K, V> {
                 .await
                 .map(PageViewMutKind::Leaf)
         } else {
-            todo!()
+            InteriorPageViewMut::<'a, K>::create(&mut data[PageHeader::SERIALIZED_SIZE as usize..])
+                .await
+                .map(PageViewMutKind::Interior)
         }?;
 
         Ok(PageViewMut { header, kind })
