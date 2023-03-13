@@ -5,6 +5,7 @@ mod slotted;
 use nsql_pager::PAGE_DATA_SIZE;
 use nsql_serde::{Deserialize, DeserializeSkip, Serialize, SerializeSized};
 
+use self::interior::InteriorPageViewMut;
 use self::leaf::{LeafPageView, LeafPageViewMut};
 use crate::node::Flags;
 
@@ -49,38 +50,39 @@ where
 }
 
 pub(crate) enum PageViewMut<'a, K, V> {
+    Interior(InteriorPageViewMut<'a, K>),
     Leaf(LeafPageViewMut<'a, K, V>),
 }
 
 impl<'a, K, V> PageViewMut<'a, K, V> {
     pub(crate) async fn init_root_interior(
         data: &'a mut [u8; PAGE_DATA_SIZE],
-    ) -> nsql_serde::Result<()> {
+    ) -> nsql_serde::Result<InteriorPageViewMut<'a, K>> {
         data.fill(0);
         PageHeader { flags: Flags::IS_ROOT, filler: [0; 3] }.serialize_into(data).await?;
-
-        todo!()
+        InteriorPageViewMut::<K>::init(&mut data[PageHeader::SERIALIZED_SIZE as usize..]).await
     }
 
     pub(crate) async fn init_root_leaf(
         data: &'a mut [u8; PAGE_DATA_SIZE],
-    ) -> nsql_serde::Result<()> {
+    ) -> nsql_serde::Result<LeafPageViewMut<'a, K, V>> {
         Self::init_leaf_inner(data, Flags::IS_LEAF | Flags::IS_ROOT).await
     }
 
-    pub(crate) async fn init_leaf(data: &'a mut [u8; PAGE_DATA_SIZE]) -> nsql_serde::Result<()> {
+    pub(crate) async fn init_leaf(
+        data: &'a mut [u8; PAGE_DATA_SIZE],
+    ) -> nsql_serde::Result<LeafPageViewMut<'a, K, V>> {
         Self::init_leaf_inner(data, Flags::IS_LEAF).await
     }
 
     async fn init_leaf_inner(
         data: &'a mut [u8; PAGE_DATA_SIZE],
         flags: Flags,
-    ) -> nsql_serde::Result<()> {
+    ) -> nsql_serde::Result<LeafPageViewMut<'a, K, V>> {
         data.fill(0);
         PageHeader { flags, filler: [0; 3] }.serialize_into(data).await?;
 
-        LeafPageViewMut::<K, V>::init(&mut data[PageHeader::SERIALIZED_SIZE as usize..]).await?;
-        Ok(())
+        LeafPageViewMut::<K, V>::init(&mut data[PageHeader::SERIALIZED_SIZE as usize..]).await
     }
 
     pub(crate) async unsafe fn create(
@@ -98,5 +100,9 @@ impl<'a, K, V> PageViewMut<'a, K, V> {
 
     pub(crate) fn unwrap_leaf(self) -> LeafPageViewMut<'a, K, V> {
         if let Self::Leaf(v) = self { v } else { panic!("node was not a leaf") }
+    }
+
+    pub(crate) fn unwrap_interior(self) -> InteriorPageViewMut<'a, K> {
+        if let Self::Interior(v) = self { v } else { panic!("node was not an interior") }
     }
 }

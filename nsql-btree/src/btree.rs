@@ -55,26 +55,22 @@ where
         let mut data = handle.page().data_mut();
         let node = unsafe { PageViewMut::<K, V>::create(&mut data).await? };
         match node {
+            PageViewMut::Interior(_) => todo!(),
             PageViewMut::Leaf(mut leaf) => match leaf.insert(key, value).await? {
                 Ok(value) => Ok(value),
                 Err(PageFull) => {
                     let left_page = self.pool.alloc().await?;
                     let mut left_data = left_page.page().data_mut();
-                    PageViewMut::<K, V>::init_leaf(&mut left_data).await?;
-                    let left_child =
-                        unsafe { PageViewMut::create(&mut left_data).await?.unwrap_leaf() };
+                    let left_child = PageViewMut::<K, V>::init_leaf(&mut left_data).await?;
 
                     let right_page = self.pool.alloc().await?;
                     let mut right_data = right_page.page().data_mut();
-                    PageViewMut::<K, V>::init_leaf(&mut right_data).await?;
-                    let right_child =
-                        unsafe { PageViewMut::create(&mut right_data).await?.unwrap_leaf() };
+                    let right_child = PageViewMut::<K, V>::init_leaf(&mut right_data).await?;
 
                     leaf.split_root_into(left_child, right_child).await?;
 
                     // reinitialize the root to an interior node and add the two children
-                    PageViewMut::<K, V>::init_root_interior(&mut data).await?;
-
+                    let root = PageViewMut::<K, V>::init_root_interior(&mut data).await?;
                     todo!();
 
                     // let (new_key, new_value) = leaf.split(&mut new_leaf).await?;

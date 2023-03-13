@@ -68,24 +68,26 @@ where
 #[derive(Debug)]
 pub(crate) struct LeafPageViewMut<'a, K, V> {
     header: Pin<&'a mut ArchivedLeafPageHeader>,
-    slotted: SlottedPageViewMut<'a, K, V>,
+    slotted_page: SlottedPageViewMut<'a, K, V>,
 }
 
 impl<'a, K, V> LeafPageViewMut<'a, K, V> {
     pub(crate) fn slotted(&self) -> &SlottedPageViewMut<'a, K, V> {
-        &self.slotted
+        &self.slotted_page
     }
 
     /// initialize a new leaf page
-    pub(crate) async fn init(data: &'a mut [u8]) -> nsql_serde::Result<()> {
+    pub(crate) async fn init(data: &'a mut [u8]) -> nsql_serde::Result<LeafPageViewMut<'a, K, V>> {
         const HEADER_SIZE: u16 = mem::size_of::<ArchivedLeafPageHeader>() as u16;
         let (header_bytes, data) = data.split_array_mut::<{ HEADER_SIZE as usize }>();
         header_bytes.copy_from_slice(&nsql_rkyv::archive(&LeafPageHeader::default()));
         // the slots start after the page header and the leaf page header
         let prefix_size = PageHeader::SERIALIZED_SIZE + HEADER_SIZE;
-        SlottedPageViewMut::<'a, K, V>::init(data, prefix_size).await?;
 
-        Ok(())
+        let header = unsafe { rkyv::archived_root_mut::<LeafPageHeader>(Pin::new(header_bytes)) };
+        let slotted_page = SlottedPageViewMut::<'a, K, V>::init(data, prefix_size).await?;
+
+        Ok(Self { header, slotted_page })
     }
 
     pub(crate) async unsafe fn create(
@@ -95,12 +97,12 @@ impl<'a, K, V> LeafPageViewMut<'a, K, V> {
             data.split_array_mut::<{ mem::size_of::<ArchivedLeafPageHeader>() }>();
         let header = rkyv::archived_root_mut::<LeafPageHeader>(Pin::new(header_bytes));
         header.check_magic()?;
-        let slots = SlottedPageViewMut::create(data).await?;
-        Ok(Self { header, slotted: slots })
+        let slotted_page = SlottedPageViewMut::create(data).await?;
+        Ok(Self { header, slotted_page })
     }
 
     fn downgrade(&'a self) -> LeafPageView<'a, K, V> {
-        LeafPageView { header: &self.header, slots: self.slotted.downgrade() }
+        LeafPageView { header: &self.header, slots: self.slotted_page.downgrade() }
     }
 }
 
@@ -114,7 +116,7 @@ where
         key: K,
         value: V,
     ) -> nsql_serde::Result<Result<Option<V>, PageFull>> {
-        self.slotted.insert(key, value).await
+        self.slotted_page.insert(key, value).await
     }
 
     /// Intended for use when splitting a root node.
@@ -125,10 +127,10 @@ where
         mut left: LeafPageViewMut<'a, K, V>,
         mut right: LeafPageViewMut<'a, K, V>,
     ) -> nsql_serde::Result<()> {
-        assert!(left.slotted.downgrade().is_empty());
-        assert!(right.slotted.downgrade().is_empty());
+        assert!(left.slotted_page.downgrade().is_empty());
+        assert!(right.slotted_page.downgrade().is_empty());
 
-        let slots = self.slotted.downgrade().slots();
+        let slots = self.slotted_page.downgrade().slots();
         // FIXME use less naive algorithm for inserting into new pages
         let (lhs, rhs) = slots.split_at(slots.len() / 2);
         for slot in lhs {
