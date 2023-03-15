@@ -22,6 +22,11 @@ impl BufferHandle {
         &self.page
     }
 
+    #[inline]
+    pub fn page_idx(&self) -> PageIndex {
+        self.page.idx()
+    }
+
     fn new(page: Page) -> Self {
         Self { page }
     }

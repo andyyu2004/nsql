@@ -17,23 +17,14 @@ pub struct BTree<K, V> {
     marker: std::marker::PhantomData<fn() -> (K, V)>,
 }
 
-// hack trait to patch some implementation holes for now
-pub trait Max {
-    const MAX: Self;
-}
-
-impl Max for u32 {
-    const MAX: Self = u32::MAX;
-}
-
 impl<K, V> BTree<K, V>
 where
-    K: Ord + Send + Sync + Max,
+    K: Ord + Send + Sync,
     K: Serialize + DeserializeSkip + Ord + fmt::Debug,
     V: Serialize + Deserialize + Eq + Clone + fmt::Debug,
 {
     #[inline]
-    pub async fn create(pool: BufferPool) -> Result<Self> {
+    pub async fn init(pool: BufferPool) -> Result<Self> {
         let handle = pool.alloc().await?;
         let page = handle.page();
         let mut data = page.data_mut();
@@ -97,7 +88,7 @@ where
     async fn insert_inner(
         &self,
         leaf_page_idx: PageIndex,
-        mut parents: Vec<PageIndex>,
+        parents: Vec<PageIndex>,
         key: K,
         value: V,
     ) -> Result<Option<V>> {
@@ -131,32 +122,14 @@ where
                     // reinitialize the root to an interior node and add the two children
                     let mut root = PageViewMut::<K, V>::init_root_interior(&mut leaf_data).await?;
 
-                    let hack_high_key = K::MAX;
-
-                    root.insert_initial(
-                        &sep,
-                        left_page.page().idx(),
-                        right_page.page().idx(),
-                        &hack_high_key,
-                    )
-                    .await?
-                    .expect("new root should not be full");
+                    root.insert_initial(left_page.page_idx(), &sep, right_page.page_idx())
+                        .await?
+                        .expect("new root should not be full");
 
                     Ok(None)
                 } else {
-                    let parent_idx =
-                        parents.pop().expect("non-root leaf must have at least one parent");
-                    let parent_page = self.pool.load(parent_idx).await?;
-                    let mut parent_data = parent_page.page().data_mut();
-                    let parent_view =
-                        unsafe { PageViewMut::<K, V>::create(&mut parent_data).await? };
-                    let mut parent = match parent_view.kind {
-                        PageViewMutKind::Interior(interior) => interior,
-                        PageViewMutKind::Leaf(_) => {
-                            unreachable!("parent should be interior page")
-                        }
-                    };
-
+                    // split the non-root leaf by allocating a new leaf and splitting the contents
+                    // then we insert the separator key and the new page index into the parent
                     let new_page = self.pool.alloc().await?;
                     let mut new_data = new_page.page().data_mut();
                     let mut new_leaf = PageViewMut::<K, V>::init_leaf(&mut new_data).await?;
@@ -168,14 +141,86 @@ where
                         .await?
                         .expect("split leaf should not be full");
 
-                    parent
-                        .insert(&sep, new_page.page().idx())
-                        .await?
-                        .expect("todo handle parent split");
+                    self.insert_interior(parents, &sep, new_page.page_idx()).await?;
 
                     Ok(None)
                 }
             }
         }
+    }
+
+    async fn insert_interior(
+        &self,
+        mut parents: Vec<PageIndex>,
+        sep: &K,
+        child_idx: PageIndex,
+    ) -> Result<()> {
+        let parent_idx = parents.pop().expect("non-root leaf must have at least one parent");
+        let parent_page = self.pool.load(parent_idx).await?;
+        let mut parent_data = parent_page.page().data_mut();
+        let parent_view = unsafe { PageViewMut::<K, V>::create(&mut parent_data).await? };
+        let mut parent = match parent_view.kind {
+            PageViewMutKind::Interior(interior) => interior,
+            PageViewMutKind::Leaf(_) => {
+                unreachable!("parent should be interior page")
+            }
+        };
+
+        match parent.insert(sep, child_idx).await? {
+            Ok(()) => {}
+            Err(PageFull) => {
+                if parent_view.header.flags.contains(Flags::IS_ROOT) {
+                    let left_page = self.pool.alloc().await?;
+                    let mut left_data = left_page.page().data_mut();
+                    let mut left_child = PageViewMut::<K, V>::init_interior(&mut left_data).await?;
+
+                    let right_page = self.pool.alloc().await?;
+                    let mut right_data = right_page.page().data_mut();
+                    let mut right_child =
+                        PageViewMut::<K, V>::init_interior(&mut right_data).await?;
+
+                    let sep = parent.split_root_into(&mut left_child, &mut right_child).await?;
+
+                    // (if *sep < *sep { left_child } else { right_child })
+                    //     .insert(sep, child_idx)
+                    //     .await?
+                    //     .expect("split child should not be full");
+
+                    // // reinitialize the root to an interior node and add the two children
+                    // let mut root =
+                    //     PageViewMut::<K, V>::init_root_interior(&mut parent_data).await?;
+
+                    // let hack_high_key = K::MAX;
+
+                    // root.insert_initial(
+                    //     sep,
+                    //     left_page.page_idx(),
+                    //     right_page.page_idx(),
+                    //     &hack_high_key,
+                    // )
+                    // .await?
+                    // .expect("new root should not be full");
+                } else {
+                    todo!();
+                    // split the non-root interior by allocating a new interior and splitting the contents
+                    // then we insert the separator key and the new page index into the parent
+                    // let new_page = self.pool.alloc().await?;
+                    // let mut new_data = new_page.page().data_mut();
+                    // let mut new_interior =
+                    //     PageViewMut::<K, V>::init_interior(&mut new_data).await?;
+
+                    // let sep = parent.split_into(&mut new_interior).await?;
+
+                    // (if *sep < *sep { parent } else { new_interior })
+                    //     .insert(sep, child_idx)
+                    //     .await?
+                    //     .expect("split interior should not be full");
+
+                    // self.insert_interior(parents, sep, new_page.page_idx()).await?;
+                }
+            }
+        }
+
+        Ok(())
     }
 }

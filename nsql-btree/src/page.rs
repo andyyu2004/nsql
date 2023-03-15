@@ -68,8 +68,21 @@ impl<'a, K, V> PageViewMut<'a, K, V> {
     pub(crate) async fn init_root_interior(
         data: &'a mut [u8; PAGE_DATA_SIZE],
     ) -> nsql_serde::Result<InteriorPageViewMut<'a, K>> {
+        Self::init_interior_inner(data, Flags::IS_ROOT).await
+    }
+
+    pub(crate) async fn init_interior(
+        data: &'a mut [u8; PAGE_DATA_SIZE],
+    ) -> nsql_serde::Result<InteriorPageViewMut<'a, K>> {
+        Self::init_interior_inner(data, Flags::empty()).await
+    }
+
+    pub(crate) async fn init_interior_inner(
+        data: &'a mut [u8; PAGE_DATA_SIZE],
+        flags: Flags,
+    ) -> nsql_serde::Result<InteriorPageViewMut<'a, K>> {
         data.fill(0);
-        PageHeader { flags: Flags::IS_ROOT, filler: [0; 3] }.serialize_into(data).await?;
+        PageHeader { flags, filler: [0; 3] }.serialize_into(data).await?;
         InteriorPageViewMut::<K>::init(&mut data[PageHeader::SERIALIZED_SIZE as usize..]).await
     }
 

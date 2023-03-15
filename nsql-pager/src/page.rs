@@ -6,7 +6,7 @@ use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::{fmt, io};
 
-use nsql_serde::{Deserialize, Invalid, Serialize, SerializeSized};
+use nsql_serde::{Deserialize, Serialize, SerializeSized};
 use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 use rkyv::Archive;
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
@@ -114,13 +114,6 @@ impl proptest::arbitrary::Arbitrary for PageIndex {
     fn arbitrary_with(_args: Self::Parameters) -> proptest::strategy::BoxedStrategy<Self> {
         use proptest::prelude::Strategy;
         (0..1000u32).prop_map(PageIndex::new).boxed()
-    }
-}
-
-impl Invalid for PageIndex {
-    #[inline]
-    fn invalid() -> Self {
-        Self::INVALID
     }
 }
 

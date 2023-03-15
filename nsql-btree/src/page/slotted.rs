@@ -31,19 +31,27 @@ impl<'a, K, V> fmt::Debug for SlottedPageView<'a, K, V> {
     }
 }
 
+impl<'a, K, V> SlottedPageView<'a, K, V> {
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.slots.is_empty()
+    }
+
+    #[inline]
+    pub fn len(&self) -> usize {
+        self.slots.len()
+    }
+
+    pub(crate) fn slots(&self) -> &'a [Slot] {
+        self.slots
+    }
+}
+
 impl<'a, K, V> SlottedPageView<'a, K, V>
 where
     K: DeserializeSkip + Ord,
     V: Deserialize,
 {
-    pub fn is_empty(&self) -> bool {
-        self.slots.is_empty()
-    }
-
-    pub fn len(&self) -> usize {
-        self.slots.len()
-    }
-
     // mostly for debugging
     pub(crate) async fn key_values(&self) -> nsql_serde::Result<Vec<(K, V)>> {
         let mut data = Vec::with_capacity(self.slots.len());
@@ -54,10 +62,6 @@ where
             data.push((key, value));
         }
         Ok(data)
-    }
-
-    pub(crate) fn slots(&self) -> &'a [Slot] {
-        self.slots
     }
 
     /// Safety: `buf` must contain a valid slotted page
@@ -100,6 +104,16 @@ where
             Ok(k.cmp(key))
         })
         .await
+    }
+
+    pub(super) async fn high_key(&self) -> nsql_serde::Result<K> {
+        let slot = self.slots.last().expect("page should not be empty");
+        self.key_in_slot(slot).await
+    }
+
+    pub(super) async fn key_in_slot(&self, slot: &Slot) -> nsql_serde::Result<K> {
+        let mut de = &self[slot.offset..];
+        K::deserialize(&mut de).await
     }
 
     async fn slot_of(&self, key: &K) -> nsql_serde::Result<Option<&Slot>> {

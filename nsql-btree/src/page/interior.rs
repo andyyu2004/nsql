@@ -7,7 +7,7 @@ use nsql_serde::{DeserializeSkip, Serialize, SerializeSized};
 use nsql_util::static_assert_eq;
 use rkyv::Archive;
 
-use super::slotted::{SlotOffset, SlottedPageView, SlottedPageViewMut};
+use super::slotted::{SlottedPageView, SlottedPageViewMut};
 use super::PageFull;
 use crate::page::PageHeader;
 
@@ -74,6 +74,12 @@ where
         let (_, page_idx) = self.slotted_page.get_by_offset(offset).await?;
         Ok(page_idx)
     }
+
+    async fn high_key(&self) -> nsql_serde::Result<K> {
+        let slot = self.slotted_page.slots().last().expect("node should not be empty");
+        let (key, _) = self.slotted_page.get_by_offset(slot.offset()).await?;
+        Ok(key)
+    }
 }
 
 // NOTE: must have the same layout as `InteriorPageView`
@@ -136,6 +142,12 @@ where
         sep: &K,
         page_idx: PageIndex,
     ) -> nsql_serde::Result<Result<(), PageFull>> {
+        assert!(
+            self.slotted_page.slots().len() > 1,
+            "can only use this operation on a non-empty node"
+        );
+        assert!(sep < &self.high_key().await?, "fixme need to do something about the high key");
+
         // FIXME is this even right?
         match self.slotted_page.insert(sep, &page_idx).await? {
             Ok(Some(_)) => todo!("duplicate sep in interior?"),
@@ -146,26 +158,62 @@ where
 
     pub(crate) async fn insert_initial(
         &mut self,
-        sep: &K,
         left: PageIndex,
+        sep: &K,
         right: PageIndex,
-        node_high_key: &K,
     ) -> nsql_serde::Result<Result<(), PageFull>> {
-        assert!(self.slotted_page.slots().is_empty());
+        assert!(
+            self.slotted_page.slots().is_empty(),
+            "can only use this operation on an empty node as the initial insert"
+        );
 
         // confusingly, we store the leftmost pointer alongside the node_high_key in the rightmost key slot
-        match self.slotted_page.insert(node_high_key, &left).await? {
+        match self.slotted_page.insert(high_key, &left).await? {
             Ok(Some(_)) => todo!("duplicate sep in interior?"),
             Ok(None) => {}
-            Err(PageFull) => return Ok(Err(PageFull)),
+            Err(PageFull) => unreachable!("page should not be full after a single insert"),
         };
 
         match self.slotted_page.insert(sep, &right).await? {
             Ok(Some(_)) => todo!("duplicate sep in interior?"),
             Ok(None) => {}
-            Err(PageFull) => return Ok(Err(PageFull)),
+            Err(PageFull) => unreachable!("page should not be full after two inserts"),
         };
 
         Ok(Ok(()))
+    }
+
+    pub(crate) async fn split_root_into(
+        &mut self,
+        left: &mut InteriorPageViewMut<'_, K>,
+        right: &mut InteriorPageViewMut<'_, K>,
+    ) -> nsql_serde::Result<K> {
+        assert!(left.slotted_page.is_empty());
+        assert!(right.slotted_page.is_empty());
+        assert!(self.slotted_page.len() > 1);
+
+        todo!();
+
+        let slots = self.slotted_page.slots();
+        let (lhs, rhs) = slots.split_at(slots.len() / 2);
+        for slot in lhs {
+            let (key, value) = self.slotted_page.get_by_offset(slot.offset()).await?;
+            left.insert(&key, value).await?.unwrap();
+        }
+
+        let mut sep = None;
+        for slot in rhs {
+            let (key, value) = self.slotted_page.get_by_offset(slot.offset()).await?;
+            right.insert(&key, value).await?.unwrap();
+
+            // use the first key in the right page as the separator
+            if sep.is_none() {
+                sep = Some(key);
+            }
+        }
+
+        self.slotted_page.set_len(0);
+
+        Ok(sep.unwrap())
     }
 }

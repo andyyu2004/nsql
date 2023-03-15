@@ -142,7 +142,7 @@ where
     /// Intended for use when splitting a root node.
     /// We keep the root node page number unchanged because it may be referenced as an identifier.
     pub(crate) async fn split_root_into(
-        &self,
+        &mut self,
         left: &mut LeafPageViewMut<'a, K, V>,
         right: &mut LeafPageViewMut<'a, K, V>,
     ) -> nsql_serde::Result<K> {
@@ -151,7 +151,6 @@ where
         assert!(self.slotted_page.len() > 1);
 
         let slots = self.slotted_page.slots();
-        // FIXME use less naive algorithm for inserting into new pages
         let (lhs, rhs) = slots.split_at(slots.len() / 2);
         for slot in lhs {
             let (key, value) = self.slotted_page.get_by_offset(slot.offset()).await?;
@@ -168,6 +167,8 @@ where
                 sep = Some(key);
             }
         }
+
+        self.slotted_page.set_len(0);
 
         Ok(sep.unwrap())
     }

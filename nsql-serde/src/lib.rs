@@ -534,36 +534,39 @@ impl Deserialize for RawIdx {
     }
 }
 
-/// A type that has a value that represents an invalid state that corresponds to `Option::None`
-pub trait Invalid {
-    fn invalid() -> Self;
-}
-
 impl<T> Serialize for Option<T>
 where
-    T: Serialize + Invalid,
+    T: Serialize,
 {
     #[inline]
     async fn serialize(&self, ser: &mut dyn Serializer) -> Result<()> {
         match self {
-            Some(it) => it.serialize(ser).await,
-            None => T::invalid().serialize(ser).await,
+            Some(it) => {
+                ser.write_u8(1).await?;
+                it.serialize(ser).await?;
+            }
+            None => ser.write_u8(0).await?,
         }
+        Ok(())
     }
 }
 
-impl<T: SerializeSized + Invalid> SerializeSized for Option<T> {
-    const SERIALIZED_SIZE: u16 = T::SERIALIZED_SIZE;
+impl<T: SerializeSized> SerializeSized for Option<T> {
+    const SERIALIZED_SIZE: u16 = 1 + T::SERIALIZED_SIZE;
 }
 
 impl<T> Deserialize for Option<T>
 where
-    T: Deserialize + Invalid + PartialEq,
+    T: Deserialize + PartialEq,
 {
     #[inline]
     async fn deserialize(de: &mut dyn Deserializer) -> Result<Self> {
-        let val = T::deserialize(de).await?;
-        if val == T::invalid() { Ok(None) } else { Ok(Some(val)) }
+        let valid = de.read_u8().await?;
+        if valid == 0 {
+            return Ok(None);
+        }
+
+        Ok(Some(T::deserialize(de).await?))
     }
 }
 
