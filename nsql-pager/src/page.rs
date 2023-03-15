@@ -4,9 +4,10 @@ use std::ops::{Add, Deref, DerefMut, Sub};
 use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
-use std::{fmt, io};
+use std::{fmt, io, mem};
 
 use nsql_serde::{Deserialize, Serialize, SerializeSized};
+use nsql_util::static_assert_eq;
 use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 use rkyv::Archive;
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
@@ -106,43 +107,27 @@ pub struct PageIndex {
     idx: NonZeroU32,
 }
 
-#[cfg(test)]
-impl proptest::arbitrary::Arbitrary for PageIndex {
-    type Parameters = ();
-    type Strategy = proptest::strategy::BoxedStrategy<Self>;
-
-    fn arbitrary_with(_args: Self::Parameters) -> proptest::strategy::BoxedStrategy<Self> {
-        use proptest::prelude::Strategy;
-        (0..1000u32).prop_map(PageIndex::new).boxed()
-    }
-}
+static_assert_eq!(mem::size_of::<PageIndex>(), 4);
 
 impl PageIndex {
-    pub(crate) const INVALID: Self = Self { idx: NonZeroU32::MAX };
+    // do not make this public, it is mostly a hack that we haven't entirely managed to get rid of
+    // it is used in the meta page reader
+    pub(crate) const INVALID: Self = Self { idx: unsafe { NonZeroU32::new_unchecked(u32::MAX) } };
 
     #[inline]
     pub(crate) const fn new(idx: u32) -> Self {
-        assert!(
-            idx + 1 < u32::MAX,
-            "page index is too large for a valid page (use `new_maybe_invalid` instead)"
-        );
+        assert!(idx < u32::MAX, "u32::MAX is reserved for invalid page index");
         Self { idx: unsafe { NonZeroU32::new_unchecked(idx + 1) } }
     }
 
     #[inline]
-    pub const fn new_maybe_invalid(idx: u32) -> Self {
-        assert!(idx < u32::MAX, "page index is too large");
-        Self { idx: unsafe { NonZeroU32::new_unchecked(idx + 1) } }
+    pub(crate) fn new_maybe_invalid(idx: u32) -> Option<Self> {
+        if idx == Self::INVALID.as_u32() { None } else { Some(Self::new(idx)) }
     }
 
     #[inline]
     pub(crate) fn is_zero(self) -> bool {
         self.as_u32() == 0
-    }
-
-    #[inline]
-    pub(crate) fn is_valid(self) -> bool {
-        self != Self::INVALID
     }
 
     #[inline]
@@ -293,5 +278,16 @@ impl Sub<PageOffset> for PageIndex {
 
     fn sub(self, rhs: PageOffset) -> Self::Output {
         PageIndex::new(self.idx.get() - rhs.offset)
+    }
+}
+
+#[cfg(test)]
+impl proptest::arbitrary::Arbitrary for PageIndex {
+    type Parameters = ();
+    type Strategy = proptest::strategy::BoxedStrategy<Self>;
+
+    fn arbitrary_with(_args: Self::Parameters) -> proptest::strategy::BoxedStrategy<Self> {
+        use proptest::prelude::Strategy;
+        (0..1000u32).prop_map(PageIndex::new).boxed()
     }
 }

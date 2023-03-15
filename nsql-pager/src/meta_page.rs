@@ -15,10 +15,5 @@ macro_rules! try_io {
 
 use try_io;
 
-const PAGE_IDX_SIZE: usize = std::mem::size_of::<PageIndex>();
-// if this changes, then we have to change the reader and writer to expect a different
-// number of bytes to represent the next block pointer
-static_assert_eq!(PAGE_IDX_SIZE, 4);
-
 #[cfg(test)]
 mod tests;

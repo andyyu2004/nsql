@@ -1,11 +1,12 @@
 use std::pin::Pin;
 use std::task::{ready, Context, Poll};
-use std::{cmp, io};
+use std::{cmp, io, mem};
 
 use bytes::BufMut;
+use nsql_serde::SerializeSized;
 use tokio::io::AsyncWrite;
 
-use super::{try_io, PAGE_IDX_SIZE};
+use super::try_io;
 use crate::{BoxFuture, Page, PageIndex, Pager, Result, PAGE_DATA_SIZE};
 
 /// You must write something with [`crate::meta_page::MetaPageWriter`] before it is valid to be read from.
@@ -21,7 +22,6 @@ impl<'a, P: Pager> MetaPageWriter<'a, P> {
     /// You must not use this page index again as the pager may free it in the case where nothing is written.
     // note: we have to careful if we're writing out the free list, because we can't reuse the free list maybe?
     pub fn new(pager: &'a P, initial_page_idx: PageIndex) -> Self {
-        assert!(initial_page_idx.is_valid(), "passed in invalid initial page index");
         Self {
             pager,
             state: State::PollNext { read_page_fut: Box::pin(pager.read_page(initial_page_idx)) },
@@ -63,9 +63,10 @@ impl<'a, P: Pager> AsyncWrite for MetaPageWriter<'a, P> {
             match &mut self.state {
                 State::PollNext { read_page_fut } => {
                     let page = try_io!(ready!(read_page_fut.as_mut().poll(cx)));
-                    // initialize the next page index to invalid so the reader knows when it's finished
-                    (&mut page.data_mut()[..PAGE_IDX_SIZE]).put_u32(PageIndex::INVALID.as_u32());
-                    self.state = State::Write { page: Some(page), byte_index: PAGE_IDX_SIZE };
+                    // initialize the next page index to invalid so the reader knows won't accidentally keep reading forever
+                    page.data_mut()[..].as_mut().put_u32(PageIndex::INVALID.as_u32());
+                    self.state =
+                        State::Write { page: Some(page), byte_index: mem::size_of::<PageIndex>() };
                 }
                 State::Write { page, byte_index } => {
                     let amt = cmp::min(buf.len(), PAGE_DATA_SIZE - *byte_index);
@@ -90,12 +91,7 @@ impl<'a, P: Pager> AsyncWrite for MetaPageWriter<'a, P> {
                     let next_page_idx = try_io!(ready!(alloc_fut.as_mut().poll(cx)));
 
                     let page = page.take().unwrap();
-
-                    (&mut page.data_mut()[..PAGE_IDX_SIZE]).put_u32(next_page_idx.as_u32());
-                    debug_assert_eq!(
-                        page.data()[..PAGE_IDX_SIZE],
-                        next_page_idx.as_u32().to_be_bytes()
-                    );
+                    page.data_mut()[..].as_mut().put_u32(next_page_idx.as_u32());
 
                     self.state = State::PollWrite {
                         next_page_idx,
@@ -103,7 +99,6 @@ impl<'a, P: Pager> AsyncWrite for MetaPageWriter<'a, P> {
                     };
                 }
                 State::PollWrite { next_page_idx, write_page_fut } => {
-                    assert!(next_page_idx.is_valid());
                     try_io!(ready!(write_page_fut.as_mut().poll(cx)));
                     self.state = State::PollNext {
                         read_page_fut: Box::pin(pager.read_page(*next_page_idx)),
@@ -124,7 +119,7 @@ impl<'a, P: Pager> AsyncWrite for MetaPageWriter<'a, P> {
             match &mut self.state {
                 State::PollNext { read_page_fut } => {
                     let page = try_io!(ready!(read_page_fut.as_mut().poll(cx)));
-                    (&mut page.data_mut()[..PAGE_IDX_SIZE]).put_u32(PageIndex::INVALID.as_u32());
+                    page.data_mut()[..].as_mut().put_u32(PageIndex::INVALID.as_u32());
                     self.state = State::PollWrite {
                         next_page_idx: PageIndex::INVALID,
                         write_page_fut: Box::pin(pager.write_page(page)),

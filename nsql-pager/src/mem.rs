@@ -33,7 +33,6 @@ impl Pager for InMemoryPager {
         let idx =
             self.free_pages.write().pop().unwrap_or_else(|| PageIndex::new(pages.len() as u32));
         pages.push(Page::zeroed(idx));
-        assert!(idx.is_valid() && !idx.is_zero());
         Ok(idx)
     }
 

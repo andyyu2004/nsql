@@ -32,8 +32,8 @@ pub struct FileHeader {
 #[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 struct PagerHeader {
-    free_list_head: PageIndex,
-    meta_page_head: PageIndex,
+    free_list_head: Option<PageIndex>,
+    meta_page_head: Option<PageIndex>,
     page_count: PageIndex,
 }
 
@@ -41,9 +41,9 @@ pub struct SingleFilePager {
     path: PathBuf,
     storage: File<PAGE_SIZE>,
     page_count: AtomicU32,
-    meta_page_head: PageIndex,
+    meta_page_head: Option<PageIndex>,
     free_list: OnceCell<RwLock<Vec<PageIndex>>>,
-    free_list_head: PageIndex,
+    free_list_head: Option<PageIndex>,
 }
 
 #[async_trait::async_trait]
@@ -107,7 +107,7 @@ impl SingleFilePager {
     }
 
     pub fn meta_page_reader(&self) -> MetaPageReader<'_, Self> {
-        MetaPageReader::new(self, self.meta_page_head)
+        MetaPageReader::new(self, self.meta_page_head.expect("no meta page"))
     }
 
     #[inline]
@@ -131,8 +131,8 @@ impl SingleFilePager {
         storage.write_at(FILE_HEADER_START, buf).await?;
 
         let db_header = PagerHeader {
-            free_list_head: PageIndex::INVALID,
-            meta_page_head: PageIndex::INVALID,
+            free_list_head: None,
+            meta_page_head: None,
             page_count: PageIndex::new(N_RESERVED_PAGES),
         };
         db_header.serialize(&mut Cursor::new(&mut buf[..])).await?;
@@ -174,11 +174,12 @@ impl SingleFilePager {
     async fn free_list(&self) -> Result<&RwLock<Vec<PageIndex>>> {
         self.free_list
             .get_or_try_init(|| async {
-                if !self.free_list_head.is_valid() {
-                    return Ok(RwLock::new(vec![]));
-                }
+                let head = match self.free_list_head {
+                    Some(head) => head,
+                    None => return Ok(RwLock::new(vec![])),
+                };
 
-                let mut reader = BufReader::new(MetaPageReader::new(self, self.free_list_head));
+                let mut reader = BufReader::new(MetaPageReader::new(self, head));
                 let free_list = Vec::<PageIndex>::deserialize(&mut reader).await?;
 
                 Ok(RwLock::new(free_list))
@@ -218,7 +219,6 @@ impl SingleFilePager {
 
     /// checks that the given page is within the bounds
     fn assert_page_in_bounds(&self, idx: PageIndex) {
-        assert!(idx.is_valid(), "page index is invalid");
         assert!(
             idx.as_u32() >= N_RESERVED_PAGES,
             "page index `{idx} < {N_RESERVED_PAGES}` is reserved"

@@ -167,12 +167,13 @@ where
             "can only use this operation on an empty node as the initial insert"
         );
 
+        todo!();
         // confusingly, we store the leftmost pointer alongside the node_high_key in the rightmost key slot
-        match self.slotted_page.insert(high_key, &left).await? {
-            Ok(Some(_)) => todo!("duplicate sep in interior?"),
-            Ok(None) => {}
-            Err(PageFull) => unreachable!("page should not be full after a single insert"),
-        };
+        // match self.slotted_page.insert(high_key, &left).await? {
+        //     Ok(Some(_)) => todo!("duplicate sep in interior?"),
+        //     Ok(None) => {}
+        //     Err(PageFull) => unreachable!("page should not be full after a single insert"),
+        // };
 
         match self.slotted_page.insert(sep, &right).await? {
             Ok(Some(_)) => todo!("duplicate sep in interior?"),
