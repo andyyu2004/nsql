@@ -19,7 +19,7 @@ pub struct BTree<K, V> {
 
 impl<K, V> BTree<K, V>
 where
-    K: Ord + Send + Sync,
+    K: Min + Ord + Send + Sync,
     K: Serialize + DeserializeSkip + Ord + fmt::Debug,
     V: Serialize + Deserialize + Eq + Clone + fmt::Debug,
 {
@@ -223,4 +223,12 @@ where
 
         Ok(())
     }
+}
+
+pub trait Min {
+    const MIN: Self;
+}
+
+impl Min for u32 {
+    const MIN: Self = 0;
 }

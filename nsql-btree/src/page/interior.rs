@@ -9,6 +9,7 @@ use rkyv::Archive;
 
 use super::slotted::{SlottedPageView, SlottedPageViewMut};
 use super::PageFull;
+use crate::btree::Min;
 use crate::page::PageHeader;
 
 const BTREE_INTERIOR_PAGE_MAGIC: [u8; 4] = *b"BTPI";
@@ -17,11 +18,12 @@ const BTREE_INTERIOR_PAGE_MAGIC: [u8; 4] = *b"BTPI";
 #[archive_attr(derive(Debug))]
 pub(crate) struct InteriorPageHeader {
     magic: [u8; 4],
+    right_link: Option<PageIndex>,
 }
 
 impl Default for InteriorPageHeader {
     fn default() -> Self {
-        Self { magic: BTREE_INTERIOR_PAGE_MAGIC }
+        Self { magic: BTREE_INTERIOR_PAGE_MAGIC, right_link: None }
     }
 }
 
@@ -75,10 +77,19 @@ where
         Ok(page_idx)
     }
 
-    async fn high_key(&self) -> nsql_serde::Result<K> {
-        let slot = self.slotted_page.slots().last().expect("node should not be empty");
-        let (key, _) = self.slotted_page.get_by_offset(slot.offset()).await?;
-        Ok(key)
+    // a node has a high key iff it is not the rightmost node
+    async fn high_key(&self) -> nsql_serde::Result<Option<K>> {
+        if self.is_rightmost() {
+            return Ok(None);
+        }
+
+        let slot =
+            self.slotted_page.slots().last().expect("slots should be non-empty when not rightmost");
+        self.slotted_page.key_in_slot(slot).await.map(Some)
+    }
+
+    fn is_rightmost(&self) -> bool {
+        self.header.right_link.is_none()
     }
 }
 
@@ -135,7 +146,7 @@ impl<'a, K> InteriorPageViewMut<'a, K> {
 
 impl<'a, K> InteriorPageViewMut<'a, K>
 where
-    K: Serialize + DeserializeSkip + Ord + fmt::Debug,
+    K: Min + Serialize + DeserializeSkip + Ord + fmt::Debug,
 {
     pub(crate) async fn insert(
         &mut self,
@@ -146,7 +157,10 @@ where
             self.slotted_page.slots().len() > 1,
             "can only use this operation on a non-empty node"
         );
-        assert!(sep < &self.high_key().await?, "fixme need to do something about the high key");
+
+        if let Some(high_key) = self.high_key().await? {
+            assert!(sep < &high_key, "fixme need to do something about the high key");
+        }
 
         // FIXME is this even right?
         match self.slotted_page.insert(sep, &page_idx).await? {
@@ -167,13 +181,22 @@ where
             "can only use this operation on an empty node as the initial insert"
         );
 
-        todo!();
-        // confusingly, we store the leftmost pointer alongside the node_high_key in the rightmost key slot
-        // match self.slotted_page.insert(high_key, &left).await? {
-        //     Ok(Some(_)) => todo!("duplicate sep in interior?"),
-        //     Ok(None) => {}
-        //     Err(PageFull) => unreachable!("page should not be full after a single insert"),
-        // };
+        // interior pages logically store `child_page_idx | sep | child_page_idx | sep | ... | child_page_idx`
+        // or more concretely it's `PageIndex | K | PageIndex | K | ... | PageIndex | K` <- rightmost `K` is the `high key`
+        // the slotted page stores key value pairs
+        // physically, the layout is `k | v | k | v | ... | k | v` which is opposite to our logical view
+
+        // FIXME we need a nice way to represent a logical infinity for when there is no high key
+        // something like K::MAX
+        // it seems easier to have a K::MIN rather than K::MAX. Can we make L&Y trees work with low key?
+        // pretty sure it does, we just need to "split towards the left" rather than the right.
+        // That is, we preserve the right node and allocate a new node towards the left?
+
+        match self.slotted_page.insert(&K::MIN, &left).await? {
+            Ok(Some(_)) => todo!("duplicate sep in interior?"),
+            Ok(None) => {}
+            Err(PageFull) => unreachable!("page should not be full after a single insert"),
+        };
 
         match self.slotted_page.insert(sep, &right).await? {
             Ok(Some(_)) => todo!("duplicate sep in interior?"),
