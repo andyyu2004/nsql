@@ -41,13 +41,13 @@ impl Page {
     #[inline]
     pub fn data(&self) -> PageView<'_> {
         let bytes = self.bytes.read();
-        PageView { bytes, read_offset: PAGE_META_LENGTH }
+        PageView { idx: self.idx(), bytes, read_offset: PAGE_META_LENGTH }
     }
 
     #[inline]
     pub fn data_mut(&self) -> PageViewMut<'_> {
         let bytes = self.bytes.write();
-        PageViewMut { bytes, write_offset: PAGE_META_LENGTH }
+        PageViewMut { idx: self.idx(), bytes, write_offset: PAGE_META_LENGTH }
     }
 
     #[inline]
@@ -102,7 +102,7 @@ impl Page {
     rkyv::Serialize,
 )]
 #[repr(transparent)]
-#[archive_attr(derive(Debug))]
+#[archive_attr(derive(Debug, Copy, Clone))]
 pub struct PageIndex {
     idx: NonZeroU32,
 }
@@ -145,8 +145,16 @@ impl fmt::Display for PageIndex {
 
 #[derive(Debug)]
 pub struct PageView<'a> {
+    idx: PageIndex,
     bytes: RwLockReadGuard<'a, [u8; PAGE_SIZE]>,
     read_offset: usize,
+}
+
+impl PageView<'_> {
+    #[inline]
+    pub fn page_idx(&self) -> PageIndex {
+        self.idx
+    }
 }
 
 impl AsyncRead for PageView<'_> {
@@ -167,10 +175,10 @@ impl AsyncRead for PageView<'_> {
     }
 }
 
-impl Deref for PageView<'_> {
+impl<'a> Deref for PageView<'a> {
     type Target = [u8; PAGE_DATA_SIZE];
 
-    fn deref(&self) -> &Self::Target {
+    fn deref(&self) -> &'a Self::Target {
         unsafe { &*(self.bytes[PAGE_META_LENGTH..].as_ptr() as *const [u8; PAGE_DATA_SIZE]) }
     }
 }
@@ -187,8 +195,16 @@ where
 
 #[derive(Debug)]
 pub struct PageViewMut<'a> {
+    idx: PageIndex,
     bytes: RwLockWriteGuard<'a, [u8; PAGE_SIZE]>,
     write_offset: usize,
+}
+
+impl PageViewMut<'_> {
+    #[inline]
+    pub fn page_idx(&self) -> PageIndex {
+        self.idx
+    }
 }
 
 impl AsyncWrite for PageViewMut<'_> {
@@ -230,8 +246,8 @@ impl Deref for PageViewMut<'_> {
     }
 }
 
-impl DerefMut for PageViewMut<'_> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
+impl<'a> DerefMut for PageViewMut<'a> {
+    fn deref_mut(&mut self) -> &'a mut Self::Target {
         unsafe { &mut *(self.bytes[PAGE_META_LENGTH..].as_mut_ptr() as *mut [u8; PAGE_DATA_SIZE]) }
     }
 }

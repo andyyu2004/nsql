@@ -122,7 +122,7 @@ where
                     // reinitialize the root to an interior node and add the two children
                     let mut root = PageViewMut::<K, V>::init_root_interior(&mut leaf_data).await?;
 
-                    root.insert_initial(left_page.page_idx(), &sep, right_page.page_idx())
+                    root.insert_initial(&K::MIN, left_page.page_idx(), &sep, right_page.page_idx())
                         .await?
                         .expect("new root should not be full");
 
@@ -149,10 +149,11 @@ where
         }
     }
 
+    #[async_recursion(?Send)]
     async fn insert_interior(
         &self,
         mut parents: Vec<PageIndex>,
-        sep: &K,
+        key: &K,
         child_idx: PageIndex,
     ) -> Result<()> {
         let parent_idx = parents.pop().expect("non-root leaf must have at least one parent");
@@ -166,7 +167,7 @@ where
             }
         };
 
-        match parent.insert(sep, child_idx).await? {
+        match parent.insert(key, child_idx).await? {
             Ok(()) => {}
             Err(PageFull) => {
                 if parent_view.header.flags.contains(Flags::IS_ROOT) {
@@ -179,44 +180,38 @@ where
                     let mut right_child =
                         PageViewMut::<K, V>::init_interior(&mut right_data).await?;
 
-                    let sep = parent.split_root_into(&mut left_child, &mut right_child).await?;
+                    let sep = parent
+                        .split_root_into(left_page.page_idx(), &mut left_child, &mut right_child)
+                        .await?;
 
-                    // (if *sep < *sep { left_child } else { right_child })
-                    //     .insert(sep, child_idx)
-                    //     .await?
-                    //     .expect("split child should not be full");
+                    (if key < &sep { left_child } else { right_child })
+                        .insert(key, child_idx)
+                        .await?
+                        .expect("split child should not be full");
 
-                    // // reinitialize the root to an interior node and add the two children
-                    // let mut root =
-                    //     PageViewMut::<K, V>::init_root_interior(&mut parent_data).await?;
+                    // reinitialize the root to an interior node and add the two children
+                    let mut root =
+                        PageViewMut::<K, V>::init_root_interior(&mut parent_data).await?;
 
-                    // let hack_high_key = K::MAX;
-
-                    // root.insert_initial(
-                    //     sep,
-                    //     left_page.page_idx(),
-                    //     right_page.page_idx(),
-                    //     &hack_high_key,
-                    // )
-                    // .await?
-                    // .expect("new root should not be full");
+                    root.insert_initial(&K::MIN, left_page.page_idx(), &sep, right_page.page_idx())
+                        .await?
+                        .expect("new root should not be full");
                 } else {
-                    todo!();
                     // split the non-root interior by allocating a new interior and splitting the contents
                     // then we insert the separator key and the new page index into the parent
-                    // let new_page = self.pool.alloc().await?;
-                    // let mut new_data = new_page.page().data_mut();
-                    // let mut new_interior =
-                    //     PageViewMut::<K, V>::init_interior(&mut new_data).await?;
+                    let new_page = self.pool.alloc().await?;
+                    let mut new_data = new_page.page().data_mut();
+                    let mut new_interior =
+                        PageViewMut::<K, V>::init_interior(&mut new_data).await?;
 
-                    // let sep = parent.split_into(&mut new_interior).await?;
+                    let sep = parent.split_into(&mut new_interior).await?;
 
-                    // (if *sep < *sep { parent } else { new_interior })
-                    //     .insert(sep, child_idx)
-                    //     .await?
-                    //     .expect("split interior should not be full");
+                    (if key < &sep { parent } else { new_interior })
+                        .insert(key, child_idx)
+                        .await?
+                        .expect("split interior should not be full");
 
-                    // self.insert_interior(parents, sep, new_page.page_idx()).await?;
+                    self.insert_interior(parents, &sep, new_page.page_idx()).await?;
                 }
             }
         }
@@ -225,6 +220,7 @@ where
     }
 }
 
+// hack to generate "negative infinity" low keys for L&Y trees for left-most nodes
 pub trait Min {
     const MIN: Self;
 }

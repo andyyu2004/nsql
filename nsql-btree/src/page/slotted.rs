@@ -210,7 +210,7 @@ impl<'a, K, V> SlottedPageViewMut<'a, K, V> {
             slot_len: 0,
         };
 
-        let bytes = nsql_rkyv::archive(&header);
+        let bytes = nsql_rkyv::to_bytes(&header);
         buf[..bytes.len()].copy_from_slice(&bytes);
 
         unsafe { Self::create(buf).await }

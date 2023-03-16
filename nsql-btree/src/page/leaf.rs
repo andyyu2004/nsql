@@ -80,7 +80,7 @@ impl<'a, K, V> LeafPageViewMut<'a, K, V> {
     pub(crate) async fn init(data: &'a mut [u8]) -> nsql_serde::Result<LeafPageViewMut<'a, K, V>> {
         const HEADER_SIZE: u16 = mem::size_of::<ArchivedLeafPageHeader>() as u16;
         let (header_bytes, data) = data.split_array_mut::<{ HEADER_SIZE as usize }>();
-        header_bytes.copy_from_slice(&nsql_rkyv::archive(&LeafPageHeader::default()));
+        header_bytes.copy_from_slice(&nsql_rkyv::to_bytes(&LeafPageHeader::default()));
         // the slots start after the page header and the leaf page header
         let prefix_size = PageHeader::SERIALIZED_SIZE + HEADER_SIZE;
 
@@ -115,9 +115,10 @@ where
         self.slotted_page.insert(key, value).await
     }
 
+    // FIXME we need to split left not right and set the left link
     pub(crate) async fn split_into(
         &mut self,
-        new: &mut LeafPageViewMut<'a, K, V>,
+        new: &mut LeafPageViewMut<'_, K, V>,
     ) -> nsql_serde::Result<K> {
         assert!(new.slotted_page.is_empty());
         assert!(self.slotted_page.len() > 1);

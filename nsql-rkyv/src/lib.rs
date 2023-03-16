@@ -4,31 +4,25 @@
 #![feature(generic_const_exprs)]
 #![allow(incomplete_features)]
 
-use std::mem;
-use std::pin::Pin;
-
 use rkyv::ser::serializers::AllocSerializer;
-use rkyv::util::to_bytes;
-use rkyv::{archived_root_mut, Archive, Serialize};
+use rkyv::Serialize;
 
 #[inline]
-pub fn archive<T>(value: &T) -> rkyv::AlignedVec
+pub fn to_bytes<T>(value: &T) -> rkyv::AlignedVec
 where
     T: Serialize<AllocSerializer<4096>>,
-    T: Archive,
 {
-    to_bytes(value).expect("rkyv serialization failed")
+    rkyv::to_bytes(value).expect("rkyv serialization failed")
 }
 
-// /// # Safety
-// /// See [`rkyv::archived_value_mut`]
-// #[inline]
-// pub unsafe fn unarchive_mut<T>(
-//     bytes: Pin<&mut [u8; mem::size_of::<T::Archived>()]>,
-// ) -> Pin<&mut T::Archived>
-// where
-//     T: Archive,
-//     Assert<{ mem::size_of::<T>() == mem::size_of::<T::Archived>() }>: True,
-// {
-//     archived_value_mut::<T>(bytes, mem::size_of::<T>())
-// }
+/// convert `T` to `T::Archived`
+// limited to `Copy` types
+#[inline]
+pub fn to_archive<T>(value: T) -> T::Archived
+where
+    T: Serialize<AllocSerializer<4096>> + Copy,
+    T::Archived: Copy,
+{
+    let bytes = to_bytes(&value);
+    unsafe { *rkyv::archived_root::<T>(&bytes) }
+}

@@ -17,7 +17,7 @@ pub use nsql_fs::Result;
 pub use self::file::SingleFilePager;
 pub use self::mem::InMemoryPager;
 pub use self::meta_page::{MetaPageReader, MetaPageWriter};
-pub use self::page::{Page, PageIndex, PageOffset};
+pub use self::page::{Page, PageIndex, PageOffset, PageView, PageViewMut};
 
 /// The size of a page in bytes minus the size of the page header.
 pub const PAGE_DATA_SIZE: usize = PAGE_SIZE - PAGE_META_LENGTH;
