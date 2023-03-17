@@ -14,11 +14,11 @@ nsql-rkyv = { version = "0.1.0", path = "../nsql-rkyv" }
 nsql-serde = { path = "../nsql-serde" }
 nsql-transaction = { path = "../nsql-transaction" }
 nsql-util = { version = "0.1.0", path = "../nsql-util" }
-proptest = "1.1.0"
 rkyv = { version = "0.7.40", default-features = false }
 rust_decimal = { version = "1.28.1", default-features = false }
-test-strategy = "0.3.0"
 thiserror = "1.0.38"
 
 [dev-dependencies]
 nsql-test = { path = "../nsql-test" }
+proptest = "1.1.0"
+test-strategy = "0.3.0"
