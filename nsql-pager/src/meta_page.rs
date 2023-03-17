@@ -1,11 +1,8 @@
 mod reader;
 mod writer;
 
-use nsql_util::static_assert_eq;
 pub use reader::MetaPageReader;
 pub use writer::MetaPageWriter;
-
-use crate::PageIndex;
 
 macro_rules! try_io {
     ($e:expr) => {

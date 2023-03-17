@@ -70,8 +70,8 @@ impl Pager for SingleFilePager {
         let bytes = self.storage.read_at(offset).await?;
         let page = Page::new(idx, bytes);
 
-        let expected_checksum = page.expected_checksum();
-        let computed_checksum = page.compute_checksum();
+        let expected_checksum = page.expected_checksum().await;
+        let computed_checksum = page.compute_checksum().await;
 
         if expected_checksum != computed_checksum {
             Err(io::Error::new(
@@ -89,9 +89,9 @@ impl Pager for SingleFilePager {
         let idx = page.idx();
         self.assert_page_in_bounds(idx);
         let offset = self.offset_for_page(idx);
-        page.update_checksum();
+        page.update_checksum().await;
 
-        let bytes = *page.bytes();
+        let bytes = *page.bytes().await;
         // drop is important to avoid holding lock across await
         drop(page);
         self.storage.write_at(offset, bytes).await?;

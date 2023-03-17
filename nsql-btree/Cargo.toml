@@ -6,14 +6,12 @@ edition = "2021"
 [dependencies]
 async-recursion = "1.0.2"
 bitflags = "2.0.0-rc.3"
-debugit = "0.2.0"
 nsql-arena = { version = "0.1.0", path = "../nsql-arena" }
 nsql-buffer = {  path = "../nsql-buffer" }
 nsql-pager = { path = "../nsql-pager" }
 nsql-rkyv = { version = "0.1.0", path = "../nsql-rkyv" }
 nsql-serde = { version = "0.1.0", path = "../nsql-serde" }
 nsql-util = { version = "0.1.0", path = "../nsql-util" }
-parking_lot = "0.12.1"
 rkyv = { version = "0.7.40", default-features = false }
 test-strategy = "0.3.0"
 

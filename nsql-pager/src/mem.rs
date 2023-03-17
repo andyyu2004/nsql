@@ -1,4 +1,4 @@
-use parking_lot::RwLock;
+use tokio::sync::RwLock;
 
 use crate::{Page, PageIndex, Pager, Result};
 
@@ -29,28 +29,33 @@ impl Default for InMemoryPager {
 impl Pager for InMemoryPager {
     #[inline]
     async fn alloc_page(&self) -> Result<PageIndex> {
-        let mut pages = self.pages.write();
-        let idx =
-            self.free_pages.write().pop().unwrap_or_else(|| PageIndex::new(pages.len() as u32));
+        let mut pages = self.pages.write().await;
+        let idx = self
+            .free_pages
+            .write()
+            .await
+            .pop()
+            .unwrap_or_else(|| PageIndex::new(pages.len() as u32));
         pages.push(Page::zeroed(idx));
         Ok(idx)
     }
 
     #[inline]
     async fn free_page(&self, idx: PageIndex) -> Result<()> {
-        self.free_pages.write().push(idx);
+        self.free_pages.write().await.push(idx);
         Ok(())
     }
 
     #[inline]
     async fn read_page(&self, idx: PageIndex) -> Result<Page> {
-        Ok(self.pages.read()[idx.as_u32() as usize].clone())
+        Ok(self.pages.read().await[idx.as_u32() as usize].clone())
     }
 
     #[inline]
-    async fn write_page(&self, page: Page) -> Result<()> {
-        let idx = page.idx();
-        self.pages.write()[idx.as_u32() as usize] = page;
+    async fn write_page(&self, _page: Page) -> Result<()> {
+        // this shouldn't be necessary as the page will just be mutated in place?
+        // let idx = page.idx();
+        // self.pages.write().await[idx.as_u32() as usize] = page;
         Ok(())
     }
 }

@@ -27,7 +27,7 @@ where
     pub async fn init(pool: BufferPool) -> Result<Self> {
         let handle = pool.alloc().await?;
         let page = handle.page();
-        let mut data = page.data_mut();
+        let mut data = page.data_mut().await;
 
         PageViewMut::<K, V>::init_root_leaf(&mut data).await?;
         let root_idx = page.idx();
@@ -42,7 +42,7 @@ where
     #[async_recursion(?Send)]
     async fn search_node(&self, idx: PageIndex, key: &K) -> Result<Option<V>> {
         let handle = self.pool.load(idx).await?;
-        let data = handle.page().data();
+        let data = handle.page().data().await;
         let node = unsafe { PageView::<K, V>::create(&data).await? };
         match node {
             PageView::Leaf(leaf) => leaf.get(key).await,
@@ -67,7 +67,7 @@ where
         stack: &mut Vec<PageIndex>,
     ) -> Result<PageIndex> {
         let handle = self.pool.load(idx).await?;
-        let data = handle.page().data();
+        let data = handle.page().data().await;
         let node = unsafe { PageView::<K, V>::create(&data).await? };
         match node {
             PageView::Leaf(_) => Ok(idx),
@@ -93,7 +93,7 @@ where
         value: V,
     ) -> Result<Option<V>> {
         let handle = self.pool.load(leaf_page_idx).await?;
-        let mut leaf_data = handle.page().data_mut();
+        let mut leaf_data = handle.page().data_mut().await;
         let view = unsafe { PageViewMut::<K, V>::create(&mut leaf_data).await? };
         let mut leaf = match view.kind {
             PageViewMutKind::Interior(_) => unreachable!("should have been passed a leaf page"),
@@ -105,11 +105,11 @@ where
             Err(PageFull) => {
                 if view.header.flags.contains(Flags::IS_ROOT) {
                     let left_page = self.pool.alloc().await?;
-                    let mut left_data = left_page.page().data_mut();
+                    let mut left_data = left_page.page().data_mut().await;
                     let mut left_child = PageViewMut::<K, V>::init_leaf(&mut left_data).await?;
 
                     let right_page = self.pool.alloc().await?;
-                    let mut right_data = right_page.page().data_mut();
+                    let mut right_data = right_page.page().data_mut().await;
                     let mut right_child = PageViewMut::<K, V>::init_leaf(&mut right_data).await?;
 
                     let sep = leaf.split_root_into(&mut left_child, &mut right_child).await?;
@@ -131,7 +131,7 @@ where
                     // split the non-root leaf by allocating a new leaf and splitting the contents
                     // then we insert the separator key and the new page index into the parent
                     let new_page = self.pool.alloc().await?;
-                    let mut new_data = new_page.page().data_mut();
+                    let mut new_data = new_page.page().data_mut().await;
                     let mut new_leaf = PageViewMut::<K, V>::init_leaf(&mut new_data).await?;
 
                     let sep = leaf.split_into(&mut new_leaf).await?;
@@ -158,7 +158,7 @@ where
     ) -> Result<()> {
         let parent_idx = parents.pop().expect("non-root leaf must have at least one parent");
         let parent_page = self.pool.load(parent_idx).await?;
-        let mut parent_data = parent_page.page().data_mut();
+        let mut parent_data = parent_page.page().data_mut().await;
         let parent_view = unsafe { PageViewMut::<K, V>::create(&mut parent_data).await? };
         let mut parent = match parent_view.kind {
             PageViewMutKind::Interior(interior) => interior,
@@ -172,11 +172,11 @@ where
             Err(PageFull) => {
                 if parent_view.header.flags.contains(Flags::IS_ROOT) {
                     let left_page = self.pool.alloc().await?;
-                    let mut left_data = left_page.page().data_mut();
+                    let mut left_data = left_page.page().data_mut().await;
                     let mut left_child = PageViewMut::<K, V>::init_interior(&mut left_data).await?;
 
                     let right_page = self.pool.alloc().await?;
-                    let mut right_data = right_page.page().data_mut();
+                    let mut right_data = right_page.page().data_mut().await;
                     let mut right_child =
                         PageViewMut::<K, V>::init_interior(&mut right_data).await?;
 
@@ -200,7 +200,7 @@ where
                     // split the non-root interior by allocating a new interior and splitting the contents
                     // then we insert the separator key and the new page index into the parent
                     let new_page = self.pool.alloc().await?;
-                    let mut new_data = new_page.page().data_mut();
+                    let mut new_data = new_page.page().data_mut().await;
                     let mut new_interior =
                         PageViewMut::<K, V>::init_interior(&mut new_data).await?;
 

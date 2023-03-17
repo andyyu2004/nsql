@@ -72,3 +72,23 @@ fn test_btree_propogate_split() -> nsql_serde::Result<()> {
         Ok(())
     })
 }
+
+// // FIXME write some visualization tools to help see what's going on in the btree
+// #[bench]
+// fn test_btree_propogate_split2() -> nsql_serde::Result<()> {
+//     nsql_test::start(async {
+//         let pool = mk_mem_buffer_pool!();
+//         let btree = BTree::<u32, u64>::init(pool).await?;
+//         const N: u32 = 1000000;
+//         for i in 0..=N {
+//             assert!(btree.insert(i, i as u64).await?.is_none());
+//             assert_eq!(btree.get(&i).await?, Some(i as u64));
+//         }
+
+//         for i in 0..=N {
+//             assert_eq!(btree.get(&i).await?, Some(i as u64));
+//         }
+
+//         Ok(())
+//     })
+// }

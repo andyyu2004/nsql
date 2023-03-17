@@ -20,6 +20,13 @@ pub struct Page {
     bytes: Arc<RwLock<[u8; PAGE_SIZE]>>,
 }
 
+// this is used purely to make `Page` `mem::take`able
+impl Default for Page {
+    fn default() -> Self {
+        Self::zeroed(PageIndex::INVALID)
+    }
+}
+
 impl fmt::Debug for Page {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Page").finish_non_exhaustive()
@@ -39,13 +46,13 @@ impl Page {
 
     /// Get an immutable reference to the data bytes of the page
     #[inline]
-    pub fn data(&self) -> PageView<'_> {
+    pub async fn data(&self) -> PageView<'_> {
         let bytes = self.bytes.read();
         PageView { idx: self.idx(), bytes, read_offset: PAGE_META_LENGTH }
     }
 
     #[inline]
-    pub fn data_mut(&self) -> PageViewMut<'_> {
+    pub async fn data_mut(&self) -> PageViewMut<'_> {
         let bytes = self.bytes.write();
         PageViewMut { idx: self.idx(), bytes, write_offset: PAGE_META_LENGTH }
     }
@@ -61,27 +68,27 @@ impl Page {
     }
 
     #[inline]
-    pub(crate) fn bytes(&self) -> RwLockReadGuard<'_, [u8; PAGE_SIZE]> {
+    pub(crate) async fn bytes(&self) -> RwLockReadGuard<'_, [u8; PAGE_SIZE]> {
         self.bytes.read()
     }
 
     /// Read the checksum from the page header
     #[inline]
-    pub(crate) fn expected_checksum(&self) -> u64 {
-        u64::from_be_bytes(self.bytes()[..PAGE_META_LENGTH].try_into().unwrap())
+    pub(crate) async fn expected_checksum(&self) -> u64 {
+        u64::from_be_bytes(self.bytes().await[..PAGE_META_LENGTH].try_into().unwrap())
     }
 
     #[inline]
-    pub(crate) fn update_checksum(&mut self) {
-        let checksum = self.compute_checksum();
+    pub(crate) async fn update_checksum(&mut self) {
+        let checksum = self.compute_checksum().await;
         self.bytes.write()[0..8].copy_from_slice(&checksum.to_be_bytes());
-        assert!(self.expected_checksum() == checksum);
+        assert!(self.expected_checksum().await == checksum);
     }
 
     /// Compute the checksum of the page and write it to the first 8 bytes of the page.
     #[inline]
-    pub(crate) fn compute_checksum(&self) -> u64 {
-        checksum(self.data().as_ref())
+    pub(crate) async fn compute_checksum(&self) -> u64 {
+        checksum(self.data().await.as_ref())
     }
 }
 
