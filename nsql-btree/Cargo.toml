@@ -3,6 +3,10 @@ name = "nsql-btree"
 version = "0.1.0"
 edition = "2021"
 
+[[bench]]
+name = "benches"
+harness = false
+
 [dependencies]
 async-recursion = "1.0.2"
 bitflags = "2.0.0-rc.3"
@@ -17,3 +21,5 @@ test-strategy = "0.3.0"
 
 [dev-dependencies]
 nsql-test = { version = "0.1.0", path = "../nsql-test" }
+criterion = { version = "0.4.0", features = ["async_tokio"] }
+tokio-uring = "0.4.0"

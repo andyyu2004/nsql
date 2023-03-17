@@ -297,6 +297,7 @@ dependencies = [
  "ciborium",
  "clap 3.2.23",
  "criterion-plot",
+ "futures",
  "itertools",
  "lazy_static",
  "num-traits",
@@ -308,6 +309,7 @@ dependencies = [
  "serde_derive",
  "serde_json",
  "tinytemplate",
+ "tokio",
  "walkdir",
 ]
 
@@ -896,6 +898,7 @@ version = "0.1.0"
 dependencies = [
  "async-recursion",
  "bitflags 2.0.1",
+ "criterion",
  "nsql-arena",
  "nsql-buffer",
  "nsql-pager",
@@ -905,6 +908,7 @@ dependencies = [
  "nsql-util",
  "rkyv",
  "test-strategy",
+ "tokio-uring 0.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
@@ -980,7 +984,7 @@ dependencies = [
  "nsql-test",
  "proptest",
  "test-strategy",
- "tokio-uring",
+ "tokio-uring 0.4.0 (git+https://github.com/tokio-rs/tokio-uring?branch=master)",
 ]
 
 [[package]]
@@ -1090,7 +1094,7 @@ name = "nsql-test"
 version = "0.1.0"
 dependencies = [
  "tempfile",
- "tokio-uring",
+ "tokio-uring 0.4.0 (git+https://github.com/tokio-rs/tokio-uring?branch=master)",
 ]
 
 [[package]]
@@ -1518,6 +1522,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "scoped-tls"
+version = "1.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e1cf6437eb19a8f4a6cc0f7dca544973b0b78843adbfeb3683d1a94a0024a294"
+
+[[package]]
 name = "scopeguard"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1774,6 +1784,20 @@ dependencies = [
  "pin-project-lite",
  "socket2",
  "windows-sys 0.45.0",
+]
+
+[[package]]
+name = "tokio-uring"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0d5e02bb137e030b3a547c65a3bd2f1836d66a97369fdcc69034002b10e155ef"
+dependencies = [
+ "io-uring",
+ "libc",
+ "scoped-tls",
+ "slab",
+ "socket2",
+ "tokio",
 ]
 
 [[package]]
