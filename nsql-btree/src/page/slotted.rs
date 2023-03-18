@@ -11,7 +11,7 @@ use nsql_util::static_assert_eq;
 use rkyv::rend::BigEndian;
 use rkyv::Archive;
 
-use super::{sizeof, PageFull};
+use super::{archived_size_of, PageFull};
 
 // NOTE: the layout of this MUST match the layout of the mutable version
 #[repr(C)]
@@ -68,9 +68,8 @@ where
     pub(crate) async unsafe fn create(
         buf: &'a [u8],
     ) -> nsql_serde::Result<SlottedPageView<'a, K, V>> {
-        let (header_bytes, buf) =
-            buf.split_array_ref::<{ mem::size_of::<ArchivedSlottedPageMeta>() }>();
-        let header = unsafe { rkyv::archived_root::<SlottedPageMeta>(header_bytes) };
+        let (header_bytes, buf) = buf.split_array_ref();
+        let header = unsafe { nsql_rkyv::archived_root::<SlottedPageMeta>(header_bytes) };
 
         let slot_len = header.slot_len.value() as usize;
         let (slot_bytes, data) = buf.split_at(slot_len * mem::size_of::<Slot>());
@@ -130,7 +129,7 @@ impl<K, V> Index<RangeFrom<SlotOffset>> for SlottedPageView<'_, K, V> {
     type Output = [u8];
 
     fn index(&self, offset: RangeFrom<SlotOffset>) -> &Self::Output {
-        let adjusted_offset = offset.start - self.header.slot_len * sizeof!(ArchivedSlot);
+        let adjusted_offset = offset.start - self.header.slot_len * archived_size_of!(Slot);
         &self.data[adjusted_offset.0.value() as usize..]
     }
 }
@@ -138,7 +137,7 @@ impl<K, V> Index<RangeFrom<SlotOffset>> for SlottedPageView<'_, K, V> {
 impl<K, V> IndexMut<RangeFrom<SlotOffset>> for SlottedPageViewMut<'_, K, V> {
     // see SlottedPageViewMut::index
     fn index_mut(&mut self, offset: RangeFrom<SlotOffset>) -> &mut Self::Output {
-        let adjusted_offset = offset.start - self.header.slot_len * sizeof!(ArchivedSlot);
+        let adjusted_offset = offset.start - self.header.slot_len * archived_size_of!(Slot);
         &mut self.data[adjusted_offset.0.value() as usize..]
     }
 }
@@ -159,7 +158,7 @@ impl<K, V> Index<RangeFrom<SlotOffset>> for SlottedPageViewMut<'_, K, V> {
     fn index(&self, offset: RangeFrom<SlotOffset>) -> &Self::Output {
         // adjust the offset to be relative to the start of the slots
         // as we keep shifting the slots and data around the actual offsets change dependending on the number of slots
-        let adjusted_offset = offset.start - self.header.slot_len * sizeof!(ArchivedSlot);
+        let adjusted_offset = offset.start - self.header.slot_len * archived_size_of!(Slot);
         &self.data[adjusted_offset.0.value() as usize..]
     }
 }
@@ -202,8 +201,8 @@ impl<'a, K, V> SlottedPageViewMut<'a, K, V> {
         buf: &'a mut [u8],
         prefix_size: u16,
     ) -> nsql_serde::Result<SlottedPageViewMut<'a, K, V>> {
-        let free_end = PAGE_DATA_SIZE as u16 - prefix_size - sizeof!(ArchivedSlottedPageMeta);
-        assert_eq!(free_end, buf.len() as u16 - sizeof!(ArchivedSlottedPageMeta));
+        let free_end = PAGE_DATA_SIZE as u16 - prefix_size - archived_size_of!(SlottedPageMeta);
+        assert_eq!(free_end, buf.len() as u16 - archived_size_of!(SlottedPageMeta));
         let header = SlottedPageMeta {
             free_start: SlotOffset::from(0),
             free_end: SlotOffset::from(free_end),
@@ -220,9 +219,8 @@ impl<'a, K, V> SlottedPageViewMut<'a, K, V> {
     pub(crate) async unsafe fn create(
         buf: &'a mut [u8],
     ) -> nsql_serde::Result<SlottedPageViewMut<'a, K, V>> {
-        let (header_bytes, buf) =
-            buf.split_array_mut::<{ mem::size_of::<ArchivedSlottedPageMeta>() }>();
-        let header = unsafe { rkyv::archived_root_mut::<SlottedPageMeta>(Pin::new(header_bytes)) };
+        let (header_bytes, buf) = buf.split_array_mut();
+        let header = unsafe { nsql_rkyv::archived_root_mut::<SlottedPageMeta>(header_bytes) };
 
         let slot_len = header.slot_len.value() as usize;
         let (slot_bytes, data) = buf.split_at_mut(slot_len * mem::size_of::<Slot>());
@@ -267,7 +265,7 @@ where
         let key_len = key.serialized_size().await?;
         let value_len = value.serialized_size().await?;
         let len = key_len + value_len;
-        if len + sizeof!(ArchivedSlot) > self.header.free_end - self.header.free_start {
+        if len + archived_size_of!(Slot) > self.header.free_end - self.header.free_start {
             return Ok(Err(PageFull));
         }
 
@@ -306,7 +304,7 @@ where
             );
         }
 
-        self.header.free_start += sizeof!(ArchivedSlot);
+        self.header.free_start += archived_size_of!(Slot);
 
         // we have to shift over the slice of data as we expect it to start after the slots (at `free_start`)
         // we some small tricks to avoid lifetime issues without using unsafe

@@ -2,30 +2,39 @@ mod interior;
 mod leaf;
 mod slotted;
 
-use std::fmt;
+use std::pin::Pin;
+use std::{fmt, mem};
 
 use nsql_pager::PAGE_DATA_SIZE;
 use nsql_serde::{Deserialize, DeserializeSkip, Serialize, SerializeSized};
+use rkyv::Archive;
 
 pub(crate) use self::interior::{InteriorPageView, InteriorPageViewMut};
 pub(crate) use self::leaf::{LeafPageView, LeafPageViewMut};
 use crate::node::Flags;
 
-macro_rules! sizeof {
+macro_rules! archived_size_of {
     ($ty:ty) => {
-        mem::size_of::<$ty>() as u16
+        ::std::mem::size_of::<::rkyv::Archived<$ty>>() as u16
     };
 }
 
-pub(crate) use sizeof;
+pub(crate) use archived_size_of;
 
 #[derive(Debug)]
 pub(crate) struct PageFull;
 
-#[derive(Debug, SerializeSized, Deserialize)]
+#[derive(Debug, Archive, rkyv::Serialize)]
 pub(crate) struct PageHeader {
     pub(crate) flags: Flags,
-    filler: [u8; 3],
+    // to make it 4-byte aligned
+    padding: [u8; 3],
+}
+
+impl PageHeader {
+    pub(crate) fn new(flags: Flags) -> Self {
+        Self { flags, padding: [0; 3] }
+    }
 }
 
 pub(crate) enum PageView<'a, K, V> {
@@ -41,21 +50,18 @@ where
     pub(crate) async unsafe fn create(
         data: &'a [u8; PAGE_DATA_SIZE],
     ) -> nsql_serde::Result<PageView<'a, K, V>> {
-        let header = PageHeader::deserialize(&mut &data[..]).await?;
+        let (header_bytes, data) = data.split_array_ref();
+        let header = unsafe { nsql_rkyv::archived_root::<PageHeader>(header_bytes) };
         if header.flags.contains(Flags::IS_LEAF) {
-            LeafPageView::create(&data[PageHeader::SERIALIZED_SIZE as usize..])
-                .await
-                .map(Self::Leaf)
+            LeafPageView::create(data).await.map(Self::Leaf)
         } else {
-            InteriorPageView::create(&data[PageHeader::SERIALIZED_SIZE as usize..])
-                .await
-                .map(Self::Interior)
+            InteriorPageView::create(data).await.map(Self::Interior)
         }
     }
 }
 
 pub(crate) struct PageViewMut<'a, K, V> {
-    pub(crate) header: PageHeader,
+    pub(crate) header: Pin<&'a mut ArchivedPageHeader>,
     pub(crate) kind: PageViewMutKind<'a, K, V>,
 }
 
@@ -82,8 +88,9 @@ impl<'a, K, V> PageViewMut<'a, K, V> {
         flags: Flags,
     ) -> nsql_serde::Result<InteriorPageViewMut<'a, K>> {
         data.fill(0);
-        PageHeader { flags, filler: [0; 3] }.serialize_into(data).await?;
-        InteriorPageViewMut::<K>::init(&mut data[PageHeader::SERIALIZED_SIZE as usize..]).await
+        let (header_bytes, data) = data.split_array_mut();
+        nsql_rkyv::serialize_into_buf(header_bytes, &PageHeader::new(flags));
+        InteriorPageViewMut::<K>::init(data).await
     }
 
     pub(crate) async fn init_root_leaf(
@@ -103,23 +110,21 @@ impl<'a, K, V> PageViewMut<'a, K, V> {
         flags: Flags,
     ) -> nsql_serde::Result<LeafPageViewMut<'a, K, V>> {
         data.fill(0);
-        PageHeader { flags, filler: [0; 3] }.serialize_into(data).await?;
+        let (header_bytes, data) = data.split_array_mut();
+        nsql_rkyv::serialize_into_buf(header_bytes, &PageHeader::new(flags));
 
-        LeafPageViewMut::<K, V>::init(&mut data[PageHeader::SERIALIZED_SIZE as usize..]).await
+        LeafPageViewMut::<K, V>::init(data).await
     }
 
     pub(crate) async unsafe fn create(
         data: &'a mut [u8; PAGE_DATA_SIZE],
     ) -> nsql_serde::Result<PageViewMut<'a, K, V>> {
-        let header = PageHeader::deserialize(&mut &data[..]).await?;
+        let (header_bytes, data) = data.split_array_mut();
+        let header = unsafe { nsql_rkyv::archived_root_mut::<PageHeader>(header_bytes) };
         let kind = if header.flags.contains(Flags::IS_LEAF) {
-            LeafPageViewMut::<'a, K, V>::create(&mut data[PageHeader::SERIALIZED_SIZE as usize..])
-                .await
-                .map(PageViewMutKind::Leaf)
+            LeafPageViewMut::<'a, K, V>::create(data).await.map(PageViewMutKind::Leaf)
         } else {
-            InteriorPageViewMut::<'a, K>::create(&mut data[PageHeader::SERIALIZED_SIZE as usize..])
-                .await
-                .map(PageViewMutKind::Interior)
+            InteriorPageViewMut::<'a, K>::create(data).await.map(PageViewMutKind::Interior)
         }?;
 
         Ok(PageViewMut { header, kind })

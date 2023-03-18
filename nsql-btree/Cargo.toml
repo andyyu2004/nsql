@@ -9,7 +9,7 @@ harness = false
 
 [dependencies]
 async-recursion = "1.0.2"
-bitflags = "2.0.0-rc.3"
+bitflags = "2"
 nsql-arena = { version = "0.1.0", path = "../nsql-arena" }
 nsql-buffer = {  path = "../nsql-buffer" }
 nsql-pager = { path = "../nsql-pager" }

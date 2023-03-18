@@ -3,13 +3,13 @@ use std::pin::Pin;
 use std::{fmt, io, mem};
 
 use nsql_pager::PageIndex;
-use nsql_serde::{DeserializeSkip, Serialize, SerializeSized};
+use nsql_serde::{DeserializeSkip, Serialize};
 use nsql_util::static_assert_eq;
 use rkyv::Archive;
 
 use super::slotted::{SlottedPageView, SlottedPageViewMut};
-use super::PageFull;
-use crate::page::PageHeader;
+use super::{PageFull, PageHeader};
+use crate::page::archived_size_of;
 
 const BTREE_INTERIOR_PAGE_MAGIC: [u8; 4] = *b"BTPI";
 
@@ -52,9 +52,8 @@ where
     pub(crate) async unsafe fn create(
         data: &'a [u8],
     ) -> nsql_serde::Result<InteriorPageView<'a, K>> {
-        const HEADER_SIZE: usize = mem::size_of::<ArchivedInteriorPageHeader>();
-        let (header_bytes, data) = data.split_array_ref::<{ HEADER_SIZE }>();
-        let header = rkyv::archived_root::<InteriorPageHeader>(header_bytes);
+        let (header_bytes, data) = data.split_array_ref();
+        let header = nsql_rkyv::archived_root::<InteriorPageHeader>(header_bytes);
         header.check_magic()?;
 
         let slotted_page = SlottedPageView::create(data).await?;
@@ -112,11 +111,10 @@ impl<'a, K> Deref for InteriorPageViewMut<'a, K> {
 impl<'a, K> InteriorPageViewMut<'a, K> {
     /// initialize a new leaf page
     pub(crate) async fn init(data: &'a mut [u8]) -> nsql_serde::Result<InteriorPageViewMut<'a, K>> {
-        const HEADER_SIZE: usize = mem::size_of::<ArchivedInteriorPageHeader>();
-        let (header_bytes, data) = data.split_array_mut::<{ HEADER_SIZE }>();
-        header_bytes.copy_from_slice(&nsql_rkyv::to_bytes(&InteriorPageHeader::default()));
+        let (header_bytes, data) = data.split_array_mut();
+        nsql_rkyv::serialize_into_buf(header_bytes, &InteriorPageHeader::default());
         // the slots start after the page header and the interior page header
-        let prefix_size = PageHeader::SERIALIZED_SIZE + HEADER_SIZE as u16;
+        let prefix_size = archived_size_of!(PageHeader) + archived_size_of!(InteriorPageHeader);
         let slotted_page = SlottedPageViewMut::<'a, K, PageIndex>::init(data, prefix_size).await?;
 
         let header =

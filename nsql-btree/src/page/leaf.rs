@@ -8,7 +8,7 @@ use rkyv::Archive;
 use super::slotted::SlottedPageViewMut;
 use super::PageFull;
 use crate::page::slotted::SlottedPageView;
-use crate::page::PageHeader;
+use crate::page::{archived_size_of, PageHeader};
 
 const BTREE_LEAF_PAGE_MAGIC: [u8; 4] = *b"BTPL";
 
@@ -51,9 +51,8 @@ where
     pub(crate) async unsafe fn create(
         data: &'a [u8],
     ) -> nsql_serde::Result<LeafPageView<'a, K, V>> {
-        let (header_bytes, data) =
-            data.split_array_ref::<{ mem::size_of::<ArchivedLeafPageHeader>() }>();
-        let header = rkyv::archived_root::<LeafPageHeader>(header_bytes);
+        let (header_bytes, data) = data.split_array_ref();
+        let header = nsql_rkyv::archived_root::<LeafPageHeader>(header_bytes);
         header.check_magic()?;
 
         let slotted_page = SlottedPageView::<'a, K, V>::create(data).await?;
@@ -78,13 +77,12 @@ impl<'a, K, V> LeafPageViewMut<'a, K, V> {
 
     /// initialize a new leaf page
     pub(crate) async fn init(data: &'a mut [u8]) -> nsql_serde::Result<LeafPageViewMut<'a, K, V>> {
-        const HEADER_SIZE: u16 = mem::size_of::<ArchivedLeafPageHeader>() as u16;
-        let (header_bytes, data) = data.split_array_mut::<{ HEADER_SIZE as usize }>();
-        header_bytes.copy_from_slice(&nsql_rkyv::to_bytes(&LeafPageHeader::default()));
-        // the slots start after the page header and the leaf page header
-        let prefix_size = PageHeader::SERIALIZED_SIZE + HEADER_SIZE;
+        let (header_bytes, data) = data.split_array_mut();
+        nsql_rkyv::serialize_into_buf(header_bytes, &LeafPageHeader::default());
+        let header = unsafe { nsql_rkyv::archived_root_mut::<LeafPageHeader>(header_bytes) };
 
-        let header = unsafe { rkyv::archived_root_mut::<LeafPageHeader>(Pin::new(header_bytes)) };
+        // the slots start after the page header and the leaf page header
+        let prefix_size = archived_size_of!(PageHeader) + archived_size_of!(LeafPageHeader);
         let slotted_page = SlottedPageViewMut::<'a, K, V>::init(data, prefix_size).await?;
 
         Ok(Self { header, slotted_page })
@@ -93,9 +91,8 @@ impl<'a, K, V> LeafPageViewMut<'a, K, V> {
     pub(crate) async unsafe fn create(
         data: &'a mut [u8],
     ) -> nsql_serde::Result<LeafPageViewMut<'a, K, V>> {
-        let (header_bytes, data) =
-            data.split_array_mut::<{ mem::size_of::<ArchivedLeafPageHeader>() }>();
-        let header = rkyv::archived_root_mut::<LeafPageHeader>(Pin::new(header_bytes));
+        let (header_bytes, data) = data.split_array_mut();
+        let header = nsql_rkyv::archived_root_mut::<LeafPageHeader>(header_bytes);
         header.check_magic()?;
         let slotted_page = SlottedPageViewMut::create(data).await?;
         Ok(Self { header, slotted_page })

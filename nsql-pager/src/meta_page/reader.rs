@@ -70,7 +70,6 @@ impl<P: Pager> AsyncRead for MetaPageReader<'_, P> {
 
                     if *byte_index == PAGE_DATA_SIZE - mem::size_of::<PageIndex>() {
                         let next_page_idx = PageIndex::new_maybe_invalid(view.as_ref().get_u32());
-                        dbg!(next_page_idx);
                         drop(view);
                         self.state = State::NeedNext { next_page_idx };
                     }
