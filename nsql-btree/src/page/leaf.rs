@@ -1,8 +1,8 @@
 use std::pin::Pin;
-use std::{fmt, io, mem};
+use std::{fmt, io};
 
 use nsql_pager::PageIndex;
-use nsql_serde::{Deserialize, DeserializeSkip, Serialize, SerializeSized};
+use nsql_serde::{Deserialize, DeserializeSkip, Serialize};
 use rkyv::Archive;
 
 use super::slotted::SlottedPageViewMut;

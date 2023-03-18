@@ -3,10 +3,10 @@ mod leaf;
 mod slotted;
 
 use std::pin::Pin;
-use std::{fmt, mem};
+use std::{fmt};
 
 use nsql_pager::PAGE_DATA_SIZE;
-use nsql_serde::{Deserialize, DeserializeSkip, Serialize, SerializeSized};
+use nsql_serde::{Deserialize, DeserializeSkip};
 use rkyv::Archive;
 
 pub(crate) use self::interior::{InteriorPageView, InteriorPageViewMut};

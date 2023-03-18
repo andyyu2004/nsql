@@ -105,11 +105,6 @@ where
         .await
     }
 
-    pub(super) async fn high_key(&self) -> nsql_serde::Result<K> {
-        let slot = self.slots.last().expect("page should not be empty");
-        self.key_in_slot(slot).await
-    }
-
     pub(super) async fn key_in_slot(&self, slot: &Slot) -> nsql_serde::Result<K> {
         let mut de = &self[slot.offset..];
         K::deserialize(&mut de).await
