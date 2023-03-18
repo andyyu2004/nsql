@@ -1,14 +1,16 @@
+use std::ops::Deref;
 use std::pin::Pin;
 use std::{fmt, io};
 
 use nsql_pager::PageIndex;
-use nsql_serde::{Deserialize, DeserializeSkip, Serialize};
-use rkyv::Archive;
+use nsql_util::static_assert_eq;
+use rkyv::{Archive, Archived};
 
 use super::slotted::SlottedPageViewMut;
 use super::PageFull;
 use crate::page::slotted::SlottedPageView;
 use crate::page::{archived_size_of, PageHeader};
+use crate::Rkyv;
 
 const BTREE_LEAF_PAGE_MAGIC: [u8; 4] = *b"BTPL";
 
@@ -38,15 +40,17 @@ impl Default for LeafPageHeader {
     }
 }
 
+#[repr(C)]
 pub(crate) struct LeafPageView<'a, K, V> {
-    header: &'a ArchivedLeafPageHeader,
+    header: &'a Archived<LeafPageHeader>,
     slotted_page: SlottedPageView<'a, K, V>,
 }
 
 impl<'a, K, V> LeafPageView<'a, K, V>
 where
-    K: Ord + DeserializeSkip + fmt::Debug,
-    V: Deserialize + fmt::Debug,
+    K: Rkyv + fmt::Debug,
+    K::Archived: fmt::Debug + Ord + PartialOrd<K>,
+    V: Rkyv + fmt::Debug,
 {
     pub(crate) async unsafe fn create(
         data: &'a [u8],
@@ -59,22 +63,35 @@ where
         Ok(Self { header, slotted_page })
     }
 
-    pub(crate) async fn get(&self, key: &K) -> nsql_serde::Result<Option<V>> {
+    pub(crate) async fn get(&self, key: &K::Archived) -> nsql_serde::Result<Option<&V::Archived>> {
         self.slotted_page.get(key).await
+    }
+
+    pub(crate) fn low_key(&self) -> nsql_serde::Result<&K::Archived> {
+        self.slotted_page.low_key()
     }
 }
 
 #[derive(Debug)]
+#[repr(C)]
 pub(crate) struct LeafPageViewMut<'a, K, V> {
-    header: Pin<&'a mut ArchivedLeafPageHeader>,
+    header: Pin<&'a mut Archived<LeafPageHeader>>,
     slotted_page: SlottedPageViewMut<'a, K, V>,
 }
 
-impl<'a, K, V> LeafPageViewMut<'a, K, V> {
-    pub(crate) fn slotted(&self) -> &SlottedPageViewMut<'a, K, V> {
-        &self.slotted_page
-    }
+impl<'a, K, V> Deref for LeafPageViewMut<'a, K, V> {
+    type Target = LeafPageView<'a, K, V>;
 
+    fn deref(&self) -> &Self::Target {
+        static_assert_eq!(
+            std::mem::size_of::<LeafPageViewMut<'a, (), ()>>(),
+            std::mem::size_of::<LeafPageView<'a, (), ()>>()
+        );
+        unsafe { &*(self as *const _ as *const Self::Target) }
+    }
+}
+
+impl<'a, K, V> LeafPageViewMut<'a, K, V> {
     /// initialize a new leaf page
     pub(crate) async fn init(data: &'a mut [u8]) -> nsql_serde::Result<LeafPageViewMut<'a, K, V>> {
         let (header_bytes, data) = data.split_array_mut();
@@ -101,14 +118,15 @@ impl<'a, K, V> LeafPageViewMut<'a, K, V> {
 
 impl<'a, K, V> LeafPageViewMut<'a, K, V>
 where
-    K: Serialize + DeserializeSkip + Ord + fmt::Debug,
-    V: Serialize + Deserialize + fmt::Debug,
+    K: Rkyv + Ord + fmt::Debug,
+    K::Archived: fmt::Debug + Ord + PartialOrd<K>,
+    V: Rkyv + fmt::Debug,
 {
     pub(crate) async fn insert(
         &mut self,
-        key: &K,
-        value: &V,
-    ) -> nsql_serde::Result<Result<Option<V>, PageFull>> {
+        key: &K::Archived,
+        value: &V::Archived,
+    ) -> nsql_serde::Result<Result<(), PageFull>> {
         self.slotted_page.insert(key, value).await
     }
 
@@ -116,7 +134,7 @@ where
     pub(crate) async fn split_into(
         &mut self,
         new: &mut LeafPageViewMut<'_, K, V>,
-    ) -> nsql_serde::Result<K> {
+    ) -> nsql_serde::Result<&K::Archived> {
         assert!(new.slotted_page.is_empty());
         assert!(self.slotted_page.len() > 1);
 
@@ -124,9 +142,9 @@ where
         let (lhs, rhs) = slots.split_at(slots.len() / 2);
 
         let mut sep = None;
-        for slot in rhs {
-            let (key, value) = self.slotted_page.get_by_offset(slot.offset()).await?;
-            new.slotted_page.insert(&key, &value).await?.expect("new page should not be full");
+        for &slot in rhs {
+            let (key, value) = self.slotted_page.get_by_slot(slot).await?;
+            new.slotted_page.insert(key, value).await?.expect("new page should not be full");
             if sep.is_none() {
                 sep = Some(key);
             }
@@ -134,40 +152,34 @@ where
 
         self.slotted_page.set_len(lhs.len() as u16);
 
-        Ok(sep.unwrap())
+        todo!();
+        // Ok(sep.unwrap())
     }
 
     /// Intended for use when splitting a root node.
     /// We keep the root node page number unchanged because it may be referenced as an identifier.
     pub(crate) async fn split_root_into(
         &mut self,
-        left: &mut LeafPageViewMut<'a, K, V>,
-        right: &mut LeafPageViewMut<'a, K, V>,
-    ) -> nsql_serde::Result<K> {
+        left: &mut LeafPageViewMut<'_, K, V>,
+        right: &mut LeafPageViewMut<'_, K, V>,
+    ) -> nsql_serde::Result<()> {
         assert!(left.slotted_page.is_empty());
         assert!(right.slotted_page.is_empty());
         assert!(self.slotted_page.len() > 1);
 
         let slots = self.slotted_page.slots();
         let (lhs, rhs) = slots.split_at(slots.len() / 2);
-        for slot in lhs {
-            let (key, value) = self.slotted_page.get_by_offset(slot.offset()).await?;
-            left.insert(&key, &value).await?.unwrap();
+        for &slot in lhs {
+            let (key, value) = self.slotted_page.get_by_slot(slot).await?;
+            left.insert(key, value).await?.unwrap();
         }
 
-        let mut sep = None;
-        for slot in rhs {
-            let (key, value) = self.slotted_page.get_by_offset(slot.offset()).await?;
-            right.insert(&key, &value).await?.unwrap();
-
-            // use the first key in the right page as the separator
-            if sep.is_none() {
-                sep = Some(key);
-            }
+        for &slot in rhs {
+            let (key, value) = self.slotted_page.get_by_slot(slot).await?;
+            right.insert(key, value).await?.unwrap();
         }
 
         self.slotted_page.set_len(0);
-
-        Ok(sep.unwrap())
+        Ok(())
     }
 }

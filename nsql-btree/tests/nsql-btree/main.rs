@@ -16,7 +16,7 @@ fn test_btree_insert_and_get() -> nsql_serde::Result<()> {
     nsql_test::start(async {
         let pool = mk_mem_buffer_pool!();
         let btree = BTree::<u32, u64>::init(pool).await?;
-        assert!(btree.insert(1, 2).await?.is_none());
+        btree.insert(&1, &2).await?;
         assert_eq!(btree.get(&1).await?, Some(2));
         Ok(())
     })
@@ -28,7 +28,7 @@ fn test_btree_insert_many_and_get() -> nsql_serde::Result<()> {
         let pool = mk_mem_buffer_pool!();
         let btree = BTree::<u32, u64>::init(pool).await?;
         for i in 1..200 {
-            assert!(btree.insert(i, i as u64).await?.is_none());
+            btree.insert(&i, &(i as u64)).await?;
             assert_eq!(btree.get(&i).await?, Some(i as u64));
         }
         Ok(())
@@ -42,7 +42,7 @@ fn test_btree_root_page_full() -> nsql_serde::Result<()> {
         let btree = BTree::<u32, u64>::init(pool).await?;
         const N: u32 = 50000;
         for i in 0..=N {
-            assert!(btree.insert(i, i as u64).await?.is_none());
+            btree.insert(&i, &(i as u64)).await?;
             assert_eq!(btree.get(&i).await?, Some(i as u64));
         }
 
@@ -61,7 +61,7 @@ fn test_btree_propogate_split() -> nsql_serde::Result<()> {
         let btree = BTree::<u32, u64>::init(pool).await?;
         const N: u32 = 100000;
         for i in 0..=N {
-            assert!(btree.insert(i, i as u64).await?.is_none());
+            btree.insert(&i, &(i as u64)).await?;
             assert_eq!(btree.get(&i).await?, Some(i as u64));
         }
 

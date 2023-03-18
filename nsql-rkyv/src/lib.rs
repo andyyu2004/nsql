@@ -1,15 +1,27 @@
 //! utility functions for using rkyv
-//! we support only `archive(as = "Self")` types
 
-#![feature(generic_const_exprs)]
+#![feature(generic_const_exprs, specialization, min_specialization, rustc_attrs)]
 #![allow(incomplete_features)]
 
 use std::mem;
 use std::pin::Pin;
 
 use rkyv::ser::serializers::{AllocSerializer, BufferSerializer};
-use rkyv::ser::Serializer;
-use rkyv::{Archive, Serialize};
+use rkyv::ser::Serializer as _;
+use rkyv::validation::validators::DefaultValidator;
+use rkyv::{
+    Archive, ArchiveUnsized, CheckBytes, Deserialize, Infallible, Serialize, SerializeUnsized,
+};
+
+pub type DefaultSerializer = rkyv::ser::serializers::AllocSerializer<4096>;
+
+#[inline]
+pub fn deserialize<A, T>(archived: &A) -> T
+where
+    A: Deserialize<T, Infallible> + ?Sized,
+{
+    archived.deserialize(&mut Infallible).unwrap()
+}
 
 #[inline]
 pub fn serialize_into_buf<'a, T>(buf: &'a mut [u8; mem::size_of::<T::Archived>()], value: &T)
@@ -24,6 +36,25 @@ where
             std::any::type_name::<T::Archived>(),
         )
     });
+}
+
+/// # Safety
+/// The archived value must start at the beginning of the given buffer
+/// Also refer to [`rkyv::archived_unsized_value`]
+pub unsafe fn archived_unsized<T>(bytes: &[u8]) -> &T::Archived
+where
+    T: ArchiveUnsized + ?Sized,
+{
+    rkyv::archived_unsized_value::<T>(bytes, 0)
+}
+
+pub fn serialize_unsized<T>(value: &T) -> rkyv::AlignedVec
+where
+    T: SerializeUnsized<DefaultSerializer> + ?Sized,
+{
+    let mut serializer = AllocSerializer::default();
+    let _pos = serializer.serialize_unsized_value(value).expect("should have enough scratch space");
+    serializer.into_serializer().into_inner()
 }
 
 /// # Safety
@@ -42,10 +73,19 @@ pub unsafe fn archived_root_mut<T: Archive>(
     rkyv::archived_root_mut::<T>(Pin::new(bytes))
 }
 
+/// # Safety
+/// refer to [`rkyv::archived_value`]
+pub unsafe fn archived_value<T>(bytes: &[u8], pos: usize) -> &T::Archived
+where
+    T: Archive,
+{
+    rkyv::archived_value::<T>(bytes, pos)
+}
+
 #[inline]
 pub fn to_bytes<T>(value: &T) -> rkyv::AlignedVec
 where
-    T: Serialize<AllocSerializer<4096>>,
+    T: Serialize<DefaultSerializer>,
 {
     rkyv::to_bytes(value).expect("rkyv serialization failed")
 }
@@ -69,10 +109,10 @@ mod tests {
 
     use rkyv::{Archive, Serialize};
 
-    use crate::{serialize_into_buf, to_bytes};
+    use crate::{serialize_into_buf, serialize_unsized, to_bytes};
 
     #[test]
-    fn test_serialize_into_buf() {
+    fn test_serialize_primitive_into_buf() {
         let mut buf = [0u8; 4];
         let value = 0x12345678u32;
         serialize_into_buf(&mut buf, &value);
@@ -80,7 +120,7 @@ mod tests {
     }
 
     #[test]
-    fn test_serialize_into_buf_2() {
+    fn test_serialize_struct_into_buf() {
         #[derive(Debug, Archive, Serialize, Default)]
         struct S {
             a: u32,
@@ -96,5 +136,22 @@ mod tests {
         let value = 0x12345678u32;
         let bytes = to_bytes(&value);
         assert_eq!(bytes.as_slice(), [0x12, 0x34, 0x56, 0x78]);
+    }
+
+    #[test]
+    fn test_serialize_unsized() {
+        let mut value = [0u8; 24];
+        value.iter_mut().enumerate().for_each(|(i, v)| *v = i as u8);
+
+        let bytes = serialize_unsized(&value[..]);
+        dbg!(&bytes);
+        // let archived_value = unsafe { archived_unsized::<[u8]>(&bytes[..]) };
+        let archived_value = unsafe { rkyv::archived_unsized_root::<[u8]>(&bytes[..]) };
+
+        dbg!(bytes.len());
+        dbg!(
+            bytes.len() - mem::size_of::<rkyv::RelPtr<<[u8] as rkyv::ArchiveUnsized>::Archived>>()
+        );
+        assert_eq!(archived_value, value);
     }
 }

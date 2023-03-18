@@ -9,7 +9,7 @@ use std::{fmt, io, mem};
 use nsql_serde::{Deserialize, Serialize, SerializeSized};
 use nsql_util::static_assert_eq;
 use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
-use rkyv::Archive;
+use rkyv::{Archive, Archived};
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 
 use crate::{PAGE_DATA_SIZE, PAGE_META_LENGTH, PAGE_SIZE};
@@ -107,11 +107,25 @@ impl Page {
     SerializeSized,
     Archive,
     rkyv::Serialize,
+    rkyv::Deserialize,
 )]
 #[repr(transparent)]
-#[archive_attr(derive(Debug, Copy, Clone))]
+#[archive(compare(PartialEq, PartialOrd))]
+#[archive_attr(derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord))]
 pub struct PageIndex {
     idx: NonZeroU32,
+}
+
+impl From<Archived<PageIndex>> for PageIndex {
+    fn from(value: Archived<PageIndex>) -> Self {
+        Self { idx: value.idx.value() }
+    }
+}
+
+impl From<PageIndex> for ArchivedPageIndex {
+    fn from(idx: PageIndex) -> Self {
+        Self { idx: idx.idx.into() }
+    }
 }
 
 static_assert_eq!(mem::size_of::<PageIndex>(), 4);

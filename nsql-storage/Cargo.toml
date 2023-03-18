@@ -14,7 +14,7 @@ nsql-rkyv = { version = "0.1.0", path = "../nsql-rkyv" }
 nsql-serde = { path = "../nsql-serde" }
 nsql-transaction = { path = "../nsql-transaction" }
 nsql-util = { version = "0.1.0", path = "../nsql-util" }
-rkyv = { version = "0.7.40", default-features = false }
+rkyv = { version = "0.7.40", default-features = false, features = ["archive_be"] }
 rust_decimal = { version = "1.28.1", default-features = false }
 thiserror = "1.0.38"
 

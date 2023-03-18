@@ -2,16 +2,16 @@ mod interior;
 mod leaf;
 mod slotted;
 
+use std::fmt;
 use std::pin::Pin;
-use std::{fmt};
 
 use nsql_pager::PAGE_DATA_SIZE;
-use nsql_serde::{Deserialize, DeserializeSkip};
 use rkyv::Archive;
 
 pub(crate) use self::interior::{InteriorPageView, InteriorPageViewMut};
 pub(crate) use self::leaf::{LeafPageView, LeafPageViewMut};
 use crate::node::Flags;
+use crate::Rkyv;
 
 macro_rules! archived_size_of {
     ($ty:ty) => {
@@ -44,8 +44,9 @@ pub(crate) enum PageView<'a, K, V> {
 
 impl<'a, K, V> PageView<'a, K, V>
 where
-    K: Ord + DeserializeSkip + fmt::Debug,
-    V: Deserialize + fmt::Debug,
+    K: Rkyv + fmt::Debug,
+    K::Archived: fmt::Debug + Ord + PartialOrd<K>,
+    V: Rkyv + fmt::Debug,
 {
     pub(crate) async unsafe fn create(
         data: &'a [u8; PAGE_DATA_SIZE],
