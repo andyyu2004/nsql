@@ -1,11 +1,11 @@
-use std::cmp::Ordering;
-use std::future::Future;
+
+
 use std::marker::PhantomData;
-use std::ops::{AddAssign, Deref, Index, IndexMut, RangeFrom, Sub, SubAssign};
+use std::ops::{AddAssign, Deref, Index, IndexMut, Sub, SubAssign};
 use std::pin::Pin;
 use std::{fmt, mem, ptr, slice};
 
-use bytes::BufMut;
+
 use nsql_pager::PAGE_DATA_SIZE;
 use nsql_util::static_assert_eq;
 use rkyv::rend::BigEndian;
@@ -65,7 +65,7 @@ impl<'a, T> SlottedPageView<'a, T> {
 impl<'a, T> SlottedPageView<'a, T>
 where
     T: Archive,
-    T::Archived: Ord,
+    T::Archived: Ord + fmt::Debug,
 {
     pub(crate) fn get<K>(&self, key: &K) -> Option<&T::Archived>
     where
@@ -85,10 +85,7 @@ where
     }
 
     pub(crate) fn get_by_slot(&self, slot: Slot) -> &T::Archived {
-        let bytes = &self[slot.offset..];
-        todo!();
-        //     let value = T::archived(bytes);
-        //     Ok(value)
+        dbg!(unsafe { rkyv::archived_root::<T>(&self[slot]) })
     }
 
     pub(crate) fn low_key(&self) -> &T::Archived {
@@ -121,20 +118,33 @@ where
     }
 }
 
-impl<T> Index<RangeFrom<SlotOffset>> for SlottedPageView<'_, T> {
+impl<T> Index<Slot> for SlottedPageView<'_, T> {
     type Output = [u8];
 
-    fn index(&self, offset: RangeFrom<SlotOffset>) -> &Self::Output {
-        let adjusted_offset = offset.start - self.header.slot_len * archived_size_of!(Slot);
-        &self.data[adjusted_offset.0.value() as usize..]
+    fn index(&self, slot: Slot) -> &Self::Output {
+        // adjust the offset to be relative to the start of the slots
+        // as we keep shifting the slots and data around the actual offsets change dependending on the number of slots
+        let adjusted_slot_offset: SlotOffset =
+            slot.offset - self.header.slot_len * archived_size_of!(Slot);
+        let adjusted_offset = adjusted_slot_offset.0.value() as usize;
+        &self.data[adjusted_offset..adjusted_offset + slot.length.value() as usize]
     }
 }
 
-impl<T> IndexMut<RangeFrom<SlotOffset>> for SlottedPageViewMut<'_, T> {
-    // see SlottedPageViewMut::index
-    fn index_mut(&mut self, offset: RangeFrom<SlotOffset>) -> &mut Self::Output {
-        let adjusted_offset = offset.start - self.header.slot_len * archived_size_of!(Slot);
-        &mut self.data[adjusted_offset.0.value() as usize..]
+impl<T> Index<Slot> for SlottedPageViewMut<'_, T> {
+    type Output = [u8];
+
+    fn index(&self, slot: Slot) -> &Self::Output {
+        &(**self)[slot]
+    }
+}
+
+impl<T> IndexMut<Slot> for SlottedPageViewMut<'_, T> {
+    fn index_mut(&mut self, slot: Slot) -> &mut Self::Output {
+        let adjusted_slot_offset: SlotOffset =
+            slot.offset - self.header.slot_len * archived_size_of!(Slot);
+        let adjusted_offset = adjusted_slot_offset.0.value() as usize;
+        &mut self.data[adjusted_offset..adjusted_offset + slot.length.value() as usize]
     }
 }
 
@@ -146,17 +156,6 @@ pub(crate) struct SlottedPageViewMut<'a, T> {
     slots: &'a mut [Slot],
     data: &'a mut [u8],
     marker: PhantomData<T>,
-}
-
-impl<T> Index<RangeFrom<SlotOffset>> for SlottedPageViewMut<'_, T> {
-    type Output = [u8];
-
-    fn index(&self, offset: RangeFrom<SlotOffset>) -> &Self::Output {
-        // adjust the offset to be relative to the start of the slots
-        // as we keep shifting the slots and data around the actual offsets change dependending on the number of slots
-        let adjusted_offset = offset.start - self.header.slot_len * archived_size_of!(Slot);
-        &self.data[adjusted_offset.0.value() as usize..]
-    }
 }
 
 impl<'a, T> fmt::Debug for SlottedPageViewMut<'a, T> {
@@ -249,15 +248,15 @@ impl<'a, T> Deref for SlottedPageViewMut<'a, T> {
 impl<'a, T> SlottedPageViewMut<'a, T>
 where
     T: Archive,
-    T::Archived: Ord,
+    T::Archived: Ord + fmt::Debug,
 {
     pub(crate) fn insert(&mut self, value: &T::Archived) -> Result<(), PageFull> {
         let serialized_value = unsafe {
             slice::from_raw_parts(value as *const _ as *const u8, mem::size_of_val(value))
         };
 
-        let len = serialized_value.len() as u16;
-        if len + archived_size_of!(Slot) > self.header.free_end - self.header.free_start {
+        let length = serialized_value.len() as u16;
+        if length + archived_size_of!(Slot) > self.header.free_end - self.header.free_start {
             return Err(PageFull);
         }
 
@@ -268,11 +267,11 @@ where
             Err(idx) => idx,
         };
 
-        let key_offset = self.header.free_end - len;
-        (&mut self[key_offset..]).put(serialized_value);
-
-        self.header.free_end -= len;
+        self.header.free_end -= length;
+        self.header.free_start += archived_size_of!(Slot);
         self.header.slot_len += 1;
+        let slot = Slot { offset: self.header.free_end, length: length.into() };
+        self[slot].copy_from_slice(serialized_value);
 
         unsafe {
             // write the new slot at index `idx` of the slot array and recreate the slice to include it
@@ -285,15 +284,13 @@ where
             );
 
             // write the new slot in the hole
-            ptr::write(self.slots.as_mut_ptr().add(idx), Slot { offset: self.header.free_end });
+            ptr::write(self.slots.as_mut_ptr().add(idx), slot);
 
             self.slots = slice::from_raw_parts_mut(
                 self.slots.as_mut_ptr(),
                 self.header.slot_len.value() as usize,
             );
         }
-
-        self.header.free_start += archived_size_of!(Slot);
 
         // we have to shift over the slice of data as we expect it to start after the slots (at `free_start`)
         // we some small tricks to avoid lifetime issues without using unsafe
@@ -324,6 +321,11 @@ where
 pub struct Slot {
     /// The offset of the entry from the start of the page
     offset: SlotOffset,
+    /// The length of the entry
+    // FIXME this is a large use of space for small entries
+    // is there a more efficient way to store the length (or an alternative to storing the length entirely)?
+    // FIXME use a u8 and multiple the value by some constant to get the proper offset
+    length: BigEndian<u16>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Archive, rkyv::Serialize)]

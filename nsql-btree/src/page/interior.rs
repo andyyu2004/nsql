@@ -48,7 +48,7 @@ pub(crate) struct InteriorPageView<'a, K> {
 impl<'a, K> InteriorPageView<'a, K>
 where
     K: Archive,
-    K::Archived: Ord,
+    K::Archived: Ord + fmt::Debug,
 {
     pub(crate) unsafe fn create(data: &'a [u8]) -> nsql_serde::Result<InteriorPageView<'a, K>> {
         let (header_bytes, data) = data.split_array_ref();
@@ -192,7 +192,7 @@ where
     }
 
     // FIXME we need to split left not right and set the left link
-    pub(crate) fn split_into<'r>(&mut self, new: &mut InteriorPageViewMut<'r, K>) {
+    pub(crate) fn split_into(&mut self, new: &mut InteriorPageViewMut<'_, K>) {
         assert!(new.slotted_page.is_empty());
         assert!(self.slotted_page.len() > 1);
 

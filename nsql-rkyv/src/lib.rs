@@ -8,10 +8,7 @@ use std::pin::Pin;
 
 use rkyv::ser::serializers::{AllocSerializer, BufferSerializer};
 use rkyv::ser::Serializer as _;
-use rkyv::validation::validators::DefaultValidator;
-use rkyv::{
-    Archive, ArchiveUnsized, CheckBytes, Deserialize, Infallible, Serialize, SerializeUnsized,
-};
+use rkyv::{Archive, ArchiveUnsized, Deserialize, Infallible, Serialize, SerializeUnsized};
 
 pub type DefaultSerializer = rkyv::ser::serializers::AllocSerializer<4096>;
 

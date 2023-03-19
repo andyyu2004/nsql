@@ -50,6 +50,7 @@ where
     K: Archive + fmt::Debug,
     K::Archived: fmt::Debug + Ord,
     V: Archive + fmt::Debug,
+    V::Archived: fmt::Debug,
 {
     pub(crate) unsafe fn create(data: &'a [u8]) -> nsql_serde::Result<LeafPageView<'a, K, V>> {
         let (header_bytes, data) = data.split_array_ref();
@@ -60,7 +61,7 @@ where
         Ok(Self { header, slotted_page })
     }
 
-    pub(crate) async fn get(&self, key: &K::Archived) -> Option<&V::Archived> {
+    pub(crate) fn get(&self, key: &K::Archived) -> Option<&V::Archived> {
         self.slotted_page.get(key).map(|kv| &kv.value)
     }
 
@@ -119,6 +120,7 @@ where
     K: Archive + Ord + fmt::Debug,
     K::Archived: fmt::Debug + Ord,
     V: Archive + fmt::Debug,
+    V::Archived: fmt::Debug,
 {
     pub(crate) fn insert(&mut self, key: K::Archived, value: V::Archived) -> Result<(), PageFull> {
         self.insert_kv(&ArchivedKeyValuePair { key, value })

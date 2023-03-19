@@ -48,6 +48,7 @@ where
     K: Archive + fmt::Debug,
     K::Archived: fmt::Debug + Ord,
     V: Archive + fmt::Debug,
+    V::Archived: fmt::Debug,
 {
     pub(crate) async unsafe fn create(
         data: &'a [u8; PAGE_DATA_SIZE],

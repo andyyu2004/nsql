@@ -5,7 +5,7 @@ use async_recursion::async_recursion;
 use nsql_buffer::BufferPool;
 use nsql_pager::PageIndex;
 use nsql_rkyv::DefaultSerializer;
-use rkyv::{Archive, Serialize};
+use rkyv::{Archive, Deserialize, Serialize};
 
 use crate::node::Flags;
 use crate::page::{PageFull, PageView, PageViewMut, PageViewMutKind};
@@ -21,9 +21,9 @@ pub struct BTree<K, V> {
 impl<K, V> BTree<K, V>
 where
     K: Min + Ord + Send + Sync + Archive + Serialize<DefaultSerializer> + fmt::Debug,
-    K::Archived: PartialOrd<K> + Clone + fmt::Debug + Ord + 'static,
+    K::Archived: PartialOrd<K> + Clone + fmt::Debug + Ord,
     V: Archive + Serialize<DefaultSerializer> + Eq + Clone + fmt::Debug,
-    V::Archived: Clone,
+    V::Archived: Clone + Deserialize<V, rkyv::Infallible> + fmt::Debug,
 {
     #[inline]
     pub async fn init(pool: BufferPool) -> Result<Self> {
@@ -58,11 +58,7 @@ where
         let data = handle.page().data().await;
         let node = unsafe { PageView::<K, V>::create(&data).await? };
         match node {
-            PageView::Leaf(leaf) => {
-                // Ok(leaf.get(key).await?.map(|v| nsql_rkyv::deserialize(v))),
-                let value = leaf.get(key);
-                todo!()
-            }
+            PageView::Leaf(leaf) => Ok(leaf.get(key).map(nsql_rkyv::deserialize)),
             PageView::Interior(interior) => {
                 let child_idx = interior.search(key);
                 self.search_node(child_idx, key).await
