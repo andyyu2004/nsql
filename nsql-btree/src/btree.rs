@@ -125,10 +125,10 @@ where
                     let mut right_data = right_page.page().data_mut().await;
                     let mut right_child = PageViewMut::<K, V>::init_leaf(&mut right_data).await?;
 
-                    leaf.split_root_into(&mut left_child, &mut right_child).await?;
+                    leaf.split_root_into(&mut left_child, &mut right_child);
 
                     // reinitialize the root to an interior node and add the two children
-                    let mut root = PageViewMut::<K, V>::init_root_interior(&mut leaf_data).await?;
+                    let mut root = PageViewMut::<K, V>::init_root_interior(&mut leaf_data)?;
 
                     // use the first key in the right child as the separator to insert into the parent
                     let sep = right_child.low_key();
@@ -139,7 +139,6 @@ where
                         sep.clone(),
                         right_page.page_idx(),
                     )
-                    .await?
                     .expect("new root should not be full");
 
                     // FIXME check correctness of condition
@@ -155,7 +154,7 @@ where
                     let mut new_data = new_page.page().data_mut().await;
                     let mut new_leaf = PageViewMut::<K, V>::init_leaf(&mut new_data).await?;
 
-                    leaf.split_into(&mut new_leaf).await?;
+                    leaf.split_into(&mut new_leaf);
                     let sep = new_leaf.low_key();
                     self.insert_interior(parents, sep, new_page.page_idx()).await?;
 
@@ -194,20 +193,18 @@ where
                 if parent_view.header.flags.contains(Flags::IS_ROOT) {
                     let left_page = self.pool.alloc().await?;
                     let mut left_data = left_page.page().data_mut().await;
-                    let mut left_child = PageViewMut::<K, V>::init_interior(&mut left_data).await?;
+                    let mut left_child = PageViewMut::<K, V>::init_interior(&mut left_data)?;
 
                     let right_page = self.pool.alloc().await?;
                     let mut right_data = right_page.page().data_mut().await;
-                    let mut right_child =
-                        PageViewMut::<K, V>::init_interior(&mut right_data).await?;
+                    let mut right_child = PageViewMut::<K, V>::init_interior(&mut right_data)?;
 
                     parent
                         .split_root_into(left_page.page_idx(), &mut left_child, &mut right_child)
                         .await?;
 
                     // reinitialize the root to an interior node and add the two children
-                    let mut root =
-                        PageViewMut::<K, V>::init_root_interior(&mut parent_data).await?;
+                    let mut root = PageViewMut::<K, V>::init_root_interior(&mut parent_data)?;
 
                     let sep = right_child.low_key();
 
@@ -217,7 +214,6 @@ where
                         sep.clone(),
                         right_page.page_idx(),
                     )
-                    .await?
                     .expect("new root should not be full");
 
                     (if key < sep { left_child } else { right_child })
@@ -229,8 +225,7 @@ where
                     // then we insert the separator key and the new page index into the parent
                     let new_page = self.pool.alloc().await?;
                     let mut new_data = new_page.page().data_mut().await;
-                    let mut new_interior =
-                        PageViewMut::<K, V>::init_interior(&mut new_data).await?;
+                    let mut new_interior = PageViewMut::<K, V>::init_interior(&mut new_data)?;
 
                     parent.split_into(&mut new_interior);
                     let sep = new_interior.low_key();

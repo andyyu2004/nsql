@@ -1,10 +1,7 @@
-
-
 use std::marker::PhantomData;
 use std::ops::{AddAssign, Deref, Index, IndexMut, Sub, SubAssign};
 use std::pin::Pin;
 use std::{fmt, mem, ptr, slice};
-
 
 use nsql_pager::PAGE_DATA_SIZE;
 use nsql_util::static_assert_eq;
@@ -192,7 +189,7 @@ nsql_util::static_assert_eq!(
 impl<'a, T> SlottedPageViewMut<'a, T> {
     /// `prefix_size` is the size of the page header and the page-specific header` (and anything else that comes before the slots)
     /// slot offsets are relative to the initla value of `free_start`
-    pub(crate) async fn init(
+    pub(crate) fn init(
         buf: &'a mut [u8],
         prefix_size: u16,
     ) -> nsql_serde::Result<SlottedPageViewMut<'a, T>> {
@@ -207,13 +204,11 @@ impl<'a, T> SlottedPageViewMut<'a, T> {
         let bytes = nsql_rkyv::to_bytes(&header);
         buf[..bytes.len()].copy_from_slice(&bytes);
 
-        unsafe { Self::create(buf).await }
+        Ok(unsafe { Self::create(buf) })
     }
 
     /// Safety: `buf` must point at the start of a valid slotted page
-    pub(crate) async unsafe fn create(
-        buf: &'a mut [u8],
-    ) -> nsql_serde::Result<SlottedPageViewMut<'a, T>> {
+    pub(crate) unsafe fn create(buf: &'a mut [u8]) -> SlottedPageViewMut<'a, T> {
         let (header_bytes, buf) = buf.split_array_mut();
         let header = unsafe { nsql_rkyv::archived_root_mut::<SlottedPageMeta>(header_bytes) };
 
@@ -223,7 +218,7 @@ impl<'a, T> SlottedPageViewMut<'a, T> {
         let slots =
             unsafe { slice::from_raw_parts_mut(slot_bytes.as_ptr() as *mut Slot, slot_len) };
 
-        Ok(Self { header, slots, data, marker: PhantomData })
+        Self { header, slots, data, marker: PhantomData }
     }
 
     pub(crate) fn set_len(&mut self, len: u16) {

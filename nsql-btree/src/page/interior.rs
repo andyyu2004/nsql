@@ -108,13 +108,13 @@ impl<'a, K> Deref for InteriorPageViewMut<'a, K> {
 
 impl<'a, K> InteriorPageViewMut<'a, K> {
     /// initialize a new leaf page
-    pub(crate) async fn init(data: &'a mut [u8]) -> nsql_serde::Result<InteriorPageViewMut<'a, K>> {
+    pub(crate) fn init(data: &'a mut [u8]) -> nsql_serde::Result<InteriorPageViewMut<'a, K>> {
         let (header_bytes, data) = data.split_array_mut();
         nsql_rkyv::serialize_into_buf(header_bytes, &InteriorPageHeader::default());
         // the slots start after the page header and the interior page header
         let prefix_size = archived_size_of!(PageHeader) + archived_size_of!(InteriorPageHeader);
         let slotted_page =
-            SlottedPageViewMut::<'a, KeyValuePair<K, PageIndex>>::init(data, prefix_size).await?;
+            SlottedPageViewMut::<'a, KeyValuePair<K, PageIndex>>::init(data, prefix_size)?;
 
         let header =
             unsafe { rkyv::archived_root_mut::<InteriorPageHeader>(Pin::new(header_bytes)) };
@@ -123,7 +123,7 @@ impl<'a, K> InteriorPageViewMut<'a, K> {
         Ok(Self { header, slotted_page })
     }
 
-    pub(crate) async unsafe fn create(
+    pub(crate) unsafe fn create(
         data: &'a mut [u8],
     ) -> nsql_serde::Result<InteriorPageViewMut<'a, K>> {
         const HEADER_SIZE: usize = mem::size_of::<ArchivedInteriorPageHeader>();
@@ -131,8 +131,7 @@ impl<'a, K> InteriorPageViewMut<'a, K> {
         let header = rkyv::archived_root_mut::<InteriorPageHeader>(Pin::new(header_bytes));
         header.check_magic()?;
 
-        let slotted_page =
-            SlottedPageViewMut::<'a, KeyValuePair<K, PageIndex>>::create(data).await?;
+        let slotted_page = SlottedPageViewMut::<'a, KeyValuePair<K, PageIndex>>::create(data);
         Ok(Self { header, slotted_page })
     }
 }
@@ -164,13 +163,13 @@ where
         }
     }
 
-    pub(crate) async fn insert_initial(
+    pub(crate) fn insert_initial(
         &mut self,
         low_key: K::Archived,
         left: PageIndex,
         sep: K::Archived,
         right: PageIndex,
-    ) -> nsql_serde::Result<Result<(), PageFull>> {
+    ) -> Result<(), PageFull> {
         assert!(
             self.slotted_page.slots().is_empty(),
             "can only use this operation on an empty node as the initial insert"
@@ -188,7 +187,7 @@ where
             Err(PageFull) => unreachable!("page should not be full after two inserts"),
         };
 
-        Ok(Ok(()))
+        Ok(())
     }
 
     // FIXME we need to split left not right and set the left link

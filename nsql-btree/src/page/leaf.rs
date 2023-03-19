@@ -98,19 +98,18 @@ impl<'a, K, V> LeafPageViewMut<'a, K, V> {
 
         // the slots start after the page header and the leaf page header
         let prefix_size = archived_size_of!(PageHeader) + archived_size_of!(LeafPageHeader);
-        let slotted_page =
-            SlottedPageViewMut::<'a, KeyValuePair<K, V>>::init(data, prefix_size).await?;
+        let slotted_page = SlottedPageViewMut::<'a, KeyValuePair<K, V>>::init(data, prefix_size)?;
 
         Ok(Self { header, slotted_page })
     }
 
-    pub(crate) async unsafe fn create(
+    pub(crate) unsafe fn create(
         data: &'a mut [u8],
     ) -> nsql_serde::Result<LeafPageViewMut<'a, K, V>> {
         let (header_bytes, data) = data.split_array_mut();
         let header = nsql_rkyv::archived_root_mut::<LeafPageHeader>(header_bytes);
         header.check_magic()?;
-        let slotted_page = SlottedPageViewMut::create(data).await?;
+        let slotted_page = SlottedPageViewMut::create(data);
         Ok(Self { header, slotted_page })
     }
 }
@@ -131,10 +130,7 @@ where
     }
 
     // FIXME we need to split left not right and set the left link
-    pub(crate) async fn split_into(
-        &mut self,
-        new: &mut LeafPageViewMut<'_, K, V>,
-    ) -> nsql_serde::Result<()> {
+    pub(crate) fn split_into(&mut self, new: &mut LeafPageViewMut<'_, K, V>) {
         assert!(new.slotted_page.is_empty());
         assert!(self.slotted_page.len() > 1);
 
@@ -147,16 +143,15 @@ where
         }
 
         self.slotted_page.set_len(lhs.len() as u16);
-        Ok(())
     }
 
     /// Intended for use when splitting a root node.
     /// We keep the root node page number unchanged because it may be referenced as an identifier.
-    pub(crate) async fn split_root_into(
+    pub(crate) fn split_root_into(
         &mut self,
         left: &mut LeafPageViewMut<'_, K, V>,
         right: &mut LeafPageViewMut<'_, K, V>,
-    ) -> nsql_serde::Result<()> {
+    ) {
         assert!(left.slotted_page.is_empty());
         assert!(right.slotted_page.is_empty());
         assert!(self.slotted_page.len() > 1);
@@ -174,6 +169,5 @@ where
         }
 
         self.slotted_page.set_len(0);
-        Ok(())
     }
 }
