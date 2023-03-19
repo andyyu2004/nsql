@@ -1,17 +1,18 @@
 mod interior;
+mod key_value_pair;
 mod leaf;
 mod slotted;
 
 use std::fmt;
 use std::pin::Pin;
 
+pub(crate) use key_value_pair::{ArchivedKeyValuePair, KeyValuePair};
 use nsql_pager::PAGE_DATA_SIZE;
 use rkyv::Archive;
 
 pub(crate) use self::interior::{InteriorPageView, InteriorPageViewMut};
 pub(crate) use self::leaf::{LeafPageView, LeafPageViewMut};
 use crate::node::Flags;
-use crate::Rkyv;
 
 macro_rules! archived_size_of {
     ($ty:ty) => {
@@ -44,9 +45,9 @@ pub(crate) enum PageView<'a, K, V> {
 
 impl<'a, K, V> PageView<'a, K, V>
 where
-    K: Rkyv + fmt::Debug,
-    K::Archived: fmt::Debug + Ord + PartialOrd<K>,
-    V: Rkyv + fmt::Debug,
+    K: Archive + fmt::Debug,
+    K::Archived: fmt::Debug + Ord,
+    V: Archive + fmt::Debug,
 {
     pub(crate) async unsafe fn create(
         data: &'a [u8; PAGE_DATA_SIZE],
@@ -54,9 +55,9 @@ where
         let (header_bytes, data) = data.split_array_ref();
         let header = unsafe { nsql_rkyv::archived_root::<PageHeader>(header_bytes) };
         if header.flags.contains(Flags::IS_LEAF) {
-            LeafPageView::create(data).await.map(Self::Leaf)
+            LeafPageView::create(data).map(Self::Leaf)
         } else {
-            InteriorPageView::create(data).await.map(Self::Interior)
+            InteriorPageView::create(data).map(Self::Interior)
         }
     }
 }

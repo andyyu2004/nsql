@@ -7,10 +7,9 @@ use nsql_util::static_assert_eq;
 use rkyv::{Archive, Archived};
 
 use super::slotted::SlottedPageViewMut;
-use super::PageFull;
+use super::{ArchivedKeyValuePair, KeyValuePair, PageFull};
 use crate::page::slotted::SlottedPageView;
 use crate::page::{archived_size_of, PageHeader};
-use crate::Rkyv;
 
 const BTREE_LEAF_PAGE_MAGIC: [u8; 4] = *b"BTPL";
 
@@ -43,32 +42,30 @@ impl Default for LeafPageHeader {
 #[repr(C)]
 pub(crate) struct LeafPageView<'a, K, V> {
     header: &'a Archived<LeafPageHeader>,
-    slotted_page: SlottedPageView<'a, K, V>,
+    slotted_page: SlottedPageView<'a, KeyValuePair<K, V>>,
 }
 
 impl<'a, K, V> LeafPageView<'a, K, V>
 where
-    K: Rkyv + fmt::Debug,
-    K::Archived: fmt::Debug + Ord + PartialOrd<K>,
-    V: Rkyv + fmt::Debug,
+    K: Archive + fmt::Debug,
+    K::Archived: fmt::Debug + Ord,
+    V: Archive + fmt::Debug,
 {
-    pub(crate) async unsafe fn create(
-        data: &'a [u8],
-    ) -> nsql_serde::Result<LeafPageView<'a, K, V>> {
+    pub(crate) unsafe fn create(data: &'a [u8]) -> nsql_serde::Result<LeafPageView<'a, K, V>> {
         let (header_bytes, data) = data.split_array_ref();
         let header = nsql_rkyv::archived_root::<LeafPageHeader>(header_bytes);
         header.check_magic()?;
 
-        let slotted_page = SlottedPageView::<'a, K, V>::create(data).await?;
+        let slotted_page = SlottedPageView::<'a, KeyValuePair<K, V>>::create(data);
         Ok(Self { header, slotted_page })
     }
 
-    pub(crate) async fn get(&self, key: &K::Archived) -> nsql_serde::Result<Option<&V::Archived>> {
-        self.slotted_page.get(key).await
+    pub(crate) async fn get(&self, key: &K::Archived) -> Option<&V::Archived> {
+        self.slotted_page.get(key).map(|kv| &kv.value)
     }
 
-    pub(crate) fn low_key(&self) -> nsql_serde::Result<&K::Archived> {
-        self.slotted_page.low_key()
+    pub(crate) fn low_key(&self) -> &K::Archived {
+        &self.slotted_page.low_key().key
     }
 }
 
@@ -76,7 +73,7 @@ where
 #[repr(C)]
 pub(crate) struct LeafPageViewMut<'a, K, V> {
     header: Pin<&'a mut Archived<LeafPageHeader>>,
-    slotted_page: SlottedPageViewMut<'a, K, V>,
+    slotted_page: SlottedPageViewMut<'a, KeyValuePair<K, V>>,
 }
 
 impl<'a, K, V> Deref for LeafPageViewMut<'a, K, V> {
@@ -100,7 +97,8 @@ impl<'a, K, V> LeafPageViewMut<'a, K, V> {
 
         // the slots start after the page header and the leaf page header
         let prefix_size = archived_size_of!(PageHeader) + archived_size_of!(LeafPageHeader);
-        let slotted_page = SlottedPageViewMut::<'a, K, V>::init(data, prefix_size).await?;
+        let slotted_page =
+            SlottedPageViewMut::<'a, KeyValuePair<K, V>>::init(data, prefix_size).await?;
 
         Ok(Self { header, slotted_page })
     }
@@ -118,42 +116,36 @@ impl<'a, K, V> LeafPageViewMut<'a, K, V> {
 
 impl<'a, K, V> LeafPageViewMut<'a, K, V>
 where
-    K: Rkyv + Ord + fmt::Debug,
-    K::Archived: fmt::Debug + Ord + PartialOrd<K>,
-    V: Rkyv + fmt::Debug,
+    K: Archive + Ord + fmt::Debug,
+    K::Archived: fmt::Debug + Ord,
+    V: Archive + fmt::Debug,
 {
-    pub(crate) async fn insert(
-        &mut self,
-        key: &K::Archived,
-        value: &V::Archived,
-    ) -> nsql_serde::Result<Result<(), PageFull>> {
-        self.slotted_page.insert(key, value).await
+    pub(crate) fn insert(&mut self, key: K::Archived, value: V::Archived) -> Result<(), PageFull> {
+        self.insert_kv(&ArchivedKeyValuePair { key, value })
+    }
+
+    pub(crate) fn insert_kv(&mut self, kv: &ArchivedKeyValuePair<K, V>) -> Result<(), PageFull> {
+        self.slotted_page.insert(kv)
     }
 
     // FIXME we need to split left not right and set the left link
     pub(crate) async fn split_into(
         &mut self,
         new: &mut LeafPageViewMut<'_, K, V>,
-    ) -> nsql_serde::Result<&K::Archived> {
+    ) -> nsql_serde::Result<()> {
         assert!(new.slotted_page.is_empty());
         assert!(self.slotted_page.len() > 1);
 
         let slots = self.slotted_page.slots();
         let (lhs, rhs) = slots.split_at(slots.len() / 2);
 
-        let mut sep = None;
         for &slot in rhs {
-            let (key, value) = self.slotted_page.get_by_slot(slot).await?;
-            new.slotted_page.insert(key, value).await?.expect("new page should not be full");
-            if sep.is_none() {
-                sep = Some(key);
-            }
+            let value = self.slotted_page.get_by_slot(slot);
+            new.slotted_page.insert(value).expect("new page should not be full");
         }
 
         self.slotted_page.set_len(lhs.len() as u16);
-
-        todo!();
-        // Ok(sep.unwrap())
+        Ok(())
     }
 
     /// Intended for use when splitting a root node.
@@ -170,13 +162,13 @@ where
         let slots = self.slotted_page.slots();
         let (lhs, rhs) = slots.split_at(slots.len() / 2);
         for &slot in lhs {
-            let (key, value) = self.slotted_page.get_by_slot(slot).await?;
-            left.insert(key, value).await?.unwrap();
+            let value = self.slotted_page.get_by_slot(slot);
+            left.insert_kv(value).unwrap();
         }
 
         for &slot in rhs {
-            let (key, value) = self.slotted_page.get_by_slot(slot).await?;
-            right.insert(key, value).await?.unwrap();
+            let value = self.slotted_page.get_by_slot(slot);
+            right.insert_kv(value).unwrap();
         }
 
         self.slotted_page.set_len(0);

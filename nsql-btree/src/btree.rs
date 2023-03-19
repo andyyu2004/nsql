@@ -4,10 +4,12 @@ use std::marker::PhantomData;
 use async_recursion::async_recursion;
 use nsql_buffer::BufferPool;
 use nsql_pager::PageIndex;
+use nsql_rkyv::DefaultSerializer;
+use rkyv::{Archive, Serialize};
 
 use crate::node::Flags;
 use crate::page::{PageFull, PageView, PageViewMut, PageViewMutKind};
-use crate::{Result, Rkyv};
+use crate::Result;
 
 /// A B+ tree
 pub struct BTree<K, V> {
@@ -18,9 +20,10 @@ pub struct BTree<K, V> {
 
 impl<K, V> BTree<K, V>
 where
-    K: Min + Ord + Send + Sync + Rkyv + fmt::Debug,
-    K::Archived: fmt::Debug + Ord + PartialOrd<K>,
-    V: Rkyv + Eq + Clone + fmt::Debug,
+    K: Min + Ord + Send + Sync + Archive + Serialize<DefaultSerializer> + fmt::Debug,
+    K::Archived: PartialOrd<K> + Clone + fmt::Debug + Ord + 'static,
+    V: Archive + Serialize<DefaultSerializer> + Eq + Clone + fmt::Debug,
+    V::Archived: Clone,
 {
     #[inline]
     pub async fn init(pool: BufferPool) -> Result<Self> {
@@ -35,15 +38,18 @@ where
 
     #[inline]
     pub async fn get(&self, key: &K) -> Result<Option<V>> {
-        let key_bytes = key.serialize();
-        self.search_node(self.root_idx, K::archived(&key_bytes)).await
+        let key_bytes = nsql_rkyv::to_bytes(key);
+        let archived_key = unsafe { rkyv::archived_root::<K>(&key_bytes) };
+        self.search_node(self.root_idx, archived_key).await
     }
 
     #[inline]
     pub async fn insert(&self, key: &K, value: &V) -> Result<()> {
-        let key_bytes = key.serialize();
-        let value_bytes = value.serialize();
-        self.insert_archived(K::archived(&key_bytes), V::archived(&value_bytes)).await
+        let key_bytes = nsql_rkyv::to_bytes(key);
+        let archived_key = unsafe { rkyv::archived_root::<K>(&key_bytes) };
+        let value_bytes = nsql_rkyv::to_bytes(value);
+        let archived_value = unsafe { rkyv::archived_root::<V>(&value_bytes) };
+        self.insert_archived(archived_key, archived_value).await
     }
 
     #[async_recursion(?Send)]
@@ -52,9 +58,13 @@ where
         let data = handle.page().data().await;
         let node = unsafe { PageView::<K, V>::create(&data).await? };
         match node {
-            PageView::Leaf(leaf) => Ok(leaf.get(key).await?.map(|v| nsql_rkyv::deserialize(v))),
+            PageView::Leaf(leaf) => {
+                // Ok(leaf.get(key).await?.map(|v| nsql_rkyv::deserialize(v))),
+                let value = leaf.get(key);
+                todo!()
+            }
             PageView::Interior(interior) => {
-                let child_idx = interior.search(key).await?;
+                let child_idx = interior.search(key);
                 self.search_node(child_idx, key).await
             }
         }
@@ -80,7 +90,7 @@ where
             PageView::Leaf(_) => Ok(idx),
             PageView::Interior(interior) => {
                 stack.push(idx);
-                let child_idx = interior.search(key).await?;
+                let child_idx = interior.search(key);
                 self.find_page_idx_rec(child_idx, key, stack).await
             }
         }
@@ -107,7 +117,7 @@ where
             PageViewMutKind::Leaf(leaf) => leaf,
         };
 
-        match leaf.insert(key, value).await? {
+        match leaf.insert(key.clone(), value.clone()) {
             Ok(value) => Ok(value),
             Err(PageFull) => {
                 if view.header.flags.contains(Flags::IS_ROOT) {
@@ -125,16 +135,20 @@ where
                     let mut root = PageViewMut::<K, V>::init_root_interior(&mut leaf_data).await?;
 
                     // use the first key in the right child as the separator to insert into the parent
-                    let sep = right_child.low_key()?;
+                    let sep = right_child.low_key();
 
-                    root.insert_initial(K::MIN, left_page.page_idx(), sep, right_page.page_idx())
-                        .await?
-                        .expect("new root should not be full");
+                    root.insert_initial(
+                        K::MIN,
+                        left_page.page_idx(),
+                        sep.clone(),
+                        right_page.page_idx(),
+                    )
+                    .await?
+                    .expect("new root should not be full");
 
                     // FIXME check correctness of condition
                     (if key < sep { left_child } else { right_child })
-                        .insert(key, value)
-                        .await?
+                        .insert(key.clone(), value.clone())
                         .expect("split child should not be full");
 
                     Ok(())
@@ -145,13 +159,13 @@ where
                     let mut new_data = new_page.page().data_mut().await;
                     let mut new_leaf = PageViewMut::<K, V>::init_leaf(&mut new_data).await?;
 
-                    let sep = leaf.split_into(&mut new_leaf).await?;
+                    leaf.split_into(&mut new_leaf).await?;
+                    let sep = new_leaf.low_key();
                     self.insert_interior(parents, sep, new_page.page_idx()).await?;
 
                     // FIXME check condition correctness
                     (if key < sep { leaf } else { &mut new_leaf })
-                        .insert(key, value)
-                        .await?
+                        .insert(key.clone(), value.clone())
                         .expect("split leaf should not be full");
 
                     Ok(())
@@ -178,7 +192,7 @@ where
             }
         };
 
-        match parent.insert(key, child_idx).await? {
+        match parent.insert(key.clone(), child_idx).await? {
             Ok(()) => {}
             Err(PageFull) => {
                 if parent_view.header.flags.contains(Flags::IS_ROOT) {
@@ -199,14 +213,19 @@ where
                     let mut root =
                         PageViewMut::<K, V>::init_root_interior(&mut parent_data).await?;
 
-                    let sep = right_child.low_key()?;
+                    let sep = right_child.low_key();
 
-                    root.insert_initial(K::MIN, left_page.page_idx(), sep, right_page.page_idx())
-                        .await?
-                        .expect("new root should not be full");
+                    root.insert_initial(
+                        K::MIN,
+                        left_page.page_idx(),
+                        sep.clone(),
+                        right_page.page_idx(),
+                    )
+                    .await?
+                    .expect("new root should not be full");
 
                     (if key < sep { left_child } else { right_child })
-                        .insert(key, child_idx)
+                        .insert(key.clone(), child_idx)
                         .await?
                         .expect("split child should not be full");
                 } else {
@@ -217,15 +236,15 @@ where
                     let mut new_interior =
                         PageViewMut::<K, V>::init_interior(&mut new_data).await?;
 
-                    let sep = parent.split_into(&mut new_interior).await?;
+                    parent.split_into(&mut new_interior);
+                    let sep = new_interior.low_key();
+                    self.insert_interior(parents, sep, new_page.page_idx()).await?;
 
                     // insert the new separator key and child index into the parent
-                    (if sep > key { parent } else { new_interior })
-                        .insert(key, child_idx)
+                    (if key < sep { parent } else { new_interior })
+                        .insert(key.clone(), child_idx)
                         .await?
                         .expect("split interior should not be full");
-
-                    self.insert_interior(parents, sep, new_page.page_idx()).await?;
                 }
             }
         }
@@ -235,10 +254,10 @@ where
 }
 
 // hack to generate "negative infinity" low keys for L&Y trees for left-most nodes
-pub trait Min: Rkyv {
-    const MIN: &'static Self::Archived;
+pub trait Min: Archive {
+    const MIN: Self::Archived;
 }
 
 impl Min for u32 {
-    const MIN: &'static Self::Archived = &rkyv::rend::BigEndian::<u32>::new(0);
+    const MIN: Self::Archived = rkyv::rend::BigEndian::<u32>::new(0);
 }

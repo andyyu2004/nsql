@@ -11,19 +11,20 @@ use nsql_util::static_assert_eq;
 use rkyv::rend::BigEndian;
 use rkyv::{Archive, Archived};
 
+use super::key_value_pair::KeyOrd;
 use super::{archived_size_of, PageFull};
-use crate::Rkyv;
+use crate::page::KeyValuePair;
 
 // NOTE: the layout of this MUST match the layout of the mutable version
 #[repr(C)]
-pub(crate) struct SlottedPageView<'a, K, V> {
+pub(crate) struct SlottedPageView<'a, T> {
     header: &'a Archived<SlottedPageMeta>,
     slots: &'a [Slot],
     data: &'a [u8],
-    marker: PhantomData<(K, V)>,
+    marker: PhantomData<T>,
 }
 
-impl<'a, K, V> fmt::Debug for SlottedPageView<'a, K, V> {
+impl<'a, T> fmt::Debug for SlottedPageView<'a, T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("SlottedPageView")
             .field("header", &self.header)
@@ -32,7 +33,20 @@ impl<'a, K, V> fmt::Debug for SlottedPageView<'a, K, V> {
     }
 }
 
-impl<'a, K, V> SlottedPageView<'a, K, V> {
+impl<'a, T> SlottedPageView<'a, T> {
+    /// Safety: `buf` must contain a valid slotted page
+    pub(crate) unsafe fn create(buf: &'a [u8]) -> SlottedPageView<'a, T> {
+        let (header_bytes, buf) = buf.split_array_ref();
+        let header = unsafe { nsql_rkyv::archived_root::<SlottedPageMeta>(header_bytes) };
+
+        let slot_len = header.slot_len.value() as usize;
+        let (slot_bytes, data) = buf.split_at(slot_len * mem::size_of::<Slot>());
+
+        let slots = unsafe { slice::from_raw_parts(slot_bytes.as_ptr() as *mut Slot, slot_len) };
+
+        Self { header, slots, data, marker: PhantomData }
+    }
+
     #[inline]
     pub fn is_empty(&self) -> bool {
         self.slots.is_empty()
@@ -48,92 +62,66 @@ impl<'a, K, V> SlottedPageView<'a, K, V> {
     }
 }
 
-impl<'a, K, V> SlottedPageView<'a, K, V>
+impl<'a, T> SlottedPageView<'a, T>
 where
-    K: Rkyv,
-    K::Archived: fmt::Debug + Ord + PartialOrd<K>,
-    V: Rkyv,
+    T: Archive,
+    T::Archived: Ord,
 {
-    // mostly for debugging
-    pub(crate) async fn key_values(&self) -> nsql_serde::Result<Vec<(K, V)>> {
-        let data = Vec::with_capacity(self.slots.len());
-        for &slot in self.slots {
-            let _key = self.get_by_slot(slot).await?;
-            // let key = K::deserialize(&mut de).await?;
-            // let value = V::deserialize(&mut de).await?;
-            todo!();
-            // data.push((key, value));
-        }
-        Ok(data)
+    pub(crate) fn get<K>(&self, key: &K) -> Option<&T::Archived>
+    where
+        T::Archived: KeyOrd<Key = K>,
+    {
+        let slot = self.slot_of(key)?;
+        Some(self.get_by_slot(slot))
     }
 
-    /// Safety: `buf` must contain a valid slotted page
-    pub(crate) async unsafe fn create(
-        buf: &'a [u8],
-    ) -> nsql_serde::Result<SlottedPageView<'a, K, V>> {
-        let (header_bytes, buf) = buf.split_array_ref();
-        let header = unsafe { nsql_rkyv::archived_root::<SlottedPageMeta>(header_bytes) };
-
-        let slot_len = header.slot_len.value() as usize;
-        let (slot_bytes, data) = buf.split_at(slot_len * mem::size_of::<Slot>());
-
-        let slots = unsafe { slice::from_raw_parts(slot_bytes.as_ptr() as *mut Slot, slot_len) };
-
-        Ok(Self { header, slots, data, marker: PhantomData })
+    fn slot_of<K>(&self, key: &K) -> Option<Slot>
+    where
+        K: ?Sized,
+        T::Archived: KeyOrd<Key = K>,
+    {
+        let offset = self.slot_index_of_key(key);
+        offset.ok().map(|offset| self.slots[offset])
     }
 
-    pub(crate) async fn get(&self, key: &K::Archived) -> nsql_serde::Result<Option<&V::Archived>> {
-        let slot = match self.slot_of(key).await? {
-            Some(slot) => slot,
-            None => return Ok(None),
-        };
-
-        let (_k, v) = self.get_by_slot(slot).await?;
-        Ok(Some(v))
-    }
-
-    async fn slot_of(&self, key: &K::Archived) -> nsql_serde::Result<Option<Slot>> {
-        let offset = self.slot_index_of(key).await?;
-        Ok(offset.ok().map(|offset| self.slots[offset]))
-    }
-
-    pub(crate) async fn get_by_slot(
-        &self,
-        slot: Slot,
-    ) -> nsql_serde::Result<(&K::Archived, &V::Archived)> {
+    pub(crate) fn get_by_slot(&self, slot: Slot) -> &T::Archived {
         let bytes = &self[slot.offset..];
-        let key = K::archived(bytes);
-        let key_size = mem::size_of_val(key);
-        let value = V::archived(&bytes[key_size..]);
-        Ok((key, value))
+        todo!();
+        //     let value = T::archived(bytes);
+        //     Ok(value)
     }
 
-    pub(crate) fn low_key(&self) -> nsql_serde::Result<&K::Archived> {
-        let slot = self.slots.first().unwrap();
+    pub(crate) fn low_key(&self) -> &T::Archived {
+        let slot = *self.slots.first().unwrap();
         self.key_in_slot(slot)
     }
 
     // FIXME cleanup all this api mess
-    pub(super) async fn slot_index_of(
-        &self,
-        key: &K::Archived,
-    ) -> nsql_serde::Result<Result<usize, usize>> {
-        async_binary_search_by(self.slots, |slot| async {
-            let k = self.key_in_slot(slot)?;
-            Ok(k.partial_cmp(key).expect(
-                "key should always return an ordering (can't use `Ord` as they are different types)",
-            ))
+    pub(super) fn slot_index_of_key<K>(&self, key: &K) -> Result<usize, usize>
+    where
+        K: ?Sized,
+        T::Archived: KeyOrd<Key = K>,
+    {
+        self.slots.binary_search_by(|slot| {
+            let value = self.key_in_slot(*slot);
+            value.key_cmp(key)
         })
-        .await
     }
 
-    pub(super) fn key_in_slot(&self, slot: &Slot) -> nsql_serde::Result<&K::Archived> {
-        let bytes = &self[slot.offset..];
-        Ok(K::archived(bytes))
+    pub(super) fn slot_index_of_value(&self, value: &T::Archived) -> Result<usize, usize> {
+        self.slots.binary_search_by(|slot| {
+            let v = self.key_in_slot(*slot);
+            v.cmp(value)
+        })
+    }
+
+    pub(super) fn key_in_slot(&self, slot: Slot) -> &T::Archived {
+        // FIXME remove this
+        self.get_by_slot(slot)
     }
 }
 
-impl<K, V> Index<RangeFrom<SlotOffset>> for SlottedPageView<'_, K, V> {
+impl<T> Index<RangeFrom<SlotOffset>> for SlottedPageView<'_, T> {
     type Output = [u8];
 
     fn index(&self, offset: RangeFrom<SlotOffset>) -> &Self::Output {
@@ -142,7 +130,7 @@ impl<K, V> Index<RangeFrom<SlotOffset>> for SlottedPageView<'_, K, V> {
     }
 }
 
-impl<K, V> IndexMut<RangeFrom<SlotOffset>> for SlottedPageViewMut<'_, K, V> {
+impl<T> IndexMut<RangeFrom<SlotOffset>> for SlottedPageViewMut<'_, T> {
     // see SlottedPageViewMut::index
     fn index_mut(&mut self, offset: RangeFrom<SlotOffset>) -> &mut Self::Output {
         let adjusted_offset = offset.start - self.header.slot_len * archived_size_of!(Slot);
@@ -153,14 +141,14 @@ impl<K, V> IndexMut<RangeFrom<SlotOffset>> for SlottedPageViewMut<'_, K, V> {
 // NOTE: must match the layout of `SlottedPageView`
 #[derive(Eq)]
 #[repr(C)]
-pub(crate) struct SlottedPageViewMut<'a, K, V> {
+pub(crate) struct SlottedPageViewMut<'a, T> {
     header: Pin<&'a mut Archived<SlottedPageMeta>>,
     slots: &'a mut [Slot],
     data: &'a mut [u8],
-    marker: PhantomData<(K, V)>,
+    marker: PhantomData<T>,
 }
 
-impl<K, V> Index<RangeFrom<SlotOffset>> for SlottedPageViewMut<'_, K, V> {
+impl<T> Index<RangeFrom<SlotOffset>> for SlottedPageViewMut<'_, T> {
     type Output = [u8];
 
     fn index(&self, offset: RangeFrom<SlotOffset>) -> &Self::Output {
@@ -171,7 +159,7 @@ impl<K, V> Index<RangeFrom<SlotOffset>> for SlottedPageViewMut<'_, K, V> {
     }
 }
 
-impl<'a, K, V> fmt::Debug for SlottedPageViewMut<'a, K, V> {
+impl<'a, T> fmt::Debug for SlottedPageViewMut<'a, T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("SlottedPageViewMut")
             .field("header", &self.header)
@@ -181,7 +169,7 @@ impl<'a, K, V> fmt::Debug for SlottedPageViewMut<'a, K, V> {
     }
 }
 
-impl<'a, K, V> PartialEq for SlottedPageViewMut<'a, K, V> {
+impl<'a, T> PartialEq for SlottedPageViewMut<'a, T> {
     fn eq(&self, other: &Self) -> bool {
         self.header == other.header && self.slots == other.slots && self.data == other.data
     }
@@ -202,13 +190,13 @@ nsql_util::static_assert_eq!(
     mem::size_of::<ArchivedSlottedPageMeta>()
 );
 
-impl<'a, K, V> SlottedPageViewMut<'a, K, V> {
+impl<'a, T> SlottedPageViewMut<'a, T> {
     /// `prefix_size` is the size of the page header and the page-specific header` (and anything else that comes before the slots)
     /// slot offsets are relative to the initla value of `free_start`
     pub(crate) async fn init(
         buf: &'a mut [u8],
         prefix_size: u16,
-    ) -> nsql_serde::Result<SlottedPageViewMut<'a, K, V>> {
+    ) -> nsql_serde::Result<SlottedPageViewMut<'a, T>> {
         let free_end = PAGE_DATA_SIZE as u16 - prefix_size - archived_size_of!(SlottedPageMeta);
         assert_eq!(free_end, buf.len() as u16 - archived_size_of!(SlottedPageMeta));
         let header = SlottedPageMeta {
@@ -226,7 +214,7 @@ impl<'a, K, V> SlottedPageViewMut<'a, K, V> {
     /// Safety: `buf` must point at the start of a valid slotted page
     pub(crate) async unsafe fn create(
         buf: &'a mut [u8],
-    ) -> nsql_serde::Result<SlottedPageViewMut<'a, K, V>> {
+    ) -> nsql_serde::Result<SlottedPageViewMut<'a, T>> {
         let (header_bytes, buf) = buf.split_array_mut();
         let header = unsafe { nsql_rkyv::archived_root_mut::<SlottedPageMeta>(header_bytes) };
 
@@ -244,13 +232,13 @@ impl<'a, K, V> SlottedPageViewMut<'a, K, V> {
     }
 }
 
-impl<'a, K, V> Deref for SlottedPageViewMut<'a, K, V> {
-    type Target = SlottedPageView<'a, K, V>;
+impl<'a, T> Deref for SlottedPageViewMut<'a, T> {
+    type Target = SlottedPageView<'a, T>;
 
     fn deref(&self) -> &Self::Target {
         static_assert_eq!(
-            mem::size_of::<SlottedPageView<'a, u16, u64>>(),
-            mem::size_of::<SlottedPageViewMut<'a, u16, u64>>()
+            mem::size_of::<SlottedPageView<'a, KeyValuePair<u16, u64>>>(),
+            mem::size_of::<SlottedPageViewMut<'a, KeyValuePair<u16, u64>>>()
         );
 
         // SAFETY this is safe because SlottedPageView and SlottedPageViewMut have the same layout
@@ -258,29 +246,22 @@ impl<'a, K, V> Deref for SlottedPageViewMut<'a, K, V> {
     }
 }
 
-impl<'a, K, V> SlottedPageViewMut<'a, K, V>
+impl<'a, T> SlottedPageViewMut<'a, T>
 where
-    K: Rkyv + Ord + fmt::Debug,
-    K::Archived: fmt::Debug + Ord + PartialOrd<K>,
-    V: Rkyv + fmt::Debug,
+    T: Archive,
+    T::Archived: Ord,
 {
-    pub(crate) async fn insert(
-        &mut self,
-        key: &K::Archived,
-        value: &V::Archived,
-    ) -> nsql_serde::Result<Result<(), PageFull>> {
-        let serialized_key =
-            unsafe { slice::from_raw_parts(key as *const _ as *const u8, mem::size_of_val(key)) };
+    pub(crate) fn insert(&mut self, value: &T::Archived) -> Result<(), PageFull> {
         let serialized_value = unsafe {
             slice::from_raw_parts(value as *const _ as *const u8, mem::size_of_val(value))
         };
 
-        let len = (serialized_key.len() + serialized_value.len()) as u16;
+        let len = serialized_value.len() as u16;
         if len + archived_size_of!(Slot) > self.header.free_end - self.header.free_start {
-            return Ok(Err(PageFull));
+            return Err(PageFull);
         }
 
-        let idx = self.slot_index_of(key).await?;
+        let idx = self.slot_index_of_value(value);
 
         let idx = match idx {
             Ok(idx) => todo!("handle case where key already exists {:?}", self.slots[idx]),
@@ -288,10 +269,7 @@ where
         };
 
         let key_offset = self.header.free_end - len;
-        (&mut self[key_offset..]).put(serialized_key);
-
-        let value_offset = self.header.free_end - serialized_value.len() as u16;
-        (&mut self[value_offset..]).put(serialized_value);
+        (&mut self[key_offset..]).put(serialized_value);
 
         self.header.free_end -= len;
         self.header.slot_len += 1;
@@ -325,20 +303,19 @@ where
         self.data = data;
 
         #[cfg(debug_assertions)]
-        self.assert_sorted().await?;
+        self.assert_sorted();
 
-        Ok(Ok(()))
+        Ok(())
     }
 
     #[cfg(debug_assertions)]
-    async fn assert_sorted(&self) -> nsql_serde::Result<()> {
-        let mut keys = Vec::<&K::Archived>::with_capacity(self.header.slot_len.value() as usize);
-        for slot in self.slots.iter() {
-            keys.push(self.key_in_slot(slot)?);
+    fn assert_sorted(&self) {
+        let mut values = Vec::<&T::Archived>::with_capacity(self.header.slot_len.value() as usize);
+        for &slot in self.slots.iter() {
+            values.push(self.key_in_slot(slot));
         }
 
-        assert!(keys.is_sorted(), "{:?}", keys);
-        Ok(())
+        assert!(values.is_sorted());
     }
 }
 
@@ -387,36 +364,4 @@ impl Sub<u16> for SlotOffset {
     fn sub(self, rhs: u16) -> Self::Output {
         Self::from(self.0 - rhs)
     }
-}
-
-// adapted from std
-async fn async_binary_search_by<'a, T, F, Fut>(
-    xs: &'a [T],
-    f: F,
-) -> nsql_serde::Result<Result<usize, usize>>
-where
-    T: Copy,
-    F: Fn(&'a T) -> Fut + 'a,
-    Fut: Future<Output = nsql_serde::Result<Ordering>> + 'a,
-{
-    let mut size = xs.len();
-    let mut left = 0;
-    let mut right = size;
-    while left < right {
-        let mid = left + size / 2;
-
-        let cmp = f(unsafe { xs.get_unchecked(mid) }).await?;
-
-        if cmp == Ordering::Less {
-            left = mid + 1;
-        } else if cmp == Ordering::Greater {
-            right = mid;
-        } else {
-            return Ok(Ok(mid));
-        }
-
-        size = right - left;
-    }
-
-    Ok(Err(left))
 }

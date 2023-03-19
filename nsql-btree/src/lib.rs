@@ -1,3 +1,4 @@
+#![feature(min_specialization, rustc_attrs)]
 #![feature(async_fn_in_trait)]
 #![feature(generic_const_exprs)]
 #![feature(is_sorted)]
@@ -13,8 +14,6 @@ mod rkyv;
 
 pub use btree::BTree;
 pub use nsql_pager::Result;
-
-use self::rkyv::Rkyv;
 
 #[cfg(test)]
 mod tests;
