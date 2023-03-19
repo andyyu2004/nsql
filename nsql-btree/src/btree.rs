@@ -8,8 +8,7 @@ use nsql_pager::PageIndex;
 use nsql_rkyv::DefaultSerializer;
 use rkyv::{Archive, Deserialize, Serialize};
 
-use crate::node::Flags;
-use crate::page::{PageFull, PageView, PageViewMut, PageViewMutKind};
+use crate::page::{Flags, NodeMut, PageFull, PageView, PageViewMut, PageViewMutKind};
 use crate::Result;
 
 /// A B+ tree
@@ -127,7 +126,7 @@ where
                     let mut right_data = right_page.page().data_mut().await;
                     let mut right_child = PageViewMut::<K, V>::init_leaf(&mut right_data).await?;
 
-                    leaf.split_root_into(&mut left_child, &mut right_child);
+                    leaf.split_root_into(left_page.page_idx(), &mut left_child, &mut right_child);
 
                     // use the first key in the right child as the separator to insert into the parent
                     let sep = right_child.low_key().clone();
@@ -198,27 +197,19 @@ where
                     let mut right_data = right_page.page().data_mut().await;
                     let mut right_child = PageViewMut::<K, V>::init_interior(&mut right_data)?;
 
-                    parent
-                        .split_root_into(left_page.page_idx(), &mut left_child, &mut right_child)
-                        .await?;
+                    parent.split_root_into(left_page.page_idx(), &mut left_child, &mut right_child);
 
-                    // reinitialize the root to an interior node and add the two children
-                    let mut root = PageViewMut::<K, V>::init_root_interior(&mut parent_data)?;
+                    let sep = right_child.low_key().clone();
 
-                    let sep = right_child.low_key();
-
-                    root.insert_initial(
-                        K::MIN,
-                        left_page.page_idx(),
-                        sep.clone(),
-                        right_page.page_idx(),
-                    )
-                    .expect("new root should not be full");
-
-                    (if key < sep { &mut left_child } else { &mut right_child })
+                    (if key < &sep { left_child } else { right_child })
                         .insert(key.clone(), child_idx)
                         .await?
                         .expect("split child should not be full");
+
+                    // reinitialize the root to an interior node and add the two children
+                    let mut root = PageViewMut::<K, V>::init_root_interior(&mut parent_data)?;
+                    root.insert_initial(K::MIN, left_page.page_idx(), sep, right_page.page_idx())
+                        .expect("new root should not be full");
                 } else {
                     cov_mark::hit!(non_root_interior_split);
                     // split the non-root interior by allocating a new interior and splitting the contents
@@ -242,6 +233,19 @@ where
 
         Ok(())
     }
+
+    // async fn split_root(&mut self) -> nsql_serde::Result<()> {
+    //     let left_page = self.pool.alloc().await?;
+    //     let mut left_data = left_page.page().data_mut().await;
+    //     let mut left_child = PageViewMut::<K, V>::init_leaf(&mut left_data).await?;
+
+    //     let right_page = self.pool.alloc().await?;
+    //     let mut right_data = right_page.page().data_mut().await;
+    //     let mut right_child = PageViewMut::<K, V>::init_leaf(&mut right_data).await?;
+
+    //     leaf.split_root_into(&mut left_child, &mut right_child);
+    //     Ok(())
+    // }
 }
 
 // hack to generate "negative infinity" low keys for L&Y trees for left-most nodes

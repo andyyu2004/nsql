@@ -1,18 +1,45 @@
 mod interior;
 mod key_value_pair;
 mod leaf;
+mod node;
 mod slotted;
 
 use std::fmt;
 use std::pin::Pin;
 
 pub(crate) use key_value_pair::{ArchivedKeyValuePair, KeyValuePair};
+pub(crate) use node::{Node, NodeMut};
 use nsql_pager::PAGE_DATA_SIZE;
 use rkyv::Archive;
 
 pub(crate) use self::interior::{InteriorPageView, InteriorPageViewMut};
 pub(crate) use self::leaf::{LeafPageView, LeafPageViewMut};
-use crate::node::Flags;
+
+bitflags::bitflags! {
+    #[derive(Debug, Clone, Copy)]
+    pub struct Flags: u8 {
+        const IS_ROOT = 1 << 0;
+        const IS_LEAF = 1 << 1;
+    }
+}
+
+impl Archive for Flags {
+    type Archived = Flags;
+    type Resolver = ();
+
+    unsafe fn resolve(&self, _: usize, (): Self::Resolver, out: *mut Self::Archived) {
+        out.write(*self);
+    }
+}
+
+impl<S: rkyv::ser::Serializer + ?Sized> rkyv::Serialize<S> for Flags {
+    fn serialize(
+        &self,
+        _serializer: &mut S,
+    ) -> Result<Self::Resolver, <S as rkyv::Fallible>::Error> {
+        Ok(())
+    }
+}
 
 macro_rules! archived_size_of {
     ($ty:ty) => {

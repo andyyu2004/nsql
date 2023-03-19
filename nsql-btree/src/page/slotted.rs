@@ -14,6 +14,7 @@ use crate::page::KeyValuePair;
 
 // NOTE: the layout of this MUST match the layout of the mutable version
 #[repr(C)]
+#[derive(Copy, Clone)]
 pub(crate) struct SlottedPageView<'a, T> {
     header: &'a Archived<SlottedPageMeta>,
     slots: &'a [Slot],

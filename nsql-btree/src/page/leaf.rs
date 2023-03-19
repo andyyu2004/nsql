@@ -6,8 +6,9 @@ use nsql_pager::PageIndex;
 use nsql_util::static_assert_eq;
 use rkyv::{Archive, Archived};
 
+use super::node::Node;
 use super::slotted::SlottedPageViewMut;
-use super::{ArchivedKeyValuePair, KeyValuePair, PageFull};
+use super::{ArchivedKeyValuePair, KeyValuePair, NodeMut, PageFull};
 use crate::page::slotted::SlottedPageView;
 use crate::page::{archived_size_of, PageHeader};
 
@@ -159,30 +160,40 @@ where
 
         self.slotted_page.set_len(lhs.len() as u16);
     }
+}
 
-    /// Intended for use when splitting a root node.
-    /// We keep the root node page number unchanged because it may be referenced as an identifier.
-    pub(crate) fn split_root_into(
-        &mut self,
-        left: &mut LeafPageViewMut<'_, K, V>,
-        right: &mut LeafPageViewMut<'_, K, V>,
-    ) {
-        assert!(left.slotted_page.is_empty());
-        assert!(right.slotted_page.is_empty());
-        assert!(self.slotted_page.len() > 1);
+impl<'a, K, V> Node<'a, KeyValuePair<K, V>> for LeafPageView<'a, K, V>
+where
+    K: Archive + Ord + fmt::Debug,
+    K::Archived: fmt::Debug + Ord,
+    V: Archive + fmt::Debug,
+    V::Archived: fmt::Debug,
+{
+    fn slotted_page(&self) -> &SlottedPageView<'a, KeyValuePair<K, V>> {
+        &self.slotted_page
+    }
+}
 
-        let slots = self.slotted_page.slots();
-        let (lhs, rhs) = slots.split_at(slots.len() / 2);
-        for &slot in lhs {
-            let value = self.slotted_page.get_by_slot(slot);
-            left.insert_kv(value).unwrap();
-        }
+impl<'a, K, V> Node<'a, KeyValuePair<K, V>> for LeafPageViewMut<'a, K, V>
+where
+    K: Archive + Ord + fmt::Debug,
+    K::Archived: fmt::Debug + Ord,
+    V: Archive + fmt::Debug,
+    V::Archived: fmt::Debug,
+{
+    fn slotted_page(&self) -> &SlottedPageView<'a, KeyValuePair<K, V>> {
+        (**self).slotted_page()
+    }
+}
 
-        for &slot in rhs {
-            let value = self.slotted_page.get_by_slot(slot);
-            right.insert_kv(value).unwrap();
-        }
-
-        self.slotted_page.set_len(0);
+impl<'a, K, V> NodeMut<'a, KeyValuePair<K, V>> for LeafPageViewMut<'a, K, V>
+where
+    K: Archive + Ord + fmt::Debug,
+    K::Archived: fmt::Debug + Ord,
+    V: Archive + fmt::Debug,
+    V::Archived: fmt::Debug,
+{
+    fn slotted_page_mut(&mut self) -> &mut SlottedPageViewMut<'a, KeyValuePair<K, V>> {
+        &mut self.slotted_page
     }
 }

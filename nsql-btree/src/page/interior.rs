@@ -8,7 +8,7 @@ use nsql_util::static_assert_eq;
 use rkyv::{Archive, Archived, Serialize};
 
 use super::slotted::{SlottedPageView, SlottedPageViewMut};
-use super::{KeyValuePair, PageFull, PageHeader};
+use super::{KeyValuePair, Node, NodeMut, PageFull, PageHeader};
 use crate::page::archived_size_of;
 
 const BTREE_INTERIOR_PAGE_MAGIC: [u8; 4] = *b"BTPI";
@@ -226,34 +226,34 @@ where
 
         self.slotted_page.set_len(lhs.len() as u16);
     }
+}
 
-    pub(crate) async fn split_root_into(
-        &mut self,
-        left_page_idx: PageIndex,
-        left_child: &mut InteriorPageViewMut<'_, K>,
-        right_child: &mut InteriorPageViewMut<'_, K>,
-    ) -> nsql_serde::Result<()> {
-        assert!(left_child.slotted_page.is_empty());
-        assert!(right_child.slotted_page.is_empty());
-        assert!(self.slotted_page.len() > 1);
+impl<'a, K> Node<'a, KeyValuePair<K, PageIndex>> for InteriorPageView<'a, K>
+where
+    K: Archive + Ord + fmt::Debug,
+    K::Archived: fmt::Debug + Ord,
+{
+    fn slotted_page(&self) -> &SlottedPageView<'a, KeyValuePair<K, PageIndex>> {
+        &self.slotted_page
+    }
+}
 
-        right_child.header.left_link = nsql_rkyv::to_archive(Some(left_page_idx));
+impl<'a, K> Node<'a, KeyValuePair<K, PageIndex>> for InteriorPageViewMut<'a, K>
+where
+    K: Archive + Ord + fmt::Debug,
+    K::Archived: fmt::Debug + Ord,
+{
+    fn slotted_page(&self) -> &SlottedPageView<'a, KeyValuePair<K, PageIndex>> {
+        (**self).slotted_page()
+    }
+}
 
-        let slots = self.slotted_page.slots();
-        let (lhs, rhs) = slots.split_at(slots.len() / 2);
-        for &slot in lhs {
-            let value = self.slotted_page.get_by_slot(slot);
-            // using internal insert to avoid assertions that don't yet hold
-            left_child.slotted_page.insert(value).unwrap();
-        }
-
-        for &slot in rhs {
-            let value = self.slotted_page.get_by_slot(slot);
-            right_child.slotted_page.insert(value).unwrap();
-        }
-
-        self.slotted_page.set_len(0);
-
-        Ok(())
+impl<'a, K> NodeMut<'a, KeyValuePair<K, PageIndex>> for InteriorPageViewMut<'a, K>
+where
+    K: Archive + Ord + fmt::Debug,
+    K::Archived: fmt::Debug + Ord,
+{
+    fn slotted_page_mut(&mut self) -> &mut SlottedPageViewMut<'a, KeyValuePair<K, PageIndex>> {
+        &mut self.slotted_page
     }
 }
