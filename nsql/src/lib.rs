@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use error_stack::Report;
 use nsql_bind::Binder;
-use nsql_buffer::BufferPool;
+use nsql_buffer::{BufferPool, Pool};
 use nsql_catalog::Catalog;
 use nsql_core::schema::LogicalType;
 use nsql_execution::PhysicalPlanner;
@@ -49,8 +49,7 @@ impl Nsql {
         let plan = Planner::default().plan(stmt);
         let plan = optimize(plan);
 
-        let physical_plan =
-            PhysicalPlanner::new(BufferPool::clone(&self.inner.buffer_pool)).plan(&plan);
+        let physical_plan = PhysicalPlanner::new(Arc::clone(&self.inner.buffer_pool)).plan(&plan);
         let tuples = nsql_execution::execute(&tx, catalog, physical_plan).await?;
 
         tx.commit().await;
@@ -67,7 +66,7 @@ impl Nsql {
 
 struct Shared {
     storage: Storage,
-    buffer_pool: BufferPool,
+    buffer_pool: Arc<dyn Pool>,
     txm: TransactionManager,
     catalog: Catalog,
 }
@@ -77,7 +76,7 @@ impl Nsql {
         let txm = TransactionManager::default();
         let pager = Arc::new(InMemoryPager::default()) as Arc<dyn Pager>;
         let storage = Storage::new(Arc::clone(&pager));
-        let buffer_pool = BufferPool::new(pager);
+        let buffer_pool = Arc::new(BufferPool::new(pager));
 
         let tx = txm.begin().await;
         let catalog = Catalog::create(&tx)?;

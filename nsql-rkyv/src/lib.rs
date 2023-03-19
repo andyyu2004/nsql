@@ -6,11 +6,14 @@
 use std::mem;
 use std::pin::Pin;
 
-use rkyv::ser::serializers::{AllocSerializer, BufferSerializer};
+use rkyv::ser::serializers::{AlignedSerializer, AllocSerializer, BufferSerializer};
 use rkyv::ser::Serializer as _;
-use rkyv::{Archive, ArchiveUnsized, Deserialize, Infallible, Serialize, SerializeUnsized};
+use rkyv::{
+    AlignedVec, Archive, ArchiveUnsized, Deserialize, Infallible, Serialize, SerializeUnsized,
+};
 
-pub type DefaultSerializer = rkyv::ser::serializers::AllocSerializer<4096>;
+pub type DefaultSerializer = AlignedSerializer<AlignedVec>;
+pub type DefaultUnsizedSerializer = AllocSerializer<256>;
 
 #[inline]
 pub fn deserialize<A, T>(archived: &A) -> T
@@ -47,9 +50,9 @@ where
 
 pub fn serialize_unsized<T>(value: &T) -> rkyv::AlignedVec
 where
-    T: SerializeUnsized<DefaultSerializer> + ?Sized,
+    T: SerializeUnsized<DefaultUnsizedSerializer> + ?Sized,
 {
-    let mut serializer = AllocSerializer::default();
+    let mut serializer = DefaultUnsizedSerializer::default();
     let _pos = serializer.serialize_unsized_value(value).expect("should have enough scratch space");
     serializer.into_serializer().into_inner()
 }
@@ -84,7 +87,9 @@ pub fn to_bytes<T>(value: &T) -> rkyv::AlignedVec
 where
     T: Serialize<DefaultSerializer>,
 {
-    rkyv::to_bytes(value).expect("rkyv serialization failed")
+    let mut serializer = DefaultSerializer::default();
+    serializer.serialize_value(value).unwrap();
+    serializer.into_inner()
 }
 
 /// convert `T` to `T::Archived`
@@ -92,7 +97,7 @@ where
 #[inline]
 pub fn to_archive<T>(value: T) -> T::Archived
 where
-    T: Serialize<AllocSerializer<4096>> + Copy,
+    T: Serialize<DefaultSerializer> + Copy,
     T::Archived: Copy,
 {
     let bytes = to_bytes(&value);

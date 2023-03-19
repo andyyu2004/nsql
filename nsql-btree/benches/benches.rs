@@ -28,7 +28,7 @@ fn bench_insertions(c: &mut Criterion) {
 async fn insertions() {
     let pool = nsql_test::mk_fast_mem_buffer_pool!();
     let btree = BTree::<u32, u64>::init(pool).await.unwrap();
-    for i in 0..1000 {
+    for i in 0..60000 {
         btree.insert(&i, &(i as u64)).await.unwrap();
     }
 }
