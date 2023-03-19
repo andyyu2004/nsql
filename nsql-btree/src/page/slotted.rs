@@ -82,12 +82,12 @@ where
     }
 
     pub(crate) fn get_by_slot(&self, slot: Slot) -> &T::Archived {
-        dbg!(unsafe { rkyv::archived_root::<T>(&self[slot]) })
+        unsafe { rkyv::archived_root::<T>(&self[slot]) }
     }
 
     pub(crate) fn low_key(&self) -> &T::Archived {
         let slot = *self.slots.first().unwrap();
-        self.key_in_slot(slot)
+        self.get_by_slot(slot)
     }
 
     // FIXME cleanup all this api mess
@@ -97,21 +97,16 @@ where
         T::Archived: KeyOrd<Key = K>,
     {
         self.slots.binary_search_by(|slot| {
-            let value = self.key_in_slot(*slot);
+            let value = self.get_by_slot(*slot);
             value.key_cmp(key)
         })
     }
 
     pub(super) fn slot_index_of_value(&self, value: &T::Archived) -> Result<usize, usize> {
         self.slots.binary_search_by(|slot| {
-            let v = self.key_in_slot(*slot);
+            let v = self.get_by_slot(*slot);
             v.cmp(value)
         })
-    }
-
-    pub(super) fn key_in_slot(&self, slot: Slot) -> &T::Archived {
-        // FIXME remove this
-        self.get_by_slot(slot)
     }
 }
 
@@ -250,6 +245,8 @@ where
             slice::from_raw_parts(value as *const _ as *const u8, mem::size_of_val(value))
         };
 
+        debug_assert_eq!(unsafe { rkyv::archived_root::<T>(serialized_value) }, value);
+
         let length = serialized_value.len() as u16;
         if length + archived_size_of!(Slot) > self.header.free_end - self.header.free_start {
             return Err(PageFull);
@@ -264,12 +261,16 @@ where
 
         self.header.free_end -= length;
         self.header.free_start += archived_size_of!(Slot);
-        self.header.slot_len += 1;
         let slot = Slot { offset: self.header.free_end, length: length.into() };
         self[slot].copy_from_slice(serialized_value);
+        debug_assert_eq!(&self[slot], serialized_value);
+        debug_assert_eq!(unsafe { rkyv::archived_root::<T>(&self[slot]) }, value);
+
+        // following line MUST be done after the write to `self[slot]` as it will shift the index operation
+        self.header.slot_len += 1;
 
         unsafe {
-            // write the new slot at index `idx` of the slot array and recreate the slice to include it
+            // write the new slot at index `idx` of the slot array
 
             // shift everything right of `idx` to the right by 1 (inclusive)
             ptr::copy(
@@ -281,6 +282,7 @@ where
             // write the new slot in the hole
             ptr::write(self.slots.as_mut_ptr().add(idx), slot);
 
+            // recreate the slice to include the new entry
             self.slots = slice::from_raw_parts_mut(
                 self.slots.as_mut_ptr(),
                 self.header.slot_len.value() as usize,
@@ -294,6 +296,8 @@ where
         let (_, data) = data.split_array_mut::<{ mem::size_of::<Archived<Slot>>() }>();
         self.data = data;
 
+        debug_assert_eq!(unsafe { rkyv::archived_root::<T>(&self[slot]) }, value);
+
         #[cfg(debug_assertions)]
         self.assert_sorted();
 
@@ -304,7 +308,7 @@ where
     fn assert_sorted(&self) {
         let mut values = Vec::<&T::Archived>::with_capacity(self.header.slot_len.value() as usize);
         for &slot in self.slots.iter() {
-            values.push(self.key_in_slot(slot));
+            values.push(self.get_by_slot(slot));
         }
 
         assert!(values.is_sorted());

@@ -16,8 +16,8 @@ fn test_btree_insert_and_get() -> nsql_serde::Result<()> {
     nsql_test::start(async {
         let pool = mk_mem_buffer_pool!();
         let btree = BTree::<u32, u64>::init(pool).await?;
-        btree.insert(&1, &2).await?;
-        assert_eq!(btree.get(&1).await?, Some(2));
+        btree.insert(&42, &420).await?;
+        assert_eq!(btree.get(&42).await?, Some(420));
         Ok(())
     })
 }

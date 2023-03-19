@@ -77,7 +77,7 @@ where
     pub(crate) fn low_key(&self) -> &K::Archived {
         let slot =
             *self.slotted_page.slots().last().expect("interior slots should always be non-empty");
-        &self.slotted_page.key_in_slot(slot).key
+        &self.slotted_page.get_by_slot(slot).key
     }
 
     fn is_leftmost(&self) -> bool {
