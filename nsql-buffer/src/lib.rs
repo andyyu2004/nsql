@@ -3,6 +3,7 @@
 #![feature(async_fn_in_trait)]
 #![feature(once_cell)]
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -102,6 +103,43 @@ impl Pool for BufferPool {
             | lruk::InsertionResult::AlreadyExists(value) => value,
         };
 
+        Ok(handle)
+    }
+}
+
+/// A fast implementation of a buffer pool that essentially just wraps the underlying pager.
+/// Does not deal with eviction.
+/// Useful for tests only!
+pub struct FastUnboundedBufferPool {
+    pager: Arc<dyn Pager>,
+    cache: RwLock<HashMap<PageIndex, BufferHandle>>,
+}
+
+impl FastUnboundedBufferPool {
+    pub fn new(pager: Arc<dyn Pager>) -> Self {
+        Self { pager, cache: Default::default() }
+    }
+}
+
+#[async_trait]
+impl Pool for FastUnboundedBufferPool {
+    fn pager(&self) -> &Arc<dyn Pager> {
+        &self.pager
+    }
+
+    async fn alloc(&self) -> Result<BufferHandle> {
+        let idx = self.pager.alloc_page().await?;
+        self.load(idx).await
+    }
+
+    async fn load(&self, idx: PageIndex) -> Result<BufferHandle> {
+        if let Some(handle) = self.cache.read().get(&idx) {
+            return Ok(handle.clone());
+        }
+
+        let page = self.pager.read_page(idx).await?;
+        let handle = BufferHandle::new(page);
+        assert!(self.cache.write().insert(idx, handle.clone()).is_none());
         Ok(handle)
     }
 }

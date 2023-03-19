@@ -26,6 +26,15 @@ macro_rules! mk_mem_buffer_pool {
 }
 
 #[macro_export]
+macro_rules! mk_fast_mem_buffer_pool {
+    () => {
+        ::std::sync::Arc::new(::nsql_buffer::FastUnboundedBufferPool::new(::std::sync::Arc::new(
+            ::nsql_pager::InMemoryPager::new(),
+        )))
+    };
+}
+
+#[macro_export]
 macro_rules! mk_file_pager {
     () => {
         SingleFilePager::create($crate::tmp!()).await?
