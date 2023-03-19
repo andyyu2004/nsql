@@ -1,8 +1,9 @@
 use std::fmt;
 use std::marker::PhantomData;
+use std::sync::Arc;
 
 use async_recursion::async_recursion;
-use nsql_buffer::BufferPool;
+use nsql_buffer::Pool;
 use nsql_pager::PageIndex;
 use nsql_rkyv::DefaultSerializer;
 use rkyv::{Archive, Deserialize, Serialize};
@@ -13,7 +14,7 @@ use crate::Result;
 
 /// A B+ tree
 pub struct BTree<K, V> {
-    pool: BufferPool,
+    pool: Arc<dyn Pool>,
     root_idx: PageIndex,
     marker: std::marker::PhantomData<fn() -> (K, V)>,
 }
@@ -26,7 +27,7 @@ where
     V::Archived: Clone + Deserialize<V, rkyv::Infallible> + fmt::Debug,
 {
     #[inline]
-    pub async fn init(pool: BufferPool) -> Result<Self> {
+    pub async fn init(pool: Arc<dyn Pool>) -> Result<Self> {
         let handle = pool.alloc().await?;
         let page = handle.page();
         let mut data = page.data_mut().await;

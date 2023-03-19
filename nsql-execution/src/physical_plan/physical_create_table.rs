@@ -1,7 +1,6 @@
 use std::sync::atomic::{self, AtomicBool};
 use std::sync::Arc;
 
-use nsql_buffer::BufferPool;
 use nsql_catalog::{Container, CreateTableInfo, Namespace, Oid, Table};
 use nsql_core::schema::{Attribute, Schema};
 use nsql_storage::{TableStorage, TableStorageInfo};
@@ -17,7 +16,7 @@ pub struct PhysicalCreateTable {
 
 impl PhysicalCreateTable {
     pub(crate) fn make(
-        pool: BufferPool,
+        pool: Arc<dyn Pool>,
         namespace: Oid<Namespace>,
         info: nsql_ir::CreateTableInfo,
     ) -> Arc<dyn PhysicalNode> {

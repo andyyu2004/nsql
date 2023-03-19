@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+async-trait = "0.1.64"
 coarsetime = "0.1.22"
 crossbeam = { version = "0.8.2", default-features = false, features = ["crossbeam-channel", "std"] }
 parking_lot = "0.12.1"

@@ -19,7 +19,9 @@ macro_rules! mk_storage {
 #[macro_export]
 macro_rules! mk_mem_buffer_pool {
     () => {
-        ::nsql_buffer::BufferPool::new(::std::sync::Arc::new(::nsql_pager::InMemoryPager::new()))
+        ::std::sync::Arc::new(::nsql_buffer::BufferPool::new(::std::sync::Arc::new(
+            ::nsql_pager::InMemoryPager::new(),
+        )))
     };
 }
 

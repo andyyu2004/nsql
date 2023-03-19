@@ -1,3 +1,5 @@
+use nsql_buffer::Pool;
+
 #[test]
 fn test_slotted_pages() -> nsql_serde::Result<()> {
     nsql_test::start(async {

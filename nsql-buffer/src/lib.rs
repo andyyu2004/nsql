@@ -5,11 +5,19 @@
 
 use std::sync::Arc;
 
+use async_trait::async_trait;
 use coarsetime::Duration;
 use lruk::{LruK, RefCounted};
 pub use nsql_pager::Result;
 use nsql_pager::{Page, PageIndex, Pager, PAGE_DATA_SIZE};
 use parking_lot::RwLock;
+
+#[async_trait]
+pub trait Pool: Send + Sync + 'static {
+    fn pager(&self) -> &Arc<dyn Pager>;
+    async fn alloc(&self) -> Result<BufferHandle>;
+    async fn load(&self, idx: PageIndex) -> Result<BufferHandle>;
+}
 
 #[derive(Clone)]
 pub struct BufferHandle {
@@ -38,19 +46,7 @@ impl RefCounted for BufferHandle {
     }
 }
 
-#[derive(Clone)]
 pub struct BufferPool {
-    inner: Arc<Inner>,
-}
-
-impl BufferPool {
-    #[inline]
-    pub fn pager(&self) -> &Arc<dyn Pager> {
-        &self.inner.pager
-    }
-}
-
-struct Inner {
     pager: Arc<dyn Pager>,
     cache: RwLock<LruK<PageIndex, BufferHandle, Clock>>,
 }
@@ -60,34 +56,37 @@ impl BufferPool {
         let max_memory_bytes = if cfg!(test) { 1024 * 1024 } else { 128 * 1024 * 1024 };
         let max_pages = max_memory_bytes / PAGE_DATA_SIZE;
 
-        let inner = Arc::new(Inner {
+        Self {
             pager,
             cache: RwLock::new(LruK::new(
                 max_pages,
                 if cfg!(test) { Duration::from_millis(100) } else { Duration::from_secs(200) },
                 if cfg!(test) { Duration::from_millis(10) } else { Duration::from_millis(50) },
             )),
-        });
-
-        Self { inner }
+        }
     }
 }
 
-impl BufferPool {
+#[async_trait]
+impl Pool for BufferPool {
     #[inline]
-    pub async fn alloc(&self) -> Result<BufferHandle> {
-        let idx = self.inner.pager.alloc_page().await?;
+    fn pager(&self) -> &Arc<dyn Pager> {
+        &self.pager
+    }
+
+    #[inline]
+    async fn alloc(&self) -> Result<BufferHandle> {
+        let idx = self.pager.alloc_page().await?;
         self.load(idx).await
     }
 
-    pub async fn load(&self, index: PageIndex) -> Result<BufferHandle> {
-        let inner = &self.inner;
-        if let Some(handle) = inner.cache.read().get(index) {
+    async fn load(&self, index: PageIndex) -> Result<BufferHandle> {
+        if let Some(handle) = self.cache.read().get(index) {
             return Ok(handle);
         }
 
-        let page = inner.pager.read_page(index).await?;
-        let result = inner.cache.write().insert(index, BufferHandle::new(page));
+        let page = self.pager.read_page(index).await?;
+        let result = self.cache.write().insert(index, BufferHandle::new(page));
         let handle = match result {
             lruk::InsertionResult::InsertedWithEviction { value, evicted } => {
                 assert_eq!(
@@ -96,7 +95,7 @@ impl BufferPool {
                     "evicted page was not the final reference"
                 );
                 // FIXME check whether page is dirty
-                inner.pager.write_page(evicted.page).await?;
+                self.pager.write_page(evicted.page).await?;
                 value
             }
             lruk::InsertionResult::Inserted(value)

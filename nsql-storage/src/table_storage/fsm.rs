@@ -1,6 +1,8 @@
 mod fsm_page;
 
-use nsql_buffer::BufferPool;
+use std::sync::Arc;
+
+use nsql_buffer::{BufferPool, Pool};
 use nsql_pager::PageIndex;
 use nsql_serde::{Deserialize, Serialize};
 
@@ -8,7 +10,7 @@ use self::fsm_page::FsmPage;
 use crate::table_storage::HeapTuple;
 
 pub struct FreeSpaceMap {
-    pool: BufferPool,
+    pool: Arc<dyn Pool>,
     meta: FreeSpaceMapMeta,
 }
 
@@ -19,13 +21,13 @@ pub struct FreeSpaceMapMeta {
 }
 
 impl FreeSpaceMap {
-    pub async fn create(pool: BufferPool) -> nsql_buffer::Result<Self> {
+    pub async fn create(pool: Arc<dyn Pool>) -> nsql_buffer::Result<Self> {
         let root_fsm_page = pool.pager().alloc_page().await?;
         let meta = FreeSpaceMapMeta { root_fsm_page };
         Ok(Self { pool, meta })
     }
 
-    pub fn load(pool: BufferPool, meta: FreeSpaceMapMeta) -> Self {
+    pub fn load(pool: Arc<dyn Pool>, meta: FreeSpaceMapMeta) -> Self {
         Self { pool, meta }
     }
 

@@ -922,6 +922,7 @@ dependencies = [
 name = "nsql-buffer"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "coarsetime",
  "crossbeam",
  "lruk",

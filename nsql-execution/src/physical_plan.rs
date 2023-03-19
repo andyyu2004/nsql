@@ -4,7 +4,7 @@ mod physical_values;
 
 use std::sync::Arc;
 
-use nsql_buffer::BufferPool;
+use nsql_buffer::{BufferPool, Pool};
 use nsql_plan::Plan;
 
 use self::physical_create_table::PhysicalCreateTable;
@@ -16,7 +16,7 @@ use crate::{
 };
 
 pub struct PhysicalPlanner {
-    pool: BufferPool,
+    pool: Arc<dyn Pool>,
 }
 
 /// Opaque physical plan that is ready to be executed
@@ -29,7 +29,7 @@ impl PhysicalPlan {
 }
 
 impl PhysicalPlanner {
-    pub fn new(pool: BufferPool) -> Self {
+    pub fn new(pool: Arc<dyn Pool>) -> Self {
         Self { pool }
     }
 
@@ -40,7 +40,7 @@ impl PhysicalPlanner {
     fn plan_inner(&self, plan: &Plan) -> Arc<dyn PhysicalNode> {
         match plan {
             Plan::CreateTable { namespace, info } => {
-                PhysicalCreateTable::make(BufferPool::clone(&self.pool), *namespace, info.clone())
+                PhysicalCreateTable::make(Arc::clone(&self.pool), *namespace, info.clone())
             }
             Plan::Insert { namespace, table, source, returning } => {
                 let source = self.plan_inner(source);
