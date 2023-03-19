@@ -45,6 +45,21 @@ pub(crate) struct LeafPageView<'a, K, V> {
     slotted_page: SlottedPageView<'a, KeyValuePair<K, V>>,
 }
 
+impl<K, V> fmt::Debug for LeafPageView<'_, K, V>
+where
+    K: Archive,
+    K::Archived: fmt::Debug + Ord,
+    V: Archive,
+    V::Archived: fmt::Debug,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("LeafPageView")
+            .field("header", &self.header)
+            .field("slotted_page", &self.slotted_page)
+            .finish()
+    }
+}
+
 impl<'a, K, V> LeafPageView<'a, K, V>
 where
     K: Archive + fmt::Debug,

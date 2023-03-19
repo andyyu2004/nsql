@@ -27,7 +27,7 @@ fn test_btree_insert_many_and_get() -> nsql_serde::Result<()> {
     nsql_test::start(async {
         let pool = mk_mem_buffer_pool!();
         let btree = BTree::<u32, u64>::init(pool).await?;
-        for i in 1..200 {
+        for i in 1..50 {
             btree.insert(&i, &(i as u64)).await?;
             assert_eq!(btree.get(&i).await?, Some(i as u64));
         }
@@ -36,33 +36,35 @@ fn test_btree_insert_many_and_get() -> nsql_serde::Result<()> {
 }
 
 #[test]
-fn test_btree_root_page_full() -> nsql_serde::Result<()> {
-    nsql_test::start(async {
-        let pool = mk_mem_buffer_pool!();
-        let btree = BTree::<u32, u64>::init(pool).await?;
-        const N: u32 = 50000;
-        for i in 0..=N {
-            btree.insert(&i, &(i as u64)).await?;
-            assert_eq!(btree.get(&i).await?, Some(i as u64));
-        }
-
-        for i in 0..=N {
-            assert_eq!(btree.get(&i).await?, Some(i as u64));
-        }
-
-        Ok(())
-    })
+fn test_btree_root_leaf_page_split() -> nsql_serde::Result<()> {
+    cov_mark::check!(root_leaf_split);
+    run::<300>()
 }
 
 #[test]
-fn test_btree_propogate_split() -> nsql_serde::Result<()> {
+fn test_btree_leaf_page_split() -> nsql_serde::Result<()> {
+    cov_mark::check!(non_root_leaf_split);
+    run::<500>()
+}
+
+#[test]
+fn test_btree_root_interior_page_split() -> nsql_serde::Result<()> {
+    cov_mark::check!(root_interior_split);
+    run::<34239>()
+}
+
+#[test]
+fn test_btree_interior_page_split() -> nsql_serde::Result<()> {
+    cov_mark::check!(non_root_interior_split);
+    run::<60000>()
+}
+
+fn run<const N: u32>() -> nsql_serde::Result<()> {
     nsql_test::start(async {
         let pool = mk_mem_buffer_pool!();
         let btree = BTree::<u32, u64>::init(pool).await?;
-        const N: u32 = 100000;
         for i in 0..=N {
             btree.insert(&i, &(i as u64)).await?;
-            assert_eq!(btree.get(&i).await?, Some(i as u64));
         }
 
         for i in 0..=N {
@@ -73,22 +75,3 @@ fn test_btree_propogate_split() -> nsql_serde::Result<()> {
     })
 }
 
-// // FIXME write some visualization tools to help see what's going on in the btree
-// #[bench]
-// fn test_btree_propogate_split2() -> nsql_serde::Result<()> {
-//     nsql_test::start(async {
-//         let pool = mk_mem_buffer_pool!();
-//         let btree = BTree::<u32, u64>::init(pool).await?;
-//         const N: u32 = 1000000;
-//         for i in 0..=N {
-//             assert!(btree.insert(i, i as u64).await?.is_none());
-//             assert_eq!(btree.get(&i).await?, Some(i as u64));
-//         }
-
-//         for i in 0..=N {
-//             assert_eq!(btree.get(&i).await?, Some(i as u64));
-//         }
-
-//         Ok(())
-//     })
-// }

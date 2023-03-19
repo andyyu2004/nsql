@@ -117,6 +117,7 @@ where
             Ok(value) => Ok(value),
             Err(PageFull) => {
                 if view.header.flags.contains(Flags::IS_ROOT) {
+                    cov_mark::hit!(root_leaf_split);
                     let left_page = self.pool.alloc().await?;
                     let mut left_data = left_page.page().data_mut().await;
                     let mut left_child = PageViewMut::<K, V>::init_leaf(&mut left_data).await?;
@@ -127,27 +128,22 @@ where
 
                     leaf.split_root_into(&mut left_child, &mut right_child);
 
-                    // reinitialize the root to an interior node and add the two children
-                    let mut root = PageViewMut::<K, V>::init_root_interior(&mut leaf_data)?;
-
                     // use the first key in the right child as the separator to insert into the parent
-                    let sep = right_child.low_key();
-
-                    root.insert_initial(
-                        K::MIN,
-                        left_page.page_idx(),
-                        sep.clone(),
-                        right_page.page_idx(),
-                    )
-                    .expect("new root should not be full");
+                    let sep = right_child.low_key().clone();
 
                     // FIXME check correctness of condition
-                    (if key < sep { left_child } else { right_child })
+                    (if key < &sep { left_child } else { right_child })
                         .insert(key.clone(), value.clone())
                         .expect("split child should not be full");
 
+                    // reinitialize the root to an interior node and add the two children
+                    let mut root = PageViewMut::<K, V>::init_root_interior(&mut leaf_data)?;
+                    root.insert_initial(K::MIN, left_page.page_idx(), sep, right_page.page_idx())
+                        .expect("new root should not be full");
+
                     Ok(())
                 } else {
+                    cov_mark::hit!(non_root_leaf_split);
                     // split the non-root leaf by allocating a new leaf and splitting the contents
                     // then we insert the separator key and the new page index into the parent
                     let new_page = self.pool.alloc().await?;
@@ -156,6 +152,7 @@ where
 
                     leaf.split_into(&mut new_leaf);
                     let sep = new_leaf.low_key();
+
                     self.insert_interior(parents, sep, new_page.page_idx()).await?;
 
                     // FIXME check condition correctness
@@ -191,6 +188,7 @@ where
             Ok(()) => {}
             Err(PageFull) => {
                 if parent_view.header.flags.contains(Flags::IS_ROOT) {
+                    cov_mark::hit!(root_interior_split);
                     let left_page = self.pool.alloc().await?;
                     let mut left_data = left_page.page().data_mut().await;
                     let mut left_child = PageViewMut::<K, V>::init_interior(&mut left_data)?;
@@ -216,11 +214,12 @@ where
                     )
                     .expect("new root should not be full");
 
-                    (if key < sep { left_child } else { right_child })
+                    (if key < sep { &mut left_child } else { &mut right_child })
                         .insert(key.clone(), child_idx)
                         .await?
                         .expect("split child should not be full");
                 } else {
+                    cov_mark::hit!(non_root_interior_split);
                     // split the non-root interior by allocating a new interior and splitting the contents
                     // then we insert the separator key and the new page index into the parent
                     let new_page = self.pool.alloc().await?;

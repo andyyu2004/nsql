@@ -141,14 +141,9 @@ mod tests {
         value.iter_mut().enumerate().for_each(|(i, v)| *v = i as u8);
 
         let bytes = serialize_unsized(&value[..]);
-        dbg!(&bytes);
         // let archived_value = unsafe { archived_unsized::<[u8]>(&bytes[..]) };
         let archived_value = unsafe { rkyv::archived_unsized_root::<[u8]>(&bytes[..]) };
 
-        dbg!(bytes.len());
-        dbg!(
-            bytes.len() - mem::size_of::<rkyv::RelPtr<<[u8] as rkyv::ArchiveUnsized>::Archived>>()
-        );
         assert_eq!(archived_value, value);
     }
 }

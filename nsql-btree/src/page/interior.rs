@@ -45,6 +45,19 @@ pub(crate) struct InteriorPageView<'a, K> {
     slotted_page: SlottedPageView<'a, KeyValuePair<K, PageIndex>>,
 }
 
+impl<K> fmt::Debug for InteriorPageView<'_, K>
+where
+    K: Archive,
+    K::Archived: fmt::Debug + Ord,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("LeafPageView")
+            .field("header", &self.header)
+            .field("slotted_page", &self.slotted_page)
+            .finish()
+    }
+}
+
 impl<'a, K> InteriorPageView<'a, K>
 where
     K: Archive,
@@ -60,10 +73,8 @@ where
     }
 
     pub(crate) fn search(&self, key: &K::Archived) -> PageIndex {
-        // FIXME add logic to handle the special case of the lowest key
         let slot_idx = match self.slotted_page.slot_index_of_key(key) {
-            // special case of the lowest key being stored in the rightmost slot
-            Err(idx) if idx == 0 => self.slotted_page.slots().len() - 1,
+            Err(idx) if idx == 0 => todo!("key was lowest than the low key"),
             Ok(idx) => idx,
             Err(idx) => idx - 1,
         };
@@ -76,7 +87,7 @@ where
 
     pub(crate) fn low_key(&self) -> &K::Archived {
         let slot =
-            *self.slotted_page.slots().last().expect("interior slots should always be non-empty");
+            *self.slotted_page.slots().first().expect("interior slots should always be non-empty");
         &self.slotted_page.get_by_slot(slot).key
     }
 
@@ -90,6 +101,16 @@ where
 pub(crate) struct InteriorPageViewMut<'a, K> {
     header: Pin<&'a mut Archived<InteriorPageHeader>>,
     slotted_page: SlottedPageViewMut<'a, KeyValuePair<K, PageIndex>>,
+}
+
+impl<K> fmt::Debug for InteriorPageViewMut<'_, K>
+where
+    K: Archive,
+    K::Archived: fmt::Debug + Ord,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        (**self).fmt(f)
+    }
 }
 
 impl<'a, K> Deref for InteriorPageViewMut<'a, K> {

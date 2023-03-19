@@ -21,11 +21,15 @@ pub(crate) struct SlottedPageView<'a, T> {
     marker: PhantomData<T>,
 }
 
-impl<'a, T> fmt::Debug for SlottedPageView<'a, T> {
+impl<'a, T> fmt::Debug for SlottedPageView<'a, T>
+where
+    T: Archive,
+    T::Archived: Ord + fmt::Debug,
+{
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("SlottedPageView")
             .field("header", &self.header)
-            .field("slots", &self.slots)
+            .field("values", &self.values().collect::<Vec<_>>())
             .finish_non_exhaustive()
     }
 }
@@ -70,6 +74,10 @@ where
     {
         let slot = self.slot_of(key)?;
         Some(self.get_by_slot(slot))
+    }
+
+    fn values(&self) -> impl Iterator<Item = &T::Archived> {
+        self.slots.iter().map(move |&slot| self.get_by_slot(slot))
     }
 
     fn slot_of<K>(&self, key: &K) -> Option<Slot>

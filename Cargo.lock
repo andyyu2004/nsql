@@ -270,6 +270,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "cov-mark"
+version = "2.0.0-pre.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0d48d8f76bd9331f19fe2aaf3821a9f9fb32c3963e1e3d6ce82a8c09cef7444a"
+
+[[package]]
 name = "crc"
 version = "3.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -898,6 +904,7 @@ dependencies = [
  "async-recursion",
  "bitflags 2.0.1",
  "bytes",
+ "cov-mark",
  "criterion",
  "nsql-arena",
  "nsql-buffer",
