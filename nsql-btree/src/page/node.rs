@@ -1,4 +1,5 @@
 use std::fmt;
+use std::pin::Pin;
 
 use nsql_pager::{PageIndex, PAGE_DATA_SIZE};
 use rkyv::{Archive, Archived};
@@ -41,6 +42,16 @@ where
     unsafe fn view_mut(data: &'a mut [u8; PAGE_DATA_SIZE]) -> Result<Self>;
 
     fn slotted_page_mut(&mut self) -> &mut SlottedPageViewMut<'a, KeyValuePair<K, V>>;
+
+    /// SAFETY: The page header must be archived at the start of the page
+    /// This is assumed by the implementation of `raw_bytes_mut`
+    unsafe fn page_header_mut(&mut self) -> Pin<&mut Archived<PageHeader>>;
+
+    fn raw_bytes_mut(&mut self) -> &mut [u8; PAGE_DATA_SIZE] {
+        // page_header is where the start of the raw_bytes so we can just cast the pointer
+        unsafe { &mut *(&mut *self.page_header_mut() as *mut _ as *mut [u8; PAGE_DATA_SIZE]) }
+        //                   ^ to get the pointer out of the pin
+    }
 
     fn initialize(data: &'a mut [u8; PAGE_DATA_SIZE]) -> Self {
         Self::initialize_with_flags(Flags::empty(), data)

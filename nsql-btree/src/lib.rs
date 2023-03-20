@@ -8,7 +8,6 @@
 #![deny(rust_2018_idioms)]
 
 mod btree;
-mod node;
 mod page;
 mod rkyv;
 

@@ -183,10 +183,6 @@ where
     V: Archive + fmt::Debug,
     V::Archived: fmt::Debug,
 {
-    fn slotted_page_mut(&mut self) -> &mut SlottedPageViewMut<'a, KeyValuePair<K, V>> {
-        &mut self.slotted_page
-    }
-
     fn initialize_with_flags(flags: Flags, data: &'a mut [u8; nsql_pager::PAGE_DATA_SIZE]) -> Self {
         data.fill(0);
         let (page_header_bytes, data) = data.split_array_mut();
@@ -214,5 +210,13 @@ where
         header.check_magic()?;
         let slotted_page = SlottedPageViewMut::view_mut(data);
         Ok(Self { page_header, header, slotted_page })
+    }
+
+    fn slotted_page_mut(&mut self) -> &mut SlottedPageViewMut<'a, KeyValuePair<K, V>> {
+        &mut self.slotted_page
+    }
+
+    unsafe fn page_header_mut(&mut self) -> Pin<&mut Archived<PageHeader>> {
+        self.page_header.as_mut()
     }
 }

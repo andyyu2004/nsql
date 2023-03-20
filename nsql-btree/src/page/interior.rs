@@ -244,6 +244,7 @@ where
         data.fill(0);
         let (page_header_bytes, data) = data.split_array_mut();
         nsql_rkyv::serialize_into_buf(page_header_bytes, &PageHeader::new(flags));
+        let page_header = unsafe { nsql_rkyv::archived_root_mut::<PageHeader>(page_header_bytes) };
 
         let (header_bytes, data) = data.split_array_mut();
         nsql_rkyv::serialize_into_buf(header_bytes, &InteriorPageHeader::default());
@@ -252,8 +253,6 @@ where
         let prefix_size = archived_size_of!(PageHeader) + archived_size_of!(InteriorPageHeader);
         let slotted_page =
             SlottedPageViewMut::<'a, KeyValuePair<K, PageIndex>>::init(data, prefix_size);
-
-        let page_header = unsafe { nsql_rkyv::archived_root_mut::<PageHeader>(page_header_bytes) };
 
         let header = unsafe { nsql_rkyv::archived_root_mut::<InteriorPageHeader>(header_bytes) };
         header.check_magic().expect("magic should be correct as we just set it");
@@ -276,5 +275,9 @@ where
 
     fn slotted_page_mut(&mut self) -> &mut SlottedPageViewMut<'a, KeyValuePair<K, PageIndex>> {
         &mut self.slotted_page
+    }
+
+    unsafe fn page_header_mut(&mut self) -> Pin<&mut Archived<PageHeader>> {
+        self.page_header.as_mut()
     }
 }
