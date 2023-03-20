@@ -209,7 +209,7 @@ where
     }
 }
 
-impl<'a, K> Node<'a, KeyValuePair<K, PageIndex>> for InteriorPageView<'a, K>
+impl<'a, K> Node<'a, K, PageIndex> for InteriorPageView<'a, K>
 where
     K: Archive + fmt::Debug,
     K::Archived: fmt::Debug + Ord,
@@ -223,7 +223,7 @@ where
     }
 }
 
-impl<'a, K> Node<'a, KeyValuePair<K, PageIndex>> for InteriorPageViewMut<'a, K>
+impl<'a, K> Node<'a, K, PageIndex> for InteriorPageViewMut<'a, K>
 where
     K: Archive + fmt::Debug,
     K::Archived: fmt::Debug + Ord,
@@ -237,7 +237,7 @@ where
     }
 }
 
-impl<'a, K> NodeMut<'a, KeyValuePair<K, PageIndex>> for InteriorPageViewMut<'a, K>
+impl<'a, K> NodeMut<'a, K, PageIndex> for InteriorPageViewMut<'a, K>
 where
     K: Archive + fmt::Debug,
     K::Archived: fmt::Debug + Ord,

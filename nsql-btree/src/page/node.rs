@@ -4,24 +4,22 @@ use nsql_pager::{PageIndex, PAGE_DATA_SIZE};
 use rkyv::{Archive, Archived};
 
 use super::slotted::{SlottedPageView, SlottedPageViewMut};
-use super::{Flags, PageHeader};
+use super::{Flags, KeyValuePair, PageHeader};
 use crate::Result;
 
 /// Abstraction over `Leaf` and `Interior` btree nodes
-pub(crate) trait Node<'a, T>: Sized
-where
-    T: Archive,
-    T::Archived: Ord + fmt::Debug,
-{
-    fn slotted_page(&self) -> &SlottedPageView<'a, T>;
+pub(crate) trait Node<'a, K, V>: Sized {
+    fn slotted_page(&self) -> &SlottedPageView<'a, KeyValuePair<K, V>>;
 
     fn page_header(&self) -> &Archived<PageHeader>;
 }
 
-pub(crate) trait NodeMut<'a, T>: Node<'a, T>
+pub(crate) trait NodeMut<'a, K, V>: Node<'a, K, V>
 where
-    T: Archive,
-    T::Archived: Ord + fmt::Debug,
+    K: Archive,
+    K::Archived: Ord + fmt::Debug,
+    V: Archive,
+    V::Archived: fmt::Debug,
 {
     /// Initialize a new node with the given flags and data.
     /// This may not assume that the data is zeroed.
@@ -38,7 +36,7 @@ where
 
     unsafe fn view_mut(data: &'a mut [u8; PAGE_DATA_SIZE]) -> Result<Self>;
 
-    fn slotted_page_mut(&mut self) -> &mut SlottedPageViewMut<'a, T>;
+    fn slotted_page_mut(&mut self) -> &mut SlottedPageViewMut<'a, KeyValuePair<K, V>>;
 
     /// Split node contents into left and right children and leave the root node empty.
     /// This is intended for use when splitting a root node.

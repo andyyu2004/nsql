@@ -148,7 +148,7 @@ where
     }
 }
 
-impl<'a, K, V> Node<'a, KeyValuePair<K, V>> for LeafPageView<'a, K, V>
+impl<'a, K, V> Node<'a, K, V> for LeafPageView<'a, K, V>
 where
     K: Archive + fmt::Debug,
     K::Archived: fmt::Debug + Ord,
@@ -164,7 +164,7 @@ where
     }
 }
 
-impl<'a, K, V> Node<'a, KeyValuePair<K, V>> for LeafPageViewMut<'a, K, V>
+impl<'a, K, V> Node<'a, K, V> for LeafPageViewMut<'a, K, V>
 where
     K: Archive + fmt::Debug,
     K::Archived: fmt::Debug + Ord,
@@ -180,7 +180,7 @@ where
     }
 }
 
-impl<'a, K, V> NodeMut<'a, KeyValuePair<K, V>> for LeafPageViewMut<'a, K, V>
+impl<'a, K, V> NodeMut<'a, K, V> for LeafPageViewMut<'a, K, V>
 where
     K: Archive + fmt::Debug,
     K::Archived: fmt::Debug + Ord,
