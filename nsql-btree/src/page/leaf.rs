@@ -116,24 +116,9 @@ impl<'a, K, V> Deref for LeafPageViewMut<'a, K, V> {
     }
 }
 
-impl<'a, K, V> LeafPageViewMut<'a, K, V> {
-    pub(crate) unsafe fn view_mut(
-        data: &'a mut [u8; PAGE_DATA_SIZE],
-    ) -> nsql_serde::Result<LeafPageViewMut<'a, K, V>> {
-        let (page_header_bytes, data) = data.split_array_mut();
-        let page_header = unsafe { nsql_rkyv::archived_root_mut::<PageHeader>(page_header_bytes) };
-
-        let (header_bytes, data) = data.split_array_mut();
-        let header = nsql_rkyv::archived_root_mut::<LeafPageHeader>(header_bytes);
-        header.check_magic()?;
-        let slotted_page = SlottedPageViewMut::view_mut(data);
-        Ok(Self { page_header, header, slotted_page })
-    }
-}
-
 impl<'a, K, V> LeafPageViewMut<'a, K, V>
 where
-    K: Archive + Ord + fmt::Debug,
+    K: Archive + fmt::Debug,
     K::Archived: fmt::Debug + Ord,
     V: Archive + fmt::Debug,
     V::Archived: fmt::Debug,
@@ -165,7 +150,7 @@ where
 
 impl<'a, K, V> Node<'a, KeyValuePair<K, V>> for LeafPageView<'a, K, V>
 where
-    K: Archive + Ord + fmt::Debug,
+    K: Archive + fmt::Debug,
     K::Archived: fmt::Debug + Ord,
     V: Archive + fmt::Debug,
     V::Archived: fmt::Debug,
@@ -181,7 +166,7 @@ where
 
 impl<'a, K, V> Node<'a, KeyValuePair<K, V>> for LeafPageViewMut<'a, K, V>
 where
-    K: Archive + Ord + fmt::Debug,
+    K: Archive + fmt::Debug,
     K::Archived: fmt::Debug + Ord,
     V: Archive + fmt::Debug,
     V::Archived: fmt::Debug,
@@ -197,7 +182,7 @@ where
 
 impl<'a, K, V> NodeMut<'a, KeyValuePair<K, V>> for LeafPageViewMut<'a, K, V>
 where
-    K: Archive + Ord + fmt::Debug,
+    K: Archive + fmt::Debug,
     K::Archived: fmt::Debug + Ord,
     V: Archive + fmt::Debug,
     V::Archived: fmt::Debug,
@@ -225,6 +210,13 @@ where
     }
 
     unsafe fn view_mut(data: &'a mut [u8; nsql_pager::PAGE_DATA_SIZE]) -> Result<Self> {
-        todo!()
+        let (page_header_bytes, data) = data.split_array_mut();
+        let page_header = unsafe { nsql_rkyv::archived_root_mut::<PageHeader>(page_header_bytes) };
+
+        let (header_bytes, data) = data.split_array_mut();
+        let header = nsql_rkyv::archived_root_mut::<LeafPageHeader>(header_bytes);
+        header.check_magic()?;
+        let slotted_page = SlottedPageViewMut::view_mut(data);
+        Ok(Self { page_header, header, slotted_page })
     }
 }

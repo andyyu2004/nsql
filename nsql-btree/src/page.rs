@@ -96,7 +96,13 @@ pub(crate) enum PageViewMut<'a, K, V> {
     Leaf(LeafPageViewMut<'a, K, V>),
 }
 
-impl<'a, K, V> PageViewMut<'a, K, V> {
+impl<'a, K, V> PageViewMut<'a, K, V>
+where
+    K: Archive + fmt::Debug,
+    K::Archived: fmt::Debug + Ord,
+    V: Archive + fmt::Debug,
+    V::Archived: fmt::Debug,
+{
     pub(crate) async unsafe fn view_mut(
         data: &'a mut [u8; PAGE_DATA_SIZE],
     ) -> nsql_serde::Result<PageViewMut<'a, K, V>> {

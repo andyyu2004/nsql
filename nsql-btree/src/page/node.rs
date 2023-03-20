@@ -8,7 +8,7 @@ use super::{Flags, PageHeader};
 use crate::Result;
 
 /// Abstraction over `Leaf` and `Interior` btree nodes
-pub(crate) trait Node<'a, T>
+pub(crate) trait Node<'a, T>: Sized
 where
     T: Archive,
     T::Archived: Ord + fmt::Debug,
@@ -18,7 +18,7 @@ where
     fn page_header(&self) -> &Archived<PageHeader>;
 }
 
-pub(crate) trait NodeMut<'a, T>: Node<'a, T> + Sized
+pub(crate) trait NodeMut<'a, T>: Node<'a, T>
 where
     T: Archive,
     T::Archived: Ord + fmt::Debug,
