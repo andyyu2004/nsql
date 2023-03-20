@@ -5,7 +5,6 @@ mod node;
 mod slotted;
 
 use std::fmt;
-use std::pin::Pin;
 
 pub(crate) use key_value_pair::{ArchivedKeyValuePair, KeyValuePair};
 pub(crate) use node::{Node, NodeMut};
@@ -16,7 +15,7 @@ pub(crate) use self::interior::{InteriorPageView, InteriorPageViewMut};
 pub(crate) use self::leaf::{LeafPageView, LeafPageViewMut};
 
 bitflags::bitflags! {
-    #[derive(Debug, Clone, Copy)]
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub struct Flags: u8 {
         const IS_ROOT = 1 << 0;
         const IS_LEAF = 1 << 1;
@@ -53,6 +52,7 @@ pub(crate) use archived_size_of;
 pub(crate) struct PageFull;
 
 #[derive(Debug, Archive, rkyv::Serialize)]
+#[archive_attr(derive(Debug, PartialEq))]
 pub(crate) struct PageHeader {
     pub(crate) flags: Flags,
     // to make it 4-byte aligned
@@ -80,7 +80,8 @@ where
     pub(crate) async unsafe fn create(
         data: &'a [u8; PAGE_DATA_SIZE],
     ) -> nsql_serde::Result<PageView<'a, K, V>> {
-        let (header_bytes, data) = data.split_array_ref();
+        // read the header to determine if it's a leaf or interior page
+        let (header_bytes, _) = data.split_array_ref();
         let header = unsafe { nsql_rkyv::archived_root::<PageHeader>(header_bytes) };
         if header.flags.contains(Flags::IS_LEAF) {
             LeafPageView::create(data).map(Self::Leaf)
@@ -90,12 +91,7 @@ where
     }
 }
 
-pub(crate) struct PageViewMut<'a, K, V> {
-    pub(crate) header: Pin<&'a mut ArchivedPageHeader>,
-    pub(crate) kind: PageViewMutKind<'a, K, V>,
-}
-
-pub(crate) enum PageViewMutKind<'a, K, V> {
+pub(crate) enum PageViewMut<'a, K, V> {
     Interior(InteriorPageViewMut<'a, K>),
     Leaf(LeafPageViewMut<'a, K, V>),
 }
@@ -104,14 +100,12 @@ impl<'a, K, V> PageViewMut<'a, K, V> {
     pub(crate) async unsafe fn create(
         data: &'a mut [u8; PAGE_DATA_SIZE],
     ) -> nsql_serde::Result<PageViewMut<'a, K, V>> {
-        let (header_bytes, data) = data.split_array_mut();
-        let header = unsafe { nsql_rkyv::archived_root_mut::<PageHeader>(header_bytes) };
-        let kind = if header.flags.contains(Flags::IS_LEAF) {
-            LeafPageViewMut::<'a, K, V>::create(data).map(PageViewMutKind::Leaf)
+        let (header_bytes, _) = data.split_array_ref();
+        let header = unsafe { nsql_rkyv::archived_root::<PageHeader>(header_bytes) };
+        if header.flags.contains(Flags::IS_LEAF) {
+            LeafPageViewMut::<'a, K, V>::create(data).map(Self::Leaf)
         } else {
-            InteriorPageViewMut::<'a, K>::create(data).map(PageViewMutKind::Interior)
-        }?;
-
-        Ok(PageViewMut { header, kind })
+            InteriorPageViewMut::<'a, K>::create(data).map(Self::Interior)
+        }
     }
 }

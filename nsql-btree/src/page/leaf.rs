@@ -2,7 +2,7 @@ use std::ops::Deref;
 use std::pin::Pin;
 use std::{fmt, io};
 
-use nsql_pager::PageIndex;
+use nsql_pager::{PageIndex, PAGE_DATA_SIZE};
 use nsql_util::static_assert_eq;
 use rkyv::{Archive, Archived};
 
@@ -16,7 +16,7 @@ use crate::Result;
 const BTREE_LEAF_PAGE_MAGIC: [u8; 4] = *b"BTPL";
 
 #[derive(Debug, PartialEq, Archive, rkyv::Serialize)]
-#[archive_attr(derive(Debug))]
+#[archive_attr(derive(Debug, PartialEq))]
 pub(crate) struct LeafPageHeader {
     magic: [u8; 4],
     prev: Option<PageIndex>,
@@ -43,6 +43,7 @@ impl Default for LeafPageHeader {
 
 #[repr(C)]
 pub(crate) struct LeafPageView<'a, K, V> {
+    page_header: &'a Archived<PageHeader>,
     header: &'a Archived<LeafPageHeader>,
     slotted_page: SlottedPageView<'a, KeyValuePair<K, V>>,
 }
@@ -69,13 +70,18 @@ where
     V: Archive + fmt::Debug,
     V::Archived: fmt::Debug,
 {
-    pub(crate) unsafe fn create(data: &'a [u8]) -> nsql_serde::Result<LeafPageView<'a, K, V>> {
+    pub(crate) unsafe fn create(
+        data: &'a [u8; PAGE_DATA_SIZE],
+    ) -> nsql_serde::Result<LeafPageView<'a, K, V>> {
+        let (page_header_bytes, data) = data.split_array_ref();
+        let page_header = unsafe { nsql_rkyv::archived_root::<PageHeader>(page_header_bytes) };
+
         let (header_bytes, data) = data.split_array_ref();
         let header = nsql_rkyv::archived_root::<LeafPageHeader>(header_bytes);
         header.check_magic()?;
 
         let slotted_page = SlottedPageView::<'a, KeyValuePair<K, V>>::create(data);
-        Ok(Self { header, slotted_page })
+        Ok(Self { page_header, header, slotted_page })
     }
 
     pub(crate) fn get(&self, key: &K::Archived) -> Option<&V::Archived> {
@@ -90,6 +96,7 @@ where
 #[derive(Debug)]
 #[repr(C)]
 pub(crate) struct LeafPageViewMut<'a, K, V> {
+    page_header: Pin<&'a mut Archived<PageHeader>>,
     header: Pin<&'a mut Archived<LeafPageHeader>>,
     slotted_page: SlottedPageViewMut<'a, KeyValuePair<K, V>>,
 }
@@ -102,19 +109,25 @@ impl<'a, K, V> Deref for LeafPageViewMut<'a, K, V> {
             std::mem::size_of::<LeafPageViewMut<'a, (), ()>>(),
             std::mem::size_of::<LeafPageView<'a, (), ()>>()
         );
-        unsafe { &*(self as *const _ as *const Self::Target) }
+        let this = unsafe { &*(self as *const _ as *const Self::Target) };
+        debug_assert_eq!(&*self.page_header, this.page_header);
+        debug_assert_eq!(&*self.header, this.header);
+        this
     }
 }
 
 impl<'a, K, V> LeafPageViewMut<'a, K, V> {
     pub(crate) unsafe fn create(
-        data: &'a mut [u8],
+        data: &'a mut [u8; PAGE_DATA_SIZE],
     ) -> nsql_serde::Result<LeafPageViewMut<'a, K, V>> {
+        let (page_header_bytes, data) = data.split_array_mut();
+        let page_header = unsafe { nsql_rkyv::archived_root_mut::<PageHeader>(page_header_bytes) };
+
         let (header_bytes, data) = data.split_array_mut();
         let header = nsql_rkyv::archived_root_mut::<LeafPageHeader>(header_bytes);
         header.check_magic()?;
         let slotted_page = SlottedPageViewMut::create(data);
-        Ok(Self { header, slotted_page })
+        Ok(Self { page_header, header, slotted_page })
     }
 }
 
@@ -160,6 +173,10 @@ where
     fn slotted_page(&self) -> &SlottedPageView<'a, KeyValuePair<K, V>> {
         &self.slotted_page
     }
+
+    fn page_header(&self) -> &Archived<PageHeader> {
+        self.page_header
+    }
 }
 
 impl<'a, K, V> Node<'a, KeyValuePair<K, V>> for LeafPageViewMut<'a, K, V>
@@ -171,6 +188,10 @@ where
 {
     fn slotted_page(&self) -> &SlottedPageView<'a, KeyValuePair<K, V>> {
         (**self).slotted_page()
+    }
+
+    fn page_header(&self) -> &Archived<PageHeader> {
+        (**self).page_header()
     }
 }
 
@@ -189,6 +210,7 @@ where
         data.fill(0);
         let (page_header_bytes, data) = data.split_array_mut();
         nsql_rkyv::serialize_into_buf(page_header_bytes, &PageHeader::new(flags | Flags::IS_LEAF));
+        let page_header = unsafe { nsql_rkyv::archived_root_mut::<PageHeader>(page_header_bytes) };
 
         let (header_bytes, data) = data.split_array_mut();
         nsql_rkyv::serialize_into_buf(header_bytes, &LeafPageHeader::default());
@@ -199,6 +221,10 @@ where
         let prefix_size = archived_size_of!(PageHeader) + archived_size_of!(LeafPageHeader);
         let slotted_page = SlottedPageViewMut::<'a, KeyValuePair<K, V>>::init(data, prefix_size);
 
-        Self { header, slotted_page }
+        Self { page_header, header, slotted_page }
+    }
+
+    unsafe fn view_mut(data: &'a mut [u8; nsql_pager::PAGE_DATA_SIZE]) -> Result<Self> {
+        todo!()
     }
 }

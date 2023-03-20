@@ -9,8 +9,7 @@ use nsql_rkyv::DefaultSerializer;
 use rkyv::{Archive, Deserialize, Serialize};
 
 use crate::page::{
-    Flags, InteriorPageViewMut, LeafPageViewMut, NodeMut, PageFull, PageView, PageViewMut,
-    PageViewMutKind,
+    Flags, InteriorPageViewMut, LeafPageViewMut, Node, NodeMut, PageFull, PageView, PageViewMut,
 };
 use crate::Result;
 
@@ -111,15 +110,15 @@ where
         let leaf_handle = self.pool.load(leaf_page_idx).await?;
         let mut leaf_data = leaf_handle.page().data_mut().await;
         let mut view = unsafe { PageViewMut::<K, V>::create(&mut leaf_data).await? };
-        let leaf = match &mut view.kind {
-            PageViewMutKind::Interior(_) => unreachable!("should have been passed a leaf page"),
-            PageViewMutKind::Leaf(leaf) => leaf,
+        let leaf = match &mut view {
+            PageViewMut::Interior(_) => unreachable!("should have been passed a leaf page"),
+            PageViewMut::Leaf(leaf) => leaf,
         };
 
         match leaf.insert(key.clone(), value.clone()) {
             Ok(value) => Ok(value),
             Err(PageFull) => {
-                if view.header.flags.contains(Flags::IS_ROOT) {
+                if leaf.page_header().flags.contains(Flags::IS_ROOT) {
                     cov_mark::hit!(root_leaf_split);
                     let left_page = self.pool.alloc().await?;
                     let mut left_data = left_page.page().data_mut().await;
@@ -180,9 +179,9 @@ where
         let parent_page = self.pool.load(parent_idx).await?;
         let mut parent_data = parent_page.page().data_mut().await;
         let parent_view = unsafe { PageViewMut::<K, V>::create(&mut parent_data).await? };
-        let mut parent = match parent_view.kind {
-            PageViewMutKind::Interior(interior) => interior,
-            PageViewMutKind::Leaf(_) => {
+        let mut parent = match parent_view {
+            PageViewMut::Interior(interior) => interior,
+            PageViewMut::Leaf(_) => {
                 unreachable!("parent should be interior page")
             }
         };
@@ -190,7 +189,7 @@ where
         match parent.insert(key.clone(), child_idx).await? {
             Ok(()) => {}
             Err(PageFull) => {
-                if parent_view.header.flags.contains(Flags::IS_ROOT) {
+                if parent.page_header().flags.contains(Flags::IS_ROOT) {
                     cov_mark::hit!(root_interior_split);
                     let left_page = self.pool.alloc().await?;
                     let mut left_data = left_page.page().data_mut().await;

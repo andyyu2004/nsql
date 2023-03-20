@@ -1,10 +1,11 @@
 use std::fmt;
 
 use nsql_pager::{PageIndex, PAGE_DATA_SIZE};
-use rkyv::Archive;
+use rkyv::{Archive, Archived};
 
 use super::slotted::{SlottedPageView, SlottedPageViewMut};
-use super::Flags;
+use super::{Flags, PageHeader};
+use crate::Result;
 
 /// Abstraction over `Leaf` and `Interior` btree nodes
 pub(crate) trait Node<'a, T>
@@ -13,6 +14,8 @@ where
     T::Archived: Ord + fmt::Debug,
 {
     fn slotted_page(&self) -> &SlottedPageView<'a, T>;
+
+    fn page_header(&self) -> &Archived<PageHeader>;
 }
 
 pub(crate) trait NodeMut<'a, T>: Node<'a, T> + Sized
@@ -32,6 +35,8 @@ where
     fn init_root(data: &'a mut [u8; PAGE_DATA_SIZE]) -> Self {
         Self::init_with_flags(Flags::IS_ROOT, data)
     }
+
+    unsafe fn view_mut(data: &'a mut [u8; PAGE_DATA_SIZE]) -> Result<Self>;
 
     fn slotted_page_mut(&mut self) -> &mut SlottedPageViewMut<'a, T>;
 
