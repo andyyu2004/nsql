@@ -77,6 +77,23 @@ where
         self.slotted_page_mut().insert(&ArchivedKeyValuePair::new(key, value.into()))
     }
 
+    fn split_into(&mut self, new: &mut Self) {
+        assert!(new.slotted_page().is_empty());
+        assert!(self.slotted_page().len() > 1);
+
+        let slots = self.slotted_page().slots();
+        let (lhs, rhs) = slots.split_at(slots.len() / 2);
+
+        let ours = self.slotted_page_mut();
+        let theirs = new.slotted_page_mut();
+        for &slot in rhs {
+            let value = ours.get_by_slot(slot);
+            theirs.insert(value).expect("new page should not be full");
+        }
+
+        ours.set_len(lhs.len() as u16);
+    }
+
     /// Split node contents into left and right children and leave the root node empty.
     /// This is intended for use when splitting a root node.
     /// We keep the root node page number unchanged because it may be referenced as an identifier.

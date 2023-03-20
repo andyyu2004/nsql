@@ -8,7 +8,7 @@ use rkyv::{Archive, Archived};
 
 use super::node::Node;
 use super::slotted::SlottedPageViewMut;
-use super::{ArchivedKeyValuePair, Flags, KeyValuePair, NodeMut, PageFull};
+use super::{Flags, KeyValuePair, NodeMut};
 use crate::page::slotted::SlottedPageView;
 use crate::page::{archived_size_of, PageHeader};
 use crate::Result;
@@ -120,20 +120,7 @@ where
     V::Archived: fmt::Debug,
 {
     // FIXME we need to split left not right and set the left link
-    pub(crate) fn split_into(&mut self, new: &mut LeafPageViewMut<'_, K, V>) {
-        assert!(new.slotted_page.is_empty());
-        assert!(self.slotted_page.len() > 1);
-
-        let slots = self.slotted_page.slots();
-        let (lhs, rhs) = slots.split_at(slots.len() / 2);
-
-        for &slot in rhs {
-            let value = self.slotted_page.get_by_slot(slot);
-            new.slotted_page.insert(value).expect("new page should not be full");
-        }
-
-        self.slotted_page.set_len(lhs.len() as u16);
-    }
+    pub(crate) fn split_into(&mut self, new: &mut LeafPageViewMut<'_, K, V>) {}
 }
 
 impl<'a, K, V> Node<'a, K, V> for LeafPageView<'a, K, V>

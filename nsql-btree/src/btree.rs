@@ -109,7 +109,7 @@ where
     ) -> Result<()> {
         let leaf_handle = self.pool.load(leaf_page_idx).await?;
         let mut leaf_data = leaf_handle.page().data_mut().await;
-        let mut view = unsafe { PageViewMut::<K, V>::view_mut(&mut leaf_data).await? };
+        let view = unsafe { PageViewMut::<K, V>::view_mut(&mut leaf_data).await? };
         let mut leaf = match view {
             PageViewMut::Interior(_) => unreachable!("should have been passed a leaf page"),
             PageViewMut::Leaf(leaf) => leaf,
@@ -142,23 +142,18 @@ where
                     Ok(())
                 } else {
                     cov_mark::hit!(non_root_leaf_split);
-                    // split the non-root leaf by allocating a new leaf and splitting the contents
-                    // then we insert the separator key and the new page index into the parent
                     let new_page = self.pool.alloc().await?;
                     let mut new_data = new_page.page().data_mut().await;
-                    let mut new_leaf = LeafPageViewMut::<K, V>::initialize(&mut new_data);
 
-                    leaf.split_into(&mut new_leaf);
-                    let sep = new_leaf.low_key().unwrap();
-
-                    self.insert_interior(parents, sep, new_page.page_idx()).await?;
-
-                    // FIXME check condition correctness
-                    (if key < sep { leaf } else { new_leaf })
-                        .insert(key.clone(), value.clone())
-                        .expect("split leaf should not be full");
-
-                    Ok(())
+                    self.split_non_root(
+                        parents,
+                        leaf,
+                        new_page.page_idx(),
+                        &mut new_data,
+                        key.clone(),
+                        value.clone(),
+                    )
+                    .await
                 }
             }
         }
@@ -186,7 +181,6 @@ where
             Ok(()) => {}
             Err(PageFull) => {
                 if parent.page_header().flags.contains(Flags::IS_ROOT) {
-                    assert!(parent.len() >= 3, "pages should always contain at least 3 entries");
                     cov_mark::hit!(root_interior_split);
                     let left_page = self.pool.alloc().await?;
                     let mut left_data = left_page.page().data_mut().await;
@@ -206,25 +200,51 @@ where
                     .await?;
                 } else {
                     cov_mark::hit!(non_root_interior_split);
-                    // split the non-root interior by allocating a new interior and splitting the contents
-                    // then we insert the separator key and the new page index into the parent
+
                     let new_page = self.pool.alloc().await?;
                     let mut new_data = new_page.page().data_mut().await;
-                    let mut new_interior = InteriorPageViewMut::<K>::initialize(&mut new_data);
-
-                    parent.split_into(&mut new_interior);
-                    let sep = new_interior.low_key().unwrap();
-                    self.insert_interior(parents, sep, new_page.page_idx()).await?;
-
-                    // insert the new separator key and child index into the parent
-                    (if key < sep { parent } else { new_interior })
-                        .insert(key.clone(), child_idx)
-                        .await?
-                        .expect("split interior should not be full");
+                    self.split_non_root(
+                        parents,
+                        parent,
+                        new_page.page_idx(),
+                        &mut new_data,
+                        key.clone(),
+                        child_idx.into(),
+                    )
+                    .await?;
                 }
             }
         }
 
+        Ok(())
+    }
+    async fn split_non_root<'a, N, T>(
+        &self,
+        parents: Vec<PageIndex>,
+        mut parent: N,
+        new_page_idx: PageIndex,
+        new_data: &'a mut [u8; PAGE_DATA_SIZE],
+        key: K::Archived,
+        value: T::Archived,
+    ) -> Result<()>
+    where
+        N: NodeMut<'a, K, T>,
+        T: Archive + fmt::Debug,
+        T::Archived: fmt::Debug,
+    {
+        assert!(parent.len() >= 3, "pages should always contain at least 3 entries");
+        // split the non-root interior by allocating a new interior and splitting the contents
+        // then we insert the separator key and the new page index into the parent
+        let mut new_interior = N::initialize(new_data);
+
+        parent.split_into(&mut new_interior);
+        let sep = new_interior.low_key().unwrap();
+        self.insert_interior(parents, sep, new_page_idx).await?;
+
+        // insert the new separator key and child index into the parent
+        (if &key < sep { parent } else { new_interior })
+            .insert(key, value)
+            .expect("split interior should not be full");
         Ok(())
     }
 
@@ -243,6 +263,7 @@ where
         T: Archive + fmt::Debug,
         T::Archived: fmt::Debug,
     {
+        assert!(root.len() >= 3, "pages should always contain at least 3 entries");
         let mut left_child = N::initialize(left_data);
         let mut right_child = N::initialize(right_data);
 
