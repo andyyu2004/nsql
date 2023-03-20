@@ -2,14 +2,15 @@ use std::ops::Deref;
 use std::pin::Pin;
 use std::{fmt, io, mem};
 
-use nsql_pager::PageIndex;
+use nsql_pager::{PageIndex, PAGE_DATA_SIZE};
 use nsql_rkyv::DefaultSerializer;
 use nsql_util::static_assert_eq;
 use rkyv::{Archive, Archived, Serialize};
 
 use super::slotted::{SlottedPageView, SlottedPageViewMut};
-use super::{KeyValuePair, Node, NodeMut, PageFull, PageHeader};
+use super::{Flags, KeyValuePair, Node, NodeMut, PageFull, PageHeader};
 use crate::page::archived_size_of;
+use crate::Result;
 
 const BTREE_INTERIOR_PAGE_MAGIC: [u8; 4] = *b"BTPI";
 
@@ -128,22 +129,6 @@ impl<'a, K> Deref for InteriorPageViewMut<'a, K> {
 }
 
 impl<'a, K> InteriorPageViewMut<'a, K> {
-    /// initialize a new leaf page
-    pub(crate) fn init(data: &'a mut [u8]) -> nsql_serde::Result<InteriorPageViewMut<'a, K>> {
-        let (header_bytes, data) = data.split_array_mut();
-        nsql_rkyv::serialize_into_buf(header_bytes, &InteriorPageHeader::default());
-        // the slots start after the page header and the interior page header
-        let prefix_size = archived_size_of!(PageHeader) + archived_size_of!(InteriorPageHeader);
-        let slotted_page =
-            SlottedPageViewMut::<'a, KeyValuePair<K, PageIndex>>::init(data, prefix_size)?;
-
-        let header =
-            unsafe { rkyv::archived_root_mut::<InteriorPageHeader>(Pin::new(header_bytes)) };
-        header.check_magic()?;
-
-        Ok(Self { header, slotted_page })
-    }
-
     pub(crate) unsafe fn create(
         data: &'a mut [u8],
     ) -> nsql_serde::Result<InteriorPageViewMut<'a, K>> {
@@ -255,5 +240,26 @@ where
 {
     fn slotted_page_mut(&mut self) -> &mut SlottedPageViewMut<'a, KeyValuePair<K, PageIndex>> {
         &mut self.slotted_page
+    }
+
+    fn init_with_flags(flags: Flags, data: &'a mut [u8; PAGE_DATA_SIZE]) -> Self {
+        assert!(!flags.contains(Flags::IS_LEAF), "tried to init an interior page as a leaf");
+        data.fill(0);
+        let (page_header_bytes, data) = data.split_array_mut();
+        nsql_rkyv::serialize_into_buf(page_header_bytes, &PageHeader::new(flags));
+
+        let (header_bytes, data) = data.split_array_mut();
+        nsql_rkyv::serialize_into_buf(header_bytes, &InteriorPageHeader::default());
+
+        // the slots start after the page header and the interior page header
+        let prefix_size = archived_size_of!(PageHeader) + archived_size_of!(InteriorPageHeader);
+        let slotted_page =
+            SlottedPageViewMut::<'a, KeyValuePair<K, PageIndex>>::init(data, prefix_size);
+
+        let header =
+            unsafe { rkyv::archived_root_mut::<InteriorPageHeader>(Pin::new(header_bytes)) };
+        header.check_magic().expect("magic should be correct as we just set it");
+
+        Self { header, slotted_page }
     }
 }

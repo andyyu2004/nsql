@@ -193,10 +193,7 @@ nsql_util::static_assert_eq!(
 impl<'a, T> SlottedPageViewMut<'a, T> {
     /// `prefix_size` is the size of the page header and the page-specific header` (and anything else that comes before the slots)
     /// slot offsets are relative to the initla value of `free_start`
-    pub(crate) fn init(
-        buf: &'a mut [u8],
-        prefix_size: u16,
-    ) -> nsql_serde::Result<SlottedPageViewMut<'a, T>> {
+    pub(crate) fn init(buf: &'a mut [u8], prefix_size: u16) -> SlottedPageViewMut<'a, T> {
         let free_end = PAGE_DATA_SIZE as u16 - prefix_size - archived_size_of!(SlottedPageMeta);
         assert_eq!(free_end, buf.len() as u16 - archived_size_of!(SlottedPageMeta));
         let header = SlottedPageMeta {
@@ -208,7 +205,7 @@ impl<'a, T> SlottedPageViewMut<'a, T> {
         let bytes = nsql_rkyv::to_bytes(&header);
         buf[..bytes.len()].copy_from_slice(&bytes);
 
-        Ok(unsafe { Self::create(buf) })
+        unsafe { Self::create(buf) }
     }
 
     /// Safety: `buf` must point at the start of a valid slotted page

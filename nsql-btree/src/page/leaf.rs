@@ -8,9 +8,10 @@ use rkyv::{Archive, Archived};
 
 use super::node::Node;
 use super::slotted::SlottedPageViewMut;
-use super::{ArchivedKeyValuePair, KeyValuePair, NodeMut, PageFull};
+use super::{ArchivedKeyValuePair, Flags, KeyValuePair, NodeMut, PageFull};
 use crate::page::slotted::SlottedPageView;
 use crate::page::{archived_size_of, PageHeader};
+use crate::Result;
 
 const BTREE_LEAF_PAGE_MAGIC: [u8; 4] = *b"BTPL";
 
@@ -106,19 +107,6 @@ impl<'a, K, V> Deref for LeafPageViewMut<'a, K, V> {
 }
 
 impl<'a, K, V> LeafPageViewMut<'a, K, V> {
-    /// initialize a new leaf page
-    pub(crate) async fn init(data: &'a mut [u8]) -> nsql_serde::Result<LeafPageViewMut<'a, K, V>> {
-        let (header_bytes, data) = data.split_array_mut();
-        nsql_rkyv::serialize_into_buf(header_bytes, &LeafPageHeader::default());
-        let header = unsafe { nsql_rkyv::archived_root_mut::<LeafPageHeader>(header_bytes) };
-
-        // the slots start after the page header and the leaf page header
-        let prefix_size = archived_size_of!(PageHeader) + archived_size_of!(LeafPageHeader);
-        let slotted_page = SlottedPageViewMut::<'a, KeyValuePair<K, V>>::init(data, prefix_size)?;
-
-        Ok(Self { header, slotted_page })
-    }
-
     pub(crate) unsafe fn create(
         data: &'a mut [u8],
     ) -> nsql_serde::Result<LeafPageViewMut<'a, K, V>> {
@@ -195,5 +183,22 @@ where
 {
     fn slotted_page_mut(&mut self) -> &mut SlottedPageViewMut<'a, KeyValuePair<K, V>> {
         &mut self.slotted_page
+    }
+
+    fn init_with_flags(flags: Flags, data: &'a mut [u8; nsql_pager::PAGE_DATA_SIZE]) -> Self {
+        data.fill(0);
+        let (page_header_bytes, data) = data.split_array_mut();
+        nsql_rkyv::serialize_into_buf(page_header_bytes, &PageHeader::new(flags | Flags::IS_LEAF));
+
+        let (header_bytes, data) = data.split_array_mut();
+        nsql_rkyv::serialize_into_buf(header_bytes, &LeafPageHeader::default());
+        let header = unsafe { nsql_rkyv::archived_root_mut::<LeafPageHeader>(header_bytes) };
+        header.check_magic().expect("sanity check");
+
+        // the slots start after the page header and the leaf page header
+        let prefix_size = archived_size_of!(PageHeader) + archived_size_of!(LeafPageHeader);
+        let slotted_page = SlottedPageViewMut::<'a, KeyValuePair<K, V>>::init(data, prefix_size);
+
+        Self { header, slotted_page }
     }
 }

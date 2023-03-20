@@ -101,51 +101,6 @@ pub(crate) enum PageViewMutKind<'a, K, V> {
 }
 
 impl<'a, K, V> PageViewMut<'a, K, V> {
-    pub(crate) fn init_root_interior(
-        data: &'a mut [u8; PAGE_DATA_SIZE],
-    ) -> nsql_serde::Result<InteriorPageViewMut<'a, K>> {
-        Self::init_interior_inner(data, Flags::IS_ROOT)
-    }
-
-    pub(crate) fn init_interior(
-        data: &'a mut [u8; PAGE_DATA_SIZE],
-    ) -> nsql_serde::Result<InteriorPageViewMut<'a, K>> {
-        Self::init_interior_inner(data, Flags::empty())
-    }
-
-    pub(crate) fn init_interior_inner(
-        data: &'a mut [u8; PAGE_DATA_SIZE],
-        flags: Flags,
-    ) -> nsql_serde::Result<InteriorPageViewMut<'a, K>> {
-        data.fill(0);
-        let (header_bytes, data) = data.split_array_mut();
-        nsql_rkyv::serialize_into_buf(header_bytes, &PageHeader::new(flags));
-        InteriorPageViewMut::<K>::init(data)
-    }
-
-    pub(crate) async fn init_root_leaf(
-        data: &'a mut [u8; PAGE_DATA_SIZE],
-    ) -> nsql_serde::Result<LeafPageViewMut<'a, K, V>> {
-        Self::init_leaf_inner(data, Flags::IS_LEAF | Flags::IS_ROOT).await
-    }
-
-    pub(crate) async fn init_leaf(
-        data: &'a mut [u8; PAGE_DATA_SIZE],
-    ) -> nsql_serde::Result<LeafPageViewMut<'a, K, V>> {
-        Self::init_leaf_inner(data, Flags::IS_LEAF).await
-    }
-
-    async fn init_leaf_inner(
-        data: &'a mut [u8; PAGE_DATA_SIZE],
-        flags: Flags,
-    ) -> nsql_serde::Result<LeafPageViewMut<'a, K, V>> {
-        data.fill(0);
-        let (header_bytes, data) = data.split_array_mut();
-        nsql_rkyv::serialize_into_buf(header_bytes, &PageHeader::new(flags));
-
-        LeafPageViewMut::<K, V>::init(data).await
-    }
-
     pub(crate) async unsafe fn create(
         data: &'a mut [u8; PAGE_DATA_SIZE],
     ) -> nsql_serde::Result<PageViewMut<'a, K, V>> {
