@@ -77,16 +77,16 @@ where
     V: Archive + fmt::Debug,
     V::Archived: fmt::Debug,
 {
-    pub(crate) async unsafe fn create(
+    pub(crate) async unsafe fn view(
         data: &'a [u8; PAGE_DATA_SIZE],
     ) -> nsql_serde::Result<PageView<'a, K, V>> {
         // read the header to determine if it's a leaf or interior page
         let (header_bytes, _) = data.split_array_ref();
         let header = unsafe { nsql_rkyv::archived_root::<PageHeader>(header_bytes) };
         if header.flags.contains(Flags::IS_LEAF) {
-            LeafPageView::create(data).map(Self::Leaf)
+            LeafPageView::view(data).map(Self::Leaf)
         } else {
-            InteriorPageView::create(data).map(Self::Interior)
+            InteriorPageView::view(data).map(Self::Interior)
         }
     }
 }
@@ -97,15 +97,15 @@ pub(crate) enum PageViewMut<'a, K, V> {
 }
 
 impl<'a, K, V> PageViewMut<'a, K, V> {
-    pub(crate) async unsafe fn create(
+    pub(crate) async unsafe fn view_mut(
         data: &'a mut [u8; PAGE_DATA_SIZE],
     ) -> nsql_serde::Result<PageViewMut<'a, K, V>> {
         let (header_bytes, _) = data.split_array_ref();
         let header = unsafe { nsql_rkyv::archived_root::<PageHeader>(header_bytes) };
         if header.flags.contains(Flags::IS_LEAF) {
-            LeafPageViewMut::<'a, K, V>::create(data).map(Self::Leaf)
+            LeafPageViewMut::<'a, K, V>::view_mut(data).map(Self::Leaf)
         } else {
-            InteriorPageViewMut::<'a, K>::create(data).map(Self::Interior)
+            InteriorPageViewMut::<'a, K>::view_mut(data).map(Self::Interior)
         }
     }
 }

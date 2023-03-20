@@ -70,7 +70,7 @@ where
     V: Archive + fmt::Debug,
     V::Archived: fmt::Debug,
 {
-    pub(crate) unsafe fn create(
+    pub(crate) unsafe fn view(
         data: &'a [u8; PAGE_DATA_SIZE],
     ) -> nsql_serde::Result<LeafPageView<'a, K, V>> {
         let (page_header_bytes, data) = data.split_array_ref();
@@ -80,7 +80,7 @@ where
         let header = nsql_rkyv::archived_root::<LeafPageHeader>(header_bytes);
         header.check_magic()?;
 
-        let slotted_page = SlottedPageView::<'a, KeyValuePair<K, V>>::create(data);
+        let slotted_page = SlottedPageView::<'a, KeyValuePair<K, V>>::view(data);
         Ok(Self { page_header, header, slotted_page })
     }
 
@@ -117,7 +117,7 @@ impl<'a, K, V> Deref for LeafPageViewMut<'a, K, V> {
 }
 
 impl<'a, K, V> LeafPageViewMut<'a, K, V> {
-    pub(crate) unsafe fn create(
+    pub(crate) unsafe fn view_mut(
         data: &'a mut [u8; PAGE_DATA_SIZE],
     ) -> nsql_serde::Result<LeafPageViewMut<'a, K, V>> {
         let (page_header_bytes, data) = data.split_array_mut();
@@ -126,7 +126,7 @@ impl<'a, K, V> LeafPageViewMut<'a, K, V> {
         let (header_bytes, data) = data.split_array_mut();
         let header = nsql_rkyv::archived_root_mut::<LeafPageHeader>(header_bytes);
         header.check_magic()?;
-        let slotted_page = SlottedPageViewMut::create(data);
+        let slotted_page = SlottedPageViewMut::view_mut(data);
         Ok(Self { page_header, header, slotted_page })
     }
 }

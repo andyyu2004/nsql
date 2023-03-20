@@ -65,7 +65,7 @@ where
     K: Archive,
     K::Archived: Ord + fmt::Debug,
 {
-    pub(crate) unsafe fn create(
+    pub(crate) unsafe fn view(
         data: &'a [u8; PAGE_DATA_SIZE],
     ) -> nsql_serde::Result<InteriorPageView<'a, K>> {
         let (page_header_bytes, data) = data.split_array_ref();
@@ -75,7 +75,7 @@ where
         let header = nsql_rkyv::archived_root::<InteriorPageHeader>(header_bytes);
         header.check_magic()?;
 
-        let slotted_page = SlottedPageView::create(data);
+        let slotted_page = SlottedPageView::view(data);
         Ok(Self { page_header, header, slotted_page })
     }
 
@@ -139,7 +139,7 @@ impl<'a, K> Deref for InteriorPageViewMut<'a, K> {
 }
 
 impl<'a, K> InteriorPageViewMut<'a, K> {
-    pub(crate) unsafe fn create(
+    pub(crate) unsafe fn view_mut(
         data: &'a mut [u8; PAGE_DATA_SIZE],
     ) -> nsql_serde::Result<InteriorPageViewMut<'a, K>> {
         let (page_header_bytes, data) = data.split_array_mut();
@@ -149,7 +149,7 @@ impl<'a, K> InteriorPageViewMut<'a, K> {
         let header = nsql_rkyv::archived_root_mut::<InteriorPageHeader>(header_bytes);
         header.check_magic()?;
 
-        let slotted_page = SlottedPageViewMut::<'a, KeyValuePair<K, PageIndex>>::create(data);
+        let slotted_page = SlottedPageViewMut::<'a, KeyValuePair<K, PageIndex>>::view_mut(data);
         Ok(Self { page_header, header, slotted_page })
     }
 }
@@ -288,7 +288,7 @@ where
         let header = nsql_rkyv::archived_root_mut::<InteriorPageHeader>(header_bytes);
         header.check_magic()?;
 
-        let slotted_page = SlottedPageViewMut::<'a, KeyValuePair<K, PageIndex>>::create(data);
+        let slotted_page = SlottedPageViewMut::<'a, KeyValuePair<K, PageIndex>>::view_mut(data);
 
         Ok(Self { page_header, header, slotted_page })
     }

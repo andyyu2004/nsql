@@ -58,7 +58,7 @@ where
     async fn search_node(&self, idx: PageIndex, key: &K::Archived) -> Result<Option<V>> {
         let handle = self.pool.load(idx).await?;
         let data = handle.page().data().await;
-        let node = unsafe { PageView::<K, V>::create(&data).await? };
+        let node = unsafe { PageView::<K, V>::view(&data).await? };
         match node {
             PageView::Leaf(leaf) => Ok(leaf.get(key).map(nsql_rkyv::deserialize)),
             PageView::Interior(interior) => {
@@ -83,7 +83,7 @@ where
     ) -> Result<PageIndex> {
         let handle = self.pool.load(idx).await?;
         let data = handle.page().data().await;
-        let node = unsafe { PageView::<K, V>::create(&data).await? };
+        let node = unsafe { PageView::<K, V>::view(&data).await? };
         match node {
             PageView::Leaf(_) => Ok(idx),
             PageView::Interior(interior) => {
@@ -109,7 +109,7 @@ where
     ) -> Result<()> {
         let leaf_handle = self.pool.load(leaf_page_idx).await?;
         let mut leaf_data = leaf_handle.page().data_mut().await;
-        let mut view = unsafe { PageViewMut::<K, V>::create(&mut leaf_data).await? };
+        let mut view = unsafe { PageViewMut::<K, V>::view_mut(&mut leaf_data).await? };
         let leaf = match &mut view {
             PageViewMut::Interior(_) => unreachable!("should have been passed a leaf page"),
             PageViewMut::Leaf(leaf) => leaf,
@@ -178,7 +178,7 @@ where
         let parent_idx = parents.pop().expect("non-root leaf must have at least one parent");
         let parent_page = self.pool.load(parent_idx).await?;
         let mut parent_data = parent_page.page().data_mut().await;
-        let parent_view = unsafe { PageViewMut::<K, V>::create(&mut parent_data).await? };
+        let parent_view = unsafe { PageViewMut::<K, V>::view_mut(&mut parent_data).await? };
         let mut parent = match parent_view {
             PageViewMut::Interior(interior) => interior,
             PageViewMut::Leaf(_) => {

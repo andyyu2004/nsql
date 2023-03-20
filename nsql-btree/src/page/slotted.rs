@@ -37,7 +37,7 @@ where
 
 impl<'a, T> SlottedPageView<'a, T> {
     /// Safety: `buf` must contain a valid slotted page
-    pub(crate) unsafe fn create(buf: &'a [u8]) -> SlottedPageView<'a, T> {
+    pub(crate) unsafe fn view(buf: &'a [u8]) -> SlottedPageView<'a, T> {
         let (header_bytes, buf) = buf.split_array_ref();
         let header = unsafe { nsql_rkyv::archived_root::<SlottedPageMeta>(header_bytes) };
 
@@ -205,11 +205,11 @@ impl<'a, T> SlottedPageViewMut<'a, T> {
         let bytes = nsql_rkyv::to_bytes(&header);
         buf[..bytes.len()].copy_from_slice(&bytes);
 
-        unsafe { Self::create(buf) }
+        unsafe { Self::view_mut(buf) }
     }
 
     /// Safety: `buf` must point at the start of a valid slotted page
-    pub(crate) unsafe fn create(buf: &'a mut [u8]) -> SlottedPageViewMut<'a, T> {
+    pub(crate) unsafe fn view_mut(buf: &'a mut [u8]) -> SlottedPageViewMut<'a, T> {
         let (header_bytes, buf) = buf.split_array_mut();
         let header = unsafe { nsql_rkyv::archived_root_mut::<SlottedPageMeta>(header_bytes) };
 
