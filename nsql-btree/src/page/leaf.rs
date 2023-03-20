@@ -206,7 +206,7 @@ where
         &mut self.slotted_page
     }
 
-    fn init_with_flags(flags: Flags, data: &'a mut [u8; nsql_pager::PAGE_DATA_SIZE]) -> Self {
+    fn initialize_with_flags(flags: Flags, data: &'a mut [u8; nsql_pager::PAGE_DATA_SIZE]) -> Self {
         data.fill(0);
         let (page_header_bytes, data) = data.split_array_mut();
         nsql_rkyv::serialize_into_buf(page_header_bytes, &PageHeader::new(flags | Flags::IS_LEAF));

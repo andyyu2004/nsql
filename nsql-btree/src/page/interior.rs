@@ -258,7 +258,7 @@ where
     K: Archive + Ord + fmt::Debug,
     K::Archived: fmt::Debug + Ord,
 {
-    fn init_with_flags(flags: Flags, data: &'a mut [u8; PAGE_DATA_SIZE]) -> Self {
+    fn initialize_with_flags(flags: Flags, data: &'a mut [u8; PAGE_DATA_SIZE]) -> Self {
         assert!(!flags.contains(Flags::IS_LEAF), "tried to init an interior page as a leaf");
         data.fill(0);
         let (page_header_bytes, data) = data.split_array_mut();

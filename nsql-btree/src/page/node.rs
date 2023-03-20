@@ -26,14 +26,14 @@ where
     /// Initialize a new node with the given flags and data.
     /// This may not assume that the data is zeroed.
     /// Set any additional flags as appropriate, but do not unset any flags.
-    fn init_with_flags(flags: Flags, data: &'a mut [u8; PAGE_DATA_SIZE]) -> Self;
+    fn initialize_with_flags(flags: Flags, data: &'a mut [u8; PAGE_DATA_SIZE]) -> Self;
 
-    fn init(data: &'a mut [u8; PAGE_DATA_SIZE]) -> Self {
-        Self::init_with_flags(Flags::empty(), data)
+    fn initialize(data: &'a mut [u8; PAGE_DATA_SIZE]) -> Self {
+        Self::initialize_with_flags(Flags::empty(), data)
     }
 
-    fn init_root(data: &'a mut [u8; PAGE_DATA_SIZE]) -> Self {
-        Self::init_with_flags(Flags::IS_ROOT, data)
+    fn initialize_root(data: &'a mut [u8; PAGE_DATA_SIZE]) -> Self {
+        Self::initialize_with_flags(Flags::IS_ROOT, data)
     }
 
     unsafe fn view_mut(data: &'a mut [u8; PAGE_DATA_SIZE]) -> Result<Self>;

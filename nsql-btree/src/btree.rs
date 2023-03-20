@@ -28,12 +28,12 @@ where
     V::Archived: Clone + Deserialize<V, rkyv::Infallible> + fmt::Debug,
 {
     #[inline]
-    pub async fn init(pool: Arc<dyn Pool>) -> Result<Self> {
+    pub async fn initialize(pool: Arc<dyn Pool>) -> Result<Self> {
         let handle = pool.alloc().await?;
         let page = handle.page();
         let mut data = page.data_mut().await;
 
-        LeafPageViewMut::<K, V>::init_root(&mut data);
+        LeafPageViewMut::<K, V>::initialize_root(&mut data);
         let root_idx = page.idx();
         Ok(Self { pool, root_idx, marker: PhantomData })
     }
@@ -122,11 +122,11 @@ where
                     cov_mark::hit!(root_leaf_split);
                     let left_page = self.pool.alloc().await?;
                     let mut left_data = left_page.page().data_mut().await;
-                    let mut left_child = LeafPageViewMut::<K, V>::init(&mut left_data);
+                    let mut left_child = LeafPageViewMut::<K, V>::initialize(&mut left_data);
 
                     let right_page = self.pool.alloc().await?;
                     let mut right_data = right_page.page().data_mut().await;
-                    let mut right_child = LeafPageViewMut::<K, V>::init(&mut right_data);
+                    let mut right_child = LeafPageViewMut::<K, V>::initialize(&mut right_data);
 
                     leaf.split_root_into(left_page.page_idx(), &mut left_child, &mut right_child);
 
@@ -139,7 +139,7 @@ where
                         .expect("split child should not be full");
 
                     // reinitialize the root to an interior node and add the two children
-                    let mut root = InteriorPageViewMut::<K>::init_root(&mut leaf_data);
+                    let mut root = InteriorPageViewMut::<K>::initialize_root(&mut leaf_data);
                     root.insert_initial(K::MIN, left_page.page_idx(), sep, right_page.page_idx())
                         .expect("new root should not be full");
 
@@ -150,7 +150,7 @@ where
                     // then we insert the separator key and the new page index into the parent
                     let new_page = self.pool.alloc().await?;
                     let mut new_data = new_page.page().data_mut().await;
-                    let mut new_leaf = LeafPageViewMut::<K, V>::init(&mut new_data);
+                    let mut new_leaf = LeafPageViewMut::<K, V>::initialize(&mut new_data);
 
                     leaf.split_into(&mut new_leaf);
                     let sep = new_leaf.low_key();
@@ -193,11 +193,11 @@ where
                     cov_mark::hit!(root_interior_split);
                     let left_page = self.pool.alloc().await?;
                     let mut left_data = left_page.page().data_mut().await;
-                    let mut left_child = InteriorPageViewMut::<K>::init(&mut left_data);
+                    let mut left_child = InteriorPageViewMut::<K>::initialize(&mut left_data);
 
                     let right_page = self.pool.alloc().await?;
                     let mut right_data = right_page.page().data_mut().await;
-                    let mut right_child = InteriorPageViewMut::<K>::init(&mut right_data);
+                    let mut right_child = InteriorPageViewMut::<K>::initialize(&mut right_data);
 
                     parent.split_root_into(left_page.page_idx(), &mut left_child, &mut right_child);
 
@@ -209,7 +209,7 @@ where
                         .expect("split child should not be full");
 
                     // reinitialize the root to an interior root node and add the two children
-                    let mut root = InteriorPageViewMut::<K>::init_root(&mut parent_data);
+                    let mut root = InteriorPageViewMut::<K>::initialize_root(&mut parent_data);
                     root.insert_initial(K::MIN, left_page.page_idx(), sep, right_page.page_idx())
                         .expect("new root should not be full");
                 } else {
@@ -218,7 +218,7 @@ where
                     // then we insert the separator key and the new page index into the parent
                     let new_page = self.pool.alloc().await?;
                     let mut new_data = new_page.page().data_mut().await;
-                    let mut new_interior = InteriorPageViewMut::<K>::init(&mut new_data);
+                    let mut new_interior = InteriorPageViewMut::<K>::initialize(&mut new_data);
 
                     parent.split_into(&mut new_interior);
                     let sep = new_interior.low_key();
