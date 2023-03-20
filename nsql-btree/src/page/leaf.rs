@@ -112,17 +112,6 @@ impl<'a, K, V> Deref for LeafPageViewMut<'a, K, V> {
     }
 }
 
-impl<'a, K, V> LeafPageViewMut<'a, K, V>
-where
-    K: Archive + fmt::Debug,
-    K::Archived: fmt::Debug + Ord,
-    V: Archive + fmt::Debug,
-    V::Archived: fmt::Debug,
-{
-    // FIXME we need to split left not right and set the left link
-    pub(crate) fn split_into(&mut self, new: &mut LeafPageViewMut<'_, K, V>) {}
-}
-
 impl<'a, K, V> Node<'a, K, V> for LeafPageView<'a, K, V>
 where
     K: Archive + fmt::Debug,

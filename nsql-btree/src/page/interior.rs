@@ -180,22 +180,6 @@ where
 
         Ok(())
     }
-
-    // FIXME we need to split left not right and set the left link
-    pub(crate) fn split_into(&mut self, new: &mut InteriorPageViewMut<'_, K>) {
-        assert!(new.slotted_page.is_empty());
-        assert!(self.slotted_page.len() > 1);
-
-        let slots = self.slotted_page.slots();
-        let (lhs, rhs) = slots.split_at(slots.len() / 2);
-
-        for &slot in rhs {
-            let value = self.slotted_page.get_by_slot(slot);
-            new.slotted_page.insert(value).expect("new page should not be full");
-        }
-
-        self.slotted_page.set_len(lhs.len() as u16);
-    }
 }
 
 impl<'a, K> Node<'a, K, PageIndex> for InteriorPageView<'a, K>

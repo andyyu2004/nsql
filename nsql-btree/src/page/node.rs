@@ -5,7 +5,7 @@ use nsql_pager::{PageIndex, PAGE_DATA_SIZE};
 use rkyv::{Archive, Archived};
 
 use super::slotted::{SlottedPageView, SlottedPageViewMut};
-use super::{ArchivedKeyValuePair, Flags, KeyValuePair, PageFull, PageHeader, InteriorPageViewMut};
+use super::{ArchivedKeyValuePair, Flags, InteriorPageViewMut, KeyValuePair, PageFull, PageHeader};
 use crate::Result;
 
 /// Abstraction over `Leaf` and `Interior` btree nodes
@@ -60,7 +60,6 @@ where
         InteriorPageViewMut::initialize_root(self.raw_bytes_mut())
     }
 
-
     fn initialize(data: &'a mut [u8; PAGE_DATA_SIZE]) -> Self {
         Self::initialize_with_flags(Flags::empty(), data)
     }
@@ -97,7 +96,7 @@ where
     /// Split node contents into left and right children and leave the root node empty.
     /// This is intended for use when splitting a root node.
     /// We keep the root node page number unchanged because it may be referenced as an identifier.
-    fn split_root_into(&mut self, left_page_ldx: PageIndex, left: &mut Self, right: &mut Self) {
+    fn split_root_into(&mut self, _left_page_ldx: PageIndex, left: &mut Self, right: &mut Self) {
         assert!(left.slotted_page().is_empty());
         assert!(right.slotted_page().is_empty());
         assert!(self.slotted_page().len() > 1);

@@ -1,5 +1,3 @@
-
-
 // /// An abstraction layer around [`rkyv::Archive`] and [`rkyv::ArchiveUnsized`].
 // /// This allows us to transparent use both sized and unsized types
 // /// Ideally, we would be able to create a default impl for `ArchiveUnsized`` and use a more

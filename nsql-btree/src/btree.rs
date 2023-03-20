@@ -1,17 +1,14 @@
 use std::fmt;
 use std::marker::PhantomData;
-use std::ops::DerefMut;
 use std::sync::Arc;
 
 use async_recursion::async_recursion;
 use nsql_buffer::Pool;
-use nsql_pager::{PageIndex, PAGE_DATA_SIZE};
+use nsql_pager::PageIndex;
 use nsql_rkyv::DefaultSerializer;
 use rkyv::{Archive, Deserialize, Serialize};
 
-use crate::page::{
-    Flags, InteriorPageViewMut, LeafPageViewMut, Node, NodeMut, PageFull, PageView, PageViewMut,
-};
+use crate::page::{Flags, LeafPageViewMut, Node, NodeMut, PageFull, PageView, PageViewMut};
 use crate::Result;
 
 /// A B+ tree
@@ -129,8 +126,7 @@ where
                     let right_page = self.pool.alloc().await?;
                     let right_data = right_page.page().data_mut().await;
 
-                    self.split_root(&mut leaf, left_data, right_data, key.clone(), value.clone())
-                        .await?;
+                    self.split_root(&mut leaf, left_data, right_data, key.clone(), value.clone())?;
 
                     Ok(())
                 } else {
@@ -179,8 +175,7 @@ where
                         right_data,
                         key.clone(),
                         child_idx.into(),
-                    )
-                    .await?;
+                    )?;
                 } else {
                     cov_mark::hit!(non_root_interior_split);
 
@@ -225,7 +220,7 @@ where
         Ok(())
     }
 
-    async fn split_root<'a, N, T>(
+    fn split_root<'a, N, T>(
         &self,
         root: &'a mut N,
         mut left_data: nsql_pager::PageViewMut<'a>,
