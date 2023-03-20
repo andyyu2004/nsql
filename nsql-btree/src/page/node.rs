@@ -5,7 +5,7 @@ use nsql_pager::{PageIndex, PAGE_DATA_SIZE};
 use rkyv::{Archive, Archived};
 
 use super::slotted::{SlottedPageView, SlottedPageViewMut};
-use super::{ArchivedKeyValuePair, Flags, KeyValuePair, PageFull, PageHeader};
+use super::{ArchivedKeyValuePair, Flags, KeyValuePair, PageFull, PageHeader, InteriorPageViewMut};
 use crate::Result;
 
 /// Abstraction over `Leaf` and `Interior` btree nodes
@@ -52,6 +52,14 @@ where
         unsafe { &mut *(&mut *self.page_header_mut() as *mut _ as *mut [u8; PAGE_DATA_SIZE]) }
         //                   ^ to get the pointer out of the pin
     }
+
+    /// Reinitialize the root node as a root interior node.
+    /// This is intended for use when splitting a root node.
+    fn reinitialize_as_root_interior(&'a mut self) -> InteriorPageViewMut<'a, K> {
+        assert!(self.page_header().flags.contains(Flags::IS_ROOT));
+        InteriorPageViewMut::initialize_root(self.raw_bytes_mut())
+    }
+
 
     fn initialize(data: &'a mut [u8; PAGE_DATA_SIZE]) -> Self {
         Self::initialize_with_flags(Flags::empty(), data)
