@@ -221,10 +221,17 @@ pub struct PageViewMut<'a> {
     write_offset: usize,
 }
 
-impl PageViewMut<'_> {
+impl<'a> PageViewMut<'a> {
     #[inline]
     pub fn page_idx(&self) -> PageIndex {
         self.idx
+    }
+
+    /// Get a mutable reference to the bytes of the page.
+    /// This is the same as `&mut *self` but more explicit about lifetimes which aids inference sometimes
+    pub fn get_mut(&mut self) -> &'a mut [u8; PAGE_DATA_SIZE] {
+        // SAFETY we hold a write guard on the bytes for `'a`
+        unsafe { &mut *(self.bytes[PAGE_META_LENGTH..].as_mut_ptr() as *mut [u8; PAGE_DATA_SIZE]) }
     }
 }
 
@@ -259,17 +266,17 @@ impl AsyncWrite for PageViewMut<'_> {
     }
 }
 
-impl Deref for PageViewMut<'_> {
+impl<'a> Deref for PageViewMut<'a> {
     type Target = [u8; PAGE_DATA_SIZE];
 
-    fn deref(&self) -> &Self::Target {
+    fn deref(&self) -> &'a Self::Target {
         unsafe { &*(self.bytes[PAGE_META_LENGTH..].as_ptr() as *const [u8; PAGE_DATA_SIZE]) }
     }
 }
 
 impl<'a> DerefMut for PageViewMut<'a> {
     fn deref_mut(&mut self) -> &'a mut Self::Target {
-        unsafe { &mut *(self.bytes[PAGE_META_LENGTH..].as_mut_ptr() as *mut [u8; PAGE_DATA_SIZE]) }
+        self.get_mut()
     }
 }
 

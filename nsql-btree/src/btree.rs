@@ -1,5 +1,6 @@
 use std::fmt;
 use std::marker::PhantomData;
+use std::ops::DerefMut;
 use std::sync::Arc;
 
 use async_recursion::async_recursion;
@@ -123,37 +124,21 @@ where
                     assert!(leaf.len() >= 3, "pages should always contain at least 3 entries");
 
                     let left_page = self.pool.alloc().await?;
-                    let mut left_data = left_page.page().data_mut().await;
+                    let left_data = left_page.page().data_mut().await;
 
                     let right_page = self.pool.alloc().await?;
-                    let mut right_data = right_page.page().data_mut().await;
+                    let right_data = right_page.page().data_mut().await;
 
-                    self.split_root(
-                        &mut leaf,
-                        left_page.page_idx(),
-                        &mut left_data,
-                        right_page.page_idx(),
-                        &mut right_data,
-                        key.clone(),
-                        value.clone(),
-                    )
-                    .await?;
+                    self.split_root(&mut leaf, left_data, right_data, key.clone(), value.clone())
+                        .await?;
 
                     Ok(())
                 } else {
                     cov_mark::hit!(non_root_leaf_split);
                     let new_page = self.pool.alloc().await?;
-                    let mut new_data = new_page.page().data_mut().await;
+                    let new_data = new_page.page().data_mut().await;
 
-                    self.split_non_root(
-                        parents,
-                        leaf,
-                        new_page.page_idx(),
-                        &mut new_data,
-                        key.clone(),
-                        value.clone(),
-                    )
-                    .await
+                    self.split_non_root(parents, leaf, new_data, key.clone(), value.clone()).await
                 }
             }
         }
@@ -183,17 +168,15 @@ where
                 if parent.page_header().flags.contains(Flags::IS_ROOT) {
                     cov_mark::hit!(root_interior_split);
                     let left_page = self.pool.alloc().await?;
-                    let mut left_data = left_page.page().data_mut().await;
+                    let left_data = left_page.page().data_mut().await;
 
                     let right_page = self.pool.alloc().await?;
-                    let mut right_data = right_page.page().data_mut().await;
+                    let right_data = right_page.page().data_mut().await;
 
                     self.split_root(
                         &mut parent,
-                        left_page.page_idx(),
-                        &mut left_data,
-                        right_page.page_idx(),
-                        &mut right_data,
+                        left_data,
+                        right_data,
                         key.clone(),
                         child_idx.into(),
                     )
@@ -202,28 +185,21 @@ where
                     cov_mark::hit!(non_root_interior_split);
 
                     let new_page = self.pool.alloc().await?;
-                    let mut new_data = new_page.page().data_mut().await;
-                    self.split_non_root(
-                        parents,
-                        parent,
-                        new_page.page_idx(),
-                        &mut new_data,
-                        key.clone(),
-                        child_idx.into(),
-                    )
-                    .await?;
+                    let new_data = new_page.page().data_mut().await;
+                    self.split_non_root(parents, parent, new_data, key.clone(), child_idx.into())
+                        .await?;
                 }
             }
         }
 
         Ok(())
     }
+
     async fn split_non_root<'a, N, T>(
         &self,
         parents: Vec<PageIndex>,
         mut parent: N,
-        new_page_idx: PageIndex,
-        new_data: &'a mut [u8; PAGE_DATA_SIZE],
+        mut new_data: nsql_pager::PageViewMut<'a>,
         key: K::Archived,
         value: T::Archived,
     ) -> Result<()>
@@ -235,7 +211,8 @@ where
         assert!(parent.len() >= 3, "pages should always contain at least 3 entries");
         // split the non-root interior by allocating a new interior and splitting the contents
         // then we insert the separator key and the new page index into the parent
-        let mut new_interior = N::initialize(new_data);
+        let new_page_idx = new_data.page_idx();
+        let mut new_interior = N::initialize(new_data.get_mut());
 
         parent.split_into(&mut new_interior);
         let sep = new_interior.low_key().unwrap();
@@ -251,10 +228,8 @@ where
     async fn split_root<'a, N, T>(
         &self,
         root: &'a mut N,
-        left_page_idx: PageIndex,
-        left_data: &'a mut [u8; PAGE_DATA_SIZE],
-        right_page_idx: PageIndex,
-        right_data: &'a mut [u8; PAGE_DATA_SIZE],
+        mut left_data: nsql_pager::PageViewMut<'a>,
+        mut right_data: nsql_pager::PageViewMut<'a>,
         key: K::Archived,
         value: T::Archived,
     ) -> Result<()>
@@ -264,8 +239,10 @@ where
         T::Archived: fmt::Debug,
     {
         assert!(root.len() >= 3, "pages should always contain at least 3 entries");
-        let mut left_child = N::initialize(left_data);
-        let mut right_child = N::initialize(right_data);
+        let left_page_idx = left_data.page_idx();
+        let right_page_idx = right_data.page_idx();
+        let mut left_child = N::initialize(left_data.get_mut());
+        let mut right_child = N::initialize(right_data.get_mut());
 
         root.split_root_into(left_page_idx, &mut left_child, &mut right_child);
 
