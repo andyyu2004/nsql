@@ -4,27 +4,43 @@ use nsql_pager::{PageIndex, PAGE_DATA_SIZE};
 use rkyv::{Archive, Archived};
 
 use super::slotted::{SlottedPageView, SlottedPageViewMut};
-use super::{Flags, KeyValuePair, PageHeader};
+use super::{ArchivedKeyValuePair, Flags, KeyValuePair, PageFull, PageHeader};
 use crate::Result;
 
 /// Abstraction over `Leaf` and `Interior` btree nodes
-pub(crate) trait Node<'a, K, V>: Sized {
+pub(crate) trait Node<'a, K, V>: Sized
+where
+    K: Archive + fmt::Debug,
+    K::Archived: Ord + fmt::Debug,
+    V: Archive + fmt::Debug,
+    V::Archived: fmt::Debug,
+{
     fn slotted_page(&self) -> &SlottedPageView<'a, KeyValuePair<K, V>>;
 
     fn page_header(&self) -> &Archived<PageHeader>;
+
+    fn low_key(&self) -> Option<&K::Archived>;
+
+    fn len(&self) -> usize {
+        self.slotted_page().len()
+    }
 }
 
 pub(crate) trait NodeMut<'a, K, V>: Node<'a, K, V>
 where
-    K: Archive,
+    K: Archive + fmt::Debug,
     K::Archived: Ord + fmt::Debug,
-    V: Archive,
+    V: Archive + fmt::Debug,
     V::Archived: fmt::Debug,
 {
     /// Initialize a new node with the given flags and data.
     /// This may not assume that the data is zeroed.
     /// Set any additional flags as appropriate, but do not unset any flags.
     fn initialize_with_flags(flags: Flags, data: &'a mut [u8; PAGE_DATA_SIZE]) -> Self;
+
+    unsafe fn view_mut(data: &'a mut [u8; PAGE_DATA_SIZE]) -> Result<Self>;
+
+    fn slotted_page_mut(&mut self) -> &mut SlottedPageViewMut<'a, KeyValuePair<K, V>>;
 
     fn initialize(data: &'a mut [u8; PAGE_DATA_SIZE]) -> Self {
         Self::initialize_with_flags(Flags::empty(), data)
@@ -34,14 +50,18 @@ where
         Self::initialize_with_flags(Flags::IS_ROOT, data)
     }
 
-    unsafe fn view_mut(data: &'a mut [u8; PAGE_DATA_SIZE]) -> Result<Self>;
+    fn insert(&mut self, key: K::Archived, value: impl Into<V::Archived>) -> Result<(), PageFull> {
+        if let Some(low_key) = self.low_key() {
+            assert!(low_key < &key);
+        }
 
-    fn slotted_page_mut(&mut self) -> &mut SlottedPageViewMut<'a, KeyValuePair<K, V>>;
+        self.slotted_page_mut().insert(&ArchivedKeyValuePair::new(key, value.into()))
+    }
 
     /// Split node contents into left and right children and leave the root node empty.
     /// This is intended for use when splitting a root node.
     /// We keep the root node page number unchanged because it may be referenced as an identifier.
-    fn split_root_into(&mut self, left_page_idx: PageIndex, left: &mut Self, right: &mut Self) {
+    fn split_root_into(&mut self, left_page_ldx: PageIndex, left: &mut Self, right: &mut Self) {
         assert!(left.slotted_page().is_empty());
         assert!(right.slotted_page().is_empty());
         assert!(self.slotted_page().len() > 1);

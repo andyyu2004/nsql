@@ -94,9 +94,9 @@ where
         unsafe { rkyv::archived_root::<T>(&self[slot]) }
     }
 
-    pub(crate) fn low_key(&self) -> &T::Archived {
-        let slot = *self.slots.first().unwrap();
-        self.get_by_slot(slot)
+    pub(crate) fn first(&self) -> Option<&T::Archived> {
+        let slot = *self.slots.first()?;
+        Some(self.get_by_slot(slot))
     }
 
     // FIXME cleanup all this api mess

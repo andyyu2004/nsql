@@ -87,10 +87,6 @@ where
     pub(crate) fn get(&self, key: &K::Archived) -> Option<&V::Archived> {
         self.slotted_page.get(key).map(|kv| &kv.value)
     }
-
-    pub(crate) fn low_key(&self) -> &K::Archived {
-        &self.slotted_page.low_key().key
-    }
 }
 
 #[derive(Debug)]
@@ -123,14 +119,6 @@ where
     V: Archive + fmt::Debug,
     V::Archived: fmt::Debug,
 {
-    pub(crate) fn insert(&mut self, key: K::Archived, value: V::Archived) -> Result<(), PageFull> {
-        self.insert_kv(&ArchivedKeyValuePair { key, value })
-    }
-
-    pub(crate) fn insert_kv(&mut self, kv: &ArchivedKeyValuePair<K, V>) -> Result<(), PageFull> {
-        self.slotted_page.insert(kv)
-    }
-
     // FIXME we need to split left not right and set the left link
     pub(crate) fn split_into(&mut self, new: &mut LeafPageViewMut<'_, K, V>) {
         assert!(new.slotted_page.is_empty());
@@ -162,6 +150,10 @@ where
     fn page_header(&self) -> &Archived<PageHeader> {
         self.page_header
     }
+
+    fn low_key(&self) -> Option<&K::Archived> {
+        self.slotted_page.first().map(|kv| &kv.key)
+    }
 }
 
 impl<'a, K, V> Node<'a, K, V> for LeafPageViewMut<'a, K, V>
@@ -177,6 +169,10 @@ where
 
     fn page_header(&self) -> &Archived<PageHeader> {
         (**self).page_header()
+    }
+
+    fn low_key(&self) -> Option<&K::Archived> {
+        (**self).low_key()
     }
 }
 

@@ -120,6 +120,8 @@ where
             Err(PageFull) => {
                 if leaf.page_header().flags.contains(Flags::IS_ROOT) {
                     cov_mark::hit!(root_leaf_split);
+                    assert!(leaf.len() >= 3, "pages should always contain at least 3 entries");
+
                     let left_page = self.pool.alloc().await?;
                     let mut left_data = left_page.page().data_mut().await;
                     let mut left_child = LeafPageViewMut::<K, V>::initialize(&mut left_data);
@@ -131,7 +133,7 @@ where
                     leaf.split_root_into(left_page.page_idx(), &mut left_child, &mut right_child);
 
                     // use the first key in the right child as the separator to insert into the parent
-                    let sep = right_child.low_key().clone();
+                    let sep = right_child.low_key().expect("we just inserted something").clone();
 
                     // FIXME check correctness of condition
                     (if key < &sep { left_child } else { right_child })
@@ -153,7 +155,7 @@ where
                     let mut new_leaf = LeafPageViewMut::<K, V>::initialize(&mut new_data);
 
                     leaf.split_into(&mut new_leaf);
-                    let sep = new_leaf.low_key();
+                    let sep = new_leaf.low_key().unwrap();
 
                     self.insert_interior(parents, sep, new_page.page_idx()).await?;
 
@@ -199,9 +201,17 @@ where
                     let mut right_data = right_page.page().data_mut().await;
                     let mut right_child = InteriorPageViewMut::<K>::initialize(&mut right_data);
 
+                    // self.split_root(
+                    //     left_page.page_idx(),
+                    //     &mut parent,
+                    //     key.clone(),
+                    //     child_idx.into(),
+                    // )
+                    // .await;
+
                     parent.split_root_into(left_page.page_idx(), &mut left_child, &mut right_child);
 
-                    let sep = right_child.low_key().clone();
+                    let sep = right_child.low_key().unwrap().clone();
 
                     (if key < &sep { left_child } else { right_child })
                         .insert(key.clone(), child_idx)
@@ -221,7 +231,7 @@ where
                     let mut new_interior = InteriorPageViewMut::<K>::initialize(&mut new_data);
 
                     parent.split_into(&mut new_interior);
-                    let sep = new_interior.low_key();
+                    let sep = new_interior.low_key().unwrap();
                     self.insert_interior(parents, sep, new_page.page_idx()).await?;
 
                     // insert the new separator key and child index into the parent
@@ -236,16 +246,38 @@ where
         Ok(())
     }
 
-    // async fn split_root(&mut self) -> nsql_serde::Result<()> {
+    // async fn split_root<N, T>(
+    //     &mut self,
+    //     left_page_idx: PageIndex,
+    //     root: &mut N,
+    //     key: K::Archived,
+    //     value: T::Archived,
+    // ) -> Result<()>
+    // where
+    //     N: for<'a> NodeMut<'a, K, T>,
+    //     T: Archive + fmt::Debug,
+    //     T::Archived: fmt::Debug,
+    // {
     //     let left_page = self.pool.alloc().await?;
     //     let mut left_data = left_page.page().data_mut().await;
-    //     let mut left_child = PageViewMut::<K, V>::init_leaf(&mut left_data).await?;
+    //     let mut left_child = N::initialize(&mut left_data);
 
     //     let right_page = self.pool.alloc().await?;
     //     let mut right_data = right_page.page().data_mut().await;
-    //     let mut right_child = PageViewMut::<K, V>::init_leaf(&mut right_data).await?;
+    //     let mut right_child = N::initialize(&mut right_data);
 
-    //     leaf.split_root_into(&mut left_child, &mut right_child);
+    //     root.split_root_into(left_page_idx, &mut left_child, &mut right_child);
+
+    //     let sep = right_child.low_key().unwrap().clone();
+
+    //     (if key < sep { left_child } else { right_child })
+    //         .insert(key, value)
+    //         .expect("split child should not be full");
+
+    //     // reinitialize the root to an interior root node and add the two children
+    //     let mut root = InteriorPageViewMut::<K>::initialize_root(&mut root_data);
+    //     root.insert_initial(K::MIN, left_page.page_idx(), sep, right_page.page_idx())
+    //         .expect("new root should not be full");
     //     Ok(())
     // }
 }

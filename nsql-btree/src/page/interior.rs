@@ -92,12 +92,6 @@ where
         PageIndex::from(kv.value)
     }
 
-    pub(crate) fn low_key(&self) -> &K::Archived {
-        let slot =
-            *self.slotted_page.slots().first().expect("interior slots should always be non-empty");
-        &self.slotted_page.get_by_slot(slot).key
-    }
-
     fn is_leftmost(&self) -> bool {
         self.header.left_link.is_none()
     }
@@ -148,17 +142,12 @@ where
         sep: K::Archived,
         page_idx: PageIndex,
     ) -> nsql_serde::Result<Result<(), PageFull>> {
-        assert!(
-            self.slotted_page.slots().len() > 1,
-            "can only use `insert` operation on a non-empty node"
-        );
-
         let kv = Archived::<KeyValuePair<K, PageIndex>>::new(sep, page_idx.into());
 
-        let low_key = self.low_key();
-        assert!(low_key < &kv.key);
+        if let Some(low_key) = self.low_key() {
+            assert!(low_key < &kv.key);
+        }
 
-        // FIXME is this even right?
         match self.slotted_page.insert(&kv) {
             Ok(()) => Ok(Ok(())),
             Err(PageFull) => Ok(Err(PageFull)),
@@ -221,6 +210,10 @@ where
     fn page_header(&self) -> &Archived<PageHeader> {
         self.page_header
     }
+
+    fn low_key(&self) -> Option<&K::Archived> {
+        self.slotted_page.first().map(|kv| &kv.key)
+    }
 }
 
 impl<'a, K> Node<'a, K, PageIndex> for InteriorPageViewMut<'a, K>
@@ -234,6 +227,10 @@ where
 
     fn page_header(&self) -> &Archived<PageHeader> {
         (**self).page_header()
+    }
+
+    fn low_key(&self) -> Option<&K::Archived> {
+        (**self).low_key()
     }
 }
 
