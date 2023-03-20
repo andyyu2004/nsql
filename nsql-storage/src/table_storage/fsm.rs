@@ -46,7 +46,7 @@ impl FreeSpaceMap {
         _level: usize,
     ) -> nsql_buffer::Result<Option<PageIndex>> {
         let buffer = self.pool.load(self.meta.root_fsm_page).await?;
-        let mut data = buffer.page().data_mut().await;
+        let mut data = buffer.page().write().await;
         let _fsm_page = FsmPage::from_bytes_mut(&mut data);
         // let _offset = fsm_page.find(required_size);
         drop(data);
@@ -67,7 +67,7 @@ impl FreeSpaceMap {
         _free_space: u16,
     ) -> nsql_buffer::Result<()> {
         let buffer = self.pool.load(self.meta.root_fsm_page).await?;
-        let mut data = buffer.page().data_mut().await;
+        let mut data = buffer.page().write().await;
         let _fsm_page = FsmPage::from_bytes_mut(&mut data);
 
         // let current_page = level * NODES_PER_PAGE;

@@ -44,15 +44,16 @@ impl Page {
         Arc::clone(&self.bytes)
     }
 
-    /// Get an immutable reference to the data bytes of the page
+    /// Lock the page with a read lock an immutable reference to the data bytes of the page
     #[inline]
-    pub async fn data(&self) -> PageView<'_> {
+    pub async fn read(&self) -> PageView<'_> {
         let bytes = self.bytes.read();
         PageView { idx: self.idx(), bytes, read_offset: PAGE_META_LENGTH }
     }
 
+    /// Lock the page with a write lock and a mutable reference to the data bytes of the page
     #[inline]
-    pub async fn data_mut(&self) -> PageViewMut<'_> {
+    pub async fn write(&self) -> PageViewMut<'_> {
         let bytes = self.bytes.write();
         PageViewMut { idx: self.idx(), bytes, write_offset: PAGE_META_LENGTH }
     }
@@ -88,7 +89,7 @@ impl Page {
     /// Compute the checksum of the page and write it to the first 8 bytes of the page.
     #[inline]
     pub(crate) async fn compute_checksum(&self) -> u64 {
-        checksum(self.data().await.as_ref())
+        checksum(self.read().await.as_ref())
     }
 }
 

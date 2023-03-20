@@ -21,7 +21,7 @@ test_each_pager! {
         for _ in 0..100 {
             let idx = pager.alloc_page().await?;
             let page = pager.read_page(idx).await?;
-            assert_eq!(page.data().await.as_ref(), [0u8; PAGE_DATA_SIZE]);
+            assert_eq!(page.read().await.as_ref(), [0u8; PAGE_DATA_SIZE]);
         }
 
         Ok(())
@@ -34,12 +34,12 @@ test_each_pager! {
             let idx = pager.alloc_page().await?;
             let page = pager.read_page(idx).await?;
 
-            page.data_mut().await[i] = (i % u8::MAX as usize) as u8;
-            let expected = *page.data().await;
+            page.write().await[i] = (i % u8::MAX as usize) as u8;
+            let expected = *page.read().await;
 
             pager.write_page(page).await?;
             let page = pager.read_page(idx).await?;
-            assert_eq!(page.data().await.as_ref(), expected.as_ref());
+            assert_eq!(page.read().await.as_ref(), expected.as_ref());
         }
 
         Ok(())

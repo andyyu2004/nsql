@@ -34,7 +34,7 @@ impl TableStorage {
         let ctx = TupleDeserializationContext { schema: Arc::clone(&self.info.schema) };
         let handle = self.pool.load(idx).await?;
         let mut page =
-            HeapTuplePage::deserialize_with(&ctx, &mut handle.page().data().await).await?;
+            HeapTuplePage::deserialize_with(&ctx, &mut handle.page().read().await).await?;
         let _slot = match page.insert_tuple(tuple).await? {
             Ok(slot) => slot,
             Err(HeapTuplePageFull) => panic!("there should be enough space as we checked fsm"),
