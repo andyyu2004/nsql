@@ -16,7 +16,6 @@ nsql-arena = { version = "0.1.0", path = "../nsql-arena" }
 nsql-buffer = {  path = "../nsql-buffer" }
 nsql-pager = { path = "../nsql-pager" }
 nsql-rkyv = { version = "0.1.0", path = "../nsql-rkyv" }
-nsql-serde = { version = "0.1.0", path = "../nsql-serde" }
 nsql-util = { version = "0.1.0", path = "../nsql-util" }
 rkyv = { version = "0.7.40", default-features = false, features = ["archive_be", "size_16"] }
 test-strategy = "0.3.0"
@@ -25,3 +24,5 @@ test-strategy = "0.3.0"
 nsql-test = { version = "0.1.0", path = "../nsql-test" }
 criterion = { version = "0.4.0", features = ["async_tokio"] }
 tokio-uring = "0.4.0"
+proptest = "1.1.0"
+test-strategy = "0.3.0"

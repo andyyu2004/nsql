@@ -2,9 +2,10 @@ use nsql_buffer::Pool;
 use nsql_pager::PAGE_DATA_SIZE;
 
 use crate::page::{InteriorPageViewMut, LeafPageViewMut, NodeMut};
+use crate::Result;
 
 #[test]
-fn test_slotted_pages() -> nsql_serde::Result<()> {
+fn test_slotted_pages() -> Result<()> {
     nsql_test::start(async {
         let pool = nsql_test::mk_mem_buffer_pool!();
         let handle = pool.alloc().await?;

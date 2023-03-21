@@ -24,7 +24,7 @@ pub(crate) struct LeafPageHeader {
 }
 
 impl ArchivedLeafPageHeader {
-    fn check_magic(&self) -> nsql_serde::Result<()> {
+    fn check_magic(&self) -> Result<()> {
         if self.magic != BTREE_LEAF_PAGE_MAGIC {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
@@ -72,7 +72,7 @@ where
 {
     pub(crate) unsafe fn view(
         data: &'a [u8; PAGE_DATA_SIZE],
-    ) -> nsql_serde::Result<LeafPageView<'a, K, V>> {
+    ) -> Result<LeafPageView<'a, K, V>> {
         let (page_header_bytes, data) = data.split_array_ref();
         let page_header = unsafe { nsql_rkyv::archived_root::<PageHeader>(page_header_bytes) };
 

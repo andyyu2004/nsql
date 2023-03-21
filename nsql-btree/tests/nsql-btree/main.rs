@@ -1,8 +1,9 @@
-use nsql_btree::BTree;
+use nsql_btree::{BTree, Result};
 use nsql_test::mk_fast_mem_buffer_pool;
+use test_strategy::proptest;
 
 #[test]
-fn test_btree_empty() -> nsql_serde::Result<()> {
+fn test_btree_empty() -> Result<()> {
     nsql_test::start(async {
         let pool = mk_fast_mem_buffer_pool!();
         let btree = BTree::<u32, u64>::initialize(pool).await?;
@@ -12,7 +13,7 @@ fn test_btree_empty() -> nsql_serde::Result<()> {
 }
 
 #[test]
-fn test_btree_insert_and_get() -> nsql_serde::Result<()> {
+fn test_btree_insert_and_get() -> Result<()> {
     nsql_test::start(async {
         let pool = mk_fast_mem_buffer_pool!();
         let btree = BTree::<u32, u64>::initialize(pool).await?;
@@ -23,7 +24,7 @@ fn test_btree_insert_and_get() -> nsql_serde::Result<()> {
 }
 
 #[test]
-fn test_btree_insert_many_and_get() -> nsql_serde::Result<()> {
+fn test_btree_insert_many_and_get() -> Result<()> {
     nsql_test::start(async {
         let pool = mk_fast_mem_buffer_pool!();
         let btree = BTree::<u32, u64>::initialize(pool).await?;
@@ -36,30 +37,30 @@ fn test_btree_insert_many_and_get() -> nsql_serde::Result<()> {
 }
 
 #[test]
-fn test_btree_root_leaf_page_split() -> nsql_serde::Result<()> {
+fn test_btree_root_leaf_page_split() -> Result<()> {
     cov_mark::check!(root_leaf_split);
-    run::<300>()
+    run_serial_inserts::<300>()
 }
 
 #[test]
-fn test_btree_leaf_page_split() -> nsql_serde::Result<()> {
+fn test_btree_leaf_page_split() -> Result<()> {
     cov_mark::check!(non_root_leaf_split);
-    run::<500>()
+    run_serial_inserts::<500>()
 }
 
 #[test]
-fn test_btree_root_interior_page_split() -> nsql_serde::Result<()> {
+fn test_btree_root_interior_page_split() -> Result<()> {
     cov_mark::check!(root_interior_split);
-    run::<34239>()
+    run_serial_inserts::<34239>()
 }
 
 #[test]
-fn test_btree_interior_page_split() -> nsql_serde::Result<()> {
+fn test_btree_interior_page_split() -> Result<()> {
     cov_mark::check!(non_root_interior_split);
-    run::<60000>()
+    run_serial_inserts::<60000>()
 }
 
-fn run<const N: u32>() -> nsql_serde::Result<()> {
+fn run_serial_inserts<const N: u32>() -> Result<()> {
     nsql_test::start(async {
         let pool = mk_fast_mem_buffer_pool!();
         let btree = BTree::<u32, u64>::initialize(pool).await?;

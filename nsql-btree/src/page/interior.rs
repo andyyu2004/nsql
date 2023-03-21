@@ -28,7 +28,7 @@ impl Default for InteriorPageHeader {
 }
 
 impl ArchivedInteriorPageHeader {
-    fn check_magic(&self) -> nsql_serde::Result<()> {
+    fn check_magic(&self) -> Result<()> {
         if self.magic != BTREE_INTERIOR_PAGE_MAGIC {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
@@ -65,9 +65,7 @@ where
     K: Archive,
     K::Archived: Ord + fmt::Debug,
 {
-    pub(crate) unsafe fn view(
-        data: &'a [u8; PAGE_DATA_SIZE],
-    ) -> nsql_serde::Result<InteriorPageView<'a, K>> {
+    pub(crate) unsafe fn view(data: &'a [u8; PAGE_DATA_SIZE]) -> Result<InteriorPageView<'a, K>> {
         let (page_header_bytes, data) = data.split_array_ref();
         let page_header = nsql_rkyv::archived_root::<PageHeader>(page_header_bytes);
 
@@ -141,7 +139,7 @@ where
         &mut self,
         sep: K::Archived,
         page_idx: PageIndex,
-    ) -> nsql_serde::Result<Result<(), PageFull>> {
+    ) -> Result<Result<(), PageFull>> {
         let kv = Archived::<KeyValuePair<K, PageIndex>>::new(sep, page_idx.into());
 
         if let Some(low_key) = self.low_key() {
