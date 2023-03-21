@@ -35,7 +35,7 @@ impl fmt::Debug for Page {
 
 impl Page {
     #[inline]
-    pub fn idx(&self) -> PageIndex {
+    pub fn page_idx(&self) -> PageIndex {
         self.idx
     }
 
@@ -48,14 +48,14 @@ impl Page {
     #[inline]
     pub async fn read(&self) -> PageReadGuard<'_> {
         let bytes = self.bytes.read();
-        PageReadGuard { idx: self.idx(), bytes, read_offset: PAGE_META_LENGTH }
+        PageReadGuard { idx: self.page_idx(), bytes, read_offset: PAGE_META_LENGTH }
     }
 
     /// Lock the page with a write lock and a mutable reference to the data bytes of the page
     #[inline]
     pub async fn write(&self) -> PageWriteGuard<'_> {
         let bytes = self.bytes.write();
-        PageWriteGuard { idx: self.idx(), bytes, write_offset: PAGE_META_LENGTH }
+        PageWriteGuard { idx: self.page_idx(), bytes, write_offset: PAGE_META_LENGTH }
     }
 
     #[inline]

@@ -86,7 +86,7 @@ impl Pager for SingleFilePager {
     }
 
     async fn write_page(&self, mut page: Page) -> Result<()> {
-        let idx = page.idx();
+        let idx = page.page_idx();
         self.assert_page_in_bounds(idx);
         let offset = self.offset_for_page(idx);
         page.update_checksum().await;

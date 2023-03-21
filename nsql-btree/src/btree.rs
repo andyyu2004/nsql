@@ -28,12 +28,11 @@ where
     #[inline]
     pub async fn initialize(pool: Arc<dyn Pool>) -> Result<Self> {
         let handle = pool.alloc().await?;
-        let page = handle.page();
-        let mut data = page.write().await;
+        let mut data = handle.write().await;
 
         let _root = LeafPageViewMut::<K, V>::initialize_root(&mut data);
 
-        let root_idx = page.idx();
+        let root_idx = handle.page_idx();
         Ok(Self { pool, root_idx, marker: PhantomData })
     }
 
@@ -56,7 +55,7 @@ where
     #[async_recursion(?Send)]
     async fn search_node(&self, idx: PageIndex, key: &K::Archived) -> Result<Option<V>> {
         let handle = self.pool.load(idx).await?;
-        let data = handle.page().read().await;
+        let data = handle.read().await;
         let node = unsafe { PageView::<K, V>::view(&data).await? };
         match node {
             PageView::Leaf(leaf) => Ok(leaf.get(key).map(nsql_rkyv::deserialize)),
@@ -81,7 +80,7 @@ where
         stack: &mut Vec<PageIndex>,
     ) -> Result<PageIndex> {
         let handle = self.pool.load(idx).await?;
-        let data = handle.page().read().await;
+        let data = handle.read().await;
         let node = unsafe { PageView::<K, V>::view(&data).await? };
         match node {
             PageView::Leaf(_) => Ok(idx),
@@ -107,7 +106,7 @@ where
         value: &V::Archived,
     ) -> Result<()> {
         let leaf_handle = self.pool.load(leaf_page_idx).await?;
-        let mut leaf_data = leaf_handle.page().write().await;
+        let mut leaf_data = leaf_handle.write().await;
         let view = unsafe { PageViewMut::<K, V>::view_mut(&mut leaf_data).await? };
         let mut leaf = match view {
             PageViewMut::Interior(_) => unreachable!("should have been passed a leaf page"),
@@ -122,10 +121,10 @@ where
                     assert!(leaf.len() >= 3, "pages should always contain at least 3 entries");
 
                     let left_page = self.pool.alloc().await?;
-                    let left_data = left_page.page().write().await;
+                    let left_data = left_page.write().await;
 
                     let right_page = self.pool.alloc().await?;
-                    let right_data = right_page.page().write().await;
+                    let right_data = right_page.write().await;
 
                     self.split_root(&mut leaf, left_data, right_data, key.clone(), value.clone())?;
 
@@ -133,13 +132,12 @@ where
                 } else {
                     cov_mark::hit!(non_root_leaf_split);
                     let new_page = self.pool.alloc().await?;
-                    let new_data = new_page.page().write().await;
 
                     self.split_non_root(
                         parents,
                         leaf_page_idx,
                         leaf,
-                        new_data,
+                        new_page.write().await,
                         key.clone(),
                         value.clone(),
                     )
@@ -158,7 +156,7 @@ where
     ) -> Result<()> {
         let parent_idx = parents.pop().expect("non-root leaf must have at least one parent");
         let parent_page = self.pool.load(parent_idx).await?;
-        let mut parent_data = parent_page.page().write().await;
+        let mut parent_data = parent_page.write().await;
         let parent_view = unsafe { PageViewMut::<K, V>::view_mut(&mut parent_data).await? };
         let mut parent = match parent_view {
             PageViewMut::Interior(interior) => interior,
@@ -173,15 +171,12 @@ where
                 if parent.page_header().flags.contains(Flags::IS_ROOT) {
                     cov_mark::hit!(root_interior_split);
                     let left_page = self.pool.alloc().await?;
-                    let left_data = left_page.page().write().await;
-
                     let right_page = self.pool.alloc().await?;
-                    let right_data = right_page.page().write().await;
 
                     self.split_root(
                         &mut parent,
-                        left_data,
-                        right_data,
+                        left_page.write().await,
+                        right_page.write().await,
                         key.clone(),
                         child_idx.into(),
                     )?;
@@ -189,12 +184,11 @@ where
                     cov_mark::hit!(non_root_interior_split);
 
                     let new_page = self.pool.alloc().await?;
-                    let new_data = new_page.page().write().await;
                     self.split_non_root(
                         parents,
                         parent_idx,
                         parent,
-                        new_data,
+                        new_page.write().await,
                         key.clone(),
                         child_idx.into(),
                     )

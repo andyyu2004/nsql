@@ -4,6 +4,7 @@
 #![feature(once_cell)]
 
 use std::collections::HashMap;
+use std::ops::Deref;
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -25,6 +26,14 @@ pub struct BufferHandle {
     page: Page,
 }
 
+impl Deref for BufferHandle {
+    type Target = Page;
+
+    fn deref(&self) -> &Self::Target {
+        &self.page
+    }
+}
+
 impl BufferHandle {
     #[inline]
     pub fn page(&self) -> &Page {
@@ -33,7 +42,7 @@ impl BufferHandle {
 
     #[inline]
     pub fn page_idx(&self) -> PageIndex {
-        self.page.idx()
+        self.page.page_idx()
     }
 
     fn new(page: Page) -> Self {
