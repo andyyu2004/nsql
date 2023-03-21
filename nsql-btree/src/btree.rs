@@ -135,7 +135,15 @@ where
                     let new_page = self.pool.alloc().await?;
                     let new_data = new_page.page().write().await;
 
-                    self.split_non_root(parents, leaf, new_data, key.clone(), value.clone()).await
+                    self.split_non_root(
+                        parents,
+                        leaf_page_idx,
+                        leaf,
+                        new_data,
+                        key.clone(),
+                        value.clone(),
+                    )
+                    .await
                 }
             }
         }
@@ -182,8 +190,15 @@ where
 
                     let new_page = self.pool.alloc().await?;
                     let new_data = new_page.page().write().await;
-                    self.split_non_root(parents, parent, new_data, key.clone(), child_idx.into())
-                        .await?;
+                    self.split_non_root(
+                        parents,
+                        parent_idx,
+                        parent,
+                        new_data,
+                        key.clone(),
+                        child_idx.into(),
+                    )
+                    .await?;
                 }
             }
         }
@@ -194,8 +209,9 @@ where
     async fn split_non_root<'a, N, T>(
         &self,
         parents: Vec<PageIndex>,
-        mut parent: N,
-        mut new_data: nsql_pager::PageViewMut<'a>,
+        node_page_idx: PageIndex,
+        mut node: N,
+        mut new_data: nsql_pager::PageWriteGuard<'a>,
         key: K::Archived,
         value: T::Archived,
     ) -> Result<()>
@@ -204,18 +220,18 @@ where
         T: Archive + fmt::Debug,
         T::Archived: fmt::Debug,
     {
-        assert!(parent.len() >= 3, "pages should always contain at least 3 entries");
+        assert!(node.len() >= 3, "pages should always contain at least 3 entries");
         // split the non-root interior by allocating a new interior and splitting the contents
         // then we insert the separator key and the new page index into the parent
         let new_page_idx = new_data.page_idx();
-        let mut new_interior = N::initialize(new_data.get_mut());
+        let mut new_node = N::initialize(new_data.get_mut());
+        node.split_left_into(new_page_idx, &mut new_node, node_page_idx);
 
-        parent.split_into(&mut new_interior);
-        let sep = new_interior.low_key().unwrap();
+        let sep = new_node.low_key().unwrap();
         self.insert_interior(parents, sep, new_page_idx).await?;
 
         // insert the new separator key and child index into the parent
-        (if &key < sep { parent } else { new_interior })
+        (if &key < sep { node } else { new_node })
             .insert(key, value)
             .expect("split interior should not be full");
         Ok(())
@@ -224,8 +240,8 @@ where
     fn split_root<'a, N, T>(
         &self,
         root: &'a mut N,
-        mut left_data: nsql_pager::PageViewMut<'a>,
-        mut right_data: nsql_pager::PageViewMut<'a>,
+        mut left_data: nsql_pager::PageWriteGuard<'a>,
+        mut right_data: nsql_pager::PageWriteGuard<'a>,
         key: K::Archived,
         value: T::Archived,
     ) -> Result<()>
@@ -240,7 +256,7 @@ where
         let mut left_child = N::initialize(left_data.get_mut());
         let mut right_child = N::initialize(right_data.get_mut());
 
-        root.split_root_into(left_page_idx, &mut left_child, &mut right_child);
+        root.split_root_into(left_page_idx, &mut left_child, right_page_idx, &mut right_child);
 
         let sep = right_child.low_key().unwrap().clone();
 

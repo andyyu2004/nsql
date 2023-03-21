@@ -4,6 +4,7 @@ use std::{fmt, io, mem};
 
 use nsql_pager::{PageIndex, PAGE_DATA_SIZE};
 use nsql_util::static_assert_eq;
+use rkyv::option::ArchivedOption;
 use rkyv::{Archive, Archived};
 
 use super::node::NodeHeader;
@@ -24,6 +25,14 @@ pub(crate) struct InteriorPageHeader {
 impl NodeHeader for Archived<InteriorPageHeader> {
     fn left_link(&self) -> Archived<Option<PageIndex>> {
         self.left_link
+    }
+
+    fn set_left_link(&mut self, left_link: PageIndex) {
+        self.left_link = ArchivedOption::Some(left_link.into());
+    }
+
+    fn set_right_link(&mut self, _right_link: PageIndex) {
+        // interior pages don't maintain a right link, nothing to do
     }
 }
 
@@ -226,5 +235,9 @@ where
 
     unsafe fn page_header_mut(&mut self) -> Pin<&mut Archived<PageHeader>> {
         self.page_header.as_mut()
+    }
+
+    fn node_header_mut(&mut self) -> Pin<&mut Self::ArchivedNodeHeader> {
+        self.header.as_mut()
     }
 }

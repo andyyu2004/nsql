@@ -46,16 +46,16 @@ impl Page {
 
     /// Lock the page with a read lock an immutable reference to the data bytes of the page
     #[inline]
-    pub async fn read(&self) -> PageView<'_> {
+    pub async fn read(&self) -> PageReadGuard<'_> {
         let bytes = self.bytes.read();
-        PageView { idx: self.idx(), bytes, read_offset: PAGE_META_LENGTH }
+        PageReadGuard { idx: self.idx(), bytes, read_offset: PAGE_META_LENGTH }
     }
 
     /// Lock the page with a write lock and a mutable reference to the data bytes of the page
     #[inline]
-    pub async fn write(&self) -> PageViewMut<'_> {
+    pub async fn write(&self) -> PageWriteGuard<'_> {
         let bytes = self.bytes.write();
-        PageViewMut { idx: self.idx(), bytes, write_offset: PAGE_META_LENGTH }
+        PageWriteGuard { idx: self.idx(), bytes, write_offset: PAGE_META_LENGTH }
     }
 
     #[inline]
@@ -166,20 +166,20 @@ impl fmt::Display for PageIndex {
 }
 
 #[derive(Debug)]
-pub struct PageView<'a> {
+pub struct PageReadGuard<'a> {
     idx: PageIndex,
     bytes: RwLockReadGuard<'a, [u8; PAGE_SIZE]>,
     read_offset: usize,
 }
 
-impl PageView<'_> {
+impl PageReadGuard<'_> {
     #[inline]
     pub fn page_idx(&self) -> PageIndex {
         self.idx
     }
 }
 
-impl AsyncRead for PageView<'_> {
+impl AsyncRead for PageReadGuard<'_> {
     #[inline]
     fn poll_read(
         mut self: Pin<&mut Self>,
@@ -197,7 +197,7 @@ impl AsyncRead for PageView<'_> {
     }
 }
 
-impl<'a> Deref for PageView<'a> {
+impl<'a> Deref for PageReadGuard<'a> {
     type Target = [u8; PAGE_DATA_SIZE];
 
     fn deref(&self) -> &'a Self::Target {
@@ -206,7 +206,7 @@ impl<'a> Deref for PageView<'a> {
 }
 
 #[cfg(test)]
-impl<R> PartialEq<R> for PageView<'_>
+impl<R> PartialEq<R> for PageReadGuard<'_>
 where
     R: AsRef<[u8; PAGE_DATA_SIZE]>,
 {
@@ -216,13 +216,13 @@ where
 }
 
 #[derive(Debug)]
-pub struct PageViewMut<'a> {
+pub struct PageWriteGuard<'a> {
     idx: PageIndex,
     bytes: RwLockWriteGuard<'a, [u8; PAGE_SIZE]>,
     write_offset: usize,
 }
 
-impl<'a> PageViewMut<'a> {
+impl<'a> PageWriteGuard<'a> {
     #[inline]
     pub fn page_idx(&self) -> PageIndex {
         self.idx
@@ -236,7 +236,7 @@ impl<'a> PageViewMut<'a> {
     }
 }
 
-impl AsyncWrite for PageViewMut<'_> {
+impl AsyncWrite for PageWriteGuard<'_> {
     fn poll_write(
         mut self: Pin<&mut Self>,
         _cx: &mut Context<'_>,
@@ -267,7 +267,7 @@ impl AsyncWrite for PageViewMut<'_> {
     }
 }
 
-impl<'a> Deref for PageViewMut<'a> {
+impl<'a> Deref for PageWriteGuard<'a> {
     type Target = [u8; PAGE_DATA_SIZE];
 
     fn deref(&self) -> &'a Self::Target {
@@ -275,7 +275,7 @@ impl<'a> Deref for PageViewMut<'a> {
     }
 }
 
-impl<'a> DerefMut for PageViewMut<'a> {
+impl<'a> DerefMut for PageWriteGuard<'a> {
     fn deref_mut(&mut self) -> &'a mut Self::Target {
         self.get_mut()
     }

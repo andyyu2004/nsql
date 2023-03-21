@@ -8,8 +8,12 @@ use super::slotted::{SlottedPageView, SlottedPageViewMut};
 use super::{ArchivedKeyValuePair, Flags, InteriorPageViewMut, KeyValuePair, PageFull, PageHeader};
 use crate::Result;
 
-pub(crate) trait NodeHeader {
+pub(crate) trait NodeHeader: Unpin {
     fn left_link(&self) -> Archived<Option<PageIndex>>;
+
+    fn set_left_link(&mut self, left_link: PageIndex);
+
+    fn set_right_link(&mut self, right_link: PageIndex);
 }
 
 /// Abstraction over `Leaf` and `Interior` btree nodes
@@ -57,6 +61,8 @@ where
 
     unsafe fn view_mut(data: &'a mut [u8; PAGE_DATA_SIZE]) -> Result<Self>;
 
+    fn node_header_mut(&mut self) -> Pin<&mut Self::ArchivedNodeHeader>;
+
     fn slotted_page_mut(&mut self) -> &mut SlottedPageViewMut<'a, KeyValuePair<K, V>>;
 
     /// SAFETY: The page header must be archived at the start of the page
@@ -84,6 +90,14 @@ where
         Self::initialize_with_flags(Flags::IS_ROOT, data)
     }
 
+    fn set_left_link(&mut self, left_link: PageIndex) {
+        self.node_header_mut().set_left_link(left_link);
+    }
+
+    fn set_right_link(&mut self, right_link: PageIndex) {
+        self.node_header_mut().set_right_link(right_link);
+    }
+
     fn insert(&mut self, key: K::Archived, value: impl Into<V::Archived>) -> Result<(), PageFull> {
         if let Some(low_key) = self.low_key() {
             assert!(low_key < &key, "key must be greater than low key {low_key:?} !< {key:?}");
@@ -92,27 +106,41 @@ where
         self.slotted_page_mut().insert(&ArchivedKeyValuePair::new(key, value.into()))
     }
 
-    fn split_into(&mut self, new: &mut Self) {
-        assert!(new.slotted_page().is_empty());
+    /// Split node contents into a new left node
+    fn split_left_into(
+        &mut self,
+        left_page_idx: PageIndex,
+        new_left: &mut Self,
+        right_page_idx: PageIndex,
+    ) {
+        assert!(new_left.slotted_page().is_empty());
         assert!(self.slotted_page().len() > 1);
 
         let slots = self.slotted_page().slots();
         let (lhs, rhs) = slots.split_at(slots.len() / 2);
 
         let ours = self.slotted_page_mut();
-        let theirs = new.slotted_page_mut();
+        let theirs = new_left.slotted_page_mut();
         for &slot in rhs {
             let value = ours.get_by_slot(slot);
             theirs.insert(value).expect("new page should not be full");
         }
 
         ours.set_len(lhs.len() as u16);
+        self.set_left_link(left_page_idx);
+        new_left.set_right_link(right_page_idx);
     }
 
     /// Split node contents into left and right children and leave the root node empty.
     /// This is intended for use when splitting a root node.
     /// We keep the root node page number unchanged because it may be referenced as an identifier.
-    fn split_root_into(&mut self, _left_page_ldx: PageIndex, left: &mut Self, right: &mut Self) {
+    fn split_root_into(
+        &mut self,
+        left_page_idx: PageIndex,
+        left: &mut Self,
+        right_page_idx: PageIndex,
+        right: &mut Self,
+    ) {
         assert!(left.slotted_page().is_empty());
         assert!(right.slotted_page().is_empty());
         assert!(self.slotted_page().len() > 1);
@@ -128,6 +156,9 @@ where
             let value = self.slotted_page().get_by_slot(slot);
             right.slotted_page_mut().insert(value).unwrap();
         }
+
+        right.set_left_link(left_page_idx);
+        left.set_right_link(right_page_idx);
 
         self.slotted_page_mut().set_len(0);
     }

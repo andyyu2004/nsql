@@ -1,3 +1,5 @@
+mod concurrent;
+
 use std::fmt;
 
 use nsql_btree::{BTree, Min, Result};
@@ -87,7 +89,7 @@ fn test_out_of_order_insert() {
 }
 
 #[proptest]
-fn test_btree_insert_and_get_random(pairs: Vec<(u32, u16)>) {
+fn test_btree_insert_and_get_random(pairs: Box<[(u32, u16)]>) {
     run_insertions(&pairs).unwrap()
 }
 
