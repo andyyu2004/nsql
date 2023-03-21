@@ -11,7 +11,7 @@ mod btree;
 mod page;
 mod rkyv;
 
-pub use btree::BTree;
+pub use btree::{BTree, Min};
 pub use nsql_pager::Result;
 
 #[cfg(test)]

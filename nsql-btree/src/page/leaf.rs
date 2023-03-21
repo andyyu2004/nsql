@@ -6,7 +6,7 @@ use nsql_pager::{PageIndex, PAGE_DATA_SIZE};
 use nsql_util::static_assert_eq;
 use rkyv::{Archive, Archived};
 
-use super::node::Node;
+use super::node::{Node, NodeHeader};
 use super::slotted::SlottedPageViewMut;
 use super::{Flags, KeyValuePair, NodeMut};
 use crate::page::slotted::SlottedPageView;
@@ -19,8 +19,14 @@ const BTREE_LEAF_PAGE_MAGIC: [u8; 4] = *b"BTPL";
 #[archive_attr(derive(Debug, PartialEq))]
 pub(crate) struct LeafPageHeader {
     magic: [u8; 4],
-    prev: Option<PageIndex>,
-    next: Option<PageIndex>,
+    left_link: Option<PageIndex>,
+    right_link: Option<PageIndex>,
+}
+
+impl NodeHeader for Archived<LeafPageHeader> {
+    fn left_link(&self) -> Archived<Option<PageIndex>> {
+        self.left_link
+    }
 }
 
 impl ArchivedLeafPageHeader {
@@ -37,7 +43,7 @@ impl ArchivedLeafPageHeader {
 
 impl Default for LeafPageHeader {
     fn default() -> Self {
-        Self { magic: BTREE_LEAF_PAGE_MAGIC, prev: None, next: None }
+        Self { magic: BTREE_LEAF_PAGE_MAGIC, left_link: None, right_link: None }
     }
 }
 
@@ -70,9 +76,7 @@ where
     V: Archive + fmt::Debug,
     V::Archived: fmt::Debug,
 {
-    pub(crate) unsafe fn view(
-        data: &'a [u8; PAGE_DATA_SIZE],
-    ) -> Result<LeafPageView<'a, K, V>> {
+    pub(crate) unsafe fn view(data: &'a [u8; PAGE_DATA_SIZE]) -> Result<LeafPageView<'a, K, V>> {
         let (page_header_bytes, data) = data.split_array_ref();
         let page_header = unsafe { nsql_rkyv::archived_root::<PageHeader>(page_header_bytes) };
 
@@ -119,6 +123,8 @@ where
     V: Archive + fmt::Debug,
     V::Archived: fmt::Debug,
 {
+    type ArchivedNodeHeader = Archived<LeafPageHeader>;
+
     fn slotted_page(&self) -> &SlottedPageView<'a, KeyValuePair<K, V>> {
         &self.slotted_page
     }
@@ -127,8 +133,13 @@ where
         self.page_header
     }
 
+    fn node_header(&self) -> &Self::ArchivedNodeHeader {
+        self.header
+    }
+
     fn low_key(&self) -> Option<&K::Archived> {
-        self.slotted_page.first().map(|kv| &kv.key)
+        (!self.is_root())
+            .then(|| &self.slotted_page.first().expect("non-root should have a low_key").key)
     }
 }
 
@@ -139,12 +150,18 @@ where
     V: Archive + fmt::Debug,
     V::Archived: fmt::Debug,
 {
+    type ArchivedNodeHeader = Archived<LeafPageHeader>;
+
     fn slotted_page(&self) -> &SlottedPageView<'a, KeyValuePair<K, V>> {
         (**self).slotted_page()
     }
 
     fn page_header(&self) -> &Archived<PageHeader> {
         (**self).page_header()
+    }
+
+    fn node_header(&self) -> &Self::ArchivedNodeHeader {
+        (**self).node_header()
     }
 
     fn low_key(&self) -> Option<&K::Archived> {

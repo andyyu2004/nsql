@@ -8,6 +8,10 @@ use super::slotted::{SlottedPageView, SlottedPageViewMut};
 use super::{ArchivedKeyValuePair, Flags, InteriorPageViewMut, KeyValuePair, PageFull, PageHeader};
 use crate::Result;
 
+pub(crate) trait NodeHeader {
+    fn left_link(&self) -> Archived<Option<PageIndex>>;
+}
+
 /// Abstraction over `Leaf` and `Interior` btree nodes
 pub(crate) trait Node<'a, K, V>: Sized
 where
@@ -16,11 +20,23 @@ where
     V: Archive + fmt::Debug,
     V::Archived: fmt::Debug,
 {
+    type ArchivedNodeHeader: NodeHeader;
+
     fn slotted_page(&self) -> &SlottedPageView<'a, KeyValuePair<K, V>>;
 
     fn page_header(&self) -> &Archived<PageHeader>;
 
+    fn node_header(&self) -> &Self::ArchivedNodeHeader;
+
+    /// A node has a low key iff it is not the root.
+    /// All other nodes have a low key. In particular, the non-root left-most nodes have `K::MIN` as the low key.
+    // FIXME run into lifetime issues if we try to write a default implementation
+    // the impl copied into each implementation for now
     fn low_key(&self) -> Option<&K::Archived>;
+
+    fn is_root(&self) -> bool {
+        self.page_header().flags.contains(Flags::IS_ROOT)
+    }
 
     fn len(&self) -> usize {
         self.slotted_page().len()
@@ -70,7 +86,7 @@ where
 
     fn insert(&mut self, key: K::Archived, value: impl Into<V::Archived>) -> Result<(), PageFull> {
         if let Some(low_key) = self.low_key() {
-            assert!(low_key < &key);
+            assert!(low_key < &key, "key must be greater than low key {low_key:?} !< {key:?}");
         }
 
         self.slotted_page_mut().insert(&ArchivedKeyValuePair::new(key, value.into()))

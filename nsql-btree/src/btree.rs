@@ -20,9 +20,9 @@ pub struct BTree<K, V> {
 
 impl<K, V> BTree<K, V>
 where
-    K: Min + Ord + Send + Sync + Archive + Serialize<DefaultSerializer> + fmt::Debug,
+    K: Min + Archive + Serialize<DefaultSerializer> + fmt::Debug,
     K::Archived: PartialOrd<K> + Clone + fmt::Debug + Ord,
-    V: Archive + Serialize<DefaultSerializer> + Eq + Clone + fmt::Debug,
+    V: Archive + Serialize<DefaultSerializer> + Clone + fmt::Debug,
     V::Archived: Clone + Deserialize<V, rkyv::Infallible> + fmt::Debug,
 {
     #[inline]
@@ -31,7 +31,8 @@ where
         let page = handle.page();
         let mut data = page.write().await;
 
-        LeafPageViewMut::<K, V>::initialize_root(&mut data);
+        let _root = LeafPageViewMut::<K, V>::initialize_root(&mut data);
+
         let root_idx = page.idx();
         Ok(Self { pool, root_idx, marker: PhantomData })
     }
@@ -158,7 +159,7 @@ where
             }
         };
 
-        match parent.insert(key.clone(), child_idx).await? {
+        match parent.insert(key.clone(), child_idx) {
             Ok(()) => {}
             Err(PageFull) => {
                 if parent.page_header().flags.contains(Flags::IS_ROOT) {
@@ -249,8 +250,8 @@ where
 
         // reinitialize the root to an interior root node and add the two children
         let mut root = root.reinitialize_as_root_interior();
-        root.insert_initial(K::MIN, left_page_idx, sep, right_page_idx)
-            .expect("new root should not be full");
+        root.insert(K::MIN, left_page_idx).expect("new root should not be full");
+        root.insert(sep, right_page_idx).expect("new root should not be full");
         Ok(())
     }
 }

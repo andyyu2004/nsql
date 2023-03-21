@@ -3,12 +3,12 @@ use std::pin::Pin;
 use std::{fmt, io, mem};
 
 use nsql_pager::{PageIndex, PAGE_DATA_SIZE};
-use nsql_rkyv::DefaultSerializer;
 use nsql_util::static_assert_eq;
-use rkyv::{Archive, Archived, Serialize};
+use rkyv::{Archive, Archived};
 
+use super::node::NodeHeader;
 use super::slotted::{SlottedPageView, SlottedPageViewMut};
-use super::{Flags, KeyValuePair, Node, NodeMut, PageFull, PageHeader};
+use super::{Flags, KeyValuePair, Node, NodeMut, PageHeader};
 use crate::page::archived_size_of;
 use crate::Result;
 
@@ -19,6 +19,12 @@ const BTREE_INTERIOR_PAGE_MAGIC: [u8; 4] = *b"BTPI";
 pub(crate) struct InteriorPageHeader {
     magic: [u8; 4],
     left_link: Option<PageIndex>,
+}
+
+impl NodeHeader for Archived<InteriorPageHeader> {
+    fn left_link(&self) -> Archived<Option<PageIndex>> {
+        self.left_link
+    }
 }
 
 impl Default for InteriorPageHeader {
@@ -89,10 +95,6 @@ where
         let kv = self.slotted_page.get_by_slot(slot);
         PageIndex::from(kv.value)
     }
-
-    fn is_leftmost(&self) -> bool {
-        self.header.left_link.is_none()
-    }
 }
 
 // NOTE: must have the same layout as `InteriorPageView`
@@ -130,61 +132,13 @@ impl<'a, K> Deref for InteriorPageViewMut<'a, K> {
     }
 }
 
-impl<'a, K> InteriorPageViewMut<'a, K>
-where
-    K: Ord + Archive + Serialize<DefaultSerializer> + fmt::Debug,
-    K::Archived: fmt::Debug + Ord,
-{
-    pub(crate) async fn insert(
-        &mut self,
-        sep: K::Archived,
-        page_idx: PageIndex,
-    ) -> Result<Result<(), PageFull>> {
-        let kv = Archived::<KeyValuePair<K, PageIndex>>::new(sep, page_idx.into());
-
-        if let Some(low_key) = self.low_key() {
-            assert!(low_key < &kv.key);
-        }
-
-        match self.slotted_page.insert(&kv) {
-            Ok(()) => Ok(Ok(())),
-            Err(PageFull) => Ok(Err(PageFull)),
-        }
-    }
-
-    pub(crate) fn insert_initial(
-        &mut self,
-        low_key: K::Archived,
-        left: PageIndex,
-        sep: K::Archived,
-        right: PageIndex,
-    ) -> Result<(), PageFull> {
-        assert!(
-            self.slotted_page.slots().is_empty(),
-            "can only use this operation on an empty node as the initial insert"
-        );
-
-        let left = Archived::<KeyValuePair<K, PageIndex>>::new(low_key, left.into());
-        match self.slotted_page.insert(&left) {
-            Ok(()) => {}
-            Err(PageFull) => unreachable!("page should not be full after a single insert"),
-        };
-
-        let right = Archived::<KeyValuePair<K, PageIndex>>::new(sep, right.into());
-        match self.slotted_page.insert(&right) {
-            Ok(()) => {}
-            Err(PageFull) => unreachable!("page should not be full after two inserts"),
-        };
-
-        Ok(())
-    }
-}
-
 impl<'a, K> Node<'a, K, PageIndex> for InteriorPageView<'a, K>
 where
     K: Archive + fmt::Debug,
     K::Archived: fmt::Debug + Ord,
 {
+    type ArchivedNodeHeader = Archived<InteriorPageHeader>;
+
     fn slotted_page(&self) -> &SlottedPageView<'a, KeyValuePair<K, PageIndex>> {
         &self.slotted_page
     }
@@ -193,8 +147,13 @@ where
         self.page_header
     }
 
+    fn node_header(&self) -> &Self::ArchivedNodeHeader {
+        self.header
+    }
+
     fn low_key(&self) -> Option<&K::Archived> {
-        self.slotted_page.first().map(|kv| &kv.key)
+        (!self.is_root())
+            .then(|| &self.slotted_page.first().expect("non-root should have a low_key").key)
     }
 }
 
@@ -203,12 +162,18 @@ where
     K: Archive + fmt::Debug,
     K::Archived: fmt::Debug + Ord,
 {
+    type ArchivedNodeHeader = Archived<InteriorPageHeader>;
+
     fn slotted_page(&self) -> &SlottedPageView<'a, KeyValuePair<K, PageIndex>> {
         (**self).slotted_page()
     }
 
     fn page_header(&self) -> &Archived<PageHeader> {
         (**self).page_header()
+    }
+
+    fn node_header(&self) -> &Self::ArchivedNodeHeader {
+        (**self).node_header()
     }
 
     fn low_key(&self) -> Option<&K::Archived> {
