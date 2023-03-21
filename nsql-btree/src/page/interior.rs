@@ -94,7 +94,7 @@ where
 
     pub(crate) fn search(&self, key: &K::Archived) -> PageIndex {
         let slot_idx = match self.slotted_page.slot_index_of_key(key) {
-            Err(idx) if idx == 0 => todo!("key was lowest than the low key"),
+            Err(idx) if idx == 0 => panic!("key was lower than the low key"),
             Ok(idx) => idx,
             Err(idx) => idx - 1,
         };

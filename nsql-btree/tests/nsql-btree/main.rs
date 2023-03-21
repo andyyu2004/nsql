@@ -43,6 +43,11 @@ fn test_btree_insert_many_and_get() -> Result<()> {
 }
 
 #[test]
+fn test_btree_duplicate_key() -> Result<()> {
+    run_insertions(&[(1, 0), (1, 1)])
+}
+
+#[test]
 fn test_btree_root_leaf_page_split() -> Result<()> {
     cov_mark::check!(root_leaf_split);
     run_serial_inserts::<300>()

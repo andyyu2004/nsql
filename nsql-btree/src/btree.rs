@@ -18,6 +18,12 @@ pub struct BTree<K, V> {
     marker: std::marker::PhantomData<fn() -> (K, V)>,
 }
 
+impl<K, V> Clone for BTree<K, V> {
+    fn clone(&self) -> Self {
+        Self { pool: Arc::clone(&self.pool), root_idx: self.root_idx, marker: PhantomData }
+    }
+}
+
 impl<K, V> BTree<K, V>
 where
     K: Min + Archive + Serialize<DefaultSerializer> + fmt::Debug,

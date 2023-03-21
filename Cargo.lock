@@ -915,6 +915,7 @@ dependencies = [
  "proptest",
  "rkyv",
  "test-strategy",
+ "tokio",
  "tokio-uring 0.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
