@@ -44,7 +44,8 @@ fn test_btree_insert_many_and_get() -> Result<()> {
 
 #[test]
 fn test_btree_duplicate_key() -> Result<()> {
-    run_insertions(&[(1, 0), (1, 1)])
+    cov_mark::check!(slotted_page_insert_duplicate);
+    run_insertions(&[(1, 42), (1, 43)])
 }
 
 #[test]

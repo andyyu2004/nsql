@@ -255,15 +255,12 @@ where
 
         let length = serialized_value.len() as u16;
         if length + archived_size_of!(Slot) > self.header.free_end - self.header.free_start {
+            cov_mark::hit!(slotted_page_insert_duplicate_full);
+            // FIXME: what if the page is full but we're inserting a duplicate? we will have two copies of the key in the tree
             return Err(PageFull);
         }
 
         let idx = self.slot_index_of_value(value);
-
-        let idx = match idx {
-            Ok(idx) => todo!("handle case where key already exists {:?}", self.slots[idx]),
-            Err(idx) => idx,
-        };
 
         self.header.free_end -= length;
         self.header.free_start += archived_size_of!(Slot);
@@ -272,35 +269,43 @@ where
         debug_assert_eq!(&self[slot], serialized_value);
         debug_assert_eq!(unsafe { rkyv::archived_root::<T>(&self[slot]) }, value);
 
-        // following line MUST be done after the write to `self[slot]` as it will shift the index operation
-        self.header.slot_len += 1;
+        match idx {
+            Ok(idx) => {
+                // FIXME: need to mark the previous space as free space
+                // key already exists, overwrite the slot to point to the new value
+                cov_mark::hit!(slotted_page_insert_duplicate);
+                dbg!(&self.slots);
+                self.slots[idx] = slot;
+                dbg!(&self.slots);
+            }
+            Err(idx) => {
+                unsafe {
+                    // shift everything right of `idx` to the right by 1 (include `idx`) to make space
+                    ptr::copy(
+                        self.slots.as_ptr().add(idx),
+                        self.slots.as_mut_ptr().add(idx + 1),
+                        self.slots.len() - idx,
+                    );
 
-        unsafe {
-            // write the new slot at index `idx` of the slot array
+                    // write the new slot in the hole
+                    ptr::write(self.slots.as_mut_ptr().add(idx), slot);
 
-            // shift everything right of `idx` to the right by 1 (inclusive)
-            ptr::copy(
-                self.slots.as_ptr().add(idx),
-                self.slots.as_mut_ptr().add(idx + 1),
-                self.slots.len() - idx,
-            );
+                    // recreate the slice to include the new entry
+                    self.header.slot_len += 1;
+                    self.slots = slice::from_raw_parts_mut(
+                        self.slots.as_mut_ptr(),
+                        self.header.slot_len.value() as usize,
+                    );
+                }
 
-            // write the new slot in the hole
-            ptr::write(self.slots.as_mut_ptr().add(idx), slot);
-
-            // recreate the slice to include the new entry
-            self.slots = slice::from_raw_parts_mut(
-                self.slots.as_mut_ptr(),
-                self.header.slot_len.value() as usize,
-            );
-        }
-
-        // we have to shift over the slice of data as we expect it to start after the slots (at `free_start`)
-        // we some small tricks to avoid lifetime issues without using unsafe
-        // see https://stackoverflow.com/questions/61223234/can-i-reassign-a-mutable-slice-reference-to-a-sub-slice-of-itself
-        let data: &'a mut [u8] = mem::take(&mut self.data);
-        let (_, data) = data.split_array_mut::<{ mem::size_of::<Archived<Slot>>() }>();
-        self.data = data;
+                // we have to shift over the slice of data as we expect it to start after the slots (at `free_start`)
+                // we some small tricks to avoid lifetime issues without using unsafe
+                // see https://stackoverflow.com/questions/61223234/can-i-reassign-a-mutable-slice-reference-to-a-sub-slice-of-itself
+                let data: &'a mut [u8] = mem::take(&mut self.data);
+                let (_, data) = data.split_array_mut::<{ mem::size_of::<Archived<Slot>>() }>();
+                self.data = data;
+            }
+        };
 
         debug_assert_eq!(unsafe { rkyv::archived_root::<T>(&self[slot]) }, value);
 
