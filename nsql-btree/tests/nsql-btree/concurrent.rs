@@ -19,21 +19,21 @@ where
     nsql_test::start(async {
         let pool = mk_fast_mem_buffer_pool!();
         let btree = BTree::<K, V>::initialize(pool).await?;
-        // let mut set = JoinSet::<Result<()>>::new();
+        let mut set = JoinSet::<Result<()>>::new();
         for input in inputs {
-            // let btree = BTree::clone(&btree);
-            // set.spawn_local(async move {
-            for (key, value) in &input[..] {
-                btree.insert(key, value).await?;
-                assert_eq!(&btree.get(key).await?.unwrap(), value);
-            }
-            // Ok(())
-            // });
+            let btree = BTree::clone(&btree);
+            set.spawn_local(async move {
+                for (key, value) in &input[..] {
+                    btree.insert(key, value).await?;
+                    assert_eq!(&btree.get(key).await?.unwrap(), value);
+                }
+                Ok(())
+            });
         }
 
-        // while let Some(res) = set.join_next().await {
-        //     res.unwrap()?;
-        // }
+        while let Some(res) = set.join_next().await {
+            res.unwrap()?;
+        }
 
         Ok(())
     })
