@@ -183,12 +183,6 @@ pub(crate) struct LeafNode<K, V> {
     _marker: PhantomData<(K, V)>,
 }
 
-impl<K, V> LeafNode<K, V> {
-    pub(crate) fn new() -> Self {
-        Self { _marker: PhantomData }
-    }
-}
-
 impl<K, V> NodeMut<K, V> for LeafNode<K, V>
 where
     K: Archive + fmt::Debug,

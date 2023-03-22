@@ -4,7 +4,7 @@ mod physical_values;
 
 use std::sync::Arc;
 
-use nsql_buffer::{BufferPool, Pool};
+use nsql_buffer::Pool;
 use nsql_plan::Plan;
 
 use self::physical_create_table::PhysicalCreateTable;

@@ -2,7 +2,7 @@ mod fsm_page;
 
 use std::sync::Arc;
 
-use nsql_buffer::{BufferPool, Pool};
+use nsql_buffer::Pool;
 use nsql_pager::PageIndex;
 use nsql_serde::{Deserialize, Serialize};
 

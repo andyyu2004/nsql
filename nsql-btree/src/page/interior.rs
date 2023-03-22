@@ -195,12 +195,6 @@ pub struct InteriorNode<K> {
     _phantom: PhantomData<fn() -> K>,
 }
 
-impl<K> InteriorNode<K> {
-    pub fn new(_phantom: PhantomData<fn() -> K>) -> Self {
-        Self { _phantom }
-    }
-}
-
 impl<K> NodeMut<K, PageIndex> for InteriorNode<K>
 where
     K: Archive + fmt::Debug,

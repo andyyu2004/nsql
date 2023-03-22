@@ -3,7 +3,7 @@ mod fsm;
 use std::sync::Arc;
 
 use nsql_arena::{Arena, Idx};
-use nsql_buffer::{BufferPool, Pool};
+use nsql_buffer::Pool;
 use nsql_core::schema::Schema;
 use nsql_pager::{PageIndex, PAGE_DATA_SIZE};
 use nsql_serde::{

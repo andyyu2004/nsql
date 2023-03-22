@@ -74,14 +74,16 @@ where
         }
     }
 
-    async fn find_page_idx(&self, key: &K::Archived) -> Result<(PageIndex, Vec<PageIndex>)> {
+    /// Find the leaf page that should contain the given key, and return the index of that page and
+    /// stack of parent page indices.
+    async fn find_leaf_page_idx(&self, key: &K::Archived) -> Result<(PageIndex, Vec<PageIndex>)> {
         let mut parents = vec![];
-        let leaf_idx = self.find_page_idx_rec(self.root_idx, key, &mut parents).await?;
+        let leaf_idx = self.find_leaf_page_idx_rec(self.root_idx, key, &mut parents).await?;
         Ok((leaf_idx, parents))
     }
 
     #[async_recursion(?Send)]
-    async fn find_page_idx_rec(
+    async fn find_leaf_page_idx_rec(
         &self,
         idx: PageIndex,
         key: &K::Archived,
@@ -95,18 +97,18 @@ where
             PageView::Interior(interior) => {
                 stack.push(idx);
                 let child_idx = interior.search(key);
-                self.find_page_idx_rec(child_idx, key, stack).await
+                self.find_leaf_page_idx_rec(child_idx, key, stack).await
             }
         }
     }
 
     async fn insert_archived(&self, key: &K::Archived, value: &V::Archived) -> Result<()> {
-        let (leaf_idx, parents) = self.find_page_idx(key).await?;
-        self.insert_inner(leaf_idx, parents, key, value).await
+        let (leaf_idx, parents) = self.find_leaf_page_idx(key).await?;
+        self.insert_leaf(leaf_idx, parents, key, value).await
     }
 
     #[inline]
-    async fn insert_inner(
+    async fn insert_leaf(
         &self,
         leaf_page_idx: PageIndex,
         parents: Vec<PageIndex>,
@@ -126,12 +128,9 @@ where
             Err(PageFull) => {
                 if leaf.page_header().flags.contains(Flags::IS_ROOT) {
                     cov_mark::hit!(root_leaf_split);
-                    assert!(leaf.len() >= 3, "pages should always contain at least 3 entries");
-
                     self.split_root::<LeafNode<K, V>, _>(leaf, key.clone(), value.clone()).await
                 } else {
                     cov_mark::hit!(non_root_leaf_split);
-
                     self.split_non_root::<LeafNode<K, V>, _>(
                         parents,
                         leaf_page_idx,
@@ -201,7 +200,6 @@ where
         T: Archive + fmt::Debug,
         T::Archived: fmt::Debug,
     {
-        assert!(node.len() >= 3, "pages should always contain at least 3 entries");
         // split the non-root interior by allocating a new interior and splitting the contents
         // then we insert the separator key and the new page index into the parent
         let new = self.pool.alloc().await?;
@@ -231,13 +229,13 @@ where
         T: Archive + fmt::Debug,
         T::Archived: fmt::Debug,
     {
+        assert!(root.len() >= 3, "root that requires a split should contain at least 3 entries");
         let left_page = self.pool.alloc().await?;
         let mut left_data = left_page.write().await;
 
         let right_data = self.pool.alloc().await?;
         let mut right_data = right_data.write().await;
 
-        assert!(root.len() >= 3, "pages should always contain at least 3 entries");
         let left_page_idx = left_data.page_idx();
         let right_page_idx = right_data.page_idx();
         let mut left_child = N::initialize(left_data.get_mut());
