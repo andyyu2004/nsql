@@ -263,26 +263,42 @@ where
 
         let idx = self.slot_index_of_value(value);
 
-        self.header.free_end -= length;
-        self.header.free_start += archived_size_of!(Slot);
-        let slot = Slot { offset: self.header.free_end, length: length.into() };
-        self[slot].copy_from_slice(serialized_value);
-        debug_assert_eq!(&self[slot], serialized_value);
-        debug_assert_eq!(unsafe { rkyv::archived_root::<T>(&self[slot]) }, value);
-
         let prev = match idx {
             Ok(idx) => {
-                // FIXME: need to mark the previous space as free space
-
                 // key already exists, overwrite the slot to point to the new value
                 cov_mark::hit!(slotted_page_insert_duplicate);
                 let prev_slot = self.slots[idx];
                 let prev: T =
                     nsql_rkyv::deserialize(unsafe { rkyv::archived_root::<T>(&self[prev_slot]) });
+
+                let slot = if prev_slot.length >= length {
+                    cov_mark::hit!(slotted_page_insert_duplicate_reuse);
+                    // if the previous slot is large enough, we just reuse it
+                    // FIXME: need to mark the (prev_slot_length - length) as free space
+                    prev_slot
+                } else {
+                    // otherwise, we need to allocate a new slot
+                    // FIXME: need to mark the previous space as free space
+                    self.header.free_end -= length;
+                    self.header.free_start += archived_size_of!(Slot);
+                    Slot { offset: self.header.free_end, length: length.into() }
+                };
+
+                self[slot].copy_from_slice(serialized_value);
+                debug_assert_eq!(&self[slot], serialized_value);
+                debug_assert_eq!(unsafe { rkyv::archived_root::<T>(&self[slot]) }, value);
+
                 self.slots[idx] = slot;
                 Some(prev)
             }
             Err(idx) => {
+                self.header.free_end -= length;
+                self.header.free_start += archived_size_of!(Slot);
+                let slot = Slot { offset: self.header.free_end, length: length.into() };
+                self[slot].copy_from_slice(serialized_value);
+                debug_assert_eq!(&self[slot], serialized_value);
+                debug_assert_eq!(unsafe { rkyv::archived_root::<T>(&self[slot]) }, value);
+
                 unsafe {
                     // shift everything right of `idx` to the right by 1 (include `idx`) to make space
                     ptr::copy(
@@ -311,8 +327,6 @@ where
                 None
             }
         };
-
-        debug_assert_eq!(unsafe { rkyv::archived_root::<T>(&self[slot]) }, value);
 
         #[cfg(debug_assertions)]
         self.assert_sorted();

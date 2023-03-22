@@ -281,6 +281,18 @@ pub trait Min: Archive {
     const MIN: Self::Archived;
 }
 
-impl Min for u32 {
-    const MIN: Self::Archived = rkyv::rend::BigEndian::<u32>::new(0);
+impl Min for u8 {
+    const MIN: Self::Archived = 0;
 }
+
+macro_rules! impl_min {
+    ($($ty:ty),*) => {
+        $(
+            impl Min for $ty {
+                const MIN: Self::Archived = rkyv::rend::BigEndian::<$ty>::new(0);
+            }
+        )*
+    };
+}
+
+impl_min!(i16, i32, i64, u16, u32, u64);

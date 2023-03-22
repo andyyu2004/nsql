@@ -91,6 +91,13 @@ fn test_btree_insert_and_get_random(pairs: Box<[(u32, u16)]>) {
     run_insertions(&pairs).unwrap()
 }
 
+#[test]
+fn test_insert_duplicate_reuse_slot() -> Result<()> {
+    cov_mark::check!(slotted_page_insert_duplicate_reuse);
+    let inputs = (0..10000).map(|i| (i % 7, i)).collect::<Vec<_>>();
+    run_insertions(&inputs)
+}
+
 fn run_insertions<K, V>(pairs: &[(K, V)]) -> Result<()>
 where
     K: Min + Archive + Serialize<DefaultSerializer> + Eq + Hash + fmt::Debug,

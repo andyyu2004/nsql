@@ -3,7 +3,7 @@ use tokio::task::JoinSet;
 use super::*;
 
 #[proptest]
-fn test_concurrent_inserts(inputs: ConcurrentTestInputs<u32, u64>) {
+fn test_concurrent_inserts(inputs: ConcurrentTestInputs<u8, u8>) {
     run_concurrent_insertions(inputs).unwrap();
 }
 
@@ -23,7 +23,7 @@ where
         for input in inputs {
             // let btree = BTree::clone(&btree);
             // set.spawn_local(async move {
-            for (key, value) in input.iter() {
+            for (key, value) in &input[..] {
                 btree.insert(key, value).await?;
                 assert_eq!(&btree.get(key).await?.unwrap(), value);
             }
