@@ -251,6 +251,12 @@ where
             slice::from_raw_parts(value as *const _ as *const u8, mem::size_of_val(value))
         };
 
+        // we are dividing by 4 not 3 as we're not considering the size of the metadata etc
+        assert!(
+            serialized_value.len() < PAGE_DATA_SIZE / 4,
+            "value is too large, we must fit at least 3 items into a page"
+        );
+
         debug_assert_eq!(unsafe { rkyv::archived_root::<T>(serialized_value) }, value);
 
         let length = serialized_value.len() as u16;
