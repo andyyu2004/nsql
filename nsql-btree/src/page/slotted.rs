@@ -125,10 +125,15 @@ impl<T> Index<Slot> for SlottedPageView<'_, T> {
     fn index(&self, slot: Slot) -> &Self::Output {
         // adjust the offset to be relative to the start of the slots
         // as we keep shifting the slots and data around the actual offsets change dependending on the number of slots
-        let adjusted_slot_offset: SlotOffset =
-            slot.offset - self.header.slot_len * archived_size_of!(Slot);
+        let adjusted_slot_offset: SlotOffset = slot.offset - mem::size_of_val(self.slots) as u16;
+        debug_assert_eq!(
+            mem::size_of_val(self.slots) as u16,
+            self.header.slot_len.value() * archived_size_of!(Slot)
+        );
         let adjusted_offset = adjusted_slot_offset.0.value() as usize;
-        &self.data[adjusted_offset..adjusted_offset + slot.length.value() as usize]
+        let end = adjusted_offset + slot.length.value() as usize;
+        debug_assert!(end <= PAGE_DATA_SIZE);
+        &self.data[adjusted_offset..end]
     }
 }
 
@@ -250,6 +255,7 @@ where
         let serialized_value = unsafe {
             slice::from_raw_parts(value as *const _ as *const u8, mem::size_of_val(value))
         };
+        debug_assert_eq!(unsafe { rkyv::archived_root::<T>(serialized_value) }, value);
 
         // we are dividing by 4 not 3 as we're not considering the size of the metadata etc
         assert!(
@@ -257,17 +263,11 @@ where
             "value is too large, we must fit at least 3 items into a page"
         );
 
-        debug_assert_eq!(unsafe { rkyv::archived_root::<T>(serialized_value) }, value);
+        let idx = self.slot_index_of_value(value);
 
         let length = serialized_value.len() as u16;
-        if length + archived_size_of!(Slot) > self.header.free_end - self.header.free_start {
-            cov_mark::hit!(slotted_page_insert_duplicate_full);
-            // FIXME: what if the page is full but we're inserting a duplicate? we will have two copies of the key in the tree
-            // we need to check whether the key exists first before returning
-            return Err(PageFull);
-        }
-
-        let idx = self.slot_index_of_value(value);
+        let has_space =
+            length + archived_size_of!(Slot) <= self.header.free_end - self.header.free_start;
 
         let prev = match idx {
             Ok(idx) => {
@@ -279,10 +279,16 @@ where
 
                 let slot = if prev_slot.length >= length {
                     cov_mark::hit!(slotted_page_insert_duplicate_reuse);
+                    if !has_space {
+                        cov_mark::hit!(slotted_page_insert_duplicate_full_reuse);
+                    }
                     // if the previous slot is large enough, we just reuse it
                     // FIXME: need to mark the (prev_slot_length - length) as free space
                     prev_slot
                 } else {
+                    if !has_space {
+                        todo!("page is full with duplicate key, need to do something");
+                    }
                     // otherwise, we need to allocate a new slot
                     // FIXME: need to mark the previous space as free space
                     self.header.free_end -= length;
@@ -298,6 +304,10 @@ where
                 Some(prev)
             }
             Err(idx) => {
+                if !has_space {
+                    return Err(PageFull);
+                }
+
                 self.header.free_end -= length;
                 self.header.free_start += archived_size_of!(Slot);
                 let slot = Slot { offset: self.header.free_end, length: length.into() };

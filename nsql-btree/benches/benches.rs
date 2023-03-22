@@ -2,7 +2,8 @@ use std::future::Future;
 
 use criterion::async_executor::AsyncExecutor;
 use criterion::{criterion_group, criterion_main, Criterion};
-use nsql_btree::BTree;
+use nsql_btree::{BTree, Result};
+use tokio::task::JoinSet;
 
 criterion_group!(benches, bench_insertions);
 criterion_main!(benches);
@@ -23,6 +24,9 @@ impl AsyncExecutor for Runtime {
 
 fn bench_insertions(c: &mut Criterion) {
     c.bench_function("insertions", |b| b.to_async(Runtime::default()).iter(insertions));
+    c.bench_function("concurrent insertions", |b| {
+        b.to_async(Runtime::default()).iter(concurrent_insertions)
+    });
 }
 
 async fn insertions() {
@@ -30,5 +34,24 @@ async fn insertions() {
     let btree = BTree::<u32, u64>::initialize(pool).await.unwrap();
     for i in 0..60000 {
         btree.insert(&i, &(i as u64)).await.unwrap();
+    }
+}
+
+async fn concurrent_insertions() {
+    let pool = nsql_test::mk_fast_mem_buffer_pool!();
+    let btree = BTree::<u32, u64>::initialize(pool).await.unwrap();
+    let mut set = JoinSet::<Result<()>>::new();
+    for _ in 0..100 {
+        let btree = BTree::clone(&btree);
+        set.spawn_local(async move {
+            for i in 0..600 {
+                btree.insert(&i, &(i as u64)).await?;
+            }
+            Ok(())
+        });
+    }
+
+    while let Some(res) = set.join_next().await {
+        res.unwrap().unwrap();
     }
 }

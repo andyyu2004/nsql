@@ -98,6 +98,16 @@ fn test_insert_duplicate_reuse_slot() -> Result<()> {
     run_insertions(&inputs)
 }
 
+#[test]
+fn test_insert_duplicate_into_full_page() -> Result<()> {
+    // Inserting duplicates into a full page requires some special handling.
+    // This testcase tests the easy case where we can reuse the evicted slot.
+    cov_mark::check!(slotted_page_insert_duplicate_full_reuse);
+    // We exercise the case by filling up a page and then inserting the same keys again.
+    let inputs = (0..2).flat_map(|_| (0..580).map(|i| (i, i))).collect::<Vec<_>>();
+    run_insertions(&inputs)
+}
+
 fn run_insertions<K, V>(pairs: &[(K, V)]) -> Result<()>
 where
     K: Min + Archive + Serialize<DefaultSerializer> + Eq + Hash + fmt::Debug,

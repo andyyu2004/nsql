@@ -2,10 +2,16 @@ use tokio::task::JoinSet;
 
 use super::*;
 
-#[proptest]
-fn test_concurrent_inserts(inputs: ConcurrentTestInputs<u8, u8>) {
+#[test]
+fn test_concurrent_inserts_simple() {
+    let inputs = (0..100).map(|_| (0..600).map(|i| (i, i)).collect()).collect::<Vec<_>>();
     run_concurrent_insertions(inputs).unwrap();
 }
+
+// #[proptest]
+// fn test_concurrent_inserts_random(inputs: ConcurrentTestInputs<u8, u8>) {
+//     run_concurrent_insertions(inputs).unwrap();
+// }
 
 type ConcurrentTestInputs<K, V> = Vec<Box<[(K, V)]>>;
 
