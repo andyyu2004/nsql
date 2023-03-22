@@ -1,4 +1,3 @@
-use std::marker::PhantomData;
 use std::ops::Deref;
 use std::pin::Pin;
 use std::{fmt, io, mem};
@@ -191,11 +190,7 @@ where
     }
 }
 
-pub struct InteriorNode<K> {
-    _phantom: PhantomData<fn() -> K>,
-}
-
-impl<K> NodeMut<K, PageIndex> for InteriorNode<K>
+impl<K> NodeMut<K, PageIndex> for InteriorPageViewMut<'_, K>
 where
     K: Archive + fmt::Debug,
     K::Archived: Ord + fmt::Debug,
@@ -203,7 +198,16 @@ where
     type ViewMut<'a> = InteriorPageViewMut<'a, K>;
 
     unsafe fn view_mut(data: &mut [u8; PAGE_DATA_SIZE]) -> Result<Self::ViewMut<'_>> {
-        unsafe { InteriorPageViewMut::view_mut(data) }
+        let (page_header_bytes, data) = data.split_array_mut();
+        let page_header = unsafe { nsql_rkyv::archived_root_mut::<PageHeader>(page_header_bytes) };
+
+        let (header_bytes, data) = data.split_array_mut();
+        let header = nsql_rkyv::archived_root_mut::<InteriorPageHeader>(header_bytes);
+        header.check_magic()?;
+
+        let slotted_page = SlottedPageViewMut::<'_, KeyValuePair<K, PageIndex>>::view_mut(data);
+
+        Ok(InteriorPageViewMut { page_header, header, slotted_page })
     }
 
     fn initialize_with_flags(flags: Flags, data: &mut [u8; PAGE_DATA_SIZE]) -> Self::ViewMut<'_> {
@@ -233,19 +237,6 @@ where
     K: Archive + fmt::Debug,
     K::Archived: fmt::Debug + Ord,
 {
-    unsafe fn view_mut(data: &'a mut [u8; PAGE_DATA_SIZE]) -> Result<Self> {
-        let (page_header_bytes, data) = data.split_array_mut();
-        let page_header = unsafe { nsql_rkyv::archived_root_mut::<PageHeader>(page_header_bytes) };
-
-        let (header_bytes, data) = data.split_array_mut();
-        let header = nsql_rkyv::archived_root_mut::<InteriorPageHeader>(header_bytes);
-        header.check_magic()?;
-
-        let slotted_page = SlottedPageViewMut::<'a, KeyValuePair<K, PageIndex>>::view_mut(data);
-
-        Ok(Self { page_header, header, slotted_page })
-    }
-
     fn slotted_page_mut(&mut self) -> &mut SlottedPageViewMut<'a, KeyValuePair<K, PageIndex>> {
         &mut self.slotted_page
     }

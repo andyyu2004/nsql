@@ -9,7 +9,8 @@ use nsql_rkyv::DefaultSerializer;
 use rkyv::{Archive, Deserialize, Serialize};
 
 use crate::page::{
-    Flags, InteriorNode, LeafNode, NodeMut, NodeView, NodeViewMut, PageFull, PageView, PageViewMut,
+    Flags, InteriorPageViewMut, LeafPageViewMut, NodeMut, NodeView, NodeViewMut, PageFull,
+    PageView, PageViewMut,
 };
 use crate::Result;
 
@@ -38,7 +39,7 @@ where
         let handle = pool.alloc().await?;
         let mut data = handle.write().await;
 
-        let _root = LeafNode::<K, V>::initialize_root(&mut data);
+        let _root = LeafPageViewMut::<K, V>::initialize_root(&mut data);
 
         let root_idx = handle.page_idx();
         Ok(Self { pool, root_idx, marker: PhantomData })
@@ -128,10 +129,15 @@ where
             Err(PageFull) => {
                 if leaf.page_header().flags.contains(Flags::IS_ROOT) {
                     cov_mark::hit!(root_leaf_split);
-                    self.split_root::<LeafNode<K, V>, _>(leaf, key.clone(), value.clone()).await
+                    self.split_root::<LeafPageViewMut<'_, K, V>, _>(
+                        leaf,
+                        key.clone(),
+                        value.clone(),
+                    )
+                    .await
                 } else {
                     cov_mark::hit!(non_root_leaf_split);
-                    self.split_non_root::<LeafNode<K, V>, _>(
+                    self.split_non_root::<LeafPageViewMut<'_, K, V>, _>(
                         parents,
                         leaf_page_idx,
                         leaf,
@@ -167,11 +173,15 @@ where
             Err(PageFull) => {
                 if parent.page_header().flags.contains(Flags::IS_ROOT) {
                     cov_mark::hit!(root_interior_split);
-                    self.split_root::<InteriorNode<K>, _>(parent, key.clone(), child_idx.into())
-                        .await?;
+                    self.split_root::<InteriorPageViewMut<'_, K>, _>(
+                        parent,
+                        key.clone(),
+                        child_idx.into(),
+                    )
+                    .await?;
                 } else {
                     cov_mark::hit!(non_root_interior_split);
-                    self.split_non_root::<InteriorNode<K>, _>(
+                    self.split_non_root::<InteriorPageViewMut<'_, K>, _>(
                         parents,
                         parent_idx,
                         parent,
@@ -191,7 +201,6 @@ where
         parents: Vec<PageIndex>,
         node_page_idx: PageIndex,
         mut node: N::ViewMut<'_>,
-        // mut new_data: nsql_pager::PageWriteGuard<'_>,
         key: K::Archived,
         value: T::Archived,
     ) -> Result<()>

@@ -1,4 +1,3 @@
-use std::marker::PhantomData;
 use std::ops::Deref;
 use std::pin::Pin;
 use std::{fmt, io};
@@ -179,11 +178,7 @@ where
     }
 }
 
-pub(crate) struct LeafNode<K, V> {
-    _marker: PhantomData<(K, V)>,
-}
-
-impl<K, V> NodeMut<K, V> for LeafNode<K, V>
+impl<K, V> NodeMut<K, V> for LeafPageViewMut<'_, K, V>
 where
     K: Archive + fmt::Debug,
     K::Archived: Ord + fmt::Debug,
@@ -192,8 +187,15 @@ where
 {
     type ViewMut<'a> = LeafPageViewMut<'a, K, V>;
 
-    unsafe fn view_mut(data: &mut [u8; PAGE_DATA_SIZE]) -> Result<Self::ViewMut<'_>> {
-        LeafPageViewMut::view_mut(data)
+    unsafe fn view_mut(data: &mut [u8; nsql_pager::PAGE_DATA_SIZE]) -> Result<Self::ViewMut<'_>> {
+        let (page_header_bytes, data) = data.split_array_mut();
+        let page_header = unsafe { nsql_rkyv::archived_root_mut::<PageHeader>(page_header_bytes) };
+
+        let (header_bytes, data) = data.split_array_mut();
+        let header = nsql_rkyv::archived_root_mut::<LeafPageHeader>(header_bytes);
+        header.check_magic()?;
+        let slotted_page = SlottedPageViewMut::view_mut(data);
+        Ok(LeafPageViewMut { page_header, header, slotted_page })
     }
 
     fn initialize_with_flags(
@@ -225,17 +227,6 @@ where
     V: Archive + fmt::Debug,
     V::Archived: fmt::Debug,
 {
-    unsafe fn view_mut(data: &'a mut [u8; nsql_pager::PAGE_DATA_SIZE]) -> Result<Self> {
-        let (page_header_bytes, data) = data.split_array_mut();
-        let page_header = unsafe { nsql_rkyv::archived_root_mut::<PageHeader>(page_header_bytes) };
-
-        let (header_bytes, data) = data.split_array_mut();
-        let header = nsql_rkyv::archived_root_mut::<LeafPageHeader>(header_bytes);
-        header.check_magic()?;
-        let slotted_page = SlottedPageViewMut::view_mut(data);
-        Ok(Self { page_header, header, slotted_page })
-    }
-
     fn slotted_page_mut(&mut self) -> &mut SlottedPageViewMut<'a, KeyValuePair<K, V>> {
         &mut self.slotted_page
     }

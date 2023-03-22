@@ -11,8 +11,8 @@ pub(crate) use node::{NodeMut, NodeView, NodeViewMut};
 use nsql_pager::PAGE_DATA_SIZE;
 use rkyv::Archive;
 
-pub(crate) use self::interior::{InteriorNode, InteriorPageView, InteriorPageViewMut};
-pub(crate) use self::leaf::{LeafNode, LeafPageView, LeafPageViewMut};
+pub(crate) use self::interior::{InteriorPageView, InteriorPageViewMut};
+pub(crate) use self::leaf::{LeafPageView, LeafPageViewMut};
 use crate::Result;
 
 bitflags::bitflags! {

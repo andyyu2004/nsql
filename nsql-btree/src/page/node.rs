@@ -6,7 +6,6 @@ use rkyv::{Archive, Archived};
 
 use super::slotted::{SlottedPageView, SlottedPageViewMut};
 use super::{ArchivedKeyValuePair, Flags, InteriorPageViewMut, KeyValuePair, PageFull, PageHeader};
-use crate::page::InteriorNode;
 use crate::Result;
 
 pub(crate) trait NodeHeader: Unpin {
@@ -138,8 +137,6 @@ where
     V: Archive + fmt::Debug,
     V::Archived: fmt::Debug,
 {
-    unsafe fn view_mut(data: &'a mut [u8; PAGE_DATA_SIZE]) -> Result<Self>;
-
     fn node_header_mut(&mut self) -> Pin<&mut Self::ArchivedNodeHeader>;
 
     fn slotted_page_mut(&mut self) -> &mut SlottedPageViewMut<'a, KeyValuePair<K, V>>;
@@ -158,7 +155,7 @@ where
     /// This is intended for use when splitting a root node.
     fn reinitialize_as_root_interior(&mut self) -> InteriorPageViewMut<'_, K> {
         assert!(self.page_header().flags.contains(Flags::IS_ROOT));
-        InteriorNode::initialize_root(self.raw_bytes_mut())
+        InteriorPageViewMut::initialize_root(self.raw_bytes_mut())
     }
 
     fn set_left_link(&mut self, left_link: PageIndex) {
@@ -171,7 +168,7 @@ where
 
     fn insert(&mut self, key: K::Archived, value: impl Into<V::Archived>) -> Result<(), PageFull> {
         if let Some(low_key) = self.low_key() {
-            assert!(low_key < &key, "key must be greater than low key {low_key:?} !< {key:?}");
+            assert!(low_key <= &key, "key must be no less than low key {low_key:?} !<= {key:?}");
         }
 
         self.slotted_page_mut().insert(&ArchivedKeyValuePair::new(key, value.into()))
