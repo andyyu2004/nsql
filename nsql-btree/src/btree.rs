@@ -8,7 +8,9 @@ use nsql_pager::PageIndex;
 use nsql_rkyv::DefaultSerializer;
 use rkyv::{Archive, Deserialize, Serialize};
 
-use crate::page::{Flags, LeafPageViewMut, Node, NodeMut, PageFull, PageView, PageViewMut};
+use crate::page::{
+    Flags, InteriorNode, LeafNode, NodeMut, NodeView, NodeViewMut, PageFull, PageView, PageViewMut,
+};
 use crate::Result;
 
 /// A B+ tree
@@ -36,7 +38,7 @@ where
         let handle = pool.alloc().await?;
         let mut data = handle.write().await;
 
-        let _root = LeafPageViewMut::<K, V>::initialize_root(&mut data);
+        let _root = LeafNode::<K, V>::initialize_root(&mut data);
 
         let root_idx = handle.page_idx();
         Ok(Self { pool, root_idx, marker: PhantomData })
@@ -126,24 +128,14 @@ where
                     cov_mark::hit!(root_leaf_split);
                     assert!(leaf.len() >= 3, "pages should always contain at least 3 entries");
 
-                    let left_page = self.pool.alloc().await?;
-                    let left_data = left_page.write().await;
-
-                    let right_page = self.pool.alloc().await?;
-                    let right_data = right_page.write().await;
-
-                    self.split_root(&mut leaf, left_data, right_data, key.clone(), value.clone())?;
-
-                    Ok(())
+                    self.split_root::<LeafNode<K, V>, _>(leaf, key.clone(), value.clone()).await
                 } else {
                     cov_mark::hit!(non_root_leaf_split);
-                    let new_page = self.pool.alloc().await?;
 
-                    self.split_non_root(
+                    self.split_non_root::<LeafNode<K, V>, _>(
                         parents,
                         leaf_page_idx,
                         leaf,
-                        new_page.write().await,
                         key.clone(),
                         value.clone(),
                     )
@@ -176,25 +168,14 @@ where
             Err(PageFull) => {
                 if parent.page_header().flags.contains(Flags::IS_ROOT) {
                     cov_mark::hit!(root_interior_split);
-                    let left_page = self.pool.alloc().await?;
-                    let right_page = self.pool.alloc().await?;
-
-                    self.split_root(
-                        &mut parent,
-                        left_page.write().await,
-                        right_page.write().await,
-                        key.clone(),
-                        child_idx.into(),
-                    )?;
+                    self.split_root::<InteriorNode<K>, _>(parent, key.clone(), child_idx.into())
+                        .await?;
                 } else {
                     cov_mark::hit!(non_root_interior_split);
-
-                    let new_page = self.pool.alloc().await?;
-                    self.split_non_root(
+                    self.split_non_root::<InteriorNode<K>, _>(
                         parents,
                         parent_idx,
                         parent,
-                        new_page.write().await,
                         key.clone(),
                         child_idx.into(),
                     )
@@ -206,57 +187,69 @@ where
         Ok(())
     }
 
-    async fn split_non_root<'a, N, T>(
+    async fn split_non_root<N, T>(
         &self,
         parents: Vec<PageIndex>,
         node_page_idx: PageIndex,
-        mut node: N,
-        mut new_data: nsql_pager::PageWriteGuard<'a>,
+        mut node: N::ViewMut<'_>,
+        // mut new_data: nsql_pager::PageWriteGuard<'_>,
         key: K::Archived,
         value: T::Archived,
     ) -> Result<()>
     where
-        N: NodeMut<'a, K, T>,
+        N: NodeMut<K, T>,
         T: Archive + fmt::Debug,
         T::Archived: fmt::Debug,
     {
         assert!(node.len() >= 3, "pages should always contain at least 3 entries");
         // split the non-root interior by allocating a new interior and splitting the contents
         // then we insert the separator key and the new page index into the parent
+        let new = self.pool.alloc().await?;
+        let mut new_data = new.write().await;
         let new_page_idx = new_data.page_idx();
         let mut new_node = N::initialize(new_data.get_mut());
-        node.split_left_into(new_page_idx, &mut new_node, node_page_idx);
+
+        N::split_left_into(&mut node, new_page_idx, &mut new_node, node_page_idx);
 
         let sep = new_node.low_key().unwrap();
         self.insert_interior(parents, sep, new_page_idx).await?;
 
         // insert the new separator key and child index into the parent
-        (if &key < sep { node } else { new_node })
-            .insert(key, value)
+        (if &key < sep { node.insert(key, value) } else { new_node.insert(key, value) })
             .expect("split interior should not be full");
         Ok(())
     }
 
-    fn split_root<'a, N, T>(
+    async fn split_root<N, T>(
         &self,
-        root: &'a mut N,
-        mut left_data: nsql_pager::PageWriteGuard<'a>,
-        mut right_data: nsql_pager::PageWriteGuard<'a>,
+        mut root: N::ViewMut<'_>,
         key: K::Archived,
         value: T::Archived,
     ) -> Result<()>
     where
-        N: NodeMut<'a, K, T>,
+        N: NodeMut<K, T>,
         T: Archive + fmt::Debug,
         T::Archived: fmt::Debug,
     {
+        let left_page = self.pool.alloc().await?;
+        let mut left_data = left_page.write().await;
+
+        let right_data = self.pool.alloc().await?;
+        let mut right_data = right_data.write().await;
+
         assert!(root.len() >= 3, "pages should always contain at least 3 entries");
         let left_page_idx = left_data.page_idx();
         let right_page_idx = right_data.page_idx();
         let mut left_child = N::initialize(left_data.get_mut());
         let mut right_child = N::initialize(right_data.get_mut());
 
-        root.split_root_into(left_page_idx, &mut left_child, right_page_idx, &mut right_child);
+        N::split_root_into(
+            &mut root,
+            left_page_idx,
+            &mut left_child,
+            right_page_idx,
+            &mut right_child,
+        );
 
         let sep = right_child.low_key().unwrap().clone();
 

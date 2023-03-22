@@ -7,12 +7,12 @@ mod slotted;
 use std::fmt;
 
 pub(crate) use key_value_pair::{ArchivedKeyValuePair, KeyValuePair};
-pub(crate) use node::{Node, NodeMut};
+pub(crate) use node::{NodeMut, NodeView, NodeViewMut};
 use nsql_pager::PAGE_DATA_SIZE;
 use rkyv::Archive;
 
-pub(crate) use self::interior::{InteriorPageView, InteriorPageViewMut};
-pub(crate) use self::leaf::{LeafPageView, LeafPageViewMut};
+pub(crate) use self::interior::{InteriorNode, InteriorPageView, InteriorPageViewMut};
+pub(crate) use self::leaf::{LeafNode, LeafPageView, LeafPageViewMut};
 use crate::Result;
 
 bitflags::bitflags! {

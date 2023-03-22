@@ -1,3 +1,4 @@
+use std::marker::PhantomData;
 use std::ops::Deref;
 use std::pin::Pin;
 use std::{fmt, io};
@@ -7,7 +8,7 @@ use nsql_util::static_assert_eq;
 use rkyv::option::ArchivedOption;
 use rkyv::{Archive, Archived};
 
-use super::node::{Node, NodeHeader};
+use super::node::{NodeHeader, NodeView, NodeViewMut};
 use super::slotted::SlottedPageViewMut;
 use super::{Flags, KeyValuePair, NodeMut};
 use crate::page::slotted::SlottedPageView;
@@ -125,7 +126,7 @@ impl<'a, K, V> Deref for LeafPageViewMut<'a, K, V> {
     }
 }
 
-impl<'a, K, V> Node<'a, K, V> for LeafPageView<'a, K, V>
+impl<'a, K, V> NodeView<'a, K, V> for LeafPageView<'a, K, V>
 where
     K: Archive + fmt::Debug,
     K::Archived: fmt::Debug + Ord,
@@ -152,7 +153,7 @@ where
     }
 }
 
-impl<'a, K, V> Node<'a, K, V> for LeafPageViewMut<'a, K, V>
+impl<'a, K, V> NodeView<'a, K, V> for LeafPageViewMut<'a, K, V>
 where
     K: Archive + fmt::Debug,
     K::Archived: fmt::Debug + Ord,
@@ -178,14 +179,33 @@ where
     }
 }
 
-impl<'a, K, V> NodeMut<'a, K, V> for LeafPageViewMut<'a, K, V>
+pub(crate) struct LeafNode<K, V> {
+    _marker: PhantomData<(K, V)>,
+}
+
+impl<K, V> LeafNode<K, V> {
+    pub(crate) fn new() -> Self {
+        Self { _marker: PhantomData }
+    }
+}
+
+impl<K, V> NodeMut<K, V> for LeafNode<K, V>
 where
     K: Archive + fmt::Debug,
-    K::Archived: fmt::Debug + Ord,
+    K::Archived: Ord + fmt::Debug,
     V: Archive + fmt::Debug,
     V::Archived: fmt::Debug,
 {
-    fn initialize_with_flags(flags: Flags, data: &'a mut [u8; nsql_pager::PAGE_DATA_SIZE]) -> Self {
+    type ViewMut<'a> = LeafPageViewMut<'a, K, V>;
+
+    unsafe fn view_mut(data: &mut [u8; PAGE_DATA_SIZE]) -> Result<Self::ViewMut<'_>> {
+        LeafPageViewMut::view_mut(data)
+    }
+
+    fn initialize_with_flags(
+        flags: Flags,
+        data: &mut [u8; nsql_pager::PAGE_DATA_SIZE],
+    ) -> Self::ViewMut<'_> {
         data.fill(0);
         let (page_header_bytes, data) = data.split_array_mut();
         nsql_rkyv::serialize_into_buf(page_header_bytes, &PageHeader::new(flags | Flags::IS_LEAF));
@@ -198,11 +218,19 @@ where
 
         // the slots start after the page header and the leaf page header
         let prefix_size = archived_size_of!(PageHeader) + archived_size_of!(LeafPageHeader);
-        let slotted_page = SlottedPageViewMut::<'a, KeyValuePair<K, V>>::init(data, prefix_size);
+        let slotted_page = SlottedPageViewMut::<'_, KeyValuePair<K, V>>::init(data, prefix_size);
 
-        Self { page_header, header, slotted_page }
+        LeafPageViewMut { page_header, header, slotted_page }
     }
+}
 
+impl<'a, K, V> NodeViewMut<'a, K, V> for LeafPageViewMut<'a, K, V>
+where
+    K: Archive + fmt::Debug,
+    K::Archived: fmt::Debug + Ord,
+    V: Archive + fmt::Debug,
+    V::Archived: fmt::Debug,
+{
     unsafe fn view_mut(data: &'a mut [u8; nsql_pager::PAGE_DATA_SIZE]) -> Result<Self> {
         let (page_header_bytes, data) = data.split_array_mut();
         let page_header = unsafe { nsql_rkyv::archived_root_mut::<PageHeader>(page_header_bytes) };
