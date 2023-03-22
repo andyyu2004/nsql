@@ -1,6 +1,8 @@
 mod concurrent;
 
+use std::collections::HashMap;
 use std::fmt;
+use std::hash::Hash;
 
 use nsql_btree::{BTree, Min, Result};
 use nsql_rkyv::DefaultSerializer;
@@ -23,21 +25,8 @@ fn test_btree_insert_and_get() -> Result<()> {
     nsql_test::start(async {
         let pool = mk_fast_mem_buffer_pool!();
         let btree = BTree::<u32, u64>::initialize(pool).await?;
-        btree.insert(&42, &420).await?;
+        assert!(btree.insert(&42, &420).await?.is_none());
         assert_eq!(btree.get(&42).await?, Some(420));
-        Ok(())
-    })
-}
-
-#[test]
-fn test_btree_insert_many_and_get() -> Result<()> {
-    nsql_test::start(async {
-        let pool = mk_fast_mem_buffer_pool!();
-        let btree = BTree::<u32, u64>::initialize(pool).await?;
-        for i in 1..50 {
-            btree.insert(&i, &(i as u64)).await?;
-            assert_eq!(btree.get(&i).await?, Some(i as u64));
-        }
         Ok(())
     })
 }
@@ -77,7 +66,10 @@ fn run_serial_inserts<const N: u32>() -> Result<()> {
         let pool = mk_fast_mem_buffer_pool!();
         let btree = BTree::<u32, u64>::initialize(pool).await?;
         for i in 0..=N {
-            btree.insert(&i, &(i as u64)).await?;
+            assert!(
+                btree.insert(&i, &(i as u64)).await?.is_none(),
+                "there should be no previous value as all keys are serially unique"
+            );
         }
 
         for i in 0..=N {
@@ -101,18 +93,26 @@ fn test_btree_insert_and_get_random(pairs: Box<[(u32, u16)]>) {
 
 fn run_insertions<K, V>(pairs: &[(K, V)]) -> Result<()>
 where
-    K: Min + Archive + Serialize<DefaultSerializer> + fmt::Debug,
-    K::Archived: PartialOrd<K> + Clone + fmt::Debug + Ord,
+    K: Min + Archive + Serialize<DefaultSerializer> + Eq + Hash + fmt::Debug,
+    K::Archived: Deserialize<K, rkyv::Infallible> + PartialOrd<K> + Clone + fmt::Debug + Ord,
     V: Archive + Eq + Serialize<DefaultSerializer> + Clone + fmt::Debug,
     V::Archived: Clone + Deserialize<V, rkyv::Infallible> + fmt::Debug,
 {
     nsql_test::start(async {
         let pool = mk_fast_mem_buffer_pool!();
         let btree = BTree::<K, V>::initialize(pool).await?;
+        let mut expected_pairs = HashMap::<&K, &V>::default();
         for (key, value) in pairs {
-            btree.insert(key, value).await?;
+            let expected_prev = expected_pairs.insert(key, value);
+            assert_eq!(btree.insert(key, value).await?.as_ref(), expected_prev);
             assert_eq!(&btree.get(key).await?.unwrap(), value);
         }
+
+        // check that the all values are still there
+        for (key, value) in expected_pairs {
+            assert_eq!(&btree.get(key).await?.unwrap(), value);
+        }
+
         Ok(())
     })
 }

@@ -6,7 +6,7 @@ use std::{fmt, mem, ptr, slice};
 use nsql_pager::PAGE_DATA_SIZE;
 use nsql_util::static_assert_eq;
 use rkyv::rend::BigEndian;
-use rkyv::{Archive, Archived};
+use rkyv::{Archive, Archived, Deserialize, Infallible};
 
 use super::key_value_pair::KeyOrd;
 use super::{archived_size_of, PageFull};
@@ -244,9 +244,9 @@ impl<'a, T> Deref for SlottedPageViewMut<'a, T> {
 impl<'a, T> SlottedPageViewMut<'a, T>
 where
     T: Archive,
-    T::Archived: Ord + fmt::Debug,
+    T::Archived: Deserialize<T, Infallible> + Ord + fmt::Debug,
 {
-    pub(crate) fn insert(&mut self, value: &T::Archived) -> Result<(), PageFull> {
+    pub(crate) fn insert(&mut self, value: &T::Archived) -> Result<Option<T>, PageFull> {
         let serialized_value = unsafe {
             slice::from_raw_parts(value as *const _ as *const u8, mem::size_of_val(value))
         };
@@ -257,6 +257,7 @@ where
         if length + archived_size_of!(Slot) > self.header.free_end - self.header.free_start {
             cov_mark::hit!(slotted_page_insert_duplicate_full);
             // FIXME: what if the page is full but we're inserting a duplicate? we will have two copies of the key in the tree
+            // we need to check whether the key exists first before returning
             return Err(PageFull);
         }
 
@@ -269,14 +270,17 @@ where
         debug_assert_eq!(&self[slot], serialized_value);
         debug_assert_eq!(unsafe { rkyv::archived_root::<T>(&self[slot]) }, value);
 
-        match idx {
+        let prev = match idx {
             Ok(idx) => {
                 // FIXME: need to mark the previous space as free space
+
                 // key already exists, overwrite the slot to point to the new value
                 cov_mark::hit!(slotted_page_insert_duplicate);
-                dbg!(&self.slots);
+                let prev_slot = self.slots[idx];
+                let prev: T =
+                    nsql_rkyv::deserialize(unsafe { rkyv::archived_root::<T>(&self[prev_slot]) });
                 self.slots[idx] = slot;
-                dbg!(&self.slots);
+                Some(prev)
             }
             Err(idx) => {
                 unsafe {
@@ -304,6 +308,7 @@ where
                 let data: &'a mut [u8] = mem::take(&mut self.data);
                 let (_, data) = data.split_array_mut::<{ mem::size_of::<Archived<Slot>>() }>();
                 self.data = data;
+                None
             }
         };
 
@@ -312,7 +317,7 @@ where
         #[cfg(debug_assertions)]
         self.assert_sorted();
 
-        Ok(())
+        Ok(prev)
     }
 
     #[cfg(debug_assertions)]

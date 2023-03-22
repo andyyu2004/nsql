@@ -30,7 +30,7 @@ impl<K, V> Clone for BTree<K, V> {
 impl<K, V> BTree<K, V>
 where
     K: Min + Archive + Serialize<DefaultSerializer> + fmt::Debug,
-    K::Archived: PartialOrd<K> + Clone + fmt::Debug + Ord,
+    K::Archived: Deserialize<K, rkyv::Infallible> + PartialOrd<K> + Clone + fmt::Debug + Ord,
     V: Archive + Serialize<DefaultSerializer> + Clone + fmt::Debug,
     V::Archived: Clone + Deserialize<V, rkyv::Infallible> + fmt::Debug,
 {
@@ -52,8 +52,9 @@ where
         self.search_node(self.root_idx, archived_key).await
     }
 
+    /// Insert a key-value pair into the tree returning the previous value if it existed
     #[inline]
-    pub async fn insert(&self, key: &K, value: &V) -> Result<()> {
+    pub async fn insert(&self, key: &K, value: &V) -> Result<Option<V>> {
         let key_bytes = nsql_rkyv::to_bytes(key);
         let archived_key = unsafe { rkyv::archived_root::<K>(&key_bytes) };
         let value_bytes = nsql_rkyv::to_bytes(value);
@@ -103,7 +104,7 @@ where
         }
     }
 
-    async fn insert_archived(&self, key: &K::Archived, value: &V::Archived) -> Result<()> {
+    async fn insert_archived(&self, key: &K::Archived, value: &V::Archived) -> Result<Option<V>> {
         let (leaf_idx, parents) = self.find_leaf_page_idx(key).await?;
         self.insert_leaf(leaf_idx, parents, key, value).await
     }
@@ -115,7 +116,7 @@ where
         parents: Vec<PageIndex>,
         key: &K::Archived,
         value: &V::Archived,
-    ) -> Result<()> {
+    ) -> Result<Option<V>> {
         let leaf_handle = self.pool.load(leaf_page_idx).await?;
         let mut leaf_data = leaf_handle.write().await;
         let view = unsafe { PageViewMut::<K, V>::view_mut(&mut leaf_data).await? };
@@ -134,7 +135,7 @@ where
                         key.clone(),
                         value.clone(),
                     )
-                    .await
+                    .await?;
                 } else {
                     cov_mark::hit!(non_root_leaf_split);
                     self.split_non_root::<LeafPageViewMut<'_, K, V>, _>(
@@ -144,8 +145,10 @@ where
                         key.clone(),
                         value.clone(),
                     )
-                    .await
+                    .await?;
                 }
+
+                Ok(None)
             }
         }
     }
@@ -169,7 +172,8 @@ where
         };
 
         match parent.insert(key.clone(), child_idx) {
-            Ok(()) => {}
+            Ok(None) => {}
+            Ok(Some(_value)) => todo!("duplicate key in interior node"),
             Err(PageFull) => {
                 if parent.page_header().flags.contains(Flags::IS_ROOT) {
                     cov_mark::hit!(root_interior_split);
@@ -207,7 +211,7 @@ where
     where
         N: NodeMut<K, T>,
         T: Archive + fmt::Debug,
-        T::Archived: fmt::Debug,
+        T::Archived: Deserialize<T, rkyv::Infallible> + fmt::Debug,
     {
         // split the non-root interior by allocating a new interior and splitting the contents
         // then we insert the separator key and the new page index into the parent
@@ -236,7 +240,7 @@ where
     where
         N: NodeMut<K, T>,
         T: Archive + fmt::Debug,
-        T::Archived: fmt::Debug,
+        T::Archived: Deserialize<T, rkyv::Infallible> + fmt::Debug,
     {
         assert!(root.len() >= 3, "root that requires a split should contain at least 3 entries");
         let left_page = self.pool.alloc().await?;

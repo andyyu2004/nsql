@@ -2,7 +2,7 @@ use std::fmt;
 use std::pin::Pin;
 
 use nsql_pager::{PageIndex, PAGE_DATA_SIZE};
-use rkyv::{Archive, Archived};
+use rkyv::{Archive, Archived, Deserialize};
 
 use super::slotted::{SlottedPageView, SlottedPageViewMut};
 use super::{ArchivedKeyValuePair, Flags, InteriorPageViewMut, KeyValuePair, PageFull, PageHeader};
@@ -80,7 +80,10 @@ where
         left: &mut Self::ViewMut<'_>,
         right_page_idx: PageIndex,
         right: &mut Self::ViewMut<'_>,
-    ) {
+    ) where
+        K::Archived: Deserialize<K, rkyv::Infallible>,
+        V::Archived: Deserialize<V, rkyv::Infallible>,
+    {
         assert!(root.is_root());
         assert!(root.slotted_page().len() >= 3);
         assert!(left.slotted_page().is_empty());
@@ -109,7 +112,10 @@ where
         view_page_idx: PageIndex,
         left: &mut Self::ViewMut<'_>,
         left_page_idx: PageIndex,
-    ) {
+    ) where
+        K::Archived: Deserialize<K, rkyv::Infallible>,
+        V::Archived: Deserialize<V, rkyv::Infallible>,
+    {
         assert!(view.slotted_page().len() >= 3);
         assert!(left.slotted_page().is_empty());
 
@@ -166,11 +172,22 @@ where
         self.node_header_mut().set_right_link(right_link);
     }
 
-    fn insert(&mut self, key: K::Archived, value: impl Into<V::Archived>) -> Result<(), PageFull> {
+    fn insert(
+        &mut self,
+        key: K::Archived,
+        value: impl Into<V::Archived>,
+    ) -> Result<Option<V>, PageFull>
+    where
+        K::Archived: Deserialize<K, rkyv::Infallible>,
+        V::Archived: Deserialize<V, rkyv::Infallible>,
+    {
         if let Some(low_key) = self.low_key() {
             assert!(low_key <= &key, "key must be no less than low key {low_key:?} !<= {key:?}");
         }
 
-        self.slotted_page_mut().insert(&ArchivedKeyValuePair::new(key, value.into()))
+        Ok(self
+            .slotted_page_mut()
+            .insert(&ArchivedKeyValuePair::new(key, value.into()))?
+            .map(|prev| prev.value))
     }
 }

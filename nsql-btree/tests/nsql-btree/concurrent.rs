@@ -12,7 +12,7 @@ type ConcurrentTestInputs<K, V> = Vec<Box<[(K, V)]>>;
 fn run_concurrent_insertions<K, V>(inputs: ConcurrentTestInputs<K, V>) -> Result<()>
 where
     K: Min + Archive + Serialize<DefaultSerializer> + fmt::Debug + 'static,
-    K::Archived: PartialOrd<K> + Clone + fmt::Debug + Ord,
+    K::Archived: Deserialize<K, rkyv::Infallible> + PartialOrd<K> + Clone + fmt::Debug + Ord,
     V: Archive + Eq + Serialize<DefaultSerializer> + Clone + fmt::Debug + 'static,
     V::Archived: Clone + Deserialize<V, rkyv::Infallible> + fmt::Debug,
 {
