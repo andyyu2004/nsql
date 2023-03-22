@@ -227,13 +227,6 @@ impl<'a> PageWriteGuard<'a> {
     pub fn page_idx(&self) -> PageIndex {
         self.idx
     }
-
-    /// Get a mutable reference to the bytes of the page.
-    /// This is the same as `&mut *self` but more explicit about lifetimes which aids inference sometimes
-    pub fn get_mut(&mut self) -> &'a mut [u8; PAGE_DATA_SIZE] {
-        // SAFETY we hold a write guard on the bytes for `'a`
-        unsafe { &mut *(self.bytes[PAGE_META_LENGTH..].as_mut_ptr() as *mut [u8; PAGE_DATA_SIZE]) }
-    }
 }
 
 impl AsyncWrite for PageWriteGuard<'_> {
@@ -277,7 +270,7 @@ impl<'a> Deref for PageWriteGuard<'a> {
 
 impl<'a> DerefMut for PageWriteGuard<'a> {
     fn deref_mut(&mut self) -> &'a mut Self::Target {
-        self.get_mut()
+        unsafe { &mut *(self.bytes[PAGE_META_LENGTH..].as_mut_ptr() as *mut [u8; PAGE_DATA_SIZE]) }
     }
 }
 

@@ -14,3 +14,6 @@ path = "../nsql-pager"
 
 [dependencies.lruk]
 path = "../lruk"
+
+[dev-dependencies]
+nsql-test = { path = "../nsql-test" }

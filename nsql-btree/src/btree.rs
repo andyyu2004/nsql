@@ -21,6 +21,12 @@ pub struct BTree<K, V> {
     marker: std::marker::PhantomData<fn() -> (K, V)>,
 }
 
+impl<K, V> fmt::Debug for BTree<K, V> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("BTree").field("root_idx", &self.root_idx).finish()
+    }
+}
+
 impl<K, V> Clone for BTree<K, V> {
     fn clone(&self) -> Self {
         Self { pool: Arc::clone(&self.pool), root_idx: self.root_idx, marker: PhantomData }
@@ -46,6 +52,7 @@ where
     }
 
     #[inline]
+    #[tracing::instrument]
     pub async fn get(&self, key: &K) -> Result<Option<V>> {
         let key_bytes = nsql_rkyv::to_bytes(key);
         let archived_key = unsafe { rkyv::archived_root::<K>(&key_bytes) };
@@ -54,6 +61,7 @@ where
 
     /// Insert a key-value pair into the tree returning the previous value if it existed
     #[inline]
+    #[tracing::instrument]
     pub async fn insert(&self, key: &K, value: &V) -> Result<Option<V>> {
         let key_bytes = nsql_rkyv::to_bytes(key);
         let archived_key = unsafe { rkyv::archived_root::<K>(&key_bytes) };
@@ -71,6 +79,7 @@ where
             PageView::Leaf(leaf) => Ok(leaf.get(key).map(nsql_rkyv::deserialize)),
             PageView::Interior(interior) => {
                 let child_idx = interior.search(key);
+                drop(data);
                 self.search_node(child_idx, key).await
             }
         }
@@ -99,6 +108,7 @@ where
             PageView::Interior(interior) => {
                 stack.push(idx);
                 let child_idx = interior.search(key);
+                drop(data);
                 self.find_leaf_page_idx_rec(child_idx, key, stack).await
             }
         }
@@ -215,10 +225,10 @@ where
     {
         // split the non-root interior by allocating a new interior and splitting the contents
         // then we insert the separator key and the new page index into the parent
-        let new = self.pool.alloc().await?;
-        let mut new_data = new.write().await;
+        let new_page = self.pool.alloc().await?;
+        let mut new_data = new_page.page().write().await;
         let new_page_idx = new_data.page_idx();
-        let mut new_node = N::initialize(new_data.get_mut());
+        let mut new_node = N::initialize(&mut new_data);
 
         N::split_left_into(&mut node, new_page_idx, &mut new_node, node_page_idx);
 
@@ -251,8 +261,8 @@ where
 
         let left_page_idx = left_data.page_idx();
         let right_page_idx = right_data.page_idx();
-        let mut left_child = N::initialize(left_data.get_mut());
-        let mut right_child = N::initialize(right_data.get_mut());
+        let mut left_child = N::initialize(&mut left_data);
+        let mut right_child = N::initialize(&mut right_data);
 
         N::split_root_into(
             &mut root,
