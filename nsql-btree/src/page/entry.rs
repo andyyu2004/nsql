@@ -1,7 +1,6 @@
 use std::cmp::Ordering;
-use std::convert::Infallible;
 
-use rkyv::{Archive, Deserialize, Serialize};
+use rkyv::{Archive, Serialize};
 
 /// Essentially a `(K, V)` tuple but implements traits like `Ord` and `PartialOrd` based on the key only
 // FIXME needs some work to make this work with unsized types
@@ -31,27 +30,6 @@ impl<'a, S: rkyv::Fallible, K: Serialize<S>, V: Serialize<S>> Serialize<S> for E
         serializer: &mut S,
     ) -> Result<Self::Resolver, <S as rkyv::Fallible>::Error> {
         Ok((self.key.serialize(serializer)?, self.value.serialize(serializer)?))
-    }
-}
-
-impl<K, V> Deserialize<Entry<K, V>, rkyv::Infallible> for Entry<K::Archived, V::Archived>
-where
-    K: Archive,
-    V: Archive,
-    K::Archived: Deserialize<K, rkyv::Infallible>,
-    V::Archived: Deserialize<V, rkyv::Infallible>,
-{
-    fn deserialize(&self, deserializer: &mut rkyv::Infallible) -> Result<Entry<K, V>, Infallible> {
-        Ok(Entry {
-            key: self.key.deserialize(deserializer)?,
-            value: self.value.deserialize(deserializer)?,
-        })
-    }
-}
-
-impl<K, V> Entry<K, V> {
-    pub fn new(key: K, value: V) -> Self {
-        Self { key, value }
     }
 }
 
