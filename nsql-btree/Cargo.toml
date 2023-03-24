@@ -17,7 +17,7 @@ nsql-buffer = {  path = "../nsql-buffer" }
 nsql-pager = { path = "../nsql-pager" }
 nsql-rkyv = { version = "0.1.0", path = "../nsql-rkyv" }
 nsql-util = { version = "0.1.0", path = "../nsql-util" }
-rkyv = { version = "0.7.40", default-features = false, features = ["archive_be", "size_16", "strict"] }
+rkyv = { version = "0.7.40", default-features = false, features = ["archive_be", "size_16", "strict", "std"] }
 test-strategy = "0.3.0"
 tracing = "0.1.37"
 
