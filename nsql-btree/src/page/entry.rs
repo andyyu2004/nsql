@@ -7,13 +7,13 @@ use rkyv::{Archive, Deserialize, Serialize};
 // FIXME needs some work to make this work with unsized types
 #[derive(Debug)]
 #[repr(C)]
-pub struct KeyValuePair<K, V> {
+pub(crate) struct Entry<K, V> {
     pub key: K,
     pub value: V,
 }
 
-impl<'a, K: Archive, V: Archive> Archive for KeyValuePair<&'a K, &'a V> {
-    type Archived = KeyValuePair<K::Archived, V::Archived>;
+impl<'a, K: Archive, V: Archive> Archive for Entry<&'a K, &'a V> {
+    type Archived = Entry<K::Archived, V::Archived>;
     type Resolver = (K::Resolver, V::Resolver);
 
     #[inline]
@@ -25,9 +25,7 @@ impl<'a, K: Archive, V: Archive> Archive for KeyValuePair<&'a K, &'a V> {
     }
 }
 
-impl<'a, S: rkyv::Fallible, K: Serialize<S>, V: Serialize<S>> Serialize<S>
-    for KeyValuePair<&'a K, &'a V>
-{
+impl<'a, S: rkyv::Fallible, K: Serialize<S>, V: Serialize<S>> Serialize<S> for Entry<&'a K, &'a V> {
     fn serialize(
         &self,
         serializer: &mut S,
@@ -36,32 +34,28 @@ impl<'a, S: rkyv::Fallible, K: Serialize<S>, V: Serialize<S>> Serialize<S>
     }
 }
 
-impl<K, V> Deserialize<KeyValuePair<K, V>, rkyv::Infallible>
-    for KeyValuePair<K::Archived, V::Archived>
+impl<K, V> Deserialize<Entry<K, V>, rkyv::Infallible> for Entry<K::Archived, V::Archived>
 where
     K: Archive,
     V: Archive,
     K::Archived: Deserialize<K, rkyv::Infallible>,
     V::Archived: Deserialize<V, rkyv::Infallible>,
 {
-    fn deserialize(
-        &self,
-        deserializer: &mut rkyv::Infallible,
-    ) -> Result<KeyValuePair<K, V>, Infallible> {
-        Ok(KeyValuePair {
+    fn deserialize(&self, deserializer: &mut rkyv::Infallible) -> Result<Entry<K, V>, Infallible> {
+        Ok(Entry {
             key: self.key.deserialize(deserializer)?,
             value: self.value.deserialize(deserializer)?,
         })
     }
 }
 
-impl<K, V> KeyValuePair<K, V> {
+impl<K, V> Entry<K, V> {
     pub fn new(key: K, value: V) -> Self {
         Self { key, value }
     }
 }
 
-impl<K, V> PartialEq for KeyValuePair<K, V>
+impl<K, V> PartialEq for Entry<K, V>
 where
     K: PartialEq,
 {
@@ -70,9 +64,9 @@ where
     }
 }
 
-impl<K, V> Eq for KeyValuePair<K, V> where K: Eq {}
+impl<K, V> Eq for Entry<K, V> where K: Eq {}
 
-impl<K, V> PartialOrd for KeyValuePair<K, V>
+impl<K, V> PartialOrd for Entry<K, V>
 where
     K: Ord,
 {
@@ -81,7 +75,7 @@ where
     }
 }
 
-impl<K, V> Ord for KeyValuePair<K, V>
+impl<K, V> Ord for Entry<K, V>
 where
     K: Ord,
 {

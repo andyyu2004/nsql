@@ -1,12 +1,11 @@
+mod entry;
 mod interior;
-mod key_value_pair;
 mod leaf;
 mod node;
 mod slotted;
 
 use std::fmt;
 
-pub(crate) use key_value_pair::KeyValuePair;
 pub(crate) use node::{NodeMut, NodeView, NodeViewMut};
 use nsql_pager::PAGE_DATA_SIZE;
 use rkyv::Archive;

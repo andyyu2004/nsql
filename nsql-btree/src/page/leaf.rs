@@ -9,7 +9,7 @@ use rkyv::{Archive, Archived};
 
 use super::node::{NodeHeader, NodeView, NodeViewMut};
 use super::slotted::SlottedPageViewMut;
-use super::{Flags, KeyValuePair, NodeMut};
+use super::{Flags, NodeMut};
 use crate::page::slotted::SlottedPageView;
 use crate::page::{archived_size_of, PageHeader};
 use crate::Result;

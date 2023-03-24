@@ -1,4 +1,3 @@
-use std::borrow::Borrow;
 use std::marker::PhantomData;
 use std::ops::{AddAssign, Deref, Index, IndexMut, Sub, SubAssign};
 use std::pin::Pin;
@@ -10,8 +9,8 @@ use nsql_util::static_assert_eq;
 use rkyv::rend::BigEndian;
 use rkyv::{Archive, Archived, Deserialize, Infallible, Serialize};
 
+use super::entry::Entry;
 use super::{archived_size_of, PageFull};
-use crate::page::KeyValuePair;
 
 // NOTE: the layout of this MUST match the layout of the mutable version
 #[repr(C)]
@@ -95,8 +94,8 @@ where
         offset.ok().map(|offset| self.slots[offset])
     }
 
-    pub(crate) fn get_by_slot(&self, slot: Slot) -> &KeyValuePair<K::Archived, V::Archived> {
-        unsafe { rkyv::archived_root::<KeyValuePair<&K, &V>>(&self[slot]) }
+    pub(crate) fn get_by_slot(&self, slot: Slot) -> &Entry<K::Archived, V::Archived> {
+        unsafe { rkyv::archived_root::<Entry<&K, &V>>(&self[slot]) }
     }
 
     pub(crate) fn low_key(&self) -> Option<&K::Archived> {
@@ -255,7 +254,7 @@ where
 {
     pub(crate) fn insert_archived(
         &mut self,
-        entry: &KeyValuePair<K::Archived, V::Archived>,
+        entry: &Entry<K::Archived, V::Archived>,
     ) -> Result<Option<V>, PageFull>
     where
         V::Archived: Deserialize<V, Infallible> + fmt::Debug,
@@ -282,7 +281,7 @@ where
                 cov_mark::hit!(slotted_page_insert_duplicate);
                 let prev_slot = self.slots[idx];
                 let prev = nsql_rkyv::deserialize(unsafe {
-                    &rkyv::archived_root::<KeyValuePair<&K, &V>>(&self[prev_slot]).value
+                    &rkyv::archived_root::<Entry<&K, &V>>(&self[prev_slot]).value
                 });
 
                 let slot = if prev_slot.length >= length {
@@ -363,15 +362,15 @@ where
         V: Serialize<DefaultSerializer>,
         V::Archived: Deserialize<V, Infallible> + fmt::Debug,
     {
-        let entry = KeyValuePair { key, value };
+        let entry = Entry { key, value };
         let bytes = nsql_rkyv::to_bytes(&entry);
-        let archived_entry = unsafe { rkyv::archived_root::<KeyValuePair<&K, &V>>(&bytes) };
+        let archived_entry = unsafe { rkyv::archived_root::<Entry<&K, &V>>(&bytes) };
         self.insert_archived(archived_entry)
     }
 
     #[cfg(debug_assertions)]
     fn assert_sorted(&self) {
-        let mut values = Vec::<&KeyValuePair<K::Archived, V::Archived>>::with_capacity(
+        let mut values = Vec::<&Entry<K::Archived, V::Archived>>::with_capacity(
             self.header.slot_len.value() as usize,
         );
         for &slot in self.slots.iter() {
