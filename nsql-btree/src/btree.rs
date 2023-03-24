@@ -35,10 +35,10 @@ impl<K, V> Clone for BTree<K, V> {
 
 impl<K, V> BTree<K, V>
 where
-    K: Min + Archive + Serialize<DefaultSerializer> + fmt::Debug,
-    K::Archived: Deserialize<K, rkyv::Infallible> + PartialOrd<K> + Clone + fmt::Debug + Ord,
-    V: Archive + Serialize<DefaultSerializer> + Clone + fmt::Debug,
-    V::Archived: Clone + Deserialize<V, rkyv::Infallible> + fmt::Debug,
+    K: Min + Archive + Serialize<DefaultSerializer> + fmt::Debug + 'static,
+    K::Archived: Deserialize<K, rkyv::Infallible> + PartialOrd<K> + fmt::Debug + Ord,
+    V: Archive + Serialize<DefaultSerializer> + fmt::Debug + 'static,
+    V::Archived: Deserialize<V, rkyv::Infallible> + fmt::Debug,
 {
     #[inline]
     pub async fn initialize(pool: Arc<dyn Pool>) -> Result<Self> {
@@ -63,11 +63,8 @@ where
     #[inline]
     #[tracing::instrument]
     pub async fn insert(&self, key: &K, value: &V) -> Result<Option<V>> {
-        let key_bytes = nsql_rkyv::to_bytes(key);
-        let archived_key = unsafe { rkyv::archived_root::<K>(&key_bytes) };
-        let value_bytes = nsql_rkyv::to_bytes(value);
-        let archived_value = unsafe { rkyv::archived_root::<V>(&value_bytes) };
-        self.insert_archived(archived_key, archived_value).await
+        let (leaf_idx, parents) = self.find_leaf_page_idx(key).await?;
+        self.insert_leaf(leaf_idx, parents, key, value).await
     }
 
     #[async_recursion(?Send)]
@@ -87,7 +84,7 @@ where
 
     /// Find the leaf page that should contain the given key, and return the index of that page and
     /// stack of parent page indices.
-    async fn find_leaf_page_idx(&self, key: &K::Archived) -> Result<(PageIndex, Vec<PageIndex>)> {
+    async fn find_leaf_page_idx(&self, key: &K) -> Result<(PageIndex, Vec<PageIndex>)> {
         let mut parents = vec![];
         let leaf_idx = self.find_leaf_page_idx_rec(self.root_idx, key, &mut parents).await?;
         Ok((leaf_idx, parents))
@@ -97,7 +94,7 @@ where
     async fn find_leaf_page_idx_rec(
         &self,
         idx: PageIndex,
-        key: &K::Archived,
+        key: &K,
         stack: &mut Vec<PageIndex>,
     ) -> Result<PageIndex> {
         let handle = self.pool.load(idx).await?;
@@ -114,18 +111,13 @@ where
         }
     }
 
-    async fn insert_archived(&self, key: &K::Archived, value: &V::Archived) -> Result<Option<V>> {
-        let (leaf_idx, parents) = self.find_leaf_page_idx(key).await?;
-        self.insert_leaf(leaf_idx, parents, key, value).await
-    }
-
     #[inline]
     async fn insert_leaf(
         &self,
         leaf_page_idx: PageIndex,
         parents: Vec<PageIndex>,
-        key: &K::Archived,
-        value: &V::Archived,
+        key: &K,
+        value: &V,
     ) -> Result<Option<V>> {
         let leaf_handle = self.pool.load(leaf_page_idx).await?;
         let mut leaf_data = leaf_handle.write().await;
@@ -135,28 +127,25 @@ where
             PageViewMut::Leaf(leaf) => leaf,
         };
 
-        match leaf.insert(key.clone(), value.clone()) {
+        match leaf.insert(key, value) {
             Ok(value) => Ok(value),
             Err(PageFull) => {
                 if leaf.page_header().flags.contains(Flags::IS_ROOT) {
                     cov_mark::hit!(root_leaf_split);
-                    self.split_root::<LeafPageViewMut<'_, K, V>, _>(
-                        leaf,
-                        key.clone(),
-                        value.clone(),
-                    )
-                    .await?;
+                    self.split_root::<LeafPageViewMut<'_, K, V>, _>(leaf, key, value).await?;
                 } else {
                     cov_mark::hit!(non_root_leaf_split);
                     self.split_non_root::<LeafPageViewMut<'_, K, V>, _>(
                         parents,
                         leaf_page_idx,
                         leaf,
-                        key.clone(),
-                        value.clone(),
+                        key,
+                        value,
                     )
                     .await?;
                 }
+
+                // FIXME what if the page is full and there is duplicate key, but we're returning None here
 
                 Ok(None)
             }
@@ -167,7 +156,7 @@ where
     async fn insert_interior(
         &self,
         mut parents: Vec<PageIndex>,
-        key: &K::Archived,
+        key: &K,
         child_idx: PageIndex,
     ) -> Result<()> {
         let parent_idx = parents.pop().expect("non-root leaf must have at least one parent");
@@ -181,26 +170,18 @@ where
             }
         };
 
-        match parent.insert(key.clone(), child_idx) {
+        match parent.insert(key, &child_idx) {
             Ok(None) => {}
             Ok(Some(_value)) => todo!("duplicate key in interior node"),
             Err(PageFull) => {
                 if parent.page_header().flags.contains(Flags::IS_ROOT) {
                     cov_mark::hit!(root_interior_split);
-                    self.split_root::<InteriorPageViewMut<'_, K>, _>(
-                        parent,
-                        key.clone(),
-                        child_idx.into(),
-                    )
-                    .await?;
+                    self.split_root::<InteriorPageViewMut<'_, K>, _>(parent, key, &child_idx)
+                        .await?;
                 } else {
                     cov_mark::hit!(non_root_interior_split);
                     self.split_non_root::<InteriorPageViewMut<'_, K>, _>(
-                        parents,
-                        parent_idx,
-                        parent,
-                        key.clone(),
-                        child_idx.into(),
+                        parents, parent_idx, parent, key, &child_idx,
                     )
                     .await?;
                 }
@@ -215,12 +196,12 @@ where
         parents: Vec<PageIndex>,
         node_page_idx: PageIndex,
         mut node: N::ViewMut<'_>,
-        key: K::Archived,
-        value: T::Archived,
+        key: &K,
+        value: &T,
     ) -> Result<()>
     where
         N: NodeMut<K, T>,
-        T: Archive + fmt::Debug,
+        T: Archive + Serialize<DefaultSerializer> + fmt::Debug,
         T::Archived: Deserialize<T, rkyv::Infallible> + fmt::Debug,
     {
         // split the non-root interior by allocating a new interior and splitting the contents
@@ -233,23 +214,19 @@ where
         N::split_left_into(&mut node, new_page_idx, &mut new_node, node_page_idx);
 
         let sep = new_node.low_key().unwrap();
-        self.insert_interior(parents, sep, new_page_idx).await?;
+        // FIXME ideally we don't have to deserialize sep
+        self.insert_interior(parents, &nsql_rkyv::deserialize(sep), new_page_idx).await?;
 
         // insert the new separator key and child index into the parent
-        (if &key < sep { node.insert(key, value) } else { new_node.insert(key, value) })
+        (if sep > key { node.insert(key, value) } else { new_node.insert(key, value) })
             .expect("split interior should not be full");
         Ok(())
     }
 
-    async fn split_root<N, T>(
-        &self,
-        mut root: N::ViewMut<'_>,
-        key: K::Archived,
-        value: T::Archived,
-    ) -> Result<()>
+    async fn split_root<N, T>(&self, mut root: N::ViewMut<'_>, key: &K, value: &T) -> Result<()>
     where
         N: NodeMut<K, T>,
-        T: Archive + fmt::Debug,
+        T: Archive + Serialize<DefaultSerializer> + fmt::Debug,
         T::Archived: Deserialize<T, rkyv::Infallible> + fmt::Debug,
     {
         assert!(root.len() >= 3, "root that requires a split should contain at least 3 entries");
@@ -272,37 +249,40 @@ where
             &mut right_child,
         );
 
-        let sep = right_child.low_key().unwrap().clone();
-
-        (if key < sep { left_child } else { right_child })
-            .insert(key, value)
-            .expect("split child should not be full");
+        let sep = right_child.low_key().unwrap();
 
         // reinitialize the root to an interior root node and add the two children
         let mut root = root.reinitialize_as_root_interior();
-        root.insert(K::MIN, left_page_idx).expect("new root should not be full");
-        root.insert(sep, right_page_idx).expect("new root should not be full");
+        root.insert(&K::MIN, &left_page_idx).expect("new root should not be full");
+        // FIXME ideally we don't have to deserialize sep
+        root.insert(&nsql_rkyv::deserialize(sep), &right_page_idx)
+            .expect("new root should not be full");
+
+        (if sep > key { left_child } else { right_child })
+            .insert(key, value)
+            .expect("split child should not be full");
+
         Ok(())
     }
 }
 
 // hack to generate "negative infinity" low keys for L&Y trees for left-most nodes
 pub trait Min: Archive {
-    const MIN: Self::Archived;
+    const MIN: Self;
 }
 
 impl Min for u8 {
-    const MIN: Self::Archived = 0;
+    const MIN: Self = 0;
 }
 
-macro_rules! impl_min {
+macro_rules! impl_min_numeric {
     ($($ty:ty),*) => {
         $(
             impl Min for $ty {
-                const MIN: Self::Archived = rkyv::rend::BigEndian::<$ty>::new(0);
+                const MIN: Self = 0;
             }
         )*
     };
 }
 
-impl_min!(i16, i32, i64, u16, u32, u64);
+impl_min_numeric!(i16, i32, i64, u16, u32, u64);

@@ -9,7 +9,7 @@ use rkyv::{Archive, Archived};
 
 use super::node::{NodeHeader, NodeView, NodeViewMut};
 use super::slotted::{SlottedPageView, SlottedPageViewMut};
-use super::{Flags, KeyValuePair, NodeMut, PageHeader};
+use super::{Flags, NodeMut, PageHeader};
 use crate::page::archived_size_of;
 use crate::Result;
 
@@ -56,10 +56,10 @@ impl ArchivedInteriorPageHeader {
 
 // NOTE: must have the same layout as `InteriorPageViewMut`
 #[repr(C)]
-pub(crate) struct InteriorPageView<'a, K> {
+pub(crate) struct InteriorPageView<'a, K: Archive> {
     page_header: &'a Archived<PageHeader>,
     header: &'a Archived<InteriorPageHeader>,
-    slotted_page: SlottedPageView<'a, KeyValuePair<K, PageIndex>>,
+    slotted_page: SlottedPageView<'a, K, PageIndex>,
 }
 
 impl<K> fmt::Debug for InteriorPageView<'_, K>
@@ -92,7 +92,11 @@ where
         Ok(Self { page_header, header, slotted_page })
     }
 
-    pub(crate) fn search(&self, key: &K::Archived) -> PageIndex {
+    pub(crate) fn search<Q>(&self, key: &Q) -> PageIndex
+    where
+        K::Archived: PartialOrd<Q>,
+        Q: ?Sized,
+    {
         let slot_idx = match self.slotted_page.slot_index_of_key(key) {
             Err(idx) if idx == 0 => panic!("key was lower than the low key"),
             Ok(idx) => idx,
@@ -111,12 +115,12 @@ where
 pub(crate) struct InteriorPageViewMut<'a, K> {
     page_header: Pin<&'a mut Archived<PageHeader>>,
     header: Pin<&'a mut Archived<InteriorPageHeader>>,
-    slotted_page: SlottedPageViewMut<'a, KeyValuePair<K, PageIndex>>,
+    slotted_page: SlottedPageViewMut<'a, K, PageIndex>,
 }
 
-impl<K> fmt::Debug for InteriorPageViewMut<'_, K>
+impl<'a, K> fmt::Debug for InteriorPageViewMut<'a, K>
 where
-    K: Archive,
+    K: Archive + 'static,
     K::Archived: fmt::Debug + Ord,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -124,7 +128,7 @@ where
     }
 }
 
-impl<'a, K> Deref for InteriorPageViewMut<'a, K> {
+impl<'a, K: Archive + 'static> Deref for InteriorPageViewMut<'a, K> {
     type Target = InteriorPageView<'a, K>;
 
     fn deref(&self) -> &Self::Target {
@@ -143,12 +147,12 @@ impl<'a, K> Deref for InteriorPageViewMut<'a, K> {
 
 impl<'a, K> NodeView<'a, K, PageIndex> for InteriorPageView<'a, K>
 where
-    K: Archive + fmt::Debug,
+    K: Archive + fmt::Debug + 'static,
     K::Archived: fmt::Debug + Ord,
 {
     type ArchivedNodeHeader = Archived<InteriorPageHeader>;
 
-    fn slotted_page(&self) -> &SlottedPageView<'a, KeyValuePair<K, PageIndex>> {
+    fn slotted_page(&self) -> &SlottedPageView<'a, K, PageIndex> {
         &self.slotted_page
     }
 
@@ -162,18 +166,18 @@ where
 
     fn low_key(&self) -> Option<&K::Archived> {
         (!self.is_root())
-            .then(|| &self.slotted_page.first().expect("non-root should have a low_key").key)
+            .then(|| self.slotted_page.low_key().expect("non-root should have a low_key"))
     }
 }
 
 impl<'a, K> NodeView<'a, K, PageIndex> for InteriorPageViewMut<'a, K>
 where
-    K: Archive + fmt::Debug,
+    K: Archive + fmt::Debug + 'static,
     K::Archived: fmt::Debug + Ord,
 {
     type ArchivedNodeHeader = Archived<InteriorPageHeader>;
 
-    fn slotted_page(&self) -> &SlottedPageView<'a, KeyValuePair<K, PageIndex>> {
+    fn slotted_page(&self) -> &SlottedPageView<'a, K, PageIndex> {
         (**self).slotted_page()
     }
 
@@ -192,7 +196,7 @@ where
 
 impl<K> NodeMut<K, PageIndex> for InteriorPageViewMut<'_, K>
 where
-    K: Archive + fmt::Debug,
+    K: Archive + fmt::Debug + 'static,
     K::Archived: Ord + fmt::Debug,
 {
     type ViewMut<'a> = InteriorPageViewMut<'a, K>;
@@ -205,8 +209,7 @@ where
         let header = nsql_rkyv::archived_root_mut::<InteriorPageHeader>(header_bytes);
         header.check_magic()?;
 
-        let slotted_page = SlottedPageViewMut::<'_, KeyValuePair<K, PageIndex>>::view_mut(data);
-
+        let slotted_page = SlottedPageViewMut::view_mut(data);
         Ok(InteriorPageViewMut { page_header, header, slotted_page })
     }
 
@@ -222,8 +225,7 @@ where
 
         // the slots start after the page header and the interior page header
         let prefix_size = archived_size_of!(PageHeader) + archived_size_of!(InteriorPageHeader);
-        let slotted_page =
-            SlottedPageViewMut::<'_, KeyValuePair<K, PageIndex>>::init(data, prefix_size);
+        let slotted_page = SlottedPageViewMut::init(data, prefix_size);
 
         let header = unsafe { nsql_rkyv::archived_root_mut::<InteriorPageHeader>(header_bytes) };
         header.check_magic().expect("magic should be correct as we just set it");
@@ -234,10 +236,10 @@ where
 
 impl<'a, K> NodeViewMut<'a, K, PageIndex> for InteriorPageViewMut<'a, K>
 where
-    K: Archive + fmt::Debug,
+    K: Archive + fmt::Debug + 'static,
     K::Archived: fmt::Debug + Ord,
 {
-    fn slotted_page_mut(&mut self) -> &mut SlottedPageViewMut<'a, KeyValuePair<K, PageIndex>> {
+    fn slotted_page_mut(&mut self) -> &mut SlottedPageViewMut<'a, K, PageIndex> {
         &mut self.slotted_page
     }
 

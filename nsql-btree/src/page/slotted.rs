@@ -1,31 +1,34 @@
+use std::borrow::Borrow;
 use std::marker::PhantomData;
 use std::ops::{AddAssign, Deref, Index, IndexMut, Sub, SubAssign};
 use std::pin::Pin;
 use std::{fmt, mem, ptr, slice};
 
 use nsql_pager::PAGE_DATA_SIZE;
+use nsql_rkyv::DefaultSerializer;
 use nsql_util::static_assert_eq;
 use rkyv::rend::BigEndian;
-use rkyv::{Archive, Archived, Deserialize, Infallible};
+use rkyv::{Archive, Archived, Deserialize, Infallible, Serialize};
 
-use super::key_value_pair::KeyOrd;
 use super::{archived_size_of, PageFull};
 use crate::page::KeyValuePair;
 
 // NOTE: the layout of this MUST match the layout of the mutable version
 #[repr(C)]
 #[derive(Copy, Clone)]
-pub(crate) struct SlottedPageView<'a, T> {
+pub(crate) struct SlottedPageView<'a, K: Archive, V: Archive> {
     header: &'a Archived<SlottedPageMeta>,
     slots: &'a [Slot],
     data: &'a [u8],
-    marker: PhantomData<T>,
+    marker: PhantomData<&'a (K::Archived, V::Archived)>,
 }
 
-impl<'a, T> fmt::Debug for SlottedPageView<'a, T>
+impl<'a, K, V> fmt::Debug for SlottedPageView<'a, K, V>
 where
-    T: Archive,
-    T::Archived: Ord + fmt::Debug,
+    K: Archive,
+    K::Archived: Ord + fmt::Debug,
+    V: Archive,
+    V::Archived: fmt::Debug,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("SlottedPageView")
@@ -35,9 +38,9 @@ where
     }
 }
 
-impl<'a, T> SlottedPageView<'a, T> {
+impl<'a, K: Archive, V: Archive> SlottedPageView<'a, K, V> {
     /// Safety: `buf` must contain a valid slotted page
-    pub(crate) unsafe fn view(buf: &'a [u8]) -> SlottedPageView<'a, T> {
+    pub(crate) unsafe fn view(buf: &'a [u8]) -> SlottedPageView<'a, K, V> {
         let (header_bytes, buf) = buf.split_array_ref();
         let header = unsafe { nsql_rkyv::archived_root::<SlottedPageMeta>(header_bytes) };
 
@@ -64,62 +67,58 @@ impl<'a, T> SlottedPageView<'a, T> {
     }
 }
 
-impl<'a, T> SlottedPageView<'a, T>
+impl<'a, K, V> SlottedPageView<'a, K, V>
 where
-    T: Archive,
-    T::Archived: Ord + fmt::Debug,
+    K: Archive,
+    K::Archived: Ord,
+    V: Archive,
 {
-    pub(crate) fn get<K>(&self, key: &K) -> Option<&T::Archived>
+    pub(crate) fn get<Q>(&self, key: &Q) -> Option<&V::Archived>
     where
-        T::Archived: KeyOrd<Key = K>,
+        K::Archived: PartialOrd<Q>,
+        Q: ?Sized,
     {
         let slot = self.slot_of(key)?;
-        Some(self.get_by_slot(slot))
+        Some(&self.get_by_slot(slot).value)
     }
 
-    fn values(&self) -> impl Iterator<Item = &T::Archived> {
-        self.slots.iter().map(move |&slot| self.get_by_slot(slot))
+    fn values(&self) -> impl Iterator<Item = &V::Archived> {
+        self.slots.iter().map(move |&slot| &self.get_by_slot(slot).value)
     }
 
-    fn slot_of<K>(&self, key: &K) -> Option<Slot>
+    fn slot_of<Q>(&self, key: &Q) -> Option<Slot>
     where
-        K: ?Sized,
-        T::Archived: KeyOrd<Key = K>,
+        K::Archived: PartialOrd<Q>,
+        Q: ?Sized,
     {
         let offset = self.slot_index_of_key(key);
         offset.ok().map(|offset| self.slots[offset])
     }
 
-    pub(crate) fn get_by_slot(&self, slot: Slot) -> &T::Archived {
-        unsafe { rkyv::archived_root::<T>(&self[slot]) }
+    pub(crate) fn get_by_slot(&self, slot: Slot) -> &KeyValuePair<K::Archived, V::Archived> {
+        unsafe { rkyv::archived_root::<KeyValuePair<&K, &V>>(&self[slot]) }
     }
 
-    pub(crate) fn first(&self) -> Option<&T::Archived> {
+    pub(crate) fn low_key(&self) -> Option<&K::Archived> {
         let slot = *self.slots.first()?;
-        Some(self.get_by_slot(slot))
+        Some(&self.get_by_slot(slot).key)
     }
 
     // FIXME cleanup all this api mess
-    pub(super) fn slot_index_of_key<K>(&self, key: &K) -> Result<usize, usize>
+    pub(super) fn slot_index_of_key<Q>(&self, key: &Q) -> Result<usize, usize>
     where
-        K: ?Sized,
-        T::Archived: KeyOrd<Key = K>,
+        K::Archived: PartialOrd<Q>,
+        Q: ?Sized,
     {
         self.slots.binary_search_by(|slot| {
-            let value = self.get_by_slot(*slot);
-            value.key_cmp(key)
-        })
-    }
-
-    pub(super) fn slot_index_of_value(&self, value: &T::Archived) -> Result<usize, usize> {
-        self.slots.binary_search_by(|slot| {
-            let v = self.get_by_slot(*slot);
-            v.cmp(value)
+            let probe = self.get_by_slot(*slot);
+            // FIXME introduce another trait for this or something with a blanket impl for `Ord` types
+            probe.key.partial_cmp(key).expect("`Q` comparisons must be total with `K`")
         })
     }
 }
 
-impl<T> Index<Slot> for SlottedPageView<'_, T> {
+impl<K: Archive, V: Archive> Index<Slot> for SlottedPageView<'_, K, V> {
     type Output = [u8];
 
     fn index(&self, slot: Slot) -> &Self::Output {
@@ -137,7 +136,7 @@ impl<T> Index<Slot> for SlottedPageView<'_, T> {
     }
 }
 
-impl<T> Index<Slot> for SlottedPageViewMut<'_, T> {
+impl<'a, K: Archive + 'static, V: Archive + 'static> Index<Slot> for SlottedPageViewMut<'a, K, V> {
     type Output = [u8];
 
     fn index(&self, slot: Slot) -> &Self::Output {
@@ -145,7 +144,9 @@ impl<T> Index<Slot> for SlottedPageViewMut<'_, T> {
     }
 }
 
-impl<T> IndexMut<Slot> for SlottedPageViewMut<'_, T> {
+impl<'a, K: Archive + 'static, V: Archive + 'static> IndexMut<Slot>
+    for SlottedPageViewMut<'a, K, V>
+{
     fn index_mut(&mut self, slot: Slot) -> &mut Self::Output {
         let adjusted_slot_offset: SlotOffset =
             slot.offset - self.header.slot_len * archived_size_of!(Slot);
@@ -154,17 +155,17 @@ impl<T> IndexMut<Slot> for SlottedPageViewMut<'_, T> {
     }
 }
 
-// NOTE: must match the layout of `SlottedPageView`
+// NOK, VE: must match the layout of `SlottedPageView`
 #[derive(Eq)]
 #[repr(C)]
-pub(crate) struct SlottedPageViewMut<'a, T> {
+pub(crate) struct SlottedPageViewMut<'a, K, V> {
     header: Pin<&'a mut Archived<SlottedPageMeta>>,
     slots: &'a mut [Slot],
     data: &'a mut [u8],
-    marker: PhantomData<T>,
+    marker: PhantomData<(K, V)>,
 }
 
-impl<'a, T> fmt::Debug for SlottedPageViewMut<'a, T> {
+impl<'a, K, V> fmt::Debug for SlottedPageViewMut<'a, K, V> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("SlottedPageViewMut")
             .field("header", &self.header)
@@ -174,7 +175,7 @@ impl<'a, T> fmt::Debug for SlottedPageViewMut<'a, T> {
     }
 }
 
-impl<'a, T> PartialEq for SlottedPageViewMut<'a, T> {
+impl<'a, K, V> PartialEq for SlottedPageViewMut<'a, K, V> {
     fn eq(&self, other: &Self) -> bool {
         self.header == other.header && self.slots == other.slots && self.data == other.data
     }
@@ -195,10 +196,10 @@ nsql_util::static_assert_eq!(
     mem::size_of::<ArchivedSlottedPageMeta>()
 );
 
-impl<'a, T> SlottedPageViewMut<'a, T> {
+impl<'a, K, V> SlottedPageViewMut<'a, K, V> {
     /// `prefix_size` is the size of the page header and the page-specific header` (and anything else that comes before the slots)
     /// slot offsets are relative to the initla value of `free_start`
-    pub(crate) fn init(buf: &'a mut [u8], prefix_size: u16) -> SlottedPageViewMut<'a, T> {
+    pub(crate) fn init(buf: &'a mut [u8], prefix_size: u16) -> SlottedPageViewMut<'a, K, V> {
         let free_end = PAGE_DATA_SIZE as u16 - prefix_size - archived_size_of!(SlottedPageMeta);
         assert_eq!(free_end, buf.len() as u16 - archived_size_of!(SlottedPageMeta));
         let header = SlottedPageMeta {
@@ -214,7 +215,7 @@ impl<'a, T> SlottedPageViewMut<'a, T> {
     }
 
     /// Safety: `buf` must point at the start of a valid slotted page
-    pub(crate) unsafe fn view_mut(buf: &'a mut [u8]) -> SlottedPageViewMut<'a, T> {
+    pub(crate) unsafe fn view_mut(buf: &'a mut [u8]) -> SlottedPageViewMut<'a, K, V> {
         let (header_bytes, buf) = buf.split_array_mut();
         let header = unsafe { nsql_rkyv::archived_root_mut::<SlottedPageMeta>(header_bytes) };
 
@@ -232,13 +233,13 @@ impl<'a, T> SlottedPageViewMut<'a, T> {
     }
 }
 
-impl<'a, T> Deref for SlottedPageViewMut<'a, T> {
-    type Target = SlottedPageView<'a, T>;
+impl<'a, K: Archive + 'static, V: Archive + 'static> Deref for SlottedPageViewMut<'a, K, V> {
+    type Target = SlottedPageView<'a, K, V>;
 
     fn deref(&self) -> &Self::Target {
         static_assert_eq!(
-            mem::size_of::<SlottedPageView<'a, KeyValuePair<u16, u64>>>(),
-            mem::size_of::<SlottedPageViewMut<'a, KeyValuePair<u16, u64>>>()
+            mem::size_of::<SlottedPageView<'a, u16, u64>>(),
+            mem::size_of::<SlottedPageViewMut<'a, u16, u64>>()
         );
 
         // SAFETY this is safe because SlottedPageView and SlottedPageViewMut have the same layout
@@ -246,26 +247,32 @@ impl<'a, T> Deref for SlottedPageViewMut<'a, T> {
     }
 }
 
-impl<'a, T> SlottedPageViewMut<'a, T>
+impl<'a, K, V> SlottedPageViewMut<'a, K, V>
 where
-    T: Archive,
-    T::Archived: Deserialize<T, Infallible> + Ord + fmt::Debug,
+    K: Archive + 'static,
+    K::Archived: Ord,
+    V: Archive + 'static,
 {
-    pub(crate) fn insert(&mut self, value: &T::Archived) -> Result<Option<T>, PageFull> {
-        let serialized_value = unsafe {
-            slice::from_raw_parts(value as *const _ as *const u8, mem::size_of_val(value))
+    pub(crate) fn insert_archived(
+        &mut self,
+        entry: &KeyValuePair<K::Archived, V::Archived>,
+    ) -> Result<Option<V>, PageFull>
+    where
+        V::Archived: Deserialize<V, Infallible> + fmt::Debug,
+    {
+        let serialized_entry = unsafe {
+            slice::from_raw_parts(entry as *const _ as *const u8, mem::size_of_val(entry))
         };
-        debug_assert_eq!(unsafe { rkyv::archived_root::<T>(serialized_value) }, value);
 
         // we are dividing by 4 not 3 as we're not considering the size of the metadata etc
         assert!(
-            serialized_value.len() < PAGE_DATA_SIZE / 4,
+            serialized_entry.len() < PAGE_DATA_SIZE / 4,
             "value is too large, we must fit at least 3 items into a page"
         );
 
-        let idx = self.slot_index_of_value(value);
+        let idx = self.slot_index_of_key(&entry.key);
 
-        let length = serialized_value.len() as u16;
+        let length = serialized_entry.len() as u16;
         let has_space =
             length + archived_size_of!(Slot) <= self.header.free_end - self.header.free_start;
 
@@ -274,8 +281,9 @@ where
                 // key already exists, overwrite the slot to point to the new value
                 cov_mark::hit!(slotted_page_insert_duplicate);
                 let prev_slot = self.slots[idx];
-                let prev: T =
-                    nsql_rkyv::deserialize(unsafe { rkyv::archived_root::<T>(&self[prev_slot]) });
+                let prev = nsql_rkyv::deserialize(unsafe {
+                    &rkyv::archived_root::<KeyValuePair<&K, &V>>(&self[prev_slot]).value
+                });
 
                 let slot = if prev_slot.length >= length {
                     cov_mark::hit!(slotted_page_insert_duplicate_reuse);
@@ -296,9 +304,8 @@ where
                     Slot { offset: self.header.free_end, length: length.into() }
                 };
 
-                self[slot].copy_from_slice(serialized_value);
-                debug_assert_eq!(&self[slot], serialized_value);
-                debug_assert_eq!(unsafe { rkyv::archived_root::<T>(&self[slot]) }, value);
+                self[slot].copy_from_slice(serialized_entry);
+                debug_assert_eq!(&self[slot], serialized_entry);
 
                 self.slots[idx] = slot;
                 Some(prev)
@@ -311,9 +318,8 @@ where
                 self.header.free_end -= length;
                 self.header.free_start += archived_size_of!(Slot);
                 let slot = Slot { offset: self.header.free_end, length: length.into() };
-                self[slot].copy_from_slice(serialized_value);
-                debug_assert_eq!(&self[slot], serialized_value);
-                debug_assert_eq!(unsafe { rkyv::archived_root::<T>(&self[slot]) }, value);
+                self[slot].copy_from_slice(serialized_entry);
+                debug_assert_eq!(&self[slot], serialized_entry);
 
                 unsafe {
                     // shift everything right of `idx` to the right by 1 (include `idx`) to make space
@@ -350,9 +356,24 @@ where
         Ok(prev)
     }
 
+    /// Inserts a value into the page, returning a deserialized copy of the previous value if it already existed
+    pub(crate) fn insert(&mut self, key: &K, value: &V) -> Result<Option<V>, PageFull>
+    where
+        K: Serialize<DefaultSerializer>,
+        V: Serialize<DefaultSerializer>,
+        V::Archived: Deserialize<V, Infallible> + fmt::Debug,
+    {
+        let entry = KeyValuePair { key, value };
+        let bytes = nsql_rkyv::to_bytes(&entry);
+        let archived_entry = unsafe { rkyv::archived_root::<KeyValuePair<&K, &V>>(&bytes) };
+        self.insert_archived(archived_entry)
+    }
+
     #[cfg(debug_assertions)]
     fn assert_sorted(&self) {
-        let mut values = Vec::<&T::Archived>::with_capacity(self.header.slot_len.value() as usize);
+        let mut values = Vec::<&KeyValuePair<K::Archived, V::Archived>>::with_capacity(
+            self.header.slot_len.value() as usize,
+        );
         for &slot in self.slots.iter() {
             values.push(self.get_by_slot(slot));
         }

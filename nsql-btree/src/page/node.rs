@@ -2,10 +2,11 @@ use std::fmt;
 use std::pin::Pin;
 
 use nsql_pager::{PageIndex, PAGE_DATA_SIZE};
-use rkyv::{Archive, Archived, Deserialize};
+use nsql_rkyv::DefaultSerializer;
+use rkyv::{Archive, Archived, Deserialize, Serialize};
 
 use super::slotted::{SlottedPageView, SlottedPageViewMut};
-use super::{ArchivedKeyValuePair, Flags, InteriorPageViewMut, KeyValuePair, PageFull, PageHeader};
+use super::{Flags, InteriorPageViewMut, PageFull, PageHeader};
 use crate::Result;
 
 pub(crate) trait NodeHeader: Unpin {
@@ -19,14 +20,14 @@ pub(crate) trait NodeHeader: Unpin {
 /// Abstraction over `Leaf` and `Interior` btree nodes
 pub(crate) trait NodeView<'a, K, V>: Sized
 where
-    K: Archive + fmt::Debug,
+    K: Archive + fmt::Debug + 'static,
     K::Archived: Ord + fmt::Debug,
-    V: Archive + fmt::Debug,
+    V: Archive + fmt::Debug + 'static,
     V::Archived: fmt::Debug,
 {
     type ArchivedNodeHeader: NodeHeader;
 
-    fn slotted_page(&self) -> &SlottedPageView<'a, KeyValuePair<K, V>>;
+    fn slotted_page(&self) -> &SlottedPageView<'a, K, V>;
 
     fn page_header(&self) -> &Archived<PageHeader>;
 
@@ -49,9 +50,9 @@ where
 
 pub(crate) trait NodeMut<K, V>: Sized
 where
-    K: Archive + fmt::Debug,
+    K: Archive + fmt::Debug + 'static,
     K::Archived: Ord + fmt::Debug,
-    V: Archive + fmt::Debug,
+    V: Archive + fmt::Debug + 'static,
     V::Archived: fmt::Debug,
 {
     type ViewMut<'a>: NodeViewMut<'a, K, V>;
@@ -81,8 +82,7 @@ where
         right_page_idx: PageIndex,
         right: &mut Self::ViewMut<'_>,
     ) where
-        K::Archived: Deserialize<K, rkyv::Infallible>,
-        V::Archived: Deserialize<V, rkyv::Infallible>,
+        V::Archived: Deserialize<V, rkyv::Infallible> + fmt::Debug,
     {
         assert!(root.is_root());
         assert!(root.slotted_page().len() >= 3);
@@ -92,13 +92,13 @@ where
         let slots = root.slotted_page().slots();
         let (lhs, rhs) = slots.split_at(slots.len() / 2);
         for &slot in lhs {
-            let value = root.slotted_page().get_by_slot(slot);
-            left.slotted_page_mut().insert(value).unwrap();
+            let entry = root.slotted_page().get_by_slot(slot);
+            left.slotted_page_mut().insert_archived(entry).unwrap();
         }
 
         for &slot in rhs {
-            let value = root.slotted_page().get_by_slot(slot);
-            right.slotted_page_mut().insert(value).unwrap();
+            let entry = root.slotted_page().get_by_slot(slot);
+            right.slotted_page_mut().insert_archived(entry).unwrap();
         }
 
         right.set_left_link(left_page_idx);
@@ -125,8 +125,8 @@ where
         let ours = view.slotted_page_mut();
         let theirs = left.slotted_page_mut();
         for &slot in rhs {
-            let value = ours.get_by_slot(slot);
-            theirs.insert(value).expect("new page should not be full");
+            let entry = ours.get_by_slot(slot);
+            theirs.insert_archived(entry).expect("new page should not be full");
         }
 
         ours.set_len(lhs.len() as u16);
@@ -138,14 +138,14 @@ where
 
 pub(crate) trait NodeViewMut<'a, K, V>: NodeView<'a, K, V>
 where
-    K: Archive + fmt::Debug,
+    K: Archive + fmt::Debug + 'static,
     K::Archived: Ord + fmt::Debug,
-    V: Archive + fmt::Debug,
+    V: Archive + fmt::Debug + 'static,
     V::Archived: fmt::Debug,
 {
     fn node_header_mut(&mut self) -> Pin<&mut Self::ArchivedNodeHeader>;
 
-    fn slotted_page_mut(&mut self) -> &mut SlottedPageViewMut<'a, KeyValuePair<K, V>>;
+    fn slotted_page_mut(&mut self) -> &mut SlottedPageViewMut<'a, K, V>;
 
     /// SAFETY: The page header must be archived at the start of the page
     /// This is assumed by the implementation of `raw_bytes_mut`
@@ -172,22 +172,17 @@ where
         self.node_header_mut().set_right_link(right_link);
     }
 
-    fn insert(
-        &mut self,
-        key: K::Archived,
-        value: impl Into<V::Archived>,
-    ) -> Result<Option<V>, PageFull>
+    fn insert(&mut self, key: &K, value: &V) -> Result<Option<V>, PageFull>
     where
-        K::Archived: Deserialize<K, rkyv::Infallible>,
+        K: Serialize<DefaultSerializer>,
+        K::Archived: Deserialize<K, rkyv::Infallible> + PartialOrd<K>,
+        V: Serialize<DefaultSerializer>,
         V::Archived: Deserialize<V, rkyv::Infallible>,
     {
         if let Some(low_key) = self.low_key() {
-            assert!(low_key <= &key, "key must be no less than low key {low_key:?} !<= {key:?}");
+            assert!(low_key <= key, "key must be no less than low key {low_key:?} !<= {key:?}");
         }
 
-        Ok(self
-            .slotted_page_mut()
-            .insert(&ArchivedKeyValuePair::new(key, value.into()))?
-            .map(|prev| prev.value))
+        self.slotted_page_mut().insert(key, value)
     }
 }

@@ -57,10 +57,10 @@ impl Default for LeafPageHeader {
 }
 
 #[repr(C)]
-pub(crate) struct LeafPageView<'a, K, V> {
+pub(crate) struct LeafPageView<'a, K: Archive, V: Archive> {
     page_header: &'a Archived<PageHeader>,
     header: &'a Archived<LeafPageHeader>,
-    slotted_page: SlottedPageView<'a, KeyValuePair<K, V>>,
+    slotted_page: SlottedPageView<'a, K, V>,
 }
 
 impl<K, V> fmt::Debug for LeafPageView<'_, K, V>
@@ -93,12 +93,12 @@ where
         let header = nsql_rkyv::archived_root::<LeafPageHeader>(header_bytes);
         header.check_magic()?;
 
-        let slotted_page = SlottedPageView::<'a, KeyValuePair<K, V>>::view(data);
+        let slotted_page = SlottedPageView::view(data);
         Ok(Self { page_header, header, slotted_page })
     }
 
     pub(crate) fn get(&self, key: &K::Archived) -> Option<&V::Archived> {
-        self.slotted_page.get(key).map(|kv| &kv.value)
+        self.slotted_page.get(key)
     }
 }
 
@@ -107,10 +107,10 @@ where
 pub(crate) struct LeafPageViewMut<'a, K, V> {
     page_header: Pin<&'a mut Archived<PageHeader>>,
     header: Pin<&'a mut Archived<LeafPageHeader>>,
-    slotted_page: SlottedPageViewMut<'a, KeyValuePair<K, V>>,
+    slotted_page: SlottedPageViewMut<'a, K, V>,
 }
 
-impl<'a, K, V> Deref for LeafPageViewMut<'a, K, V> {
+impl<'a, K: Archive + 'static, V: Archive + 'static> Deref for LeafPageViewMut<'a, K, V> {
     type Target = LeafPageView<'a, K, V>;
 
     fn deref(&self) -> &Self::Target {
@@ -127,14 +127,14 @@ impl<'a, K, V> Deref for LeafPageViewMut<'a, K, V> {
 
 impl<'a, K, V> NodeView<'a, K, V> for LeafPageView<'a, K, V>
 where
-    K: Archive + fmt::Debug,
+    K: Archive + fmt::Debug + 'static,
     K::Archived: fmt::Debug + Ord,
-    V: Archive + fmt::Debug,
+    V: Archive + fmt::Debug + 'static,
     V::Archived: fmt::Debug,
 {
     type ArchivedNodeHeader = Archived<LeafPageHeader>;
 
-    fn slotted_page(&self) -> &SlottedPageView<'a, KeyValuePair<K, V>> {
+    fn slotted_page(&self) -> &SlottedPageView<'a, K, V> {
         &self.slotted_page
     }
 
@@ -148,20 +148,20 @@ where
 
     fn low_key(&self) -> Option<&K::Archived> {
         (!self.is_root())
-            .then(|| &self.slotted_page.first().expect("non-root should have a low_key").key)
+            .then(|| self.slotted_page.low_key().expect("non-root should have a low_key"))
     }
 }
 
 impl<'a, K, V> NodeView<'a, K, V> for LeafPageViewMut<'a, K, V>
 where
-    K: Archive + fmt::Debug,
+    K: Archive + fmt::Debug + 'static,
     K::Archived: fmt::Debug + Ord,
-    V: Archive + fmt::Debug,
+    V: Archive + fmt::Debug + 'static,
     V::Archived: fmt::Debug,
 {
     type ArchivedNodeHeader = Archived<LeafPageHeader>;
 
-    fn slotted_page(&self) -> &SlottedPageView<'a, KeyValuePair<K, V>> {
+    fn slotted_page(&self) -> &SlottedPageView<'a, K, V> {
         (**self).slotted_page()
     }
 
@@ -180,9 +180,9 @@ where
 
 impl<K, V> NodeMut<K, V> for LeafPageViewMut<'_, K, V>
 where
-    K: Archive + fmt::Debug,
+    K: Archive + fmt::Debug + 'static,
     K::Archived: Ord + fmt::Debug,
-    V: Archive + fmt::Debug,
+    V: Archive + fmt::Debug + 'static,
     V::Archived: fmt::Debug,
 {
     type ViewMut<'a> = LeafPageViewMut<'a, K, V>;
@@ -214,7 +214,7 @@ where
 
         // the slots start after the page header and the leaf page header
         let prefix_size = archived_size_of!(PageHeader) + archived_size_of!(LeafPageHeader);
-        let slotted_page = SlottedPageViewMut::<'_, KeyValuePair<K, V>>::init(data, prefix_size);
+        let slotted_page = SlottedPageViewMut::init(data, prefix_size);
 
         LeafPageViewMut { page_header, header, slotted_page }
     }
@@ -222,12 +222,12 @@ where
 
 impl<'a, K, V> NodeViewMut<'a, K, V> for LeafPageViewMut<'a, K, V>
 where
-    K: Archive + fmt::Debug,
+    K: Archive + fmt::Debug + 'static,
     K::Archived: fmt::Debug + Ord,
-    V: Archive + fmt::Debug,
+    V: Archive + fmt::Debug + 'static,
     V::Archived: fmt::Debug,
 {
-    fn slotted_page_mut(&mut self) -> &mut SlottedPageViewMut<'a, KeyValuePair<K, V>> {
+    fn slotted_page_mut(&mut self) -> &mut SlottedPageViewMut<'a, K, V> {
         &mut self.slotted_page
     }
 

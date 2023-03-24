@@ -6,7 +6,7 @@ mod slotted;
 
 use std::fmt;
 
-pub(crate) use key_value_pair::{ArchivedKeyValuePair, KeyValuePair};
+pub(crate) use key_value_pair::KeyValuePair;
 pub(crate) use node::{NodeMut, NodeView, NodeViewMut};
 use nsql_pager::PAGE_DATA_SIZE;
 use rkyv::Archive;
@@ -66,7 +66,7 @@ impl PageHeader {
     }
 }
 
-pub(crate) enum PageView<'a, K, V> {
+pub(crate) enum PageView<'a, K: Archive, V: Archive> {
     Interior(InteriorPageView<'a, K>),
     Leaf(LeafPageView<'a, K, V>),
 }
@@ -97,9 +97,9 @@ pub(crate) enum PageViewMut<'a, K, V> {
 
 impl<'a, K, V> PageViewMut<'a, K, V>
 where
-    K: Archive + fmt::Debug,
+    K: Archive + fmt::Debug + 'static,
     K::Archived: fmt::Debug + Ord,
-    V: Archive + fmt::Debug,
+    V: Archive + fmt::Debug + 'static,
     V::Archived: fmt::Debug,
 {
     pub(crate) async unsafe fn view_mut(
