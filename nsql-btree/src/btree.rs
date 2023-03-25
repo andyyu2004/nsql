@@ -35,10 +35,10 @@ impl<K, V> Clone for BTree<K, V> {
 
 impl<K, V> BTree<K, V>
 where
-    K: Min + Archive + Serialize<DefaultSerializer> + fmt::Debug + 'static,
-    K::Archived: Deserialize<K, rkyv::Infallible> + PartialOrd<K> + fmt::Debug + Ord,
-    V: Archive + Serialize<DefaultSerializer> + fmt::Debug + 'static,
-    V::Archived: Deserialize<V, rkyv::Infallible> + fmt::Debug,
+    K: Min + Archive + Serialize<DefaultSerializer> + fmt::Debug + Send + Sync + 'static,
+    K::Archived: Deserialize<K, rkyv::Infallible> + PartialOrd<K> + fmt::Debug + Ord + Send + Sync,
+    V: Archive + Serialize<DefaultSerializer> + fmt::Debug + Send + Sync + 'static,
+    V::Archived: Deserialize<V, rkyv::Infallible> + fmt::Debug + Send + Sync,
 {
     #[inline]
     pub async fn initialize(pool: Arc<dyn Pool>) -> Result<Self> {
@@ -67,7 +67,7 @@ where
         self.insert_leaf(leaf_idx, parents, key, value).await
     }
 
-    #[async_recursion(?Send)]
+    #[async_recursion]
     async fn search_node(&self, idx: PageIndex, key: &K::Archived) -> Result<Option<V>> {
         let handle = self.pool.load(idx).await?;
         let guard = handle.read().await;
@@ -90,7 +90,7 @@ where
         Ok((leaf_idx, parents))
     }
 
-    #[async_recursion(?Send)]
+    #[async_recursion]
     async fn find_leaf_page_idx_rec(
         &self,
         idx: PageIndex,
@@ -149,7 +149,7 @@ where
         }
     }
 
-    #[async_recursion(?Send)]
+    #[async_recursion]
     async fn insert_interior(
         &self,
         mut parents: Vec<PageIndex>,

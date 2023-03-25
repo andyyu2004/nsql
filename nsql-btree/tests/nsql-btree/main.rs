@@ -150,10 +150,18 @@ fn test_insert_duplicate_into_full_page() -> Result<()> {
 
 fn run_insertions<K, V>(pairs: &[(K, V)]) -> Result<()>
 where
-    K: Min + Archive + Serialize<DefaultSerializer> + Eq + Hash + fmt::Debug + 'static,
-    K::Archived: Deserialize<K, rkyv::Infallible> + PartialOrd<K> + fmt::Debug + Ord,
-    V: Archive + Eq + Serialize<DefaultSerializer> + fmt::Debug + 'static,
-    V::Archived: Deserialize<V, rkyv::Infallible> + fmt::Debug,
+    K: Min
+        + Archive
+        + Serialize<DefaultSerializer>
+        + Eq
+        + Hash
+        + fmt::Debug
+        + Send
+        + Sync
+        + 'static,
+    K::Archived: Deserialize<K, rkyv::Infallible> + PartialOrd<K> + fmt::Debug + Ord + Send + Sync,
+    V: Archive + Eq + Serialize<DefaultSerializer> + fmt::Debug + Send + Sync + 'static,
+    V::Archived: Deserialize<V, rkyv::Infallible> + fmt::Debug + Send + Sync,
 {
     nsql_test::start(async {
         let pool = mk_fast_mem_buffer_pool!();
