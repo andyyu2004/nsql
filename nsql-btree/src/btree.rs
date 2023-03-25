@@ -33,6 +33,9 @@ impl<K, V> Clone for BTree<K, V> {
     }
 }
 
+#[derive(Debug)]
+struct ConcurrentRootSplit;
+
 impl<K, V> BTree<K, V>
 where
     K: Min + Archive + Serialize<DefaultSerializer> + fmt::Debug + Send + Sync + 'static,
@@ -63,8 +66,17 @@ where
     #[inline]
     #[tracing::instrument]
     pub async fn insert(&self, key: &K, value: &V) -> Result<Option<V>> {
-        let (leaf_idx, parents) = self.find_leaf_page_idx(key).await?;
-        self.insert_leaf(leaf_idx, parents, key, value).await
+        for _ in 0..2 {
+            let (leaf_idx, parents) = self.find_leaf_page_idx(key).await?;
+            match self.insert_leaf(leaf_idx, parents, key, value).await? {
+                Ok(prev) => return Ok(prev),
+                Err(ConcurrentRootSplit) => continue,
+            }
+        }
+
+        // this should only fail once as the error should only occur as a special case when the root is
+        // changed from a leaf to an interior node.
+        unreachable!("BUG: failed to insert after second attempt");
     }
 
     #[async_recursion]
@@ -111,6 +123,17 @@ where
         }
     }
 
+    #[cold]
+    fn concurrent_root_split(interior: InteriorPageViewMut<'_, K>) -> ConcurrentRootSplit {
+        assert!(
+            interior.is_root(),
+            "BUG: a non-root node changed from being a leaf to an interior node"
+        );
+
+        ConcurrentRootSplit
+    }
+
+    #[tracing::instrument]
     #[inline]
     async fn insert_leaf(
         &self,
@@ -118,22 +141,26 @@ where
         parents: Vec<PageIndex>,
         key: &K,
         value: &V,
-    ) -> Result<Option<V>> {
+    ) -> Result<Result<Option<V>, ConcurrentRootSplit>> {
         let leaf_handle = self.pool.load(leaf_page_idx).await?;
         let mut leaf_guard = leaf_handle.write().await;
         let view = unsafe { PageViewMut::<K, V>::view_mut(&mut leaf_guard).await? };
+
         let mut leaf = match view {
-            PageViewMut::Interior(_) => unreachable!("should have been passed a leaf page"),
+            PageViewMut::Interior(interior) => {
+                return Ok(Err(Self::concurrent_root_split(interior)));
+            }
             PageViewMut::Leaf(leaf) => leaf,
         };
 
         match leaf.insert(key, value) {
-            Ok(value) => Ok(value),
+            Ok(value) => Ok(Ok(value)),
             Err(PageFull) => {
                 if leaf.page_header().flags.contains(Flags::IS_ROOT) {
                     cov_mark::hit!(root_leaf_split);
                     self.split_root_and_insert::<LeafPageViewMut<'_, K, V>, _>(leaf, key, value)
                         .await
+                        .map(Ok)
                 } else {
                     cov_mark::hit!(non_root_leaf_split);
                     self.split_non_root_and_insert::<LeafPageViewMut<'_, K, V>, _>(
@@ -144,6 +171,7 @@ where
                         value,
                     )
                     .await
+                    .map(Ok)
                 }
             }
         }
