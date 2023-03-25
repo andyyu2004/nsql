@@ -55,7 +55,8 @@ where
     }
 
     #[inline]
-    #[tracing::instrument]
+    #[tracing::instrument(skip(key))]
+    // we instrument the key with `search_node`, we just want `self` here
     pub async fn get(&self, key: &K) -> Result<Option<V>> {
         self.search_node(self.root_idx, key).await
     }
@@ -77,8 +78,10 @@ where
         unreachable!("BUG: failed to insert after second attempt");
     }
 
+    #[tracing::instrument(skip(self))]
     #[async_recursion]
     async fn search_node(&self, idx: PageIndex, key: &K) -> Result<Option<V>> {
+        tracing::debug!("search_node");
         let handle = self.pool.load(idx).await?;
         let guard = handle.read().await;
         let node = unsafe { PageView::<K, V>::view(&guard).await? };
@@ -87,6 +90,7 @@ where
             PageView::Interior(interior) => {
                 let child_idx = interior.search(key);
                 drop(guard);
+                assert_ne!(child_idx, idx, "child index should not be the same as parent index");
                 self.search_node(child_idx, key).await
             }
         }
@@ -131,7 +135,7 @@ where
         ConcurrentRootSplit
     }
 
-    #[tracing::instrument]
+    #[tracing::instrument(skip(self, key, value))]
     #[inline]
     async fn insert_leaf(
         &self,
@@ -229,6 +233,7 @@ where
         T: Archive + Serialize<DefaultSerializer> + fmt::Debug,
         T::Archived: Deserialize<T, rkyv::Infallible> + fmt::Debug,
     {
+        tracing::debug!(kind = std::any::type_name::<N>(), "splitting non-root");
         // split the non-root interior by allocating a new interior and splitting the contents
         // then we insert the separator key and the new page index into the parent
         let new_page = self.pool.alloc().await?;
@@ -249,6 +254,7 @@ where
         Ok(prev)
     }
 
+    #[tracing::instrument(skip(root))]
     async fn split_root_and_insert<N, T>(
         &self,
         mut root: N::ViewMut<'_>,
@@ -260,6 +266,8 @@ where
         T: Archive + Serialize<DefaultSerializer> + fmt::Debug,
         T::Archived: Deserialize<T, rkyv::Infallible> + fmt::Debug,
     {
+        tracing::info!(kind = std::any::type_name::<N>(), "splitting root");
+
         assert!(root.len() >= 3, "root that requires a split should contain at least 3 entries");
         let left_page = self.pool.alloc().await?;
         let mut left_guard = left_page.write().await;

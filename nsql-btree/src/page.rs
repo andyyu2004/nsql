@@ -78,9 +78,9 @@ pub(crate) enum PageView<'a, K: Archive, V: Archive> {
 
 impl<'a, K, V> PageView<'a, K, V>
 where
-    K: Archive + fmt::Debug,
+    K: Archive + fmt::Debug + 'static,
     K::Archived: fmt::Debug + Ord,
-    V: Archive + fmt::Debug,
+    V: Archive + fmt::Debug + 'static,
     V::Archived: fmt::Debug,
 {
     pub(crate) async unsafe fn view(data: &'a [u8; PAGE_DATA_SIZE]) -> Result<PageView<'a, K, V>> {

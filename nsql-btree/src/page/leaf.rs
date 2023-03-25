@@ -80,9 +80,9 @@ where
 
 impl<'a, K, V> LeafPageView<'a, K, V>
 where
-    K: Archive + fmt::Debug,
+    K: Archive + fmt::Debug + 'static,
     K::Archived: fmt::Debug + Ord,
-    V: Archive + fmt::Debug,
+    V: Archive + fmt::Debug + 'static,
     V::Archived: fmt::Debug,
 {
     pub(crate) unsafe fn view(data: &'a [u8; PAGE_DATA_SIZE]) -> Result<LeafPageView<'a, K, V>> {
@@ -100,8 +100,12 @@ where
     pub(crate) fn get<Q>(&self, key: &Q) -> Option<&V::Archived>
     where
         K::Archived: PartialOrd<Q>,
-        Q: ?Sized,
+        Q: ?Sized + fmt::Debug,
     {
+        if let Some(low_key) = self.low_key() {
+            assert!(low_key <= key);
+        }
+
         self.slotted_page.get(key)
     }
 }

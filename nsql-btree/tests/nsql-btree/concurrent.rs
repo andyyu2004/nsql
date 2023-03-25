@@ -1,20 +1,26 @@
 // can't use `cov_mark` in this file as it uses thread locals but we're spinning up a bunch of
 // tasks which get scheduled on alternative threads
-use std::io;
+use std::{fmt, io};
 
+use nsql_rkyv::DefaultSerializer;
+use nsql_test::mk_fast_mem_buffer_pool;
+use rkyv::{Archive, Deserialize, Serialize};
+use test_strategy::proptest;
 use tokio::task::JoinSet;
 
-use super::*;
+use crate::{BTree, Min, Result};
 
 #[test]
+#[tracing_test::traced_test]
 fn test_concurrent_root_leaf_split() {
-    let inputs = (0..2).map(|_| (0..400).map(|i| (i, i)).collect()).collect::<Vec<_>>();
+    let inputs = (0..2).map(|_| (0..500).map(|i| (i, i)).collect()).collect::<Vec<_>>();
     run_concurrent_insertions(inputs).unwrap();
+    assert!(logs_contain("splitting root"));
+    assert!(!logs_contain("splitting non-root"));
 }
 
 #[test]
 fn test_concurrent_inserts_large() {
-    console_subscriber::init();
     let inputs = (0..100).map(|_| (0..600).map(|i| (i, i)).collect()).collect::<Vec<_>>();
     run_concurrent_insertions(inputs).unwrap();
 }
@@ -42,7 +48,7 @@ where
             set.spawn(async move {
                 for (key, value) in &input[..] {
                     btree.insert(key, value).await?;
-                    // assert_eq!(&btree.get(key).await?.unwrap(), value);
+                    assert_eq!(&btree.get(key).await?.unwrap(), value);
                 }
                 Ok(())
             });

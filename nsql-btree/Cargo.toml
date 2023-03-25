@@ -27,4 +27,5 @@ criterion = { version = "0.4.0", features = ["async_tokio"] }
 proptest = "1.1.0"
 test-strategy = "0.3.0"
 tokio = { version = "1.26.0", default-features = false, features = ["rt-multi-thread", "tracing", "parking_lot"] }
-console-subscriber = "0.1.8"
+# console-subscriber = "0.1.8"
+tracing-test = { version = "0.2.4", features = ["no-env-filter"] }

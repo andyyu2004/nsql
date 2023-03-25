@@ -176,7 +176,9 @@ where
     /// This is intended for use when splitting a root node.
     fn reinitialize_as_root_interior(&mut self) -> InteriorPageViewMut<'_, K> {
         assert!(self.page_header().flags.contains(Flags::IS_ROOT));
-        InteriorPageViewMut::initialize_root(self.raw_bytes_mut())
+        let root_interior = InteriorPageViewMut::initialize_root(self.raw_bytes_mut());
+        assert!(root_interior.is_root());
+        root_interior
     }
 
     fn set_left_link(&mut self, left_link: PageIndex) {

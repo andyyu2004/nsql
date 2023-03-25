@@ -96,7 +96,6 @@ impl Page {
 // Internally one indexed to enable niche optimization.
 // However, we do the adjustments on construction and retrieval to make it transparent to the user
 #[derive(
-    Debug,
     Clone,
     Copy,
     Hash,
@@ -115,6 +114,12 @@ impl Page {
 #[archive_attr(derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord))]
 pub struct PageIndex {
     idx: NonZeroU32,
+}
+
+impl fmt::Debug for PageIndex {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.as_u32())
+    }
 }
 
 impl From<Archived<PageIndex>> for PageIndex {
