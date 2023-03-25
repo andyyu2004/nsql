@@ -92,13 +92,23 @@ where
         let slots = root.slotted_page().slots();
         let (lhs, rhs) = slots.split_at(slots.len() / 2);
         for &slot in lhs {
-            let entry = root.slotted_page().get_by_slot(slot);
-            left.slotted_page_mut().insert_archived(entry).unwrap();
+            let entry_bytes = &root.slotted_page()[slot];
+            assert!(
+                unsafe { left.slotted_page_mut().insert_raw(entry_bytes) }
+                    .expect("should have sufficient space")
+                    .is_none(),
+                "should not have a previous value"
+            )
         }
 
         for &slot in rhs {
-            let entry = root.slotted_page().get_by_slot(slot);
-            right.slotted_page_mut().insert_archived(entry).unwrap();
+            let entry_bytes = &root.slotted_page()[slot];
+            assert!(
+                unsafe { right.slotted_page_mut().insert_raw(entry_bytes) }
+                    .expect("should have sufficient space")
+                    .is_none(),
+                "should not have a previous value"
+            )
         }
 
         right.set_left_link(left_page_idx);
@@ -125,8 +135,13 @@ where
         let ours = view.slotted_page_mut();
         let theirs = left.slotted_page_mut();
         for &slot in rhs {
-            let entry = ours.get_by_slot(slot);
-            theirs.insert_archived(entry).expect("new page should not be full");
+            let entry_bytes = &ours[slot];
+            assert!(
+                unsafe { theirs.insert_raw(entry_bytes) }
+                    .expect("new page should not be full")
+                    .is_none(),
+                "should not have a previous value"
+            );
         }
 
         ours.set_len(lhs.len() as u16);

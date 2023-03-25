@@ -252,23 +252,23 @@ where
     K::Archived: Ord,
     V: Archive + 'static,
 {
-    pub(crate) fn insert_archived(
+    /// Safety: `serialized_entry` must be the serialized bytes of an `Entry<&K, &V>`
+    pub(crate) unsafe fn insert_raw(
         &mut self,
-        entry: &Entry<K::Archived, V::Archived>,
+        serialized_entry: &[u8],
     ) -> Result<Option<V>, PageFull>
     where
         V::Archived: Deserialize<V, Infallible> + fmt::Debug,
     {
-        let serialized_entry = unsafe {
-            slice::from_raw_parts(entry as *const _ as *const u8, mem::size_of_val(entry))
-        };
-
+        if serialized_entry.len() > PAGE_DATA_SIZE / 4 {
+            // we are dividing by 4 not 3 as we're not considering the size of the metadata etc
+            todo!(
+                "value is too large, we must fit at least 3 items into a page (need to implement overflow pages)"
+            );
+        }
         // we are dividing by 4 not 3 as we're not considering the size of the metadata etc
-        assert!(
-            serialized_entry.len() < PAGE_DATA_SIZE / 4,
-            "value is too large, we must fit at least 3 items into a page"
-        );
 
+        let entry = unsafe { rkyv::archived_root::<Entry<&K, &V>>(serialized_entry) };
         let idx = self.slot_index_of_key(&entry.key);
 
         let length = serialized_entry.len() as u16;
@@ -364,8 +364,7 @@ where
     {
         let entry = Entry { key, value };
         let bytes = nsql_rkyv::to_bytes(&entry);
-        let archived_entry = unsafe { rkyv::archived_root::<Entry<&K, &V>>(&bytes) };
-        self.insert_archived(archived_entry)
+        unsafe { self.insert_raw(&bytes) }
     }
 
     #[cfg(debug_assertions)]

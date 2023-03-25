@@ -86,6 +86,40 @@ fn test_out_of_order_insert() {
     run_insertions(&pairs).unwrap()
 }
 
+#[test]
+fn test_insert_boxed_values() {
+    let pairs: [(u32, Box<[u8]>); 2] = [(1, Box::new([1, 2, 3])), (0, Box::new([4, 5]))];
+    run_insertions(&pairs).unwrap()
+}
+
+#[test]
+#[should_panic]
+// should fail with a `todo` for now as overflow pages are not implemented
+fn test_overflow_necessity_is_detected() {
+    let pairs = [(1, Box::new([0; 4097]))];
+    let _should_panic_before_this = run_insertions(&pairs);
+}
+
+#[test]
+fn test_split_still_returns_overwritten_value() -> Result<()> {
+    // let pairs: &[(u32, Box<[u8]>)] = &[(1, Box::new([0; 4096]))];
+    // nsql_test::start(async {
+    //     let pool = mk_fast_mem_buffer_pool!();
+    //     let btree = BTree::<u32, Box<[u8]>>::initialize(pool).await?;
+
+    //     for (key, value) in pairs {
+    //         assert_eq!(btree.insert(key, value).await?.as_ref(), None);
+    //     }
+
+    //     for (key, value) in pairs {
+    //         assert_eq!(btree.insert(key, value).await?.as_ref(), Some(value));
+    //     }
+
+    //     Ok(())
+    // })
+    Ok(())
+}
+
 #[proptest]
 fn test_btree_insert_and_get_random(pairs: Box<[(u32, u16)]>) {
     run_insertions(&pairs).unwrap()
