@@ -43,9 +43,9 @@ where
     #[inline]
     pub async fn initialize(pool: Arc<dyn Pool>) -> Result<Self> {
         let handle = pool.alloc().await?;
-        let mut data = handle.write().await;
+        let mut guard = handle.write().await;
 
-        let _root = LeafPageViewMut::<K, V>::initialize_root(&mut data);
+        let _root = LeafPageViewMut::<K, V>::initialize_root(&mut guard);
 
         let root_idx = handle.page_idx();
         Ok(Self { pool, root_idx, marker: PhantomData })
@@ -70,13 +70,13 @@ where
     #[async_recursion(?Send)]
     async fn search_node(&self, idx: PageIndex, key: &K::Archived) -> Result<Option<V>> {
         let handle = self.pool.load(idx).await?;
-        let data = handle.read().await;
-        let node = unsafe { PageView::<K, V>::view(&data).await? };
+        let guard = handle.read().await;
+        let node = unsafe { PageView::<K, V>::view(&guard).await? };
         match node {
             PageView::Leaf(leaf) => Ok(leaf.get(key).map(nsql_rkyv::deserialize)),
             PageView::Interior(interior) => {
                 let child_idx = interior.search(key);
-                drop(data);
+                drop(guard);
                 self.search_node(child_idx, key).await
             }
         }
@@ -98,14 +98,14 @@ where
         stack: &mut Vec<PageIndex>,
     ) -> Result<PageIndex> {
         let handle = self.pool.load(idx).await?;
-        let data = handle.read().await;
-        let node = unsafe { PageView::<K, V>::view(&data).await? };
+        let guard = handle.read().await;
+        let node = unsafe { PageView::<K, V>::view(&guard).await? };
         match node {
             PageView::Leaf(_) => Ok(idx),
             PageView::Interior(interior) => {
                 stack.push(idx);
                 let child_idx = interior.search(key);
-                drop(data);
+                drop(guard);
                 self.find_leaf_page_idx_rec(child_idx, key, stack).await
             }
         }
@@ -120,8 +120,8 @@ where
         value: &V,
     ) -> Result<Option<V>> {
         let leaf_handle = self.pool.load(leaf_page_idx).await?;
-        let mut leaf_data = leaf_handle.write().await;
-        let view = unsafe { PageViewMut::<K, V>::view_mut(&mut leaf_data).await? };
+        let mut leaf_guard = leaf_handle.write().await;
+        let view = unsafe { PageViewMut::<K, V>::view_mut(&mut leaf_guard).await? };
         let mut leaf = match view {
             PageViewMut::Interior(_) => unreachable!("should have been passed a leaf page"),
             PageViewMut::Leaf(leaf) => leaf,
@@ -158,8 +158,8 @@ where
     ) -> Result<()> {
         let parent_idx = parents.pop().expect("non-root leaf must have at least one parent");
         let parent_page = self.pool.load(parent_idx).await?;
-        let mut parent_data = parent_page.write().await;
-        let parent_view = unsafe { PageViewMut::<K, V>::view_mut(&mut parent_data).await? };
+        let mut parent_guard = parent_page.write().await;
+        let parent_view = unsafe { PageViewMut::<K, V>::view_mut(&mut parent_guard).await? };
         let mut parent = match parent_view {
             PageViewMut::Interior(interior) => interior,
             PageViewMut::Leaf(_) => {
@@ -206,9 +206,9 @@ where
         // split the non-root interior by allocating a new interior and splitting the contents
         // then we insert the separator key and the new page index into the parent
         let new_page = self.pool.alloc().await?;
-        let mut new_data = new_page.page().write().await;
-        let new_page_idx = new_data.page_idx();
-        let mut new_node = N::initialize(&mut new_data);
+        let mut new_guard = new_page.page().write().await;
+        let new_page_idx = new_guard.page_idx();
+        let mut new_node = N::initialize(&mut new_guard);
 
         N::split_left_into(&mut node, new_page_idx, &mut new_node, node_page_idx);
 
@@ -236,15 +236,15 @@ where
     {
         assert!(root.len() >= 3, "root that requires a split should contain at least 3 entries");
         let left_page = self.pool.alloc().await?;
-        let mut left_data = left_page.write().await;
+        let mut left_guard = left_page.write().await;
 
-        let right_data = self.pool.alloc().await?;
-        let mut right_data = right_data.write().await;
+        let right_guard = self.pool.alloc().await?;
+        let mut right_guard = right_guard.write().await;
 
-        let left_page_idx = left_data.page_idx();
-        let right_page_idx = right_data.page_idx();
-        let mut left_child = N::initialize(&mut left_data);
-        let mut right_child = N::initialize(&mut right_data);
+        let left_page_idx = left_guard.page_idx();
+        let right_page_idx = right_guard.page_idx();
+        let mut left_child = N::initialize(&mut left_guard);
+        let mut right_child = N::initialize(&mut right_guard);
 
         N::split_root_into(
             &mut root,
