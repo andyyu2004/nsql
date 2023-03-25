@@ -45,7 +45,7 @@ async fn concurrent_insertions() {
     let mut set = JoinSet::<Result<()>>::new();
     for _ in 0..100 {
         let btree = BTree::clone(&btree);
-        set.spawn_local(async move {
+        set.spawn(async move {
             for i in 0..600 {
                 btree.insert(&i, &(i as u64)).await?;
             }
