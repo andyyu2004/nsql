@@ -24,7 +24,6 @@ tracing = "0.1.37"
 [dev-dependencies]
 nsql-test = { version = "0.1.0", path = "../nsql-test" }
 criterion = { version = "0.4.0", features = ["async_tokio"] }
-tokio-uring = "0.4.0"
 proptest = "1.1.0"
 test-strategy = "0.3.0"
 tokio = { version = "1.26.0", default-features = false, features = ["rt"] }

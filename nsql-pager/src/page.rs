@@ -8,9 +8,9 @@ use std::{fmt, io, mem};
 
 use nsql_serde::{Deserialize, Serialize, SerializeSized};
 use nsql_util::static_assert_eq;
-use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 use rkyv::{Archive, Archived};
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
+use tokio::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use crate::{PAGE_DATA_SIZE, PAGE_META_LENGTH, PAGE_SIZE};
 
@@ -47,14 +47,14 @@ impl Page {
     /// Lock the page with a read lock an immutable reference to the data bytes of the page
     #[inline]
     pub async fn read(&self) -> PageReadGuard<'_> {
-        let bytes = self.bytes.read();
+        let bytes = self.bytes.read().await;
         PageReadGuard { idx: self.page_idx(), bytes, read_offset: PAGE_META_LENGTH }
     }
 
     /// Lock the page with a write lock and a mutable reference to the data bytes of the page
     #[inline]
     pub async fn write(&self) -> PageWriteGuard<'_> {
-        let bytes = self.bytes.write();
+        let bytes = self.bytes.write().await;
         PageWriteGuard { idx: self.page_idx(), bytes, write_offset: PAGE_META_LENGTH }
     }
 
@@ -70,7 +70,7 @@ impl Page {
 
     #[inline]
     pub(crate) async fn bytes(&self) -> RwLockReadGuard<'_, [u8; PAGE_SIZE]> {
-        self.bytes.read()
+        self.bytes.read().await
     }
 
     /// Read the checksum from the page header
@@ -82,7 +82,7 @@ impl Page {
     #[inline]
     pub(crate) async fn update_checksum(&mut self) {
         let checksum = self.compute_checksum().await;
-        self.bytes.write()[0..8].copy_from_slice(&checksum.to_be_bytes());
+        self.bytes.write().await[0..8].copy_from_slice(&checksum.to_be_bytes());
         assert!(self.expected_checksum().await == checksum);
     }
 

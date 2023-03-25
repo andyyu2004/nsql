@@ -1,6 +1,6 @@
 use std::future::Future;
 
-pub use {tempfile, tokio_uring};
+pub use tempfile;
 
 #[macro_export]
 macro_rules! tmp {
@@ -43,7 +43,8 @@ macro_rules! mk_file_pager {
 
 #[inline]
 pub fn start<F: Future>(fut: F) -> F::Output {
-    tokio_uring::start(fut)
+    // tokio_uring::start(fut)
+    tokio::runtime::Runtime::new().unwrap().block_on(fut)
 }
 
 #[macro_export]

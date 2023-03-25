@@ -711,16 +711,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "io-uring"
-version = "0.5.13"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dd1e1a01cfb924fd8c5c43b6827965db394f5a3a16c599ce03452266e1cf984c"
-dependencies = [
- "bitflags 1.3.2",
- "libc",
-]
-
-[[package]]
 name = "is-terminal"
 version = "0.4.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -847,18 +837,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "mio"
-version = "0.8.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5b9d9a46eff5b4ff64b45a9e316a6d1e0bc719ef429cbec4dc630684212bfdf9"
-dependencies = [
- "libc",
- "log",
- "wasi",
- "windows-sys 0.45.0",
-]
-
-[[package]]
 name = "nsql"
 version = "0.1.0"
 dependencies = [
@@ -917,7 +895,6 @@ dependencies = [
  "rkyv",
  "test-strategy",
  "tokio",
- "tokio-uring 0.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "tracing",
 ]
 
@@ -996,7 +973,6 @@ dependencies = [
  "nsql-test",
  "proptest",
  "test-strategy",
- "tokio-uring 0.4.0 (git+https://github.com/tokio-rs/tokio-uring?branch=master)",
 ]
 
 [[package]]
@@ -1027,7 +1003,6 @@ dependencies = [
  "nsql-serde",
  "nsql-test",
  "nsql-util",
- "parking_lot",
  "pin-utils",
  "proptest",
  "rkyv",
@@ -1106,7 +1081,7 @@ name = "nsql-test"
 version = "0.1.0"
 dependencies = [
  "tempfile",
- "tokio-uring 0.4.0 (git+https://github.com/tokio-rs/tokio-uring?branch=master)",
+ "tokio",
 ]
 
 [[package]]
@@ -1534,12 +1509,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "scoped-tls"
-version = "1.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e1cf6437eb19a8f4a6cc0f7dca544973b0b78843adbfeb3683d1a94a0024a294"
-
-[[package]]
 name = "scopeguard"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1620,16 +1589,6 @@ name = "smol_str"
 version = "0.1.24"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fad6c857cbab2627dcf01ec85a623ca4e7dcb5691cbaa3d7fb7653671f0d09c9"
-
-[[package]]
-name = "socket2"
-version = "0.4.9"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "64a4a911eed85daf18834cfaa86a79b7d266ff93ff5ba14005426219480ed662"
-dependencies = [
- "libc",
- "winapi",
-]
 
 [[package]]
 name = "sqllogictest"
@@ -1790,39 +1749,10 @@ checksum = "03201d01c3c27a29c8a5cee5b55a93ddae1ccf6f08f65365c2c918f8c1b76f64"
 dependencies = [
  "autocfg",
  "bytes",
- "libc",
  "memchr",
- "mio",
+ "num_cpus",
  "pin-project-lite",
- "socket2",
  "windows-sys 0.45.0",
-]
-
-[[package]]
-name = "tokio-uring"
-version = "0.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0d5e02bb137e030b3a547c65a3bd2f1836d66a97369fdcc69034002b10e155ef"
-dependencies = [
- "io-uring",
- "libc",
- "scoped-tls",
- "slab",
- "socket2",
- "tokio",
-]
-
-[[package]]
-name = "tokio-uring"
-version = "0.4.0"
-source = "git+https://github.com/tokio-rs/tokio-uring?branch=master#1a089de6c97662bea3d9b572e3cf9a5f70ee3499"
-dependencies = [
- "futures",
- "io-uring",
- "libc",
- "slab",
- "socket2",
- "tokio",
 ]
 
 [[package]]

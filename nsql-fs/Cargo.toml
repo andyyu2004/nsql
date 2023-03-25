@@ -7,7 +7,8 @@ edition = "2021"
 error-stack = "0.3.1"
 libc = { version = "0.2.139", default-features = false }
 
-tokio-uring = { branch = "master", git = "https://github.com/tokio-rs/tokio-uring" }
+# use this when multithread is supported
+# tokio-uring = { branch = "master", git = "https://github.com/tokio-rs/tokio-uring" }
 
 [dev-dependencies]
 nsql-test = { path = "../nsql-test" }

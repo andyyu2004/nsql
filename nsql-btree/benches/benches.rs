@@ -1,5 +1,3 @@
-use std::future::Future;
-
 use criterion::async_executor::AsyncExecutor;
 use criterion::{criterion_group, criterion_main, Criterion};
 use nsql_btree::{BTree, Result};
@@ -8,24 +6,28 @@ use tokio::task::JoinSet;
 criterion_group!(benches, bench_insertions);
 criterion_main!(benches);
 
-struct Runtime(tokio_uring::Runtime);
+// struct Runtime(tokio_uring::Runtime);
 
-impl Default for Runtime {
-    fn default() -> Self {
-        Self(tokio_uring::Runtime::new(&tokio_uring::builder()).unwrap())
-    }
-}
+// impl Default for Runtime {
+//     fn default() -> Self {
+//         Self(tokio_uring::Runtime::new(&tokio_uring::builder()).unwrap())
+//     }
+// }
 
-impl AsyncExecutor for Runtime {
-    fn block_on<T>(&self, future: impl Future<Output = T>) -> T {
-        self.0.block_on(future)
-    }
+// impl AsyncExecutor for Runtime {
+//     fn block_on<T>(&self, future: impl Future<Output = T>) -> T {
+//         self.0.block_on(future)
+//     }
+// }
+
+fn new_runtime() -> impl AsyncExecutor {
+    tokio::runtime::Runtime::new().unwrap()
 }
 
 fn bench_insertions(c: &mut Criterion) {
-    c.bench_function("insertions", |b| b.to_async(Runtime::default()).iter(insertions));
+    c.bench_function("insertions", |b| b.to_async(new_runtime()).iter(insertions));
     c.bench_function("concurrent insertions", |b| {
-        b.to_async(Runtime::default()).iter(concurrent_insertions)
+        b.to_async(new_runtime()).iter(concurrent_insertions)
     });
 }
 
