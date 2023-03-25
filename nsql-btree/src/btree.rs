@@ -132,22 +132,19 @@ where
             Err(PageFull) => {
                 if leaf.page_header().flags.contains(Flags::IS_ROOT) {
                     cov_mark::hit!(root_leaf_split);
-                    self.split_root::<LeafPageViewMut<'_, K, V>, _>(leaf, key, value).await?;
+                    self.split_root_and_insert::<LeafPageViewMut<'_, K, V>, _>(leaf, key, value)
+                        .await
                 } else {
                     cov_mark::hit!(non_root_leaf_split);
-                    self.split_non_root::<LeafPageViewMut<'_, K, V>, _>(
+                    self.split_non_root_and_insert::<LeafPageViewMut<'_, K, V>, _>(
                         parents,
                         leaf_page_idx,
                         leaf,
                         key,
                         value,
                     )
-                    .await?;
+                    .await
                 }
-
-                // FIXME what if the page is full and there is duplicate key, but we're returning None here
-
-                Ok(None)
             }
         }
     }
@@ -176,11 +173,13 @@ where
             Err(PageFull) => {
                 if parent.page_header().flags.contains(Flags::IS_ROOT) {
                     cov_mark::hit!(root_interior_split);
-                    self.split_root::<InteriorPageViewMut<'_, K>, _>(parent, key, &child_idx)
-                        .await?;
+                    self.split_root_and_insert::<InteriorPageViewMut<'_, K>, _>(
+                        parent, key, &child_idx,
+                    )
+                    .await?;
                 } else {
                     cov_mark::hit!(non_root_interior_split);
-                    self.split_non_root::<InteriorPageViewMut<'_, K>, _>(
+                    self.split_non_root_and_insert::<InteriorPageViewMut<'_, K>, _>(
                         parents, parent_idx, parent, key, &child_idx,
                     )
                     .await?;
@@ -191,14 +190,14 @@ where
         Ok(())
     }
 
-    async fn split_non_root<N, T>(
+    async fn split_non_root_and_insert<N, T>(
         &self,
         parents: Vec<PageIndex>,
         node_page_idx: PageIndex,
         mut node: N::ViewMut<'_>,
         key: &K,
         value: &T,
-    ) -> Result<()>
+    ) -> Result<Option<T>>
     where
         N: NodeMut<K, T>,
         T: Archive + Serialize<DefaultSerializer> + fmt::Debug,
@@ -218,12 +217,18 @@ where
         self.insert_interior(parents, &nsql_rkyv::deserialize(sep), new_page_idx).await?;
 
         // insert the new separator key and child index into the parent
-        (if sep > key { node.insert(key, value) } else { new_node.insert(key, value) })
+        let prev = (if sep > key { node.insert(key, value) } else { new_node.insert(key, value) })
             .expect("split interior should not be full");
-        Ok(())
+
+        Ok(prev)
     }
 
-    async fn split_root<N, T>(&self, mut root: N::ViewMut<'_>, key: &K, value: &T) -> Result<()>
+    async fn split_root_and_insert<N, T>(
+        &self,
+        mut root: N::ViewMut<'_>,
+        key: &K,
+        value: &T,
+    ) -> Result<Option<T>>
     where
         N: NodeMut<K, T>,
         T: Archive + Serialize<DefaultSerializer> + fmt::Debug,
@@ -258,11 +263,10 @@ where
         root.insert(&nsql_rkyv::deserialize(sep), &right_page_idx)
             .expect("new root should not be full");
 
-        (if sep > key { left_child } else { right_child })
+        let prev = (if sep > key { left_child } else { right_child })
             .insert(key, value)
             .expect("split child should not be full");
-
-        Ok(())
+        Ok(prev)
     }
 }
 

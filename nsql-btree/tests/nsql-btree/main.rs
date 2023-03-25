@@ -96,29 +96,35 @@ fn test_insert_boxed_values() {
 #[should_panic]
 // should fail with a `todo` for now as overflow pages are not implemented
 fn test_overflow_necessity_is_detected() {
-    let pairs = [(1, Box::new([0; 4097]))];
+    let pairs = [(1, Box::new([0; 2000]))];
     let _should_panic_before_this = run_insertions(&pairs);
 }
 
-#[test]
-fn test_split_still_returns_overwritten_value() -> Result<()> {
-    // let pairs: &[(u32, Box<[u8]>)] = &[(1, Box::new([0; 4096]))];
-    // nsql_test::start(async {
-    //     let pool = mk_fast_mem_buffer_pool!();
-    //     let btree = BTree::<u32, Box<[u8]>>::initialize(pool).await?;
+// TODO needs to be implemented
+// #[test]
+// fn test_split_still_returns_overwritten_value() -> Result<()> {
+//     let pairs: &[(u32, Box<[u8]>)] = &[
+//         (1, Box::new([0; 1000])),
+//         (2, Box::new([0; 1000])),
+//         (3, Box::new([0; 1000])),
+//         (7, Box::new([0; 500])),
+//         (7, Box::new([0; 1000])),
+//     ];
+//     nsql_test::start(async {
+//         let pool = mk_fast_mem_buffer_pool!();
+//         let btree = BTree::<u32, Box<[u8]>>::initialize(pool).await?;
 
-    //     for (key, value) in pairs {
-    //         assert_eq!(btree.insert(key, value).await?.as_ref(), None);
-    //     }
+//         for (key, value) in pairs {
+//             assert_eq!(btree.insert(key, value).await?.as_ref(), None);
+//         }
 
-    //     for (key, value) in pairs {
-    //         assert_eq!(btree.insert(key, value).await?.as_ref(), Some(value));
-    //     }
+//         for (key, value) in pairs {
+//             assert_eq!(btree.insert(key, value).await?.as_ref(), Some(value));
+//         }
 
-    //     Ok(())
-    // })
-    Ok(())
-}
+//         Ok(())
+//     })
+// }
 
 #[proptest]
 fn test_btree_insert_and_get_random(pairs: Box<[(u32, u16)]>) {
