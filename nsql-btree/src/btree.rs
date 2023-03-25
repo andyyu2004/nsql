@@ -57,9 +57,7 @@ where
     #[inline]
     #[tracing::instrument]
     pub async fn get(&self, key: &K) -> Result<Option<V>> {
-        let key_bytes = nsql_rkyv::to_bytes(key);
-        let archived_key = unsafe { rkyv::archived_root::<K>(&key_bytes) };
-        self.search_node(self.root_idx, archived_key).await
+        self.search_node(self.root_idx, key).await
     }
 
     /// Insert a key-value pair into the tree returning the previous value if it existed
@@ -80,7 +78,7 @@ where
     }
 
     #[async_recursion]
-    async fn search_node(&self, idx: PageIndex, key: &K::Archived) -> Result<Option<V>> {
+    async fn search_node(&self, idx: PageIndex, key: &K) -> Result<Option<V>> {
         let handle = self.pool.load(idx).await?;
         let guard = handle.read().await;
         let node = unsafe { PageView::<K, V>::view(&guard).await? };

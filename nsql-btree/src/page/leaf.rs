@@ -97,7 +97,11 @@ where
         Ok(Self { page_header, header, slotted_page })
     }
 
-    pub(crate) fn get(&self, key: &K::Archived) -> Option<&V::Archived> {
+    pub(crate) fn get<Q>(&self, key: &Q) -> Option<&V::Archived>
+    where
+        K::Archived: PartialOrd<Q>,
+        Q: ?Sized,
+    {
         self.slotted_page.get(key)
     }
 }
