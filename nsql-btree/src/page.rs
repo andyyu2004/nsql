@@ -45,8 +45,14 @@ macro_rules! archived_size_of {
         ::std::mem::size_of::<::rkyv::Archived<$ty>>() as u16
     };
 }
-
 pub(crate) use archived_size_of;
+
+macro_rules! archived_align_of {
+    ($ty:ty) => {
+        ::std::mem::align_of::<::rkyv::Archived<$ty>>()
+    };
+}
+pub(crate) use archived_align_of;
 
 #[derive(Debug)]
 pub(crate) struct PageFull;

@@ -11,6 +11,7 @@ use rkyv::{Archive, Archived, Deserialize, Infallible, Serialize};
 
 use super::entry::Entry;
 use super::{archived_size_of, PageFull};
+use crate::page::archived_align_of;
 
 // NOTE: the layout of this MUST match the layout of the mutable version
 #[repr(C)]
@@ -147,8 +148,11 @@ impl<'a, K: Archive + 'static, V: Archive + 'static> IndexMut<Slot>
     for SlottedPageViewMut<'a, K, V>
 {
     fn index_mut(&mut self, slot: Slot) -> &mut Self::Output {
-        let adjusted_slot_offset: SlotOffset =
-            slot.offset - self.header.slot_len * archived_size_of!(Slot);
+        let adjusted_slot_offset: SlotOffset = slot.offset - mem::size_of_val(self.slots) as u16;
+        debug_assert_eq!(
+            mem::size_of_val(self.slots) as u16,
+            self.header.slot_len.value() * archived_size_of!(Slot)
+        );
         let adjusted_offset = adjusted_slot_offset.0.value() as usize;
         &mut self.data[adjusted_offset..adjusted_offset + slot.length.value() as usize]
     }
@@ -195,12 +199,13 @@ nsql_util::static_assert_eq!(
     mem::size_of::<ArchivedSlottedPageMeta>()
 );
 
-impl<'a, K, V> SlottedPageViewMut<'a, K, V> {
+impl<'a, K: Archive, V: Archive> SlottedPageViewMut<'a, K, V> {
     /// `prefix_size` is the size of the page header and the page-specific header` (and anything else that comes before the slots)
     /// slot offsets are relative to the initla value of `free_start`
     pub(crate) fn init(buf: &'a mut [u8], prefix_size: u16) -> SlottedPageViewMut<'a, K, V> {
         let free_end = PAGE_DATA_SIZE as u16 - prefix_size - archived_size_of!(SlottedPageMeta);
         assert_eq!(free_end, buf.len() as u16 - archived_size_of!(SlottedPageMeta));
+
         let header = SlottedPageMeta {
             free_start: SlotOffset::from(0),
             free_end: SlotOffset::from(free_end),
@@ -315,8 +320,26 @@ where
                 }
 
                 self.header.free_end -= length;
+                let mut slot = Slot { offset: self.header.free_end, length: length.into() };
+                let entry_align = archived_align_of!(Entry<&K, &V>) as u16;
+                let align_offset = self[slot].as_ptr().align_offset(entry_align as usize) as u16;
+
+                if align_offset != 0 {
+                    assert!(
+                        align_offset < entry_align,
+                        "the offset required to meet alignment should be less than the alignment"
+                    );
+                    // We apply the alignment offset to make the slot aligned, but now we're using
+                    // the next entries space. Therefore, we subtract an entire alignments worth of space.
+                    slot.offset -= entry_align - align_offset;
+                }
+
                 self.header.free_start += archived_size_of!(Slot);
-                let slot = Slot { offset: self.header.free_end, length: length.into() };
+                assert!(
+                    self[slot].as_ptr().is_aligned_to(archived_align_of!(Entry<&K, &V>)),
+                    "allocated slot is not aligned to the archived entry (align_offset: {})",
+                    self[slot].as_ptr().align_offset(archived_align_of!(Entry<&K, &V>)),
+                );
                 self[slot].copy_from_slice(serialized_entry);
                 debug_assert_eq!(&self[slot], serialized_entry);
 
