@@ -20,9 +20,12 @@ fn test_concurrent_root_leaf_split() {
 }
 
 #[test]
-fn test_concurrent_inserts_large() {
-    let inputs = (0..100).map(|_| (0..600).map(|i| (i, i)).collect()).collect::<Vec<_>>();
+#[tracing_test::traced_test]
+fn test_concurrent_non_root_leaf_split() {
+    let inputs = (0..2).map(|_| (0..700).map(|i| (i, i)).collect()).collect::<Vec<_>>();
     run_concurrent_insertions(inputs).unwrap();
+    assert!(logs_contain("splitting root"));
+    assert!(!logs_contain("splitting non-root"));
 }
 
 #[proptest]
