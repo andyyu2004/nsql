@@ -4,6 +4,7 @@ use super::*;
 
 #[test]
 fn test_concurrent_inserts_simple() {
+    console_subscriber::init();
     let inputs = (0..100).map(|_| (0..600).map(|i| (i, i)).collect()).collect::<Vec<_>>();
     run_concurrent_insertions(inputs).unwrap();
 }
