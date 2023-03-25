@@ -905,7 +905,6 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-test",
- "tracing-test-macro",
 ]
 
 [[package]]
@@ -1794,8 +1793,20 @@ dependencies = [
  "num_cpus",
  "parking_lot",
  "pin-project-lite",
+ "tokio-macros",
  "tracing",
  "windows-sys 0.45.0",
+]
+
+[[package]]
+name = "tokio-macros"
+version = "1.8.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d266c00fde287f55d3f1c3e96c500c362a2b8c695076ec180f27918820bc6df8"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 1.0.109",
 ]
 
 [[package]]
@@ -1862,11 +1873,11 @@ dependencies = [
 
 [[package]]
 name = "tracing-test"
-version = "0.2.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9e3d272c44878d2bbc9f4a20ad463724f03e19dbc667c6e84ac433ab7ffcc70b"
+version = "0.2.4"
 dependencies = [
  "lazy_static",
+ "tokio",
+ "tracing",
  "tracing-core",
  "tracing-subscriber",
  "tracing-test-macro",
@@ -1874,13 +1885,20 @@ dependencies = [
 
 [[package]]
 name = "tracing-test-macro"
-version = "0.2.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "744324b12d69a9fc1edea4b38b7b1311295b662d161ad5deac17bb1358224a08"
+version = "0.2.4"
 dependencies = [
  "lazy_static",
  "quote",
  "syn 1.0.109",
+]
+
+[[package]]
+name = "tracing-test-macro-tests"
+version = "0.1.0"
+dependencies = [
+ "tokio",
+ "tracing",
+ "tracing-test",
 ]
 
 [[package]]

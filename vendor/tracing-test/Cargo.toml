@@ -1,7 +1,0 @@
-[workspace]
-
-members = [
-    "tracing-test",
-    "tracing-test-macro",
-    "tracing-test-macro-tests",
-]
