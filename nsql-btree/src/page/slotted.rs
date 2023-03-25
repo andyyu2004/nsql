@@ -301,7 +301,7 @@ where
                     if !has_space {
                         todo!("page is full with duplicate key, need to do something");
                     }
-                    // otherwise, we need to allocate a new slot
+                    // otherwise, we need to allocate fresh space
                     // FIXME: need to mark the previous space as free space
                     self.header.free_end -= length;
                     self.header.free_start += archived_size_of!(Slot);
