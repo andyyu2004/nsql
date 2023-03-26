@@ -103,7 +103,7 @@ where
         Q: ?Sized + fmt::Debug,
     {
         if let Some(low_key) = self.low_key() {
-            assert!(low_key <= key);
+            assert!(low_key <= key, "low_key: {:?}, key: {:?}", low_key, key);
         }
 
         self.slotted_page.get(key)

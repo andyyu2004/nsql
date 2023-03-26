@@ -62,6 +62,10 @@ impl<'a, K: Archive, V: Archive> SlottedPageView<'a, K, V> {
         self.slots.len()
     }
 
+    pub(crate) fn free_space(&self) -> u16 {
+        self.header.free_end.0.value() - self.header.free_start.0.value()
+    }
+
     pub(crate) fn slots(&self) -> &'a [Slot] {
         self.slots
     }
@@ -231,10 +235,6 @@ impl<'a, K: Archive, V: Archive> SlottedPageViewMut<'a, K, V> {
 
         Self { header, slots, data, marker: PhantomData }
     }
-
-    pub(crate) fn set_len(&mut self, len: u16) {
-        self.header.slot_len = len.into();
-    }
 }
 
 impl<'a, K: Archive + 'static, V: Archive + 'static> Deref for SlottedPageViewMut<'a, K, V> {
@@ -257,6 +257,34 @@ where
     K::Archived: Ord,
     V: Archive + 'static,
 {
+    pub(crate) fn set_len(&mut self, new_len: u16) {
+        // FIXME keep track of freed space for reuse
+        self.header.slot_len = new_len.into();
+
+        // shift slots and data slices appropriately
+        let (slots, freed_data) = mem::take(&mut self.slots).split_at_mut(new_len as usize);
+        self.slots = slots;
+        let data_len = self.data.len();
+        self.data = unsafe {
+            slice::from_raw_parts_mut(
+                freed_data.as_ptr() as *mut u8,
+                data_len + freed_data.len() * mem::size_of::<Slot>(),
+            )
+        };
+
+        #[cfg(debug_assertions)]
+        self.assert_invariants();
+    }
+
+    /// Rearrange the slotted page to drop the first `idx` slots assuming these have been split into a
+    /// new left page
+    pub(crate) fn split_left(&mut self, idx: usize) {
+        // FIXME keep track of freed space for reuse
+        let new_len = self.slots.len() - idx;
+        self.slots.copy_within(idx.., 0);
+        self.set_len(new_len as u16);
+    }
+
     /// Safety: `serialized_entry` must be the serialized bytes of an `Entry<&K, &V>`
     pub(crate) unsafe fn insert_raw(
         &mut self,
@@ -277,8 +305,7 @@ where
         let idx = self.slot_index_of_key(&entry.key);
 
         let length = serialized_entry.len() as u16;
-        let has_space =
-            length + archived_size_of!(Slot) <= self.header.free_end - self.header.free_start;
+        let has_space = length + archived_size_of!(Slot) <= self.free_space();
 
         let prev = match idx {
             Ok(idx) => {
@@ -365,15 +392,14 @@ where
                 // we have to shift over the slice of data as we expect it to start after the slots (at `free_start`)
                 // we some small tricks to avoid lifetime issues without using unsafe
                 // see https://stackoverflow.com/questions/61223234/can-i-reassign-a-mutable-slice-reference-to-a-sub-slice-of-itself
-                let data: &'a mut [u8] = mem::take(&mut self.data);
-                let (_, data) = data.split_array_mut::<{ mem::size_of::<Archived<Slot>>() }>();
-                self.data = data;
+                (_, self.data) = mem::take(&mut self.data)
+                    .split_array_mut::<{ mem::size_of::<Archived<Slot>>() }>();
                 None
             }
         };
 
         #[cfg(debug_assertions)]
-        self.assert_sorted();
+        self.assert_invariants();
 
         Ok(prev)
     }
@@ -391,15 +417,22 @@ where
     }
 
     #[cfg(debug_assertions)]
-    fn assert_sorted(&self) {
-        let mut values = Vec::<&Entry<K::Archived, V::Archived>>::with_capacity(
+    fn assert_invariants(&self) {
+        let mut entries = Vec::<&Entry<K::Archived, V::Archived>>::with_capacity(
             self.header.slot_len.value() as usize,
         );
+
         for &slot in self.slots.iter() {
-            values.push(self.get_by_slot(slot));
+            let entry = self.get_by_slot(slot);
+            if let Some(low_key) = self.low_key() {
+                assert!(low_key <= &entry.key);
+            }
+            entries.push(entry);
         }
 
-        assert!(values.is_sorted());
+        assert!(entries.is_sorted());
+        entries.dedup();
+        assert_eq!(entries.len(), self.header.slot_len.value() as usize, "duplicate keys");
     }
 }
 

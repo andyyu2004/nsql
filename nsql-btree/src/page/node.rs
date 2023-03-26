@@ -117,37 +117,45 @@ where
         root.slotted_page_mut().set_len(0);
     }
 
+    /// Split the right node to a new left node.
+    /// We split in this direction because we maintain low keys and left links.
     fn split_left_into(
-        view: &mut Self::ViewMut<'_>,
-        view_page_idx: PageIndex,
-        left: &mut Self::ViewMut<'_>,
+        right: &mut Self::ViewMut<'_>,
+        right_page_idx: PageIndex,
+        new_left: &mut Self::ViewMut<'_>,
         left_page_idx: PageIndex,
     ) where
         K::Archived: Deserialize<K, rkyv::Infallible>,
         V::Archived: Deserialize<V, rkyv::Infallible>,
     {
-        assert!(view.slotted_page().len() >= 3);
-        assert!(left.slotted_page().is_empty());
+        assert!(new_left.slotted_page().is_empty());
+        assert!(right.slotted_page().len() >= 3);
 
-        let slots = view.slotted_page().slots();
+        let slots = right.slotted_page().slots();
         let (lhs, rhs) = slots.split_at(slots.len() / 2);
 
-        let ours = view.slotted_page_mut();
-        let theirs = left.slotted_page_mut();
-        for &slot in rhs {
-            let entry_bytes = &ours[slot];
+        let left_slots = new_left.slotted_page_mut();
+        let right_slots = right.slotted_page_mut();
+
+        for &slot in lhs {
+            let entry_bytes = &right_slots[slot];
             assert!(
-                unsafe { theirs.insert_raw(entry_bytes) }
+                unsafe { left_slots.insert_raw(entry_bytes) }
                     .expect("new page should not be full")
                     .is_none(),
                 "should not have a previous value"
             );
         }
 
-        ours.set_len(lhs.len() as u16);
+        right_slots.split_left(lhs.len());
 
-        view.set_left_link(left_page_idx);
-        left.set_right_link(view_page_idx);
+        right.set_left_link(left_page_idx);
+        new_left.set_right_link(right_page_idx);
+
+        debug_assert_eq!(new_left.len(), lhs.len());
+        debug_assert_eq!(right.len(), rhs.len());
+        debug_assert!(new_left.slotted_page().free_space() as usize > PAGE_DATA_SIZE / 3);
+        debug_assert!(right.slotted_page().free_space() as usize > PAGE_DATA_SIZE / 3);
     }
 }
 

@@ -16,17 +16,19 @@ use crate::{BTree, Min, Result};
 fn test_concurrent_root_leaf_split() {
     let inputs = (0..2).map(|_| (0..500).map(|i| (i, i)).collect()).collect::<Vec<_>>();
     run_concurrent_insertions(inputs).unwrap();
-    assert!(logs_contain("splitting root"));
+    assert!(logs_contain("splitting root kind=nsql_btree::page::leaf::LeafPageViewMut<i32, i32>"));
     assert!(!logs_contain("splitting non-root"));
 }
 
 #[test]
 #[tracing_test::traced_test]
 fn test_concurrent_non_root_leaf_split() {
-    let inputs = (0..2).map(|_| (0..700).map(|i| (i, i)).collect()).collect::<Vec<_>>();
+    let inputs = (0..2).map(|_| (0..750).map(|i| (i, i)).collect()).collect::<Vec<_>>();
     run_concurrent_insertions(inputs).unwrap();
-    assert!(logs_contain("splitting root"));
-    assert!(!logs_contain("splitting non-root"));
+    assert!(logs_contain("splitting root kind=nsql_btree::page::leaf::LeafPageViewMut<i32, i32>"));
+    assert!(logs_contain(
+        "splitting non-root kind=nsql_btree::page::leaf::LeafPageViewMut<i32, i32>"
+    ));
 }
 
 // FIXME fix other tests first

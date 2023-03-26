@@ -150,6 +150,9 @@ where
 
         let mut leaf = match view {
             PageViewMut::Interior(interior) => {
+                // We expected `leaf_page_idx` to be a leaf page, but it may have been concurrently
+                // changed to an interior page due to a root split.
+                // We just return a special error and allow the caller to retry the operation.
                 return Ok(Err(Self::concurrent_root_split(interior)));
             }
             PageViewMut::Leaf(leaf) => leaf,
@@ -199,7 +202,9 @@ where
 
         match parent.insert(key, &child_idx) {
             Ok(None) => {}
-            Ok(Some(_value)) => todo!("duplicate key in interior node"),
+            Ok(Some(prev)) => todo!(
+                "duplicate key `{key:?}` in interior node, already pointed to `{prev}`, trying to insert `{child_idx}`"
+            ),
             Err(PageFull) => {
                 if parent.page_header().flags.contains(Flags::IS_ROOT) {
                     cov_mark::hit!(root_interior_split);
@@ -223,8 +228,8 @@ where
     async fn split_non_root_and_insert<N, T>(
         &self,
         parents: Vec<PageIndex>,
-        node_page_idx: PageIndex,
-        mut node: N::ViewMut<'_>,
+        right_node_page_idx: PageIndex,
+        mut right_node: N::ViewMut<'_>,
         key: &K,
         value: &T,
     ) -> Result<Option<T>>
@@ -233,23 +238,27 @@ where
         T: Archive + Serialize<DefaultSerializer> + fmt::Debug,
         T::Archived: Deserialize<T, rkyv::Infallible> + fmt::Debug,
     {
-        tracing::debug!(kind = std::any::type_name::<N>(), "splitting non-root");
+        tracing::debug!(kind = %std::any::type_name::<N>(), "splitting non-root");
         // split the non-root interior by allocating a new interior and splitting the contents
         // then we insert the separator key and the new page index into the parent
         let new_page = self.pool.alloc().await?;
         let mut new_guard = new_page.page().write().await;
         let new_page_idx = new_guard.page_idx();
-        let mut new_node = N::initialize(&mut new_guard);
+        let mut new_left_node = N::initialize(&mut new_guard);
 
-        N::split_left_into(&mut node, new_page_idx, &mut new_node, node_page_idx);
+        N::split_left_into(&mut right_node, right_node_page_idx, &mut new_left_node, new_page_idx);
 
-        let sep = new_node.low_key().unwrap();
+        let sep = right_node.low_key().unwrap();
         // FIXME ideally we don't have to deserialize sep
         self.insert_interior(parents, &nsql_rkyv::deserialize(sep), new_page_idx).await?;
 
         // insert the new separator key and child index into the parent
-        let prev = (if sep > key { node.insert(key, value) } else { new_node.insert(key, value) })
-            .expect("split interior should not be full");
+        let prev = (if sep > key {
+            new_left_node.insert(key, value)
+        } else {
+            right_node.insert(key, value)
+        })
+        .expect("split interior should not be full");
 
         Ok(prev)
     }
@@ -266,7 +275,7 @@ where
         T: Archive + Serialize<DefaultSerializer> + fmt::Debug,
         T::Archived: Deserialize<T, rkyv::Infallible> + fmt::Debug,
     {
-        tracing::info!(kind = std::any::type_name::<N>(), "splitting root");
+        tracing::info!(kind = %std::any::type_name::<N>(), "splitting root");
 
         assert!(root.len() >= 3, "root that requires a split should contain at least 3 entries");
         let left_page = self.pool.alloc().await?;
