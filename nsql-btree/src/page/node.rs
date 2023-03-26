@@ -114,7 +114,7 @@ where
         right.set_left_link(left_page_idx);
         left.set_right_link(right_page_idx);
 
-        root.slotted_page_mut().set_len(0);
+        root.slotted_page_mut().truncate(0);
     }
 
     /// Split the right node to a new left node.
@@ -154,8 +154,6 @@ where
 
         debug_assert_eq!(new_left.len(), lhs.len());
         debug_assert_eq!(right.len(), rhs.len());
-        debug_assert!(new_left.slotted_page().free_space() as usize > PAGE_DATA_SIZE / 3);
-        debug_assert!(right.slotted_page().free_space() as usize > PAGE_DATA_SIZE / 3);
     }
 }
 

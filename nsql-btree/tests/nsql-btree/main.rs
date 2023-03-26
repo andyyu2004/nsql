@@ -44,6 +44,7 @@ fn test_btree_root_leaf_page_split() -> Result<()> {
 }
 
 #[test]
+#[tracing_test::traced_test]
 fn test_btree_leaf_page_split() -> Result<()> {
     cov_mark::check!(non_root_leaf_split);
     run_serial_inserts::<500>()

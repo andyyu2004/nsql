@@ -1,5 +1,5 @@
 use std::marker::PhantomData;
-use std::ops::{AddAssign, Deref, Index, IndexMut, Sub, SubAssign};
+use std::ops::{Add, AddAssign, Deref, Index, IndexMut, Sub, SubAssign};
 use std::pin::Pin;
 use std::{fmt, mem, ptr, slice};
 
@@ -86,7 +86,7 @@ where
         Some(&self.get_by_slot(slot).value)
     }
 
-    fn values(&self) -> impl Iterator<Item = &V::Archived> {
+    fn values(&self) -> impl Iterator<Item = &V::Archived> + fmt::Debug {
         self.slots.iter().map(move |&slot| &self.get_by_slot(slot).value)
     }
 
@@ -134,9 +134,7 @@ impl<K: Archive, V: Archive> Index<Slot> for SlottedPageView<'_, K, V> {
             self.header.slot_len.value() * archived_size_of!(Slot)
         );
         let adjusted_offset = adjusted_slot_offset.0.value() as usize;
-        let end = adjusted_offset + slot.length.value() as usize;
-        debug_assert!(end <= PAGE_DATA_SIZE);
-        &self.data[adjusted_offset..end]
+        &self.data[adjusted_offset..adjusted_offset + slot.length.value() as usize]
     }
 }
 
@@ -192,7 +190,7 @@ impl<'a, K, V> PartialEq for SlottedPageViewMut<'a, K, V> {
 #[archive_attr(derive(Debug, PartialEq, Eq))]
 #[archive(compare(PartialEq))]
 struct SlottedPageMeta {
-    // start offset initially starts from 0 and end offset is relative to that
+    // free_start offset initially starts from 0 and end offset is relative to that
     free_start: SlotOffset,
     free_end: SlotOffset,
     slot_len: u16,
@@ -211,7 +209,7 @@ impl<'a, K: Archive, V: Archive> SlottedPageViewMut<'a, K, V> {
         assert_eq!(free_end, buf.len() as u16 - archived_size_of!(SlottedPageMeta));
 
         let header = SlottedPageMeta {
-            free_start: SlotOffset::from(0),
+            free_start: SlotOffset::from(0u16),
             free_end: SlotOffset::from(free_end),
             slot_len: 0,
         };
@@ -254,23 +252,31 @@ impl<'a, K: Archive + 'static, V: Archive + 'static> Deref for SlottedPageViewMu
 impl<'a, K, V> SlottedPageViewMut<'a, K, V>
 where
     K: Archive + 'static,
-    K::Archived: Ord,
+    K::Archived: Ord + fmt::Debug,
     V: Archive + 'static,
+    V::Archived: fmt::Debug,
 {
-    pub(crate) fn set_len(&mut self, new_len: u16) {
+    /// Truncate the page to the leftmost `new_len` slots
+    pub(crate) fn truncate(&mut self, new_len: u16) {
+        // FIXME refactor the mess
+        // A lot of the bit fiddling stuff is duplicated from `SlottedPageView::insert`
+
+        let prev_data_len = self.data.len();
+        assert!(new_len as usize <= prev_data_len);
         // FIXME keep track of freed space for reuse
         self.header.slot_len = new_len.into();
 
         // shift slots and data slices appropriately
         let (slots, freed_data) = mem::take(&mut self.slots).split_at_mut(new_len as usize);
         self.slots = slots;
-        let data_len = self.data.len();
+
+        let freed_ptr = freed_data.as_ptr() as *mut u8;
+        let freed_bytes = freed_data.len() * mem::size_of::<Slot>();
+        assert_eq!(self.data.as_ptr(), freed_ptr.wrapping_add(freed_bytes) as *mut u8);
         self.data = unsafe {
-            slice::from_raw_parts_mut(
-                freed_data.as_ptr() as *mut u8,
-                data_len + freed_data.len() * mem::size_of::<Slot>(),
-            )
+            slice::from_raw_parts_mut(freed_data.as_ptr() as *mut u8, prev_data_len + freed_bytes)
         };
+        self.header.free_start -= freed_bytes as u16;
 
         #[cfg(debug_assertions)]
         self.assert_invariants();
@@ -282,7 +288,7 @@ where
         // FIXME keep track of freed space for reuse
         let new_len = self.slots.len() - idx;
         self.slots.copy_within(idx.., 0);
-        self.set_len(new_len as u16);
+        self.truncate(new_len as u16);
     }
 
     /// Safety: `serialized_entry` must be the serialized bytes of an `Entry<&K, &V>`
@@ -290,6 +296,84 @@ where
         &mut self,
         serialized_entry: &[u8],
     ) -> Result<Option<V>, PageFull>
+    where
+        V::Archived: Deserialize<V, Infallible> + fmt::Debug,
+    {
+        match self.insert_raw_inner(serialized_entry) {
+            Ok(prev) => Ok(prev),
+            Err(PageFull) => {
+                self.defragment();
+                self.insert_raw_inner(serialized_entry)
+            }
+        }
+    }
+
+    /// Defragment the slotted page by rewriting all the data in slot order with no gaps
+    fn defragment(&mut self) {
+        let mut new_data = Vec::with_capacity(self.data.len());
+        // copy the data in slot order into a new buffer
+        for &slot in self.slots.iter() {
+            let bytes = &self[slot];
+            debug_assert_eq!(bytes.len(), slot.length.value() as usize);
+            new_data.extend_from_slice(bytes);
+        }
+
+        // The `page_end_offset` is the offset to the very end of the page.
+        // We compute it by getting the offset where `data` (i.e. `free_start`) starts and adding its length.
+        let page_end_offset: SlotOffset = self.header.free_start + self.data.len() as u16;
+
+        // the new `free_end` is the end of the page minus the size of the compacted data
+        self.header.free_end = self.aligned_offset(page_end_offset - new_data.len() as u16);
+        assert!(self.header.free_end >= self.header.free_start);
+
+        // update the offsets of the slots in place
+        let mut offset = self.header.free_end;
+        for slot in self.slots.iter_mut() {
+            slot.offset = offset;
+            offset += slot.length.value();
+        }
+
+        // copy the buffer back into the page in the appropriate place
+        assert!(
+            new_data.len() <= self.data.len(),
+            "defragmented data should be no larger than original"
+        );
+
+        let length = new_data.len() as u16;
+        // not really a slot, but we can reuse the indexing logic to copy the data
+        let fake_slot = Slot { offset: self.header.free_end, length: length.into() };
+        self[fake_slot].copy_from_slice(&new_data);
+
+        #[cfg(debug_assertions)]
+        self.assert_invariants();
+    }
+
+    /// Create a new slot with the given offset and length, ensuring that the slot is aligned
+    /// by shifting the offset left if necessary>
+    fn new_aligned_slot(&self, offset: SlotOffset, length: u16) -> Slot {
+        Slot { offset: self.aligned_offset(offset), length: length.into() }
+    }
+
+    fn aligned_offset(&self, mut offset: SlotOffset) -> SlotOffset {
+        let entry_align = archived_align_of!(Entry<&K, &V>) as u16;
+        let align_offset = self[Slot { offset, length: 0.into() }]
+            .as_ptr()
+            .align_offset(entry_align as usize) as u16;
+
+        if align_offset != 0 {
+            assert!(
+                align_offset < entry_align,
+                "the offset required to meet alignment should be less than the alignment"
+            );
+            // We apply the alignment offset to make the slot aligned, but now we're using
+            // the next entries space. Therefore, we subtract an entire alignments worth of space.
+            offset -= entry_align - align_offset;
+        }
+
+        offset
+    }
+
+    unsafe fn insert_raw_inner(&mut self, serialized_entry: &[u8]) -> Result<Option<V>, PageFull>
     where
         V::Archived: Deserialize<V, Infallible> + fmt::Debug,
     {
@@ -347,19 +431,7 @@ where
                 }
 
                 self.header.free_end -= length;
-                let mut slot = Slot { offset: self.header.free_end, length: length.into() };
-                let entry_align = archived_align_of!(Entry<&K, &V>) as u16;
-                let align_offset = self[slot].as_ptr().align_offset(entry_align as usize) as u16;
-
-                if align_offset != 0 {
-                    assert!(
-                        align_offset < entry_align,
-                        "the offset required to meet alignment should be less than the alignment"
-                    );
-                    // We apply the alignment offset to make the slot aligned, but now we're using
-                    // the next entries space. Therefore, we subtract an entire alignments worth of space.
-                    slot.offset -= entry_align - align_offset;
-                }
+                let slot = self.new_aligned_slot(self.header.free_end, length);
 
                 self.header.free_start += archived_size_of!(Slot);
                 assert!(
@@ -418,6 +490,17 @@ where
 
     #[cfg(debug_assertions)]
     fn assert_invariants(&self) {
+        assert!(self.header.free_start <= self.header.free_end);
+        assert_eq!(self.header.slot_len, self.slots.len() as u16);
+        assert_eq!(
+            self.slots.as_ptr().wrapping_add(self.slots.len()).cast::<u8>(),
+            self.data.as_ptr(),
+            "slots and data pointers are not contiguous"
+        );
+
+        // testing internal assertions of `+`
+        let _ = self.header.free_start + self.data.len() as u16;
+
         let mut entries = Vec::<&Entry<K::Archived, V::Archived>>::with_capacity(
             self.header.slot_len.value() as usize,
         );
@@ -425,14 +508,15 @@ where
         for &slot in self.slots.iter() {
             let entry = self.get_by_slot(slot);
             if let Some(low_key) = self.low_key() {
-                assert!(low_key <= &entry.key);
+                assert!(low_key <= &entry.key, "{low_key:?} !<= {:?}", &entry.key);
             }
             entries.push(entry);
         }
 
         assert!(entries.is_sorted());
-        entries.dedup();
-        assert_eq!(entries.len(), self.header.slot_len.value() as usize, "duplicate keys");
+        // should only be checking keys for dups
+        // entries.dedup();
+        // assert_eq!(entries.len(), self.header.slot_len.value() as usize, "duplicate keys");
     }
 }
 
@@ -453,6 +537,15 @@ pub struct Slot {
 #[repr(transparent)]
 pub struct SlotOffset(BigEndian<u16>);
 
+impl Add<u16> for SlotOffset {
+    type Output = Self;
+
+    #[track_caller]
+    fn add(self, rhs: u16) -> Self::Output {
+        Self::from(self.0 + rhs)
+    }
+}
+
 impl AddAssign<u16> for SlotOffset {
     fn add_assign(&mut self, rhs: u16) {
         self.0 += rhs;
@@ -465,9 +558,16 @@ impl SubAssign<u16> for SlotOffset {
     }
 }
 
+impl From<usize> for SlotOffset {
+    fn from(offset: usize) -> Self {
+        Self::from(offset as u16)
+    }
+}
+
 impl From<u16> for SlotOffset {
+    #[track_caller]
     fn from(offset: u16) -> Self {
-        assert!(offset < PAGE_DATA_SIZE as u16);
+        assert!(offset < PAGE_DATA_SIZE as u16, "offset `{offset}` is too large");
         Self(BigEndian::from(offset))
     }
 }
@@ -483,6 +583,7 @@ impl Sub for SlotOffset {
 impl Sub<u16> for SlotOffset {
     type Output = SlotOffset;
 
+    #[track_caller]
     fn sub(self, rhs: u16) -> Self::Output {
         Self::from(self.0 - rhs)
     }

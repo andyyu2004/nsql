@@ -104,9 +104,8 @@ where
         };
 
         let slot = self.slotted_page.slots()[slot_idx];
-
-        let kv = self.slotted_page.get_by_slot(slot);
-        PageIndex::from(kv.value)
+        let entry = self.slotted_page.get_by_slot(slot);
+        PageIndex::from(entry.value)
     }
 }
 

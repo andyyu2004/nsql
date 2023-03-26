@@ -186,7 +186,7 @@ where
     async fn insert_interior(
         &self,
         mut parents: Vec<PageIndex>,
-        key: &K,
+        sep: &K,
         child_idx: PageIndex,
     ) -> Result<()> {
         let parent_idx = parents.pop().expect("non-root leaf must have at least one parent");
@@ -200,22 +200,36 @@ where
             }
         };
 
-        match parent.insert(key, &child_idx) {
+        // FIXME reading the child page currently results in a deadlock as one of the callers is still
+        // holding an exclusive lock on it.
+        // #[cfg(debug_assertions)]
+        // {
+        //     let child_page = self.pool.load(child_idx).await?;
+        //     let child_guard = child_page.read().await;
+        //     let child_view = unsafe { PageView::<K, V>::view(&child_guard).await? };
+        //     let child_low_key = child_view.low_key().expect("non-root leaf must have a low key");
+        //     assert!(
+        //         child_low_key >= sep,
+        //         "low key of child should be at least as large as the given separator (sep: {sep:?}, child low key: {child_low_key:?})",
+        //     );
+        // }
+
+        match parent.insert(sep, &child_idx) {
             Ok(None) => {}
             Ok(Some(prev)) => todo!(
-                "duplicate key `{key:?}` in interior node, already pointed to `{prev}`, trying to insert `{child_idx}`"
+                "duplicate key `{sep:?}` in interior node, already pointed to `{prev}`, trying to insert `{child_idx}`"
             ),
             Err(PageFull) => {
                 if parent.page_header().flags.contains(Flags::IS_ROOT) {
                     cov_mark::hit!(root_interior_split);
                     self.split_root_and_insert::<InteriorPageViewMut<'_, K>, _>(
-                        parent, key, &child_idx,
+                        parent, sep, &child_idx,
                     )
                     .await?;
                 } else {
                     cov_mark::hit!(non_root_interior_split);
                     self.split_non_root_and_insert::<InteriorPageViewMut<'_, K>, _>(
-                        parents, parent_idx, parent, key, &child_idx,
+                        parents, parent_idx, parent, sep, &child_idx,
                     )
                     .await?;
                 }
@@ -249,10 +263,14 @@ where
         N::split_left_into(&mut right_node, right_node_page_idx, &mut new_left_node, new_page_idx);
 
         let sep = right_node.low_key().unwrap();
+        assert!(new_left_node.low_key().unwrap() >= sep);
+
         // FIXME ideally we don't have to deserialize sep
+        // insert the new separator key and child index into the parent
+        // The bug here is that we are inserting the children pointers in the wrong way.
+        // Basically it's criss-crossed from the correct arrangement due to us splitting left
         self.insert_interior(parents, &nsql_rkyv::deserialize(sep), new_page_idx).await?;
 
-        // insert the new separator key and child index into the parent
         let prev = (if sep > key {
             new_left_node.insert(key, value)
         } else {

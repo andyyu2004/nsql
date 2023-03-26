@@ -76,6 +76,21 @@ pub(crate) enum PageView<'a, K: Archive, V: Archive> {
     Leaf(LeafPageView<'a, K, V>),
 }
 
+impl<'a, K: Archive, V: Archive> PageView<'a, K, V>
+where
+    K: Archive + fmt::Debug + 'static,
+    K::Archived: Ord + fmt::Debug,
+    V: Archive + fmt::Debug + 'static,
+    V::Archived: fmt::Debug,
+{
+    pub(crate) fn low_key(&self) -> Option<&K::Archived> {
+        match self {
+            Self::Interior(page) => page.low_key(),
+            Self::Leaf(page) => page.low_key(),
+        }
+    }
+}
+
 impl<'a, K, V> PageView<'a, K, V>
 where
     K: Archive + fmt::Debug + 'static,
