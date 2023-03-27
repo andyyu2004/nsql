@@ -3,7 +3,6 @@
 #![feature(async_fn_in_trait)]
 #![feature(once_cell)]
 
-use std::collections::HashMap;
 use std::ops::Deref;
 use std::sync::Arc;
 
@@ -13,6 +12,7 @@ use lruk::{LruK, RefCounted};
 pub use nsql_pager::Result;
 use nsql_pager::{Page, PageIndex, Pager, PAGE_DATA_SIZE};
 use parking_lot::RwLock;
+use rustc_hash::FxHashMap;
 
 #[async_trait]
 pub trait Pool: Send + Sync + 'static {
@@ -121,7 +121,7 @@ impl Pool for BufferPool {
 /// Useful for tests only!
 pub struct FastUnboundedBufferPool {
     pager: Arc<dyn Pager>,
-    cache: RwLock<HashMap<PageIndex, BufferHandle>>,
+    cache: RwLock<FxHashMap<PageIndex, BufferHandle>>,
 }
 
 impl FastUnboundedBufferPool {
