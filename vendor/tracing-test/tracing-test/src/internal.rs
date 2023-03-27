@@ -21,16 +21,16 @@ lazy_static! {
 ///
 /// This function should usually not be used directly, instead use the `logs_contain(val: &str)`
 /// function injected by the [`#[traced_test]`](attr.traced_test.html) macro.
-pub fn logs_with_scope_contain(_scope: &str, val: &str) -> bool {
+pub fn logs_with_scope_contain(scope: &str, val: &str) -> bool {
     let logs = String::from_utf8(GLOBAL_BUF.lock().unwrap().to_vec()).unwrap();
     for line in logs.split('\n') {
-        if line.contains(val) {
-            return true;
-        }
-        // ignoring scope filter for now as the span injected by the macro is not showing up in the logs
-        // if line.contains(&format!(" {}:", scope)) && line.contains(val) {
+        // if line.contains(val) {
         //     return true;
         // }
+        // ignoring scope filter for now as the span injected by the macro is not showing up in the logs
+        if line.contains(&format!(" {}:", scope)) && line.contains(val) {
+            return true;
+        }
     }
     false
 }

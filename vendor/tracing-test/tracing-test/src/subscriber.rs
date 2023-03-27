@@ -1,10 +1,9 @@
-use std::{
-    io,
-    sync::{Mutex, MutexGuard},
-};
+use std::io;
+use std::sync::{Mutex, MutexGuard};
 
 use tracing_core::Dispatch;
-use tracing_subscriber::{fmt::MakeWriter, FmtSubscriber};
+use tracing_subscriber::fmt::MakeWriter;
+use tracing_subscriber::FmtSubscriber;
 
 /// A fake writer that writes into a buffer (behind a mutex).
 #[derive(Debug)]
@@ -22,9 +21,7 @@ impl<'a> MockWriter<'a> {
     fn buf(&self) -> io::Result<MutexGuard<'a, Vec<u8>>> {
         // Note: The `lock` will block. This would be a problem in production code,
         // but is fine in tests.
-        self.buf
-            .lock()
-            .map_err(|_| io::Error::from(io::ErrorKind::Other))
+        self.buf.lock().map_err(|_| io::Error::from(io::ErrorKind::Other))
     }
 }
 
