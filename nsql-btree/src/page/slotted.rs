@@ -389,7 +389,7 @@ where
         let idx = self.slot_index_of_key(&entry.key);
 
         let length = serialized_entry.len() as u16;
-        let has_space = length + archived_size_of!(Slot) <= self.free_space();
+        let has_space = length + archived_size_of!(Slot) <= dbg!(self.free_space());
 
         let prev = match idx {
             Ok(idx) => {

@@ -133,19 +133,19 @@ fn test_btree_insert_and_get_random(pairs: Box<[(u32, u16)]>) {
 }
 
 #[test]
-fn test_insert_duplicate_reuse_slot() -> Result<()> {
+fn test_btree_insert_duplicate_reuse_slot() -> Result<()> {
     cov_mark::check!(slotted_page_insert_duplicate_reuse);
     let inputs = (0..10000).map(|i| (i % 7, i)).collect::<Vec<_>>();
     run_insertions(&inputs)
 }
 
 #[test]
-fn test_insert_duplicate_into_full_page() -> Result<()> {
+fn test_btree_insert_duplicate_into_full_page() -> Result<()> {
     // Inserting duplicates into a full page requires some special handling.
     // This testcase tests the easy case where we can reuse the evicted slot.
     cov_mark::check!(slotted_page_insert_duplicate_full_reuse);
     // We exercise the case by filling up a page and then inserting the same keys again.
-    let inputs = (0..2).flat_map(|_| (0..580).map(|i| (i, i))).collect::<Vec<_>>();
+    let inputs = (0..2).flat_map(|_| (0..507).map(|i| (i, i))).collect::<Vec<_>>();
     run_insertions(&inputs)
 }
 
