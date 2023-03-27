@@ -67,7 +67,7 @@ where
     pub async fn insert(&self, key: &K, value: &V) -> Result<Option<V>> {
         for _ in 0..2 {
             let (leaf_idx, parents) = self.find_leaf_page_idx(key).await?;
-            match self.insert_leaf(leaf_idx, parents, key, value).await? {
+            match self.insert_leaf(leaf_idx, &parents, key, value).await? {
                 Ok(prev) => return Ok(prev),
                 Err(ConcurrentRootSplit) => continue,
             }
@@ -140,7 +140,7 @@ where
     async fn insert_leaf(
         &self,
         leaf_page_idx: PageIndex,
-        parents: Vec<PageIndex>,
+        parents: &[PageIndex],
         key: &K,
         value: &V,
     ) -> Result<Result<Option<V>, ConcurrentRootSplit>> {
@@ -158,7 +158,8 @@ where
             PageViewMut::Leaf(leaf) => leaf,
         };
 
-        match leaf.insert(key, value) {
+        let prev = leaf.insert(key, value);
+        match prev {
             Ok(value) => Ok(Ok(value)),
             Err(PageFull) => {
                 if leaf.page_header().flags.contains(Flags::IS_ROOT) {
@@ -188,13 +189,14 @@ where
     #[async_recursion]
     async fn insert_interior(
         &self,
-        mut parents: Vec<PageIndex>, // FIXME use slice and reslice it recursively to avoid unnecesary ownership
+        parents: &[PageIndex],
         left_sep: &K,
         left_child_idx: PageIndex,
         right_sep: &K,
         right_child_idx: PageIndex,
     ) -> Result<()> {
-        let parent_idx = parents.pop().expect("non-root leaf must have at least one parent");
+        let (&parent_idx, parents) =
+            parents.split_last().expect("non-root leaf must have at least one parents");
         let parent_page = self.pool.load(parent_idx).await?;
         let mut parent_guard = parent_page.write().await;
         let parent_view = unsafe { PageViewMut::<K, V>::view_mut(&mut parent_guard).await? };
@@ -216,11 +218,9 @@ where
 
         match parent.insert(right_sep, &right_child_idx) {
             Ok(None) => {}
-            Ok(Some(_prev)) => {
-                //     todo!(
-                //     "duplicate key `{sep:?}` in interior node, already pointed to `{prev}`, trying to insert `{child_idx}`"
-                // );
-            }
+            Ok(Some(prev)) => todo!(
+                "duplicate key `{right_sep:?}` in interior node, already pointed to `{prev}`, trying to insert `{right_child_idx}`"
+            ),
             Err(PageFull) => {
                 if parent.page_header().flags.contains(Flags::IS_ROOT) {
                     cov_mark::hit!(root_interior_split);
@@ -249,7 +249,7 @@ where
 
     async fn split_non_root_and_insert<N, T>(
         &self,
-        parents: Vec<PageIndex>,
+        parents: &[PageIndex],
         right_node_page_idx: PageIndex,
         mut right_node: N::ViewMut<'_>,
         key: &K,
