@@ -119,42 +119,42 @@ where
         root.slotted_page_mut().truncate(0);
     }
 
-    /// Split the right node to a new left node.
-    /// We split in this direction because we maintain low keys and left links.
-    fn split_left_into(
+    /// split `left` into a newly allocated page `right`
+    fn split(
+        left: &mut Self::ViewMut<'_>,
+        left_page_idx: PageIndex,
         right: &mut Self::ViewMut<'_>,
         right_page_idx: PageIndex,
-        new_left: &mut Self::ViewMut<'_>,
-        left_page_idx: PageIndex,
     ) where
         K::Archived: Deserialize<K, rkyv::Infallible>,
         V::Archived: Deserialize<V, rkyv::Infallible>,
     {
-        assert!(new_left.slotted_page().is_empty());
-        assert!(right.slotted_page().len() >= 3);
+        assert!(left.slotted_page().len() >= 3);
+        assert!(right.slotted_page().is_empty());
 
-        let slots = right.slotted_page().slots();
+        let left_slots = left.slotted_page_mut();
+        let slots = left_slots.slots();
         let (lhs, rhs) = slots.split_at(slots.len() / 2);
 
-        let left_slots = new_left.slotted_page_mut();
         let right_slots = right.slotted_page_mut();
 
-        for &slot in lhs {
-            let entry_bytes = &right_slots[slot];
+        // copy over the right entries to the new right page
+        for &slot in rhs {
+            let entry_bytes = &left_slots[slot];
             assert!(
-                unsafe { left_slots.insert_raw(entry_bytes) }
+                unsafe { right_slots.insert_raw(entry_bytes) }
                     .expect("new page should not be full")
                     .is_none(),
                 "should not have a previous value"
             );
         }
 
-        right_slots.split_left(lhs.len());
+        left_slots.truncate(lhs.len() as u16);
 
         right.set_left_link(left_page_idx);
-        new_left.set_right_link(right_page_idx);
+        left.set_right_link(right_page_idx);
 
-        debug_assert_eq!(new_left.len(), lhs.len());
+        debug_assert_eq!(left.len(), lhs.len());
         debug_assert_eq!(right.len(), rhs.len());
     }
 }

@@ -183,17 +183,12 @@ where
         }
     }
 
-    // We do interior inserts in a rather convoluted way.
-    // We have to update the left child pointer to point to the new node created by the split because we split pages to the left (for concurrency reasons).
-    // Then we have to reinsert the right child under a new separator.
     #[async_recursion]
     async fn insert_interior(
         &self,
         parents: &[PageIndex],
-        left_sep: &K,
-        left_child_idx: PageIndex,
-        right_sep: &K,
-        right_child_idx: PageIndex,
+        sep: &K,
+        child_idx: PageIndex,
     ) -> Result<()> {
         let (&parent_idx, parents) =
             parents.split_last().expect("non-root leaf must have at least one parents");
@@ -207,37 +202,22 @@ where
             }
         };
 
-        let prev_child_idx = parent.insert(left_sep, &left_child_idx)
-            .expect("page should not be full as we are inserting an existing key with the same sized value")
-            .expect("the `left_sep` key should already exist in the parent");
-
-        assert_eq!(
-            prev_child_idx, right_child_idx,
-            "the child pointer of `left_sep` should have been pointing to the given right child idx"
-        );
-
-        match parent.insert(right_sep, &right_child_idx) {
+        match parent.insert(sep, &child_idx) {
             Ok(None) => {}
             Ok(Some(prev)) => todo!(
-                "duplicate key `{right_sep:?}` in interior node, already pointed to `{prev}`, trying to insert `{right_child_idx}`"
+                "duplicate key `{sep:?}` in interior node, already pointed to `{prev}`, trying to insert `{child_idx}`"
             ),
             Err(PageFull) => {
                 if parent.page_header().flags.contains(Flags::IS_ROOT) {
                     cov_mark::hit!(root_interior_split);
                     self.split_root_and_insert::<InteriorPageViewMut<'_, K>, _>(
-                        parent,
-                        right_sep,
-                        &right_child_idx,
+                        parent, sep, &child_idx,
                     )
                     .await?;
                 } else {
                     cov_mark::hit!(non_root_interior_split);
                     self.split_non_root_and_insert::<InteriorPageViewMut<'_, K>, _>(
-                        parents,
-                        parent_idx,
-                        parent,
-                        right_sep,
-                        &right_child_idx,
+                        parents, parent_idx, parent, sep, &child_idx,
                     )
                     .await?;
                 }
@@ -250,8 +230,8 @@ where
     async fn split_non_root_and_insert<N, T>(
         &self,
         parents: &[PageIndex],
-        right_node_page_idx: PageIndex,
-        mut right_node: N::ViewMut<'_>,
+        old_node_page_idx: PageIndex,
+        mut old_node: N::ViewMut<'_>,
         key: &K,
         value: &T,
     ) -> Result<Option<T>>
@@ -265,32 +245,19 @@ where
         // then we insert the separator key and the new page index into the parent
         let new_page = self.pool.alloc().await?;
         let mut new_guard = new_page.page().write().await;
-        let new_page_idx = new_guard.page_idx();
-        let mut new_left_node = N::initialize(&mut new_guard);
+        let new_node_page_idx = new_guard.page_idx();
+        let mut new_node = N::initialize(&mut new_guard);
 
-        N::split_left_into(&mut right_node, right_node_page_idx, &mut new_left_node, new_page_idx);
+        N::split(&mut old_node, old_node_page_idx, &mut new_node, new_node_page_idx);
 
-        // FIXME ideally we don't have to deserialize sep
-        // insert the new separator key and child index into the parent
-        let parent_sep = new_left_node.low_key().unwrap();
         // a separator between the new left node and the right node is the low key of the right node
-        let left_right_sep = right_node.low_key().unwrap();
+        let sep = new_node.low_key().unwrap();
 
-        self.insert_interior(
-            parents,
-            &nsql_rkyv::deserialize(parent_sep),
-            new_page_idx,
-            &nsql_rkyv::deserialize(left_right_sep),
-            right_node_page_idx,
-        )
-        .await?;
+        self.insert_interior(parents, &nsql_rkyv::deserialize(sep), new_node_page_idx).await?;
 
-        let prev = (if left_right_sep > key {
-            new_left_node.insert(key, value)
-        } else {
-            right_node.insert(key, value)
-        })
-        .expect("split interior should not be full");
+        let prev =
+            (if sep > key { old_node.insert(key, value) } else { new_node.insert(key, value) })
+                .expect("split interior should not be full");
 
         Ok(prev)
     }

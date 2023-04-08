@@ -304,15 +304,6 @@ where
         self.assert_invariants();
     }
 
-    /// Rearrange the slotted page to drop the first `idx` slots assuming these have been split into a
-    /// new left page
-    pub(crate) fn split_left(&mut self, idx: usize) {
-        // FIXME keep track of freed space for reuse
-        let new_len = self.slots.len() - idx;
-        self.slots.copy_within(idx.., 0);
-        self.truncate(new_len as u16);
-    }
-
     /// Safety: `serialized_entry` must be the serialized bytes of an `Entry<&K, &V>`
     pub(crate) unsafe fn insert_raw(
         &mut self,
