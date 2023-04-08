@@ -10,8 +10,6 @@ use super::{Flags, InteriorPageViewMut, PageFull, PageHeader};
 use crate::Result;
 
 pub(crate) trait NodeHeader: Unpin {
-    fn left_link(&self) -> Archived<Option<PageIndex>>;
-
     fn set_left_link(&mut self, left_link: PageIndex);
 
     fn set_right_link(&mut self, right_link: PageIndex);
@@ -35,11 +33,12 @@ where
 
     fn node_header(&self) -> &Self::ArchivedNodeHeader;
 
-    /// A node has a low key iff it is not the root.
-    /// All other nodes have a low key. In particular, the non-root left-most nodes have `K::MIN` as the low key.
-    // FIXME run into lifetime issues if we try to write a default implementation
-    // the impl copied into each implementation for now
-    fn low_key(&self) -> Option<&K::Archived>;
+    /// The "high key" of a node as part of L&Y btrees.
+    /// A node has a high key iff it is not the rightmost page.
+    /// A `None` high key effectively represents `infinity`.
+    fn high_key(&self) -> Option<&K::Archived>;
+
+    fn first(&self) -> Option<&K::Archived>;
 
     fn is_root(&self) -> bool {
         self.page_header().flags.contains(Flags::IS_ROOT)
@@ -207,8 +206,8 @@ where
         V: Serialize<DefaultSerializer>,
         V::Archived: Deserialize<V, rkyv::Infallible>,
     {
-        if let Some(low_key) = self.low_key() {
-            assert!(low_key <= key, "key must be no less than low key {low_key:?} !<= {key:?}");
+        if let Some(high_key) = self.high_key() {
+            assert!(high_key >= key, "key must be no less than low key {high_key:?} !<= {key:?}");
         }
 
         self.slotted_page_mut().insert(key, value)

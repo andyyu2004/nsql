@@ -250,8 +250,8 @@ where
 
         N::split(&mut old_node, old_node_page_idx, &mut new_node, new_node_page_idx);
 
-        // a separator between the new left node and the right node is the low key of the right node
-        let sep = new_node.low_key().unwrap();
+        // a separator between the new left node and the right node is the min key of the right node
+        let sep = new_node.first().unwrap();
 
         self.insert_interior(parents, &nsql_rkyv::deserialize(sep), new_node_page_idx).await?;
 
@@ -296,7 +296,7 @@ where
             &mut right_child,
         );
 
-        let sep = right_child.low_key().unwrap();
+        let sep = right_child.first().unwrap();
 
         // reinitialize the root to an interior root node and add the two children
         let mut root = root.reinitialize_as_root_interior();

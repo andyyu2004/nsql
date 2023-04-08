@@ -84,10 +84,10 @@ where
     V: Archive + fmt::Debug + 'static,
     V::Archived: fmt::Debug,
 {
-    pub(crate) fn low_key(&self) -> Option<&K::Archived> {
+    pub(crate) fn high_key(&self) -> Option<&K::Archived> {
         match self {
-            Self::Interior(page) => page.low_key(),
-            Self::Leaf(page) => page.low_key(),
+            Self::Interior(page) => page.high_key(),
+            Self::Leaf(page) => page.high_key(),
         }
     }
 }

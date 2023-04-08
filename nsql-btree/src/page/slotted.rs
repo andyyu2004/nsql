@@ -76,6 +76,10 @@ impl<'a, K: Archive, V: Archive, X: Archive> SlottedPageView<'a, K, V, X> {
     pub(crate) fn slots(&self) -> &'a [Archived<Slot>] {
         self.slots
     }
+
+    pub(crate) fn extra(&self) -> &'a Archived<X> {
+        self.extra
+    }
 }
 
 impl<'a, K, V, X> SlottedPageView<'a, K, V, X>
@@ -111,7 +115,7 @@ where
         unsafe { rkyv::archived_root::<Entry<&K, &V>>(&self[slot]) }
     }
 
-    pub(crate) fn low_key(&self) -> Option<&K::Archived> {
+    pub(crate) fn first(&self) -> Option<&K::Archived> {
         let slot = *self.slots.first()?;
         Some(&self.get_by_slot(slot).key)
     }
@@ -507,9 +511,6 @@ where
 
         for &slot in self.slots.iter() {
             let entry = self.get_by_slot(slot);
-            if let Some(low_key) = self.low_key() {
-                assert!(low_key <= &entry.key, "{low_key:?} !<= {:?}", &entry.key);
-            }
             entries.push(entry);
         }
 

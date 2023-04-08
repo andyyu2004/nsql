@@ -3,9 +3,10 @@ use std::pin::Pin;
 use std::{fmt, io};
 
 use nsql_pager::{PageIndex, PAGE_DATA_SIZE};
+use nsql_rkyv::DefaultSerializer;
 use nsql_util::static_assert_eq;
 use rkyv::option::ArchivedOption;
-use rkyv::{Archive, Archived};
+use rkyv::{Archive, Archived, Serialize};
 
 use super::node::{NodeHeader, NodeView, NodeViewMut};
 use super::slotted::SlottedPageViewMut;
@@ -16,7 +17,7 @@ use crate::Result;
 
 const BTREE_LEAF_PAGE_MAGIC: [u8; 4] = *b"BTPL";
 
-#[derive(Debug, PartialEq, Archive, rkyv::Serialize)]
+#[derive(Debug, PartialEq, Archive, Serialize)]
 #[archive_attr(derive(Debug, PartialEq))]
 pub(crate) struct LeafPageHeader {
     magic: [u8; 4],
@@ -25,10 +26,6 @@ pub(crate) struct LeafPageHeader {
 }
 
 impl NodeHeader for Archived<LeafPageHeader> {
-    fn left_link(&self) -> Archived<Option<PageIndex>> {
-        self.left_link
-    }
-
     fn set_left_link(&mut self, left_link: PageIndex) {
         self.left_link = ArchivedOption::Some(left_link.into());
     }
@@ -57,10 +54,16 @@ impl Default for LeafPageHeader {
 }
 
 #[repr(C)]
-pub(crate) struct LeafPageView<'a, K: Archive, V: Archive> {
+pub(crate) struct LeafPageView<'a, K: Archive + 'static, V: Archive> {
     page_header: &'a Archived<PageHeader>,
     header: &'a Archived<LeafPageHeader>,
-    slotted_page: SlottedPageView<'a, K, V>,
+    slotted_page: SlottedPageView<'a, K, V, LeafExtra<K>>,
+}
+
+#[derive(Debug, Archive, Serialize)]
+#[repr(C)]
+pub(crate) struct LeafExtra<K> {
+    high_key: Option<K>,
 }
 
 impl<K, V> fmt::Debug for LeafPageView<'_, K, V>
@@ -102,20 +105,19 @@ where
         K::Archived: PartialOrd<Q>,
         Q: ?Sized + fmt::Debug,
     {
-        if let Some(low_key) = self.low_key() {
-            assert!(low_key <= key, "low_key: {:?}, key: {:?}", low_key, key);
+        if let Some(high_key) = self.high_key() {
+            assert!(high_key >= key, "high_key: {:?}, key: {:?}", high_key, key);
         }
 
         self.slotted_page.get(key)
     }
 }
 
-#[derive(Debug)]
 #[repr(C)]
-pub(crate) struct LeafPageViewMut<'a, K, V> {
+pub(crate) struct LeafPageViewMut<'a, K: Archive + 'static, V> {
     page_header: Pin<&'a mut Archived<PageHeader>>,
     header: Pin<&'a mut Archived<LeafPageHeader>>,
-    slotted_page: SlottedPageViewMut<'a, K, V>,
+    slotted_page: SlottedPageViewMut<'a, K, V, LeafExtra<K>>,
 }
 
 impl<'a, K: Archive + 'static, V: Archive + 'static> Deref for LeafPageViewMut<'a, K, V> {
@@ -142,9 +144,9 @@ where
 {
     type ArchivedNodeHeader = Archived<LeafPageHeader>;
 
-    type Extra = ();
+    type Extra = LeafExtra<K>;
 
-    fn slotted_page(&self) -> &SlottedPageView<'a, K, V> {
+    fn slotted_page(&self) -> &SlottedPageView<'a, K, V, Self::Extra> {
         &self.slotted_page
     }
 
@@ -156,9 +158,15 @@ where
         self.header
     }
 
-    fn low_key(&self) -> Option<&K::Archived> {
-        (!self.is_root())
-            .then(|| self.slotted_page.low_key().expect("non-root should have a low_key"))
+    fn high_key(&self) -> Option<&K::Archived> {
+        None
+        // todo!()
+        // (!self.is_root())
+        //     .then(|| self.slotted_page.low_key().expect("non-root should have a low_key"))
+    }
+
+    fn first(&self) -> Option<&K::Archived> {
+        self.slotted_page.first()
     }
 }
 
@@ -170,9 +178,9 @@ where
     V::Archived: fmt::Debug,
 {
     type ArchivedNodeHeader = Archived<LeafPageHeader>;
-    type Extra = ();
+    type Extra = LeafExtra<K>;
 
-    fn slotted_page(&self) -> &SlottedPageView<'a, K, V> {
+    fn slotted_page(&self) -> &SlottedPageView<'a, K, V, Self::Extra> {
         (**self).slotted_page()
     }
 
@@ -184,14 +192,18 @@ where
         (**self).node_header()
     }
 
-    fn low_key(&self) -> Option<&K::Archived> {
-        (**self).low_key()
+    fn high_key(&self) -> Option<&K::Archived> {
+        (**self).high_key()
+    }
+
+    fn first(&self) -> Option<&K::Archived> {
+        (**self).first()
     }
 }
 
 impl<K, V> NodeMut<K, V> for LeafPageViewMut<'_, K, V>
 where
-    K: Archive + fmt::Debug + 'static,
+    K: Serialize<DefaultSerializer> + fmt::Debug + 'static,
     K::Archived: Ord + fmt::Debug,
     V: Archive + fmt::Debug + 'static,
     V::Archived: fmt::Debug,
@@ -223,7 +235,7 @@ where
         let header = unsafe { nsql_rkyv::archived_root_mut::<LeafPageHeader>(header_bytes) };
         header.check_magic().expect("sanity check");
 
-        let slotted_page = SlottedPageViewMut::init(data, ());
+        let slotted_page = SlottedPageViewMut::init(data, LeafExtra { high_key: None });
 
         LeafPageViewMut { page_header, header, slotted_page }
     }
@@ -236,7 +248,7 @@ where
     V: Archive + fmt::Debug + 'static,
     V::Archived: fmt::Debug,
 {
-    fn slotted_page_mut(&mut self) -> &mut SlottedPageViewMut<'a, K, V> {
+    fn slotted_page_mut(&mut self) -> &mut SlottedPageViewMut<'a, K, V, Self::Extra> {
         &mut self.slotted_page
     }
 

@@ -23,10 +23,6 @@ pub(crate) struct InteriorPageHeader {
 }
 
 impl NodeHeader for Archived<InteriorPageHeader> {
-    fn left_link(&self) -> Archived<Option<PageIndex>> {
-        self.left_link
-    }
-
     fn set_left_link(&mut self, left_link: PageIndex) {
         self.left_link = ArchivedOption::Some(left_link.into());
     }
@@ -59,12 +55,12 @@ impl ArchivedInteriorPageHeader {
 pub(crate) struct InteriorPageView<'a, K: Archive + 'static> {
     page_header: &'a Archived<PageHeader>,
     header: &'a Archived<InteriorPageHeader>,
-    slotted_page: SlottedPageView<'a, K, PageIndex, InteriorMeta<K>>,
+    slotted_page: SlottedPageView<'a, K, PageIndex, InteriorExtra<K>>,
 }
 
 #[derive(Debug, Archive, Serialize)]
 #[repr(C)]
-pub(crate) struct InteriorMeta<K> {
+pub(crate) struct InteriorExtra<K> {
     high_key: Option<K>,
 }
 
@@ -120,7 +116,7 @@ where
 pub(crate) struct InteriorPageViewMut<'a, K: Archive + 'static> {
     page_header: Pin<&'a mut Archived<PageHeader>>,
     header: Pin<&'a mut Archived<InteriorPageHeader>>,
-    slotted_page: SlottedPageViewMut<'a, K, PageIndex, InteriorMeta<K>>,
+    slotted_page: SlottedPageViewMut<'a, K, PageIndex, InteriorExtra<K>>,
 }
 
 impl<'a, K> fmt::Debug for InteriorPageViewMut<'a, K>
@@ -156,9 +152,9 @@ where
     K::Archived: fmt::Debug + Ord,
 {
     type ArchivedNodeHeader = Archived<InteriorPageHeader>;
-    type Extra = InteriorMeta<K>;
+    type Extra = InteriorExtra<K>;
 
-    fn slotted_page(&self) -> &SlottedPageView<'a, K, PageIndex, InteriorMeta<K>> {
+    fn slotted_page(&self) -> &SlottedPageView<'a, K, PageIndex, InteriorExtra<K>> {
         &self.slotted_page
     }
 
@@ -170,9 +166,12 @@ where
         self.header
     }
 
-    fn low_key(&self) -> Option<&K::Archived> {
-        (!self.is_root())
-            .then(|| self.slotted_page.low_key().expect("non-root should have a low_key"))
+    fn high_key(&self) -> Option<&K::Archived> {
+        self.slotted_page.extra().high_key.as_ref()
+    }
+
+    fn first(&self) -> Option<&K::Archived> {
+        self.slotted_page.first()
     }
 }
 
@@ -182,9 +181,9 @@ where
     K::Archived: fmt::Debug + Ord,
 {
     type ArchivedNodeHeader = Archived<InteriorPageHeader>;
-    type Extra = InteriorMeta<K>;
+    type Extra = InteriorExtra<K>;
 
-    fn slotted_page(&self) -> &SlottedPageView<'a, K, PageIndex, InteriorMeta<K>> {
+    fn slotted_page(&self) -> &SlottedPageView<'a, K, PageIndex, InteriorExtra<K>> {
         (**self).slotted_page()
     }
 
@@ -196,8 +195,12 @@ where
         (**self).node_header()
     }
 
-    fn low_key(&self) -> Option<&K::Archived> {
-        (**self).low_key()
+    fn high_key(&self) -> Option<&K::Archived> {
+        (**self).high_key()
+    }
+
+    fn first(&self) -> Option<&K::Archived> {
+        (**self).first()
     }
 }
 
@@ -230,7 +233,7 @@ where
         let (header_bytes, data) = data.split_array_mut();
         nsql_rkyv::serialize_into_buf(header_bytes, &InteriorPageHeader::default());
 
-        let slotted_page = SlottedPageViewMut::init(data, InteriorMeta { high_key: None });
+        let slotted_page = SlottedPageViewMut::init(data, InteriorExtra { high_key: None });
 
         let header = unsafe { nsql_rkyv::archived_root_mut::<InteriorPageHeader>(header_bytes) };
         header.check_magic().expect("magic should be correct as we just set it");
@@ -244,7 +247,7 @@ where
     K: Archive + fmt::Debug + 'static,
     K::Archived: fmt::Debug + Ord,
 {
-    fn slotted_page_mut(&mut self) -> &mut SlottedPageViewMut<'a, K, PageIndex, InteriorMeta<K>> {
+    fn slotted_page_mut(&mut self) -> &mut SlottedPageViewMut<'a, K, PageIndex, InteriorExtra<K>> {
         &mut self.slotted_page
     }
 
