@@ -8,7 +8,8 @@ use std::fmt;
 
 pub(crate) use node::{NodeMut, NodeView, NodeViewMut};
 use nsql_pager::PAGE_DATA_SIZE;
-use rkyv::Archive;
+use nsql_rkyv::DefaultSerializer;
+use rkyv::{Archive, Serialize};
 
 pub(crate) use self::interior::{InteriorPageView, InteriorPageViewMut};
 pub(crate) use self::leaf::{LeafPageView, LeafPageViewMut};
@@ -71,7 +72,7 @@ impl PageHeader {
     }
 }
 
-pub(crate) enum PageView<'a, K: Archive, V: Archive> {
+pub(crate) enum PageView<'a, K: Archive + 'static, V: Archive> {
     Interior(InteriorPageView<'a, K>),
     Leaf(LeafPageView<'a, K, V>),
 }
@@ -110,14 +111,14 @@ where
     }
 }
 
-pub(crate) enum PageViewMut<'a, K, V> {
+pub(crate) enum PageViewMut<'a, K: Archive + 'static, V> {
     Interior(InteriorPageViewMut<'a, K>),
     Leaf(LeafPageViewMut<'a, K, V>),
 }
 
 impl<'a, K, V> PageViewMut<'a, K, V>
 where
-    K: Archive + fmt::Debug + 'static,
+    K: Archive + Serialize<DefaultSerializer> + fmt::Debug + 'static,
     K::Archived: fmt::Debug + Ord,
     V: Archive + fmt::Debug + 'static,
     V::Archived: fmt::Debug,

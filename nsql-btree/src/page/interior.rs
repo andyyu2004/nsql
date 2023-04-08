@@ -3,14 +3,14 @@ use std::pin::Pin;
 use std::{fmt, io, mem};
 
 use nsql_pager::{PageIndex, PAGE_DATA_SIZE};
+use nsql_rkyv::DefaultSerializer;
 use nsql_util::static_assert_eq;
 use rkyv::option::ArchivedOption;
-use rkyv::{Archive, Archived};
+use rkyv::{Archive, Archived, Serialize};
 
 use super::node::{NodeHeader, NodeView, NodeViewMut};
 use super::slotted::{SlottedPageView, SlottedPageViewMut};
 use super::{Flags, NodeMut, PageHeader};
-use crate::page::archived_size_of;
 use crate::Result;
 
 const BTREE_INTERIOR_PAGE_MAGIC: [u8; 4] = *b"BTPI";
@@ -56,10 +56,16 @@ impl ArchivedInteriorPageHeader {
 
 // NOTE: must have the same layout as `InteriorPageViewMut`
 #[repr(C)]
-pub(crate) struct InteriorPageView<'a, K: Archive> {
+pub(crate) struct InteriorPageView<'a, K: Archive + 'static> {
     page_header: &'a Archived<PageHeader>,
     header: &'a Archived<InteriorPageHeader>,
-    slotted_page: SlottedPageView<'a, K, PageIndex>,
+    slotted_page: SlottedPageView<'a, K, PageIndex, InteriorMeta<K>>,
+}
+
+#[derive(Debug, Archive, Serialize)]
+#[repr(C)]
+pub(crate) struct InteriorMeta<K> {
+    high_key: Option<K>,
 }
 
 impl<K> fmt::Debug for InteriorPageView<'_, K>
@@ -111,10 +117,10 @@ where
 
 // NOTE: must have the same layout as `InteriorPageView`
 #[repr(C)]
-pub(crate) struct InteriorPageViewMut<'a, K> {
+pub(crate) struct InteriorPageViewMut<'a, K: Archive + 'static> {
     page_header: Pin<&'a mut Archived<PageHeader>>,
     header: Pin<&'a mut Archived<InteriorPageHeader>>,
-    slotted_page: SlottedPageViewMut<'a, K, PageIndex>,
+    slotted_page: SlottedPageViewMut<'a, K, PageIndex, InteriorMeta<K>>,
 }
 
 impl<'a, K> fmt::Debug for InteriorPageViewMut<'a, K>
@@ -150,8 +156,9 @@ where
     K::Archived: fmt::Debug + Ord,
 {
     type ArchivedNodeHeader = Archived<InteriorPageHeader>;
+    type Extra = InteriorMeta<K>;
 
-    fn slotted_page(&self) -> &SlottedPageView<'a, K, PageIndex> {
+    fn slotted_page(&self) -> &SlottedPageView<'a, K, PageIndex, InteriorMeta<K>> {
         &self.slotted_page
     }
 
@@ -175,8 +182,9 @@ where
     K::Archived: fmt::Debug + Ord,
 {
     type ArchivedNodeHeader = Archived<InteriorPageHeader>;
+    type Extra = InteriorMeta<K>;
 
-    fn slotted_page(&self) -> &SlottedPageView<'a, K, PageIndex> {
+    fn slotted_page(&self) -> &SlottedPageView<'a, K, PageIndex, InteriorMeta<K>> {
         (**self).slotted_page()
     }
 
@@ -195,7 +203,7 @@ where
 
 impl<K> NodeMut<K, PageIndex> for InteriorPageViewMut<'_, K>
 where
-    K: Archive + fmt::Debug + 'static,
+    K: Archive + Serialize<DefaultSerializer> + fmt::Debug + 'static,
     K::Archived: Ord + fmt::Debug,
 {
     type ViewMut<'a> = InteriorPageViewMut<'a, K>;
@@ -222,7 +230,7 @@ where
         let (header_bytes, data) = data.split_array_mut();
         nsql_rkyv::serialize_into_buf(header_bytes, &InteriorPageHeader::default());
 
-        let slotted_page = SlottedPageViewMut::init(data, ());
+        let slotted_page = SlottedPageViewMut::init(data, InteriorMeta { high_key: None });
 
         let header = unsafe { nsql_rkyv::archived_root_mut::<InteriorPageHeader>(header_bytes) };
         header.check_magic().expect("magic should be correct as we just set it");
@@ -236,7 +244,7 @@ where
     K: Archive + fmt::Debug + 'static,
     K::Archived: fmt::Debug + Ord,
 {
-    fn slotted_page_mut(&mut self) -> &mut SlottedPageViewMut<'a, K, PageIndex> {
+    fn slotted_page_mut(&mut self) -> &mut SlottedPageViewMut<'a, K, PageIndex, InteriorMeta<K>> {
         &mut self.slotted_page
     }
 

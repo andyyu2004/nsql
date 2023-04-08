@@ -11,7 +11,7 @@ use super::node::{NodeHeader, NodeView, NodeViewMut};
 use super::slotted::SlottedPageViewMut;
 use super::{Flags, NodeMut};
 use crate::page::slotted::SlottedPageView;
-use crate::page::{archived_size_of, PageHeader};
+use crate::page::PageHeader;
 use crate::Result;
 
 const BTREE_LEAF_PAGE_MAGIC: [u8; 4] = *b"BTPL";
@@ -142,6 +142,8 @@ where
 {
     type ArchivedNodeHeader = Archived<LeafPageHeader>;
 
+    type Extra = ();
+
     fn slotted_page(&self) -> &SlottedPageView<'a, K, V> {
         &self.slotted_page
     }
@@ -168,6 +170,7 @@ where
     V::Archived: fmt::Debug,
 {
     type ArchivedNodeHeader = Archived<LeafPageHeader>;
+    type Extra = ();
 
     fn slotted_page(&self) -> &SlottedPageView<'a, K, V> {
         (**self).slotted_page()

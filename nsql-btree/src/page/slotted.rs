@@ -24,12 +24,13 @@ pub(crate) struct SlottedPageView<'a, K: Archive, V: Archive, X: Archive = ()> {
     marker: PhantomData<&'a (K::Archived, V::Archived)>,
 }
 
-impl<'a, K, V> fmt::Debug for SlottedPageView<'a, K, V>
+impl<'a, K, V, X> fmt::Debug for SlottedPageView<'a, K, V, X>
 where
     K: Archive,
     K::Archived: Ord + fmt::Debug,
     V: Archive,
     V::Archived: fmt::Debug,
+    X: Archive,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("SlottedPageView")
@@ -77,11 +78,12 @@ impl<'a, K: Archive, V: Archive, X: Archive> SlottedPageView<'a, K, V, X> {
     }
 }
 
-impl<'a, K, V> SlottedPageView<'a, K, V>
+impl<'a, K, V, X> SlottedPageView<'a, K, V, X>
 where
     K: Archive,
     K::Archived: Ord,
     V: Archive,
+    X: Archive,
 {
     pub(crate) fn get<Q>(&self, key: &Q) -> Option<&V::Archived>
     where
@@ -128,7 +130,7 @@ where
     }
 }
 
-impl<K: Archive, V: Archive> Index<Slot> for SlottedPageView<'_, K, V> {
+impl<K: Archive, V: Archive, X: Archive> Index<Slot> for SlottedPageView<'_, K, V, X> {
     type Output = [u8];
 
     fn index(&self, slot: Slot) -> &Self::Output {
@@ -144,7 +146,9 @@ impl<K: Archive, V: Archive> Index<Slot> for SlottedPageView<'_, K, V> {
     }
 }
 
-impl<'a, K: Archive + 'static, V: Archive + 'static> Index<Slot> for SlottedPageViewMut<'a, K, V> {
+impl<'a, K: Archive + 'static, V: Archive + 'static, X: Archive> Index<Slot>
+    for SlottedPageViewMut<'a, K, V, X>
+{
     type Output = [u8];
 
     fn index(&self, slot: Slot) -> &Self::Output {
@@ -152,8 +156,8 @@ impl<'a, K: Archive + 'static, V: Archive + 'static> Index<Slot> for SlottedPage
     }
 }
 
-impl<'a, K: Archive + 'static, V: Archive + 'static> IndexMut<Slot>
-    for SlottedPageViewMut<'a, K, V>
+impl<'a, K: Archive + 'static, V: Archive + 'static, X: Archive> IndexMut<Slot>
+    for SlottedPageViewMut<'a, K, V, X>
 {
     fn index_mut(&mut self, slot: Slot) -> &mut Self::Output {
         let adjusted_slot_offset: SlotOffset = slot.offset - mem::size_of_val(self.slots) as u16;
@@ -250,7 +254,9 @@ impl<'a, K: Archive, V: Archive, X: Serialize<nsql_rkyv::DefaultSerializer>>
     }
 }
 
-impl<'a, K: Archive + 'static, V: Archive + 'static> Deref for SlottedPageViewMut<'a, K, V> {
+impl<'a, K: Archive + 'static, V: Archive + 'static, X: Archive> Deref
+    for SlottedPageViewMut<'a, K, V, X>
+{
     type Target = SlottedPageView<'a, K, V>;
 
     fn deref(&self) -> &Self::Target {
@@ -264,12 +270,13 @@ impl<'a, K: Archive + 'static, V: Archive + 'static> Deref for SlottedPageViewMu
     }
 }
 
-impl<'a, K, V> SlottedPageViewMut<'a, K, V>
+impl<'a, K, V, X> SlottedPageViewMut<'a, K, V, X>
 where
     K: Archive + 'static,
     K::Archived: Ord + fmt::Debug,
     V: Archive + 'static,
     V::Archived: fmt::Debug,
+    X: Archive,
 {
     /// Truncate the page to the leftmost `new_len` slots
     pub(crate) fn truncate(&mut self, new_len: u16) {

@@ -27,7 +27,9 @@ where
 {
     type ArchivedNodeHeader: NodeHeader;
 
-    fn slotted_page(&self) -> &SlottedPageView<'a, K, V>;
+    type Extra: Archive + 'a;
+
+    fn slotted_page(&self) -> &SlottedPageView<'a, K, V, Self::Extra>;
 
     fn page_header(&self) -> &Archived<PageHeader>;
 
@@ -166,7 +168,7 @@ where
 {
     fn node_header_mut(&mut self) -> Pin<&mut Self::ArchivedNodeHeader>;
 
-    fn slotted_page_mut(&mut self) -> &mut SlottedPageViewMut<'a, K, V>;
+    fn slotted_page_mut(&mut self) -> &mut SlottedPageViewMut<'a, K, V, Self::Extra>;
 
     /// SAFETY: The page header must be archived at the start of the page
     /// This is assumed by the implementation of `raw_bytes_mut`
@@ -180,7 +182,10 @@ where
 
     /// Reinitialize the root node as a root interior node.
     /// This is intended for use when splitting a root node.
-    fn reinitialize_as_root_interior(&mut self) -> InteriorPageViewMut<'_, K> {
+    fn reinitialize_as_root_interior(&mut self) -> InteriorPageViewMut<'_, K>
+    where
+        K: Serialize<DefaultSerializer>,
+    {
         assert!(self.page_header().flags.contains(Flags::IS_ROOT));
         let root_interior = InteriorPageViewMut::initialize_root(self.raw_bytes_mut());
         assert!(root_interior.is_root());
