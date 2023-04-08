@@ -30,6 +30,10 @@ impl NodeHeader for Archived<InteriorPageHeader> {
     fn set_right_link(&mut self, _right_link: PageIndex) {
         // interior pages don't maintain a right link, nothing to do
     }
+
+    fn right_link(&self) -> Option<PageIndex> {
+        self.left_link.as_ref().map(|&idx| idx.into())
+    }
 }
 
 impl Default for InteriorPageHeader {

@@ -11,6 +11,7 @@ use rkyv::{Archive, Archived, Serialize};
 use super::node::{NodeHeader, NodeView, NodeViewMut};
 use super::slotted::SlottedPageViewMut;
 use super::{Flags, NodeMut};
+use crate::btree::ConcurrentSplit;
 use crate::page::slotted::SlottedPageView;
 use crate::page::PageHeader;
 use crate::Result;
@@ -32,6 +33,10 @@ impl NodeHeader for Archived<LeafPageHeader> {
 
     fn set_right_link(&mut self, right_link: PageIndex) {
         self.right_link = ArchivedOption::Some(right_link.into());
+    }
+
+    fn right_link(&self) -> Option<PageIndex> {
+        self.right_link.as_ref().map(|&idx| idx.into())
     }
 }
 
@@ -100,16 +105,20 @@ where
         Ok(Self { page_header, header, slotted_page })
     }
 
-    pub(crate) fn get<Q>(&self, key: &Q) -> Option<&V::Archived>
+    #[tracing::instrument(skip(self))]
+    pub(crate) fn get<Q>(&self, key: &Q) -> Result<Option<&V::Archived>, ConcurrentSplit>
     where
         K::Archived: PartialOrd<Q>,
         Q: ?Sized + fmt::Debug,
     {
         if let Some(high_key) = self.high_key().as_ref() {
-            assert!(high_key >= key, "high_key: {:?}, key: {:?}", high_key, key);
+            tracing::debug!("detected concurrent leaf split");
+            if high_key < key {
+                return Err(ConcurrentSplit);
+            }
         }
 
-        self.slotted_page.get(key)
+        Ok(self.slotted_page.get(key))
     }
 }
 

@@ -11,6 +11,8 @@ use super::{Flags, InteriorPageViewMut, PageFull, PageHeader};
 use crate::Result;
 
 pub(crate) trait NodeHeader: Unpin {
+    fn right_link(&self) -> Option<PageIndex>;
+
     fn set_left_link(&mut self, left_link: PageIndex);
 
     fn set_right_link(&mut self, right_link: PageIndex);
@@ -41,6 +43,10 @@ where
 
     /// The smallest/leftmost key in the node.
     fn min_key(&self) -> Option<&K::Archived>;
+
+    fn right_link(&self) -> Option<PageIndex> {
+        self.node_header().right_link()
+    }
 
     fn is_root(&self) -> bool {
         self.page_header().flags.contains(Flags::IS_ROOT)

@@ -34,7 +34,7 @@ impl<K, V> Clone for BTree<K, V> {
 }
 
 #[derive(Debug)]
-struct ConcurrentRootSplit;
+pub(crate) struct ConcurrentSplit;
 
 impl<K, V> BTree<K, V>
 where
@@ -70,7 +70,7 @@ where
             let (leaf_idx, parents) = self.find_leaf_page_idx(key).await?;
             match self.insert_leaf(leaf_idx, &parents, key, value).await? {
                 Ok(prev) => return Ok(prev),
-                Err(ConcurrentRootSplit) => continue,
+                Err(ConcurrentSplit) => continue,
             }
         }
 
@@ -87,7 +87,13 @@ where
         let guard = handle.read().await;
         let node = unsafe { PageView::<K, V>::view(&guard).await? };
         match node {
-            PageView::Leaf(leaf) => Ok(leaf.get(key).map(nsql_rkyv::deserialize)),
+            PageView::Leaf(leaf) => match leaf.get(key) {
+                Ok(value) => Ok(value.map(nsql_rkyv::deserialize)),
+                Err(ConcurrentSplit) => match leaf.right_link() {
+                    Some(idx) => self.search_node(idx, key).await,
+                    None => Ok(None),
+                },
+            },
             PageView::Interior(interior) => {
                 let child_idx = interior.search(key);
                 drop(guard);
@@ -127,13 +133,13 @@ where
     }
 
     #[cold]
-    fn concurrent_root_split(interior: InteriorPageViewMut<'_, K>) -> ConcurrentRootSplit {
+    fn concurrent_root_split(interior: InteriorPageViewMut<'_, K>) -> ConcurrentSplit {
         assert!(
             interior.is_root(),
             "BUG: a non-root node changed from being a leaf to an interior node"
         );
 
-        ConcurrentRootSplit
+        ConcurrentSplit
     }
 
     #[tracing::instrument(skip(self, key, value))]
@@ -144,7 +150,7 @@ where
         parents: &[PageIndex],
         key: &K,
         value: &V,
-    ) -> Result<Result<Option<V>, ConcurrentRootSplit>> {
+    ) -> Result<Result<Option<V>, ConcurrentSplit>> {
         let leaf_handle = self.pool.load(leaf_page_idx).await?;
         let mut leaf_guard = leaf_handle.write().await;
         let view = unsafe { PageViewMut::<K, V>::view_mut(&mut leaf_guard).await? };

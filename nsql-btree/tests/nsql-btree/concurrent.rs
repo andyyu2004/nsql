@@ -30,6 +30,7 @@ async fn test_concurrent_non_root_leaf_split() -> Result<()> {
     assert!(logs_contain(
         "splitting non-root kind=nsql_btree::page::leaf::LeafPageViewMut<i32, i32>"
     ));
+    assert!(logs_contain("detected concurrent leaf split"));
     Ok(())
 }
 
