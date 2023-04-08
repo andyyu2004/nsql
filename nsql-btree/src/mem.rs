@@ -24,7 +24,7 @@ impl<K: Ord, V: Clone, const B: usize> BTree<K, V, B> {
                 Ok(prev) => prev,
                 Err(NodeFull) => {
                     cov_mark::hit!(test_mem_leaf_split);
-                    let new_root = Interior::new();
+                    // let new_root = Interior::new();
                     None
                 }
             },
@@ -93,7 +93,7 @@ struct Interior<K, V, const B: usize> {
     entries: Vec<(K, Link<K, V, B>)>,
 }
 
-pub type Link<K, V, const B: usize> = Arc<RwLock<Node<K, V, B>>>;
+type Link<K, V, const B: usize> = Arc<RwLock<Node<K, V, B>>>;
 
 impl<K, V, const B: usize> Interior<K, V, B> {
     fn new(

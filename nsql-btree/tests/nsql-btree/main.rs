@@ -21,7 +21,7 @@ fn test_btree_empty() -> Result<()> {
 }
 
 #[test]
-fn test_btree_insert_and_get() -> Result<()> {
+fn test_btree_insert_and_get_simple() -> Result<()> {
     nsql_test::start(async {
         let pool = mk_fast_mem_buffer_pool!();
         let btree = BTree::<u32, u64>::initialize(pool).await?;

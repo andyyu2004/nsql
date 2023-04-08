@@ -220,9 +220,7 @@ where
         let header = unsafe { nsql_rkyv::archived_root_mut::<LeafPageHeader>(header_bytes) };
         header.check_magic().expect("sanity check");
 
-        // the slots start after the page header and the leaf page header
-        let prefix_size = archived_size_of!(PageHeader) + archived_size_of!(LeafPageHeader);
-        let slotted_page = SlottedPageViewMut::init(data, prefix_size);
+        let slotted_page = SlottedPageViewMut::init(data, ());
 
         LeafPageViewMut { page_header, header, slotted_page }
     }
