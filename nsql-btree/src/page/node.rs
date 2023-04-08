@@ -191,6 +191,8 @@ where
         root_interior
     }
 
+    fn set_high_key(&mut self, high_key: K::Archived);
+
     fn set_left_link(&mut self, left_link: PageIndex) {
         self.node_header_mut().set_left_link(left_link);
     }

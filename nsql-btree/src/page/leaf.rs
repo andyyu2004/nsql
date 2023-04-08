@@ -259,4 +259,9 @@ where
     fn node_header_mut(&mut self) -> Pin<&mut Self::ArchivedNodeHeader> {
         self.header.as_mut()
     }
+
+    fn set_high_key(&mut self, high_key: <K as Archive>::Archived) {
+        unsafe { self.slotted_page.extra_mut().get_unchecked_mut() }.high_key =
+            ArchivedOption::Some(high_key);
+    }
 }

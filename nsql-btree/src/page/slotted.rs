@@ -492,6 +492,10 @@ where
         unsafe { self.insert_raw(&bytes) }
     }
 
+    pub(crate) fn extra_mut(&mut self) -> Pin<&mut Archived<X>> {
+        self.extra.as_mut()
+    }
+
     #[cfg(debug_assertions)]
     fn assert_invariants(&self) {
         assert!(self.header.free_start <= self.header.free_end);
