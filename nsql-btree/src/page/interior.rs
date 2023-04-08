@@ -166,11 +166,11 @@ where
         self.header
     }
 
-    fn high_key(&self) -> Option<&K::Archived> {
-        self.slotted_page.extra().high_key.as_ref()
+    fn high_key(&self) -> &Archived<Option<K>> {
+        &self.slotted_page.extra().high_key
     }
 
-    fn first(&self) -> Option<&K::Archived> {
+    fn min_key(&self) -> Option<&K::Archived> {
         self.slotted_page.first()
     }
 }
@@ -195,12 +195,12 @@ where
         (**self).node_header()
     }
 
-    fn high_key(&self) -> Option<&K::Archived> {
+    fn high_key(&self) -> &Archived<Option<K>> {
         (**self).high_key()
     }
 
-    fn first(&self) -> Option<&K::Archived> {
-        (**self).first()
+    fn min_key(&self) -> Option<&K::Archived> {
+        (**self).min_key()
     }
 }
 
@@ -259,8 +259,7 @@ where
         self.header.as_mut()
     }
 
-    fn set_high_key(&mut self, high_key: K::Archived) {
-        unsafe { self.slotted_page.extra_mut().get_unchecked_mut() }.high_key =
-            ArchivedOption::Some(high_key);
+    fn set_high_key(&mut self, high_key: Archived<Option<K>>) {
+        unsafe { self.slotted_page.extra_mut().get_unchecked_mut() }.high_key = high_key
     }
 }

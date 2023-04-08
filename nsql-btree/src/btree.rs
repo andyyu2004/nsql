@@ -39,7 +39,8 @@ struct ConcurrentRootSplit;
 impl<K, V> BTree<K, V>
 where
     K: Min + Archive + Serialize<DefaultSerializer> + fmt::Debug + Send + Sync + 'static,
-    K::Archived: Deserialize<K, rkyv::Infallible> + PartialOrd<K> + fmt::Debug + Ord + Send + Sync,
+    K::Archived:
+        Deserialize<K, rkyv::Infallible> + PartialOrd<K> + fmt::Debug + Clone + Ord + Send + Sync,
     V: Archive + Serialize<DefaultSerializer> + fmt::Debug + Send + Sync + 'static,
     V::Archived: Deserialize<V, rkyv::Infallible> + fmt::Debug + Send + Sync,
 {
@@ -251,7 +252,7 @@ where
         N::split(&mut old_node, old_node_page_idx, &mut new_node, new_node_page_idx);
 
         // a separator between the new left node and the right node is the min key of the right node
-        let sep = new_node.first().unwrap();
+        let sep = new_node.min_key().unwrap();
 
         self.insert_interior(parents, &nsql_rkyv::deserialize(sep), new_node_page_idx).await?;
 
@@ -296,7 +297,7 @@ where
             &mut right_child,
         );
 
-        let sep = right_child.first().unwrap();
+        let sep = right_child.min_key().unwrap();
 
         // reinitialize the root to an interior root node and add the two children
         let mut root = root.reinitialize_as_root_interior();

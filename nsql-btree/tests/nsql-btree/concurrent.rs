@@ -11,8 +11,7 @@ use tokio::task::JoinSet;
 
 use crate::{BTree, Min, Result};
 
-// FIXME
-// #[tokio::test]
+#[tokio::test]
 #[tracing_test::traced_test]
 async fn test_concurrent_root_leaf_split() -> Result<()> {
     let inputs = (0..2).map(|_| (0..500).map(|i| (i, i)).collect()).collect::<Vec<_>>();
@@ -22,8 +21,7 @@ async fn test_concurrent_root_leaf_split() -> Result<()> {
     Ok(())
 }
 
-// FIXME
-// #[tokio::test]
+#[tokio::test]
 #[tracing_test::traced_test]
 async fn test_concurrent_non_root_leaf_split() -> Result<()> {
     let inputs = (0..2).map(|_| (0..750).map(|i| (i, i)).collect()).collect::<Vec<_>>();
@@ -48,7 +46,8 @@ type ConcurrentTestInputs<K, V> = Vec<Box<[(K, V)]>>;
 async fn run_concurrent_insertions<K, V>(inputs: ConcurrentTestInputs<K, V>) -> Result<()>
 where
     K: Min + Archive + Serialize<DefaultSerializer> + fmt::Debug + Send + Sync + 'static,
-    K::Archived: Deserialize<K, rkyv::Infallible> + PartialOrd<K> + fmt::Debug + Ord + Send + Sync,
+    K::Archived:
+        Deserialize<K, rkyv::Infallible> + PartialOrd<K> + fmt::Debug + Clone + Ord + Send + Sync,
     V: Archive + Eq + Serialize<DefaultSerializer> + fmt::Debug + Send + Sync + 'static,
     V::Archived: Deserialize<V, rkyv::Infallible> + fmt::Debug + Send + Sync,
 {

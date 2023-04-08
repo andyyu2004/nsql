@@ -160,7 +160,8 @@ where
         + Send
         + Sync
         + 'static,
-    K::Archived: Deserialize<K, rkyv::Infallible> + PartialOrd<K> + fmt::Debug + Ord + Send + Sync,
+    K::Archived:
+        Deserialize<K, rkyv::Infallible> + PartialOrd<K> + fmt::Debug + Clone + Ord + Send + Sync,
     V: Archive + Eq + Serialize<DefaultSerializer> + fmt::Debug + Send + Sync + 'static,
     V::Archived: Deserialize<V, rkyv::Infallible> + fmt::Debug + Send + Sync,
 {

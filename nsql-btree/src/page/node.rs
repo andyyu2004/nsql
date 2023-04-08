@@ -3,6 +3,7 @@ use std::pin::Pin;
 
 use nsql_pager::{PageIndex, PAGE_DATA_SIZE};
 use nsql_rkyv::DefaultSerializer;
+use rkyv::option::ArchivedOption;
 use rkyv::{Archive, Archived, Deserialize, Serialize};
 
 use super::slotted::{SlottedPageView, SlottedPageViewMut};
@@ -36,9 +37,10 @@ where
     /// The "high key" of a node as part of L&Y btrees.
     /// A node has a high key iff it is not the rightmost page.
     /// A `None` high key effectively represents `infinity`.
-    fn high_key(&self) -> Option<&K::Archived>;
+    fn high_key(&self) -> &Archived<Option<K>>;
 
-    fn first(&self) -> Option<&K::Archived>;
+    /// The smallest/leftmost key in the node.
+    fn min_key(&self) -> Option<&K::Archived>;
 
     fn is_root(&self) -> bool {
         self.page_header().flags.contains(Flags::IS_ROOT)
@@ -83,6 +85,7 @@ where
         right_page_idx: PageIndex,
         right: &mut Self::ViewMut<'_>,
     ) where
+        K::Archived: Clone,
         V::Archived: Deserialize<V, rkyv::Infallible> + fmt::Debug,
     {
         assert!(root.is_root());
@@ -112,6 +115,10 @@ where
             )
         }
 
+        left.set_high_key(ArchivedOption::Some(
+            right.min_key().expect("rhs should be non-empty and therefore have a min key").clone(),
+        ));
+
         right.set_left_link(left_page_idx);
         left.set_right_link(right_page_idx);
 
@@ -125,11 +132,13 @@ where
         right: &mut Self::ViewMut<'_>,
         right_page_idx: PageIndex,
     ) where
-        K::Archived: Deserialize<K, rkyv::Infallible>,
+        K::Archived: Deserialize<K, rkyv::Infallible> + Clone,
         V::Archived: Deserialize<V, rkyv::Infallible>,
     {
         assert!(left.slotted_page().len() >= 3);
         assert!(right.slotted_page().is_empty());
+
+        let initial_left_high_key = left.high_key().clone();
 
         let left_slots = left.slotted_page_mut();
         let slots = left_slots.slots();
@@ -149,6 +158,12 @@ where
         }
 
         left_slots.truncate(lhs.len() as u16);
+
+        left.set_high_key(match right_slots.first() {
+            Some(key) => ArchivedOption::Some(key.clone()),
+            None => ArchivedOption::None,
+        });
+        right.set_high_key(initial_left_high_key);
 
         right.set_left_link(left_page_idx);
         left.set_right_link(right_page_idx);
@@ -191,7 +206,7 @@ where
         root_interior
     }
 
-    fn set_high_key(&mut self, high_key: K::Archived);
+    fn set_high_key(&mut self, high_key: Archived<Option<K>>);
 
     fn set_left_link(&mut self, left_link: PageIndex) {
         self.node_header_mut().set_left_link(left_link);
@@ -208,7 +223,7 @@ where
         V: Serialize<DefaultSerializer>,
         V::Archived: Deserialize<V, rkyv::Infallible>,
     {
-        if let Some(high_key) = self.high_key() {
+        if let Some(high_key) = self.high_key().as_ref() {
             assert!(high_key >= key, "key must be no less than low key {high_key:?} !<= {key:?}");
         }
 
