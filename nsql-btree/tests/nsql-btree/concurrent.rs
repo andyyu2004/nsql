@@ -34,7 +34,7 @@ async fn test_concurrent_non_root_leaf_split() -> Result<()> {
 }
 
 // FIXME fix other tests first
-// #[proptest]
+#[proptest]
 fn test_concurrent_inserts_random(inputs: ConcurrentTestInputs<u8, u8>) {
     nsql_test::start(async {
         run_concurrent_insertions(inputs).await.unwrap();

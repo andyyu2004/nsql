@@ -899,6 +899,7 @@ dependencies = [
  "nsql-rkyv",
  "nsql-test",
  "nsql-util",
+ "parking_lot",
  "proptest",
  "rkyv",
  "test-strategy",
