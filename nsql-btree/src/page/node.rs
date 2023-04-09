@@ -19,6 +19,13 @@ pub(crate) trait NodeHeader: Unpin {
     fn set_right_link(&mut self, right_link: PageIndex);
 }
 
+// FIXME this isn't actually used below
+pub(crate) trait Extra<K: Archive> {
+    fn high_key(&self) -> &Archived<Option<K>>;
+
+    fn set_high_key(&mut self, high_key: Archived<Option<K>>);
+}
+
 /// Abstraction over `Leaf` and `Interior` btree nodes
 pub(crate) trait NodeView<'a, K, V>: Sized
 where
@@ -47,6 +54,10 @@ where
 
     fn right_link(&self) -> Option<PageIndex> {
         self.node_header().right_link()
+    }
+
+    fn is_rightmost(&self) -> bool {
+        self.right_link().is_none()
     }
 
     fn is_root(&self) -> bool {
@@ -122,12 +133,11 @@ where
             )
         }
 
+        left.set_right_link(right_page_idx);
         left.set_high_key(ArchivedOption::Some(
             right.min_key().expect("rhs should be non-empty and therefore have a min key").clone(),
         ));
-
         right.set_left_link(left_page_idx);
-        left.set_right_link(right_page_idx);
 
         root.slotted_page_mut().truncate(0);
     }
@@ -166,14 +176,14 @@ where
 
         left_slots.truncate(lhs.len() as u16);
 
+        left.set_right_link(right_page_idx);
         left.set_high_key(match right_slots.first() {
             Some(key) => ArchivedOption::Some(key.clone()),
             None => ArchivedOption::None,
         });
-        right.set_high_key(initial_left_high_key);
 
         right.set_left_link(left_page_idx);
-        left.set_right_link(right_page_idx);
+        right.set_high_key(initial_left_high_key);
 
         debug_assert_eq!(left.len(), lhs.len());
         debug_assert_eq!(right.len(), rhs.len());
@@ -190,6 +200,8 @@ where
     fn node_header_mut(&mut self) -> Pin<&mut Self::ArchivedNodeHeader>;
 
     fn slotted_page_mut(&mut self) -> &mut SlottedPageViewMut<'a, K, V, Self::Extra>;
+
+    fn set_high_key(&mut self, high_key: Archived<Option<K>>);
 
     /// SAFETY: The page header must be archived at the start of the page
     /// This is assumed by the implementation of `raw_bytes_mut`
@@ -212,8 +224,6 @@ where
         assert!(root_interior.is_root());
         root_interior
     }
-
-    fn set_high_key(&mut self, high_key: Archived<Option<K>>);
 
     fn set_left_link(&mut self, left_link: PageIndex) {
         self.node_header_mut().set_left_link(left_link);

@@ -8,7 +8,7 @@ use nsql_util::static_assert_eq;
 use rkyv::option::ArchivedOption;
 use rkyv::{Archive, Archived, Serialize};
 
-use super::node::{NodeHeader, NodeView, NodeViewMut};
+use super::node::{Extra, NodeHeader, NodeView, NodeViewMut};
 use super::slotted::SlottedPageViewMut;
 use super::{Flags, NodeMut};
 use crate::btree::ConcurrentSplit;
@@ -69,6 +69,16 @@ pub(crate) struct LeafPageView<'a, K: Archive + 'static, V: Archive> {
 #[repr(C)]
 pub(crate) struct LeafExtra<K> {
     high_key: Option<K>,
+}
+
+impl<K: Archive> Extra<K> for ArchivedLeafExtra<K> {
+    fn high_key(&self) -> &Archived<Option<K>> {
+        &self.high_key
+    }
+
+    fn set_high_key(&mut self, high_key: Archived<Option<K>>) {
+        self.high_key = high_key;
+    }
 }
 
 impl<K, V> fmt::Debug for LeafPageView<'_, K, V>
@@ -168,7 +178,14 @@ where
     }
 
     fn high_key(&self) -> &Archived<Option<K>> {
-        &self.slotted_page.extra().high_key
+        let high_key = &self.slotted_page.extra().high_key;
+        assert!(
+            high_key.is_some() != self.is_rightmost(),
+            "high key should exist iff not rightmost: high_key={:?}, rightmost={:?}",
+            high_key,
+            self.is_rightmost()
+        );
+        high_key
     }
 
     fn min_key(&self) -> Option<&K::Archived> {
@@ -267,6 +284,10 @@ where
     }
 
     fn set_high_key(&mut self, high_key: Archived<Option<K>>) {
-        unsafe { self.slotted_page.extra_mut().get_unchecked_mut() }.high_key = high_key
+        assert!(
+            self.is_rightmost() != high_key.is_some(),
+            "rightmost page should not have a high key (high_key: {high_key:?})",
+        );
+        unsafe { self.slotted_page.extra_mut().get_unchecked_mut() }.set_high_key(high_key)
     }
 }

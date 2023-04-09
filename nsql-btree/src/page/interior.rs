@@ -8,7 +8,7 @@ use nsql_util::static_assert_eq;
 use rkyv::option::ArchivedOption;
 use rkyv::{Archive, Archived, Serialize};
 
-use super::node::{NodeHeader, NodeView, NodeViewMut};
+use super::node::{Extra, NodeHeader, NodeView, NodeViewMut};
 use super::slotted::{SlottedPageView, SlottedPageViewMut};
 use super::{Flags, NodeMut, PageHeader};
 use crate::Result;
@@ -19,26 +19,26 @@ const BTREE_INTERIOR_PAGE_MAGIC: [u8; 4] = *b"BTPI";
 #[archive_attr(derive(Debug, PartialEq, Eq))]
 pub(crate) struct InteriorPageHeader {
     magic: [u8; 4],
-    left_link: Option<PageIndex>,
+    right_link: Option<PageIndex>,
 }
 
 impl NodeHeader for Archived<InteriorPageHeader> {
-    fn set_left_link(&mut self, left_link: PageIndex) {
-        self.left_link = ArchivedOption::Some(left_link.into());
+    fn set_left_link(&mut self, _left_link: PageIndex) {
+        // interior pages don't maintain a left link, nothing to do
     }
 
-    fn set_right_link(&mut self, _right_link: PageIndex) {
-        // interior pages don't maintain a right link, nothing to do
+    fn set_right_link(&mut self, right_link: PageIndex) {
+        self.right_link = ArchivedOption::Some(right_link.into());
     }
 
     fn right_link(&self) -> Option<PageIndex> {
-        self.left_link.as_ref().map(|&idx| idx.into())
+        self.right_link.as_ref().map(|&idx| idx.into())
     }
 }
 
 impl Default for InteriorPageHeader {
     fn default() -> Self {
-        Self { magic: BTREE_INTERIOR_PAGE_MAGIC, left_link: None }
+        Self { magic: BTREE_INTERIOR_PAGE_MAGIC, right_link: None }
     }
 }
 
@@ -68,6 +68,16 @@ pub(crate) struct InteriorExtra<K> {
     high_key: Option<K>,
 }
 
+impl<K: Archive> Extra<K> for ArchivedInteriorExtra<K> {
+    fn high_key(&self) -> &Archived<Option<K>> {
+        &self.high_key
+    }
+
+    fn set_high_key(&mut self, high_key: Archived<Option<K>>) {
+        self.high_key = high_key;
+    }
+}
+
 impl<K> fmt::Debug for InteriorPageView<'_, K>
 where
     K: Archive,
@@ -83,7 +93,7 @@ where
 
 impl<'a, K> InteriorPageView<'a, K>
 where
-    K: Archive,
+    K: Archive + fmt::Debug,
     K::Archived: Ord + fmt::Debug,
 {
     pub(crate) unsafe fn view(data: &'a [u8; PAGE_DATA_SIZE]) -> Result<InteriorPageView<'a, K>> {
@@ -98,11 +108,17 @@ where
         Ok(Self { page_header, header, slotted_page })
     }
 
+    #[tracing::instrument(skip(self))]
     pub(crate) fn search<Q>(&self, key: &Q) -> PageIndex
     where
         K::Archived: PartialOrd<Q>,
-        Q: ?Sized,
+        Q: fmt::Debug + ?Sized,
     {
+        tracing::debug!("searching interior page: {:?} high {:?}", key, self.high_key());
+        if let ArchivedOption::Some(high_key) = self.high_key() {
+            assert!(high_key >= key);
+        }
+
         let slot_idx = match self.slotted_page.slot_index_of_key(key) {
             Err(idx) if idx == 0 => panic!("key was lower than the low key"),
             Ok(idx) => idx,
@@ -171,7 +187,12 @@ where
     }
 
     fn high_key(&self) -> &Archived<Option<K>> {
-        &self.slotted_page.extra().high_key
+        let high_key = &self.slotted_page.extra().high_key;
+        assert!(
+            high_key.is_some() != self.is_rightmost(),
+            "high key should exist iff not rightmost"
+        );
+        high_key
     }
 
     fn min_key(&self) -> Option<&K::Archived> {
@@ -264,6 +285,10 @@ where
     }
 
     fn set_high_key(&mut self, high_key: Archived<Option<K>>) {
-        unsafe { self.slotted_page.extra_mut().get_unchecked_mut() }.high_key = high_key
+        assert!(
+            self.is_rightmost() != high_key.is_some(),
+            "rightmost page should not have a high key (high_key: {high_key:?}",
+        );
+        unsafe { self.slotted_page.extra_mut().get_unchecked_mut() }.set_high_key(high_key)
     }
 }
