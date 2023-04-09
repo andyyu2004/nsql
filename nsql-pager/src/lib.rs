@@ -12,7 +12,7 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
-pub use nsql_fs::Result;
+pub use nsql_fs::{Error, Result};
 
 pub use self::file::SingleFilePager;
 pub use self::mem::InMemoryPager;

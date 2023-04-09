@@ -81,30 +81,33 @@ where
         panic!("failed to insert after {MAX_ATTEMPTS} attempts")
     }
 
-    #[tracing::instrument(skip(self))]
     #[async_recursion]
+    #[tracing::instrument(skip(self))]
     async fn search_node(&self, idx: PageIndex, key: &K) -> Result<Option<V>> {
-        let handle = self.pool.load(idx).await?;
-        let guard = handle.read();
-        let node = unsafe { PageView::<K, V>::view(&guard)? };
-        match node {
-            PageView::Leaf(leaf) => match leaf.get(key) {
-                Ok(value) => Ok(value.map(nsql_rkyv::deserialize)),
-                Err(ConcurrentSplit) => match leaf.right_link() {
-                    Some(idx) => {
-                        drop(guard);
-                        self.search_node(idx, key).await
-                    }
-                    None => Ok(None),
+        let next_idx = {
+            let handle = self.pool.load(idx).await?;
+            let guard = handle.read();
+            let node = unsafe { PageView::<K, V>::view(&guard)? };
+            match node {
+                PageView::Leaf(leaf) => match leaf.get(key) {
+                    Ok(value) => return Ok(value.map(nsql_rkyv::deserialize)),
+                    Err(ConcurrentSplit) => match leaf.right_link() {
+                        Some(idx) => idx,
+                        None => return Ok(None),
+                    },
                 },
-            },
-            PageView::Interior(interior) => {
-                let child_idx = interior.search(key);
-                drop(guard);
-                assert_ne!(child_idx, idx, "child index should not be the same as parent index");
-                self.search_node(child_idx, key).await
+                PageView::Interior(interior) => {
+                    let child_idx = interior.search(key);
+                    assert_ne!(
+                        child_idx, idx,
+                        "child index should not be the same as parent index"
+                    );
+                    child_idx
+                }
             }
-        }
+        };
+
+        self.search_node(next_idx, key).await
     }
 
     /// Find the leaf page that should contain the given key, and return the index of that page and
@@ -123,22 +126,24 @@ where
         stack: &mut Vec<PageIndex>,
     ) -> Result<PageIndex> {
         tracing::trace!(?idx, ?key, "find_leaf_page_idx_rec");
-        let handle = self.pool.load(idx).await?;
-        let guard = handle.read();
-        let node = unsafe { PageView::<K, V>::view(&guard)? };
-        tracing::trace!(?idx, ?key, "found leaf page");
-        match node {
-            PageView::Leaf(_) => {
-                tracing::trace!(?idx, ?key, "found leaf page");
-                Ok(idx)
+        let child_idx = {
+            let handle = self.pool.load(idx).await?;
+            let guard = handle.read();
+            let node = unsafe { PageView::<K, V>::view(&guard)? };
+            tracing::trace!(?idx, ?key, "found leaf page");
+            match node {
+                PageView::Leaf(_) => {
+                    tracing::trace!(?idx, ?key, "found leaf page");
+                    return Ok(idx);
+                }
+                PageView::Interior(interior) => {
+                    stack.push(idx);
+                    interior.search(key)
+                }
             }
-            PageView::Interior(interior) => {
-                stack.push(idx);
-                let child_idx = interior.search(key);
-                drop(guard);
-                self.find_leaf_page_idx_rec(child_idx, key, stack).await
-            }
-        }
+        };
+
+        self.find_leaf_page_idx_rec(child_idx, key, stack).await
     }
 
     #[cold]
@@ -162,40 +167,41 @@ where
         key: &K,
         value: &V,
     ) -> Result<Result<Option<V>, ConcurrentSplit>> {
-        let leaf_handle = self.pool.load(leaf_page_idx).await?;
-        let mut leaf_guard = leaf_handle.write();
-        let view = unsafe { PageViewMut::<K, V>::view_mut(&mut leaf_guard)? };
+        let (_prev, sep, new_page_idx) = {
+            let leaf_handle = self.pool.load(leaf_page_idx).await?;
+            let mut leaf_guard = leaf_handle.write();
+            let view = unsafe { PageViewMut::<K, V>::view_mut(&mut leaf_guard)? };
 
-        let mut leaf = match view {
-            PageViewMut::Interior(interior) => {
-                // We expected `leaf_page_idx` to be a leaf page, but it may have been concurrently
-                // changed to an interior page due to a root split.
-                // We just return a special error and allow the caller to retry the operation.
-                return Ok(Err(Self::concurrent_root_split(interior)));
+            let mut leaf = match view {
+                PageViewMut::Interior(interior) => {
+                    // We expected `leaf_page_idx` to be a leaf page, but it may have been concurrently
+                    // changed to an interior page due to a root split.
+                    // We just return a special error and allow the caller to retry the operation.
+                    return Ok(Err(Self::concurrent_root_split(interior)));
+                }
+                PageViewMut::Leaf(leaf) => leaf,
+            };
+
+            let prev = leaf.insert(key, value);
+            match prev {
+                Ok(Ok(value)) => return Ok(Ok(value)),
+                Ok(Err(PageFull)) => {
+                    if leaf.page_header().flags.contains(Flags::IS_ROOT) {
+                        cov_mark::hit!(root_leaf_split);
+                        return self
+                            .split_root_and_insert::<LeafPageViewMut<'_, K, V>, _>(leaf, key, value)
+                            .map(Ok);
+                    } else {
+                        cov_mark::hit!(non_root_leaf_split);
+                        self.split_non_root::<LeafPageViewMut<'_, K, V>, _>(leaf_guard, key, value)?
+                    }
+                }
+                Err(ConcurrentSplit) => return Ok(Err(ConcurrentSplit)),
             }
-            PageViewMut::Leaf(leaf) => leaf,
         };
 
-        let prev = leaf.insert(key, value);
-        match prev {
-            Ok(Ok(value)) => Ok(Ok(value)),
-            Ok(Err(PageFull)) => {
-                if leaf.page_header().flags.contains(Flags::IS_ROOT) {
-                    cov_mark::hit!(root_leaf_split);
-                    self.split_root_and_insert::<LeafPageViewMut<'_, K, V>, _>(leaf, key, value)
-                        .await
-                        .map(Ok)
-                } else {
-                    cov_mark::hit!(non_root_leaf_split);
-                    self.split_non_root_and_insert::<LeafPageViewMut<'_, K, V>, _>(
-                        parents, leaf_guard, key, value,
-                    )
-                    .await
-                    .map(Ok)
-                }
-            }
-            Err(ConcurrentSplit) => Ok(Err(ConcurrentSplit)),
-        }
+        self.insert_interior(parents, &sep, new_page_idx).await?;
+        Ok(Ok(_prev))
     }
 
     #[async_recursion]
@@ -207,52 +213,54 @@ where
     ) -> Result<()> {
         let (&parent_idx, parents) =
             parents.split_last().expect("non-root leaf must have at least one parents");
-        let parent_page = self.pool.load(parent_idx).await?;
-        let mut parent_guard = parent_page.write();
-        let parent_view = unsafe { PageViewMut::<K, V>::view_mut(&mut parent_guard)? };
-        let mut parent = match parent_view {
-            PageViewMut::Interior(interior) => interior,
-            PageViewMut::Leaf(_) => {
-                unreachable!("parent should be interior page")
+
+        let (_prev, sep, new_node_page_idx) = {
+            let parent_page = self.pool.load(parent_idx).await?;
+
+            let mut parent_guard = parent_page.write();
+            let parent_view = unsafe { PageViewMut::<K, V>::view_mut(&mut parent_guard)? };
+            let mut parent = match parent_view {
+                PageViewMut::Interior(interior) => interior,
+                PageViewMut::Leaf(_) => {
+                    unreachable!("parent should be interior page")
+                }
+            };
+
+            match parent.insert(sep, &child_idx) {
+                Ok(Ok(None)) => return Ok(()),
+                Ok(Ok(Some(prev))) => todo!(
+                    "duplicate key `{sep:?}` in interior node, already pointed to `{prev}`, trying to insert `{child_idx}`"
+                ),
+                Ok(Err(PageFull)) => {
+                    if parent.page_header().flags.contains(Flags::IS_ROOT) {
+                        cov_mark::hit!(root_interior_split);
+                        self.split_root_and_insert::<InteriorPageViewMut<'_, K>, _>(
+                            parent, sep, &child_idx,
+                        )?;
+                        return Ok(());
+                    } else {
+                        cov_mark::hit!(non_root_interior_split);
+                        self.split_non_root::<InteriorPageViewMut<'_, K>, _>(
+                            parent_guard,
+                            sep,
+                            &child_idx,
+                        )?
+                    }
+                }
+                Err(ConcurrentSplit) => todo!(),
             }
         };
 
-        match parent.insert(sep, &child_idx) {
-            Ok(Ok(None)) => {}
-            Ok(Ok(Some(prev))) => todo!(
-                "duplicate key `{sep:?}` in interior node, already pointed to `{prev}`, trying to insert `{child_idx}`"
-            ),
-            Ok(Err(PageFull)) => {
-                if parent.page_header().flags.contains(Flags::IS_ROOT) {
-                    cov_mark::hit!(root_interior_split);
-                    self.split_root_and_insert::<InteriorPageViewMut<'_, K>, _>(
-                        parent, sep, &child_idx,
-                    )
-                    .await?;
-                } else {
-                    cov_mark::hit!(non_root_interior_split);
-                    self.split_non_root_and_insert::<InteriorPageViewMut<'_, K>, _>(
-                        parents,
-                        parent_guard,
-                        sep,
-                        &child_idx,
-                    )
-                    .await?;
-                }
-            }
-            Err(ConcurrentSplit) => todo!(),
-        }
-
+        self.insert_interior(parents, &sep, new_node_page_idx).await?;
         Ok(())
     }
 
-    async fn split_non_root_and_insert<'a, N, T>(
+    fn split_non_root<N, T>(
         &self,
-        parents: &[PageIndex],
         mut old_guard: nsql_pager::PageWriteGuard<'_>,
         key: &K,
         value: &T,
-    ) -> Result<Option<T>>
+    ) -> Result<(Option<T>, K, PageIndex)>
     where
         N: NodeMut<K, T>,
         T: Archive + Serialize<DefaultSerializer> + fmt::Debug + 'static,
@@ -264,7 +272,9 @@ where
         tracing::debug!(kind = %std::any::type_name::<N>(), "splitting non-root");
         // split the non-root interior by allocating a new interior and splitting the contents
         // then we insert the separator key and the new page index into the parent
-        let new_page = self.pool.alloc().await?;
+
+        // HACK avoiding making this function async due to mutex guard send issues
+        let new_page = futures_executor::block_on(self.pool.alloc())?;
         let mut new_guard = new_page.page().write();
         let new_node_page_idx = new_guard.page_idx();
         let mut new_node = N::initialize(&mut new_guard);
@@ -277,23 +287,23 @@ where
         let prev =
             if sep > key { old_node.insert(key, value) } else { new_node.insert(key, value) };
 
+        let prev = match prev {
+            Ok(Ok(prev)) => prev,
+            Ok(Err(PageFull)) => unreachable!("split node should have space for at least one key"),
+            Err(ConcurrentSplit) => todo!(),
+        };
+
         drop(old_node);
         drop(old_guard);
 
         drop(new_node);
         drop(new_guard);
 
-        self.insert_interior(parents, &sep_key, new_node_page_idx).await?;
-
-        match prev {
-            Ok(Ok(prev)) => Ok(prev),
-            Ok(Err(PageFull)) => unreachable!("nodes a split should have space"),
-            Err(ConcurrentSplit) => todo!(),
-        }
+        Ok((prev, sep_key, new_node_page_idx))
     }
 
     #[tracing::instrument(skip(root))]
-    async fn split_root_and_insert<N, T>(
+    fn split_root_and_insert<N, T>(
         &self,
         mut root: N::ViewMut<'_>,
         key: &K,
@@ -307,11 +317,13 @@ where
         tracing::info!(kind = %std::any::type_name::<N>(), "splitting root");
 
         assert!(root.len() >= 3, "root that requires a split should contain at least 3 entries");
-        let left_page = self.pool.alloc().await?;
-        let mut left_guard = left_page.write();
+        // HACK to avoid making the function async and running into mutex guard not being send issues
+        let (left_page, right_page) = futures_executor::block_on(async {
+            Ok::<_, nsql_pager::Error>((self.pool.alloc().await?, self.pool.alloc().await?))
+        })?;
 
-        let right_guard = self.pool.alloc().await?;
-        let mut right_guard = right_guard.write();
+        let mut left_guard = left_page.write();
+        let mut right_guard = right_page.write();
 
         let left_page_idx = left_guard.page_idx();
         let right_page_idx = right_guard.page_idx();
