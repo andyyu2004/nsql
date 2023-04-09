@@ -108,7 +108,7 @@ where
     V: Archive + fmt::Debug + 'static,
     V::Archived: fmt::Debug,
 {
-    pub(crate) async unsafe fn view_mut(
+    pub(crate) unsafe fn view_mut(
         data: &'a mut [u8; PAGE_DATA_SIZE],
     ) -> Result<PageViewMut<'a, K, V>> {
         let (header_bytes, _) = data.split_array_ref();

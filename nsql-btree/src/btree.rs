@@ -68,7 +68,8 @@ where
     #[inline]
     #[tracing::instrument]
     pub async fn insert(&self, key: &K, value: &V) -> Result<Option<V>> {
-        for _ in 0..2 {
+        const MAX_ATTEMPTS: usize = 100;
+        for _ in 0..MAX_ATTEMPTS {
             let (leaf_idx, parents) = self.find_leaf_page_idx(key).await?;
             match self.insert_leaf(leaf_idx, &parents, key, value).await? {
                 Ok(prev) => return Ok(prev),
@@ -76,9 +77,8 @@ where
             }
         }
 
-        // this should only fail once as the error should only occur as a special case when the root is
-        // changed from a leaf to an interior node.
-        unreachable!("BUG: failed to insert after second attempt");
+        // FIXME need to handle this properly rather than braindead retrying
+        panic!("failed to insert after {MAX_ATTEMPTS} attempts")
     }
 
     #[tracing::instrument(skip(self))]
@@ -160,7 +160,7 @@ where
     ) -> Result<Result<Option<V>, ConcurrentSplit>> {
         let leaf_handle = self.pool.load(leaf_page_idx).await?;
         let mut leaf_guard = leaf_handle.write().await;
-        let view = unsafe { PageViewMut::<K, V>::view_mut(&mut leaf_guard).await? };
+        let view = unsafe { PageViewMut::<K, V>::view_mut(&mut leaf_guard)? };
 
         let mut leaf = match view {
             PageViewMut::Interior(interior) => {
@@ -205,7 +205,7 @@ where
             parents.split_last().expect("non-root leaf must have at least one parents");
         let parent_page = self.pool.load(parent_idx).await?;
         let mut parent_guard = parent_page.write().await;
-        let parent_view = unsafe { PageViewMut::<K, V>::view_mut(&mut parent_guard).await? };
+        let parent_view = unsafe { PageViewMut::<K, V>::view_mut(&mut parent_guard)? };
         let mut parent = match parent_view {
             PageViewMut::Interior(interior) => interior,
             PageViewMut::Leaf(_) => {
