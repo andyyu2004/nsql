@@ -122,7 +122,7 @@ where
         Q: ?Sized + fmt::Debug,
     {
         if let Some(high_key) = self.high_key().as_ref() {
-            tracing::debug!("detected concurrent leaf split");
+            tracing::debug!(?high_key, "detected concurrent leaf split");
             if high_key < key {
                 return Err(ConcurrentSplit);
             }

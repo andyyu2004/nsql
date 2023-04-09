@@ -114,10 +114,11 @@ where
         K::Archived: PartialOrd<Q>,
         Q: fmt::Debug + ?Sized,
     {
-        tracing::debug!("searching interior page: {:?} high {:?}", key, self.high_key());
-        if let ArchivedOption::Some(high_key) = self.high_key() {
+        let high_key = self.high_key();
+        tracing::debug!(?high_key, "searching interior page");
+        if let ArchivedOption::Some(high_key) = high_key {
             tracing::debug!("high_key {high_key:?}");
-            assert!(high_key >= key);
+            assert!(high_key >= key, "todo handle this case");
         }
 
         let slot_idx = match self.slotted_page.slot_index_of_key(key) {

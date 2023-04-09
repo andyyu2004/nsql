@@ -91,7 +91,7 @@ impl Pager for SingleFilePager {
         let offset = self.offset_for_page(idx);
         page.update_checksum().await;
 
-        let bytes = *page.bytes().await;
+        let bytes = *page.bytes();
         // drop is important to avoid holding lock across await
         drop(page);
         self.storage.write_at(offset, bytes).await?;

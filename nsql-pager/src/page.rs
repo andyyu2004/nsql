@@ -8,9 +8,9 @@ use std::{fmt, io, mem};
 
 use nsql_serde::{Deserialize, Serialize, SerializeSized};
 use nsql_util::static_assert_eq;
+use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 use rkyv::{Archive, Archived};
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
-use tokio::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use crate::{PAGE_DATA_SIZE, PAGE_META_LENGTH, PAGE_SIZE};
 
@@ -46,16 +46,20 @@ impl Page {
 
     /// Lock the page with a read lock an immutable reference to the data bytes of the page
     #[inline]
-    pub async fn read(&self) -> PageReadGuard<'_> {
-        let bytes = self.bytes.read().await;
-        PageReadGuard { idx: self.page_idx(), bytes, read_offset: PAGE_META_LENGTH }
+    pub fn read(&self) -> PageReadGuard<'_> {
+        let idx = self.page_idx();
+        tracing::trace!(?idx, "read-lock page");
+        let bytes = self.bytes.read();
+        PageReadGuard { idx, bytes, read_offset: PAGE_META_LENGTH }
     }
 
     /// Lock the page with a write lock and a mutable reference to the data bytes of the page
     #[inline]
-    pub async fn write(&self) -> PageWriteGuard<'_> {
-        let bytes = self.bytes.write().await;
-        PageWriteGuard { idx: self.page_idx(), bytes, write_offset: PAGE_META_LENGTH }
+    pub fn write(&self) -> PageWriteGuard<'_> {
+        let idx = self.page_idx();
+        let bytes = self.bytes.write();
+        tracing::trace!(?idx, "write-lock page");
+        PageWriteGuard { idx, bytes, write_offset: PAGE_META_LENGTH }
     }
 
     #[inline]
@@ -69,27 +73,27 @@ impl Page {
     }
 
     #[inline]
-    pub(crate) async fn bytes(&self) -> RwLockReadGuard<'_, [u8; PAGE_SIZE]> {
-        self.bytes.read().await
+    pub(crate) fn bytes(&self) -> RwLockReadGuard<'_, [u8; PAGE_SIZE]> {
+        self.bytes.read()
     }
 
     /// Read the checksum from the page header
     #[inline]
     pub(crate) async fn expected_checksum(&self) -> u64 {
-        u64::from_be_bytes(self.bytes().await[..PAGE_META_LENGTH].try_into().unwrap())
+        u64::from_be_bytes(self.bytes()[..PAGE_META_LENGTH].try_into().unwrap())
     }
 
     #[inline]
     pub(crate) async fn update_checksum(&mut self) {
         let checksum = self.compute_checksum().await;
-        self.bytes.write().await[0..8].copy_from_slice(&checksum.to_be_bytes());
+        self.bytes.write()[0..8].copy_from_slice(&checksum.to_be_bytes());
         assert!(self.expected_checksum().await == checksum);
     }
 
     /// Compute the checksum of the page and write it to the first 8 bytes of the page.
     #[inline]
     pub(crate) async fn compute_checksum(&self) -> u64 {
-        checksum(self.read().await.as_ref())
+        checksum(self.read().as_ref())
     }
 }
 

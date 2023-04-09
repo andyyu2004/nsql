@@ -1015,11 +1015,13 @@ dependencies = [
  "nsql-serde",
  "nsql-test",
  "nsql-util",
+ "parking_lot",
  "pin-utils",
  "proptest",
  "rkyv",
  "test-strategy",
  "tokio",
+ "tracing",
 ]
 
 [[package]]

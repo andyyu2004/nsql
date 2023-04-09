@@ -114,17 +114,14 @@ impl<W: AsyncWrite + Send + Unpin> Serializer for W {
     }
 }
 
-pub trait Deserializer: AsyncRead + Send + Unpin {
-    fn read_str<'de>(self) -> Pin<Box<dyn Future<Output = io::Result<SmolStr>> + Send + 'de>>
+pub trait Deserializer: AsyncRead + Unpin {
+    fn read_str<'de>(self) -> Pin<Box<dyn Future<Output = io::Result<SmolStr>> + 'de>>
     where
         Self: Sized + Unpin + 'de;
 
     /// skip the filled bytes
     #[inline]
-    fn skip_fill<'de>(
-        mut self,
-        n: u16,
-    ) -> Pin<Box<dyn Future<Output = io::Result<()>> + Send + 'de>>
+    fn skip_fill<'de>(mut self, n: u16) -> Pin<Box<dyn Future<Output = io::Result<()>> + 'de>>
     where
         Self: Sized + 'de,
     {
@@ -137,9 +134,9 @@ pub trait Deserializer: AsyncRead + Send + Unpin {
     }
 }
 
-impl<D: AsyncRead + Send + Unpin> Deserializer for D {
+impl<D: AsyncRead + Unpin> Deserializer for D {
     #[inline]
-    fn read_str<'de>(mut self) -> Pin<Box<dyn Future<Output = io::Result<SmolStr>> + Send + 'de>>
+    fn read_str<'de>(mut self) -> Pin<Box<dyn Future<Output = io::Result<SmolStr>> + 'de>>
     where
         Self: Sized + Unpin + 'de,
     {
