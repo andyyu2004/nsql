@@ -113,9 +113,9 @@ impl Serialize for HeapTuplePage {
 impl DeserializeWith for HeapTuplePage {
     type Context<'a> = TupleDeserializationContext;
 
-    async fn deserialize_with(
+    async fn deserialize_with<D: Deserializer>(
         ctx: &Self::Context<'_>,
-        de: &mut dyn Deserializer,
+        de: &mut D,
     ) -> nsql_serde::Result<Self> {
         let header = HeapTuplePageHeader::deserialize(de).await?;
         let n = de.read_u16().await? as usize;
@@ -207,9 +207,9 @@ impl HeapTuple {
 impl DeserializeWith for HeapTuple {
     type Context<'a> = TupleDeserializationContext;
 
-    async fn deserialize_with(
+    async fn deserialize_with<D: Deserializer>(
         ctx: &Self::Context<'_>,
-        de: &mut dyn Deserializer,
+        de: &mut D,
     ) -> nsql_serde::Result<Self> {
         let header = HeapTupleHeader::deserialize(de).await?;
         let tuple = Tuple::deserialize_with(ctx, de).await?;

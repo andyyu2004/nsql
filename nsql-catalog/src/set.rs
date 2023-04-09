@@ -42,9 +42,9 @@ where
 {
     type Context<'a> = Transaction;
 
-    async fn deserialize_with(
+    async fn deserialize_with<D: Deserializer>(
         tx: &Self::Context<'_>,
-        de: &mut dyn Deserializer,
+        de: &mut D,
     ) -> nsql_serde::Result<Self> {
         let len = de.read_u32().await? as usize;
         let set = Self::with_capacity(len);

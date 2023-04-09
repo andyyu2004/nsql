@@ -46,7 +46,7 @@ pub enum LogicalType {
 }
 
 impl Deserialize for LogicalType {
-    async fn deserialize(_de: &mut dyn Deserializer) -> nsql_serde::Result<Self> {
+    async fn deserialize<D: Deserializer>(_de: &mut D) -> nsql_serde::Result<Self> {
         todo!()
     }
 }
