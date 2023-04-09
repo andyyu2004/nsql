@@ -40,14 +40,27 @@ async fn test_concurrent_non_root_leaf_split() -> Result<()> {
 
 #[tokio::test]
 #[tracing_test::traced_test]
-async fn test_concurrent_root_interior_split() -> Result<()> {
-    let inputs = (0..2).map(|_| (0..40000).map(|i| (i, i)).collect()).collect::<Vec<_>>();
+async fn test_concurrent_non_root_leaf_split_reverse() -> Result<()> {
+    let inputs = (0..2).map(|_| (0..750).rev().map(|i| (i, i)).collect()).collect::<Vec<_>>();
     run_concurrent_insertions(inputs).await?;
-    // assert!(logs_contain(
-    //     "splitting root kind=nsql_btree::page::leaf::InteriorPageViewMut<i32, i32>"
-    // ));
+    assert!(logs_contain("splitting root kind=nsql_btree::page::leaf::LeafPageViewMut<i32, i32>"));
+    assert!(logs_contain(
+        "splitting non-root kind=nsql_btree::page::leaf::LeafPageViewMut<i32, i32>"
+    ));
+    assert!(logs_contain("detected concurrent leaf split"));
     Ok(())
 }
+
+// #[tokio::test]
+// #[tracing_test::traced_test]
+// async fn test_concurrent_root_interior_split() -> Result<()> {
+//     let inputs = (0..2).map(|_| (0..40000).map(|i| (i, i)).collect()).collect::<Vec<_>>();
+//     run_concurrent_insertions(inputs).await?;
+//     // assert!(logs_contain(
+//     //     "splitting root kind=nsql_btree::page::leaf::InteriorPageViewMut<i32, i32>"
+//     // ));
+//     Ok(())
+// }
 
 // FIXME fix other tests first
 #[proptest]

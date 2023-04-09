@@ -116,6 +116,7 @@ where
     {
         tracing::debug!("searching interior page: {:?} high {:?}", key, self.high_key());
         if let ArchivedOption::Some(high_key) = self.high_key() {
+            tracing::debug!("high_key {high_key:?}");
             assert!(high_key >= key);
         }
 

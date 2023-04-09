@@ -156,6 +156,7 @@ where
         assert!(right.slotted_page().is_empty());
 
         let initial_left_high_key = left.high_key().clone();
+        let initial_right_link = left.right_link();
 
         let left_slots = left.slotted_page_mut();
         let slots = left_slots.slots();
@@ -183,6 +184,9 @@ where
         });
 
         right.set_left_link(left_page_idx);
+        if let Some(right_link) = initial_right_link {
+            right.set_right_link(right_link);
+        }
         right.set_high_key(initial_left_high_key);
 
         debug_assert_eq!(left.len(), lhs.len());
