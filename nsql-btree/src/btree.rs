@@ -274,7 +274,10 @@ where
         // then we insert the separator key and the new page index into the parent
 
         // HACK avoiding making this function async due to mutex guard send issues
-        let new_page = futures_executor::block_on(self.pool.alloc())?;
+        tracing::debug!("allocating new page for split");
+        let new_page =
+            tokio::task::block_in_place(|| futures_executor::block_on(self.pool.alloc()))?;
+        tracing::debug!(new_page_idx = ?new_page.page_idx(), "allocated new page for split");
         let mut new_guard = new_page.page().write();
         let new_node_page_idx = new_guard.page_idx();
         let mut new_node = N::initialize(&mut new_guard);
@@ -318,8 +321,11 @@ where
 
         assert!(root.len() >= 3, "root that requires a split should contain at least 3 entries");
         // HACK to avoid making the function async and running into mutex guard not being send issues
-        let (left_page, right_page) = futures_executor::block_on(async {
-            Ok::<_, nsql_pager::Error>((self.pool.alloc().await?, self.pool.alloc().await?))
+        let (left_page, right_page) = tokio::task::block_in_place(|| {
+            futures_executor::block_on(async {
+                let (a, b) = tokio::join!(self.pool.alloc(), self.pool.alloc());
+                Ok::<_, nsql_pager::Error>((a?, b?))
+            })
         })?;
 
         let mut left_guard = left_page.write();

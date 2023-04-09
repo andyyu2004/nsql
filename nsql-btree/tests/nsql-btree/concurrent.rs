@@ -15,7 +15,7 @@ use tokio::task::JoinSet;
 
 use crate::{BTree, Min, Result};
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 #[tracing_test::traced_test]
 async fn test_concurrent_root_leaf_split() -> Result<()> {
     let inputs = (0..2).map(|_| (0..500).map(|i| (i, i)).collect()).collect::<Vec<_>>();
@@ -25,7 +25,7 @@ async fn test_concurrent_root_leaf_split() -> Result<()> {
     Ok(())
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 #[tracing_test::traced_test]
 async fn test_concurrent_non_root_leaf_split() -> Result<()> {
     let inputs = (0..2).map(|_| (0..750).map(|i| (i, i)).collect()).collect::<Vec<_>>();
@@ -38,7 +38,7 @@ async fn test_concurrent_non_root_leaf_split() -> Result<()> {
     Ok(())
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 #[tracing_test::traced_test]
 async fn test_concurrent_non_root_leaf_split_reverse() -> Result<()> {
     let inputs = (0..2).map(|_| (0..750).rev().map(|i| (i, i)).collect()).collect::<Vec<_>>();
@@ -51,7 +51,7 @@ async fn test_concurrent_non_root_leaf_split_reverse() -> Result<()> {
     Ok(())
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 #[tracing_test::traced_test]
 async fn test_concurrent_root_interior_split() -> Result<()> {
     let inputs = (0..2).map(|_| (0..40000).map(|i| (i, i)).collect()).collect::<Vec<_>>();
