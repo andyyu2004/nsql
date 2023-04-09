@@ -63,6 +63,7 @@ async fn test_concurrent_non_root_leaf_split_reverse() -> Result<()> {
 // }
 
 // FIXME fix other tests first
+// this is way too slow
 #[proptest]
 fn test_concurrent_inserts_random(inputs: ConcurrentTestInputs<u8, u8>) {
     nsql_test::start(async {
@@ -94,24 +95,34 @@ where
     let btree = BTree::<K, V>::initialize(pool).await?;
     let mut join_set = JoinSet::<Result<()>>::new();
 
-    // mapping from key to the latest value per key per thread
-    let values_set = Arc::<DashMap<K, HashMap<usize, V>>>::default();
+    // mapping from key to the latest two values per key per thread
+    // the last two values are both valid because we can't be sure which stage of the update we are at
+    let values_map = Arc::<DashMap<K, HashMap<usize, Vec<V>>>>::default();
 
     for (thread_id, input) in inputs.into_iter().enumerate() {
         let btree = BTree::clone(&btree);
-        let values_set = Arc::clone(&values_set);
+        let values_map = Arc::clone(&values_map);
         join_set.spawn(async move {
             for (key, value) in &input[..] {
-                values_set.entry(key.clone()).or_default().insert(thread_id, value.clone());
-                btree.insert(key, value).await?;
+                let mut valid_values_ref = values_map.entry(key.clone()).or_default();
+                let thread_values = valid_values_ref.entry(thread_id).or_default();
+                thread_values.insert(0, value.clone());
+                thread_values.truncate(2);
+                drop(valid_values_ref);
+
+                let _prev = btree.insert(key, value).await?;
+
                 let v = btree.get(key).await?.unwrap();
+
+                let valid_values_ref = values_map.get(key).unwrap();
+                let valid_values = valid_values_ref.iter().map(|(tid, vs)| (*tid, vs.clone())).collect::<Vec<(usize, Vec<V>)>>();
                 assert!(
-                    values_set.get(key).unwrap().values().any(|x| x == &v),
+                    valid_values.iter().any(|(_k, xs)| xs.iter().any(|x| x == &v)) ,
                     "the value retrieved from the btree was not any one of the expected values (thread_id={:?}, key={:?}, value={:?}, expected_values={:?})",
                     thread_id,
                     key,
                     v,
-                    values_set.get(key).unwrap().values().collect::<Vec<_>>()
+                    valid_values,
                 );
             }
             Ok(())
