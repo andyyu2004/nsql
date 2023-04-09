@@ -84,7 +84,7 @@ where
     V: Archive + fmt::Debug + 'static,
     V::Archived: fmt::Debug,
 {
-    pub(crate) async unsafe fn view(data: &'a [u8; PAGE_DATA_SIZE]) -> Result<PageView<'a, K, V>> {
+    pub(crate) unsafe fn view(data: &'a [u8; PAGE_DATA_SIZE]) -> Result<PageView<'a, K, V>> {
         // read the header to determine if it's a leaf or interior page
         let (header_bytes, _) = data.split_array_ref();
         let header = unsafe { nsql_rkyv::archived_root::<PageHeader>(header_bytes) };

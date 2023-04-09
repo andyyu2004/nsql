@@ -51,16 +51,16 @@ async fn test_concurrent_non_root_leaf_split_reverse() -> Result<()> {
     Ok(())
 }
 
-// #[tokio::test]
-// #[tracing_test::traced_test]
-// async fn test_concurrent_root_interior_split() -> Result<()> {
-//     let inputs = (0..2).map(|_| (0..40000).map(|i| (i, i)).collect()).collect::<Vec<_>>();
-//     run_concurrent_insertions(inputs).await?;
-//     // assert!(logs_contain(
-//     //     "splitting root kind=nsql_btree::page::leaf::InteriorPageViewMut<i32, i32>"
-//     // ));
-//     Ok(())
-// }
+#[tokio::test]
+#[tracing_test::traced_test]
+async fn test_concurrent_root_interior_split() -> Result<()> {
+    let inputs = (0..2).map(|_| (0..40000).map(|i| (i, i)).collect()).collect::<Vec<_>>();
+    run_concurrent_insertions(inputs).await?;
+    // assert!(logs_contain(
+    //     "splitting root kind=nsql_btree::page::leaf::InteriorPageViewMut<i32, i32>"
+    // ));
+    Ok(())
+}
 
 // FIXME fix other tests first
 // this is way too slow

@@ -1,3 +1,5 @@
+#![deny(clippy::await_holding_lock)]
+
 use std::fmt;
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -85,12 +87,15 @@ where
         tracing::debug!("search_node");
         let handle = self.pool.load(idx).await?;
         let guard = handle.read().await;
-        let node = unsafe { PageView::<K, V>::view(&guard).await? };
+        let node = unsafe { PageView::<K, V>::view(&guard)? };
         match node {
             PageView::Leaf(leaf) => match leaf.get(key) {
                 Ok(value) => Ok(value.map(nsql_rkyv::deserialize)),
                 Err(ConcurrentSplit) => match leaf.right_link() {
-                    Some(idx) => self.search_node(idx, key).await,
+                    Some(idx) => {
+                        drop(guard);
+                        self.search_node(idx, key).await
+                    }
                     None => Ok(None),
                 },
             },
@@ -120,7 +125,7 @@ where
     ) -> Result<PageIndex> {
         let handle = self.pool.load(idx).await?;
         let guard = handle.read().await;
-        let node = unsafe { PageView::<K, V>::view(&guard).await? };
+        let node = unsafe { PageView::<K, V>::view(&guard)? };
         match node {
             PageView::Leaf(_) => Ok(idx),
             PageView::Interior(interior) => {
@@ -179,11 +184,7 @@ where
                 } else {
                     cov_mark::hit!(non_root_leaf_split);
                     self.split_non_root_and_insert::<LeafPageViewMut<'_, K, V>, _>(
-                        parents,
-                        leaf_page_idx,
-                        leaf,
-                        key,
-                        value,
+                        parents, leaf_guard, key, value,
                     )
                     .await
                     .map(Ok)
@@ -227,7 +228,10 @@ where
                 } else {
                     cov_mark::hit!(non_root_interior_split);
                     self.split_non_root_and_insert::<InteriorPageViewMut<'_, K>, _>(
-                        parents, parent_idx, parent, sep, &child_idx,
+                        parents,
+                        parent_guard,
+                        sep,
+                        &child_idx,
                     )
                     .await?;
                 }
@@ -238,19 +242,21 @@ where
         Ok(())
     }
 
-    async fn split_non_root_and_insert<N, T>(
+    async fn split_non_root_and_insert<'a, N, T>(
         &self,
         parents: &[PageIndex],
-        old_node_page_idx: PageIndex,
-        mut old_node: N::ViewMut<'_>,
+        mut old_guard: nsql_pager::PageWriteGuard<'_>,
         key: &K,
         value: &T,
     ) -> Result<Option<T>>
     where
         N: NodeMut<K, T>,
-        T: Archive + Serialize<DefaultSerializer> + fmt::Debug,
+        T: Archive + Serialize<DefaultSerializer> + fmt::Debug + 'static,
         T::Archived: Deserialize<T, rkyv::Infallible> + fmt::Debug,
     {
+        let old_node_page_idx = old_guard.page_idx();
+        let mut old_node = unsafe { N::view_mut(&mut old_guard) }?;
+
         tracing::debug!(kind = %std::any::type_name::<N>(), "splitting non-root");
         // split the non-root interior by allocating a new interior and splitting the contents
         // then we insert the separator key and the new page index into the parent
@@ -263,11 +269,17 @@ where
 
         // a separator between the new left node and the right node is the min key of the right node
         let sep = new_node.min_key().unwrap();
-
-        self.insert_interior(parents, &nsql_rkyv::deserialize(sep), new_node_page_idx).await?;
-
+        let sep_key = nsql_rkyv::deserialize(sep);
         let prev =
             if sep > key { old_node.insert(key, value) } else { new_node.insert(key, value) };
+
+        drop(old_node);
+        drop(old_guard);
+
+        drop(new_node);
+        drop(new_guard);
+
+        self.insert_interior(parents, &sep_key, new_node_page_idx).await?;
 
         match prev {
             Ok(Ok(prev)) => Ok(prev),
