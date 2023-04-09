@@ -11,8 +11,8 @@ use nsql_pager::PAGE_DATA_SIZE;
 use nsql_rkyv::DefaultSerializer;
 use rkyv::{Archive, Serialize};
 
-pub(crate) use self::interior::{InteriorExtra, InteriorPageView, InteriorPageViewMut};
-pub(crate) use self::leaf::{LeafExtra, LeafPageView, LeafPageViewMut};
+pub(crate) use self::interior::{InteriorPageView, InteriorPageViewMut};
+pub(crate) use self::leaf::{LeafPageView, LeafPageViewMut};
 use crate::Result;
 
 bitflags::bitflags! {

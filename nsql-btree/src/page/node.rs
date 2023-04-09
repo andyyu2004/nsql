@@ -8,6 +8,7 @@ use rkyv::{Archive, Archived, Deserialize, Serialize};
 
 use super::slotted::{SlottedPageView, SlottedPageViewMut};
 use super::{Flags, InteriorPageViewMut, PageFull, PageHeader};
+use crate::btree::ConcurrentSplit;
 use crate::Result;
 
 pub(crate) trait NodeHeader: Unpin {
@@ -222,7 +223,7 @@ where
         self.node_header_mut().set_right_link(right_link);
     }
 
-    fn insert(&mut self, key: &K, value: &V) -> Result<Option<V>, PageFull>
+    fn insert(&mut self, key: &K, value: &V) -> Result<Result<Option<V>, PageFull>, ConcurrentSplit>
     where
         K: Serialize<DefaultSerializer>,
         K::Archived: Deserialize<K, rkyv::Infallible> + PartialOrd<K>,
@@ -230,9 +231,11 @@ where
         V::Archived: Deserialize<V, rkyv::Infallible>,
     {
         if let Some(high_key) = self.high_key().as_ref() {
-            assert!(high_key >= key, "key must be no less than low key {high_key:?} !<= {key:?}");
+            if high_key < key {
+                return Err(ConcurrentSplit)?;
+            }
         }
 
-        self.slotted_page_mut().insert(key, value)
+        Ok(self.slotted_page_mut().insert(key, value))
     }
 }

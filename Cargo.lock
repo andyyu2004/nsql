@@ -893,6 +893,7 @@ dependencies = [
  "bytes",
  "cov-mark",
  "criterion",
+ "dashmap",
  "nsql-arena",
  "nsql-buffer",
  "nsql-pager",

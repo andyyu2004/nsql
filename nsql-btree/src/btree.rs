@@ -139,6 +139,8 @@ where
             "BUG: a non-root node changed from being a leaf to an interior node"
         );
 
+        tracing::debug!("detected concurrent root split");
+
         ConcurrentSplit
     }
 
@@ -167,8 +169,8 @@ where
 
         let prev = leaf.insert(key, value);
         match prev {
-            Ok(value) => Ok(Ok(value)),
-            Err(PageFull) => {
+            Ok(Ok(value)) => Ok(Ok(value)),
+            Ok(Err(PageFull)) => {
                 if leaf.page_header().flags.contains(Flags::IS_ROOT) {
                     cov_mark::hit!(root_leaf_split);
                     self.split_root_and_insert::<LeafPageViewMut<'_, K, V>, _>(leaf, key, value)
@@ -187,6 +189,7 @@ where
                     .map(Ok)
                 }
             }
+            Err(ConcurrentSplit) => Ok(Err(ConcurrentSplit)),
         }
     }
 
@@ -210,11 +213,11 @@ where
         };
 
         match parent.insert(sep, &child_idx) {
-            Ok(None) => {}
-            Ok(Some(prev)) => todo!(
+            Ok(Ok(None)) => {}
+            Ok(Ok(Some(prev))) => todo!(
                 "duplicate key `{sep:?}` in interior node, already pointed to `{prev}`, trying to insert `{child_idx}`"
             ),
-            Err(PageFull) => {
+            Ok(Err(PageFull)) => {
                 if parent.page_header().flags.contains(Flags::IS_ROOT) {
                     cov_mark::hit!(root_interior_split);
                     self.split_root_and_insert::<InteriorPageViewMut<'_, K>, _>(
@@ -229,6 +232,7 @@ where
                     .await?;
                 }
             }
+            Err(ConcurrentSplit) => todo!(),
         }
 
         Ok(())
@@ -263,10 +267,13 @@ where
         self.insert_interior(parents, &nsql_rkyv::deserialize(sep), new_node_page_idx).await?;
 
         let prev =
-            (if sep > key { old_node.insert(key, value) } else { new_node.insert(key, value) })
-                .expect("split interior should not be full");
+            if sep > key { old_node.insert(key, value) } else { new_node.insert(key, value) };
 
-        Ok(prev)
+        match prev {
+            Ok(Ok(prev)) => Ok(prev),
+            Ok(Err(PageFull)) => unreachable!("nodes a split should have space"),
+            Err(ConcurrentSplit) => todo!(),
+        }
     }
 
     #[tracing::instrument(skip(root))]
@@ -307,19 +314,24 @@ where
 
         // reinitialize the root to an interior root node and add the two children
         let mut root = root.reinitialize_as_root_interior();
-        root.insert(&K::MIN, &left_page_idx).expect("new root should not be full");
+        root.insert(&K::MIN, &left_page_idx)
+            .expect("root is locked and shouldn't see concurrent split")
+            .expect("new root should not be full");
         // FIXME ideally we don't have to deserialize sep
         root.insert(&nsql_rkyv::deserialize(sep), &right_page_idx)
+            .expect("root is locked and shouldn't see concurrent split")
             .expect("new root should not be full");
 
         let prev = (if sep > key { left_child } else { right_child })
             .insert(key, value)
-            .expect("split child should not be full");
+            .expect("root is locked and shouldn't see concurrent split")
+            .expect("split nodes should not be full");
+
         Ok(prev)
     }
 }
 
-// hack to generate "negative infinity" low keys for L&Y trees for left-most nodes
+// hack to make implementation of btree easier for now. Shouldn't be necessary
 pub trait Min: Archive {
     const MIN: Self;
 }
