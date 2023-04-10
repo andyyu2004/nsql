@@ -1,12 +1,14 @@
 use std::marker::PhantomData;
-use std::ops::{Deref, Index, IndexMut, Range, Sub};
+use std::ops::{Add, AddAssign, Deref, Index, IndexMut, Range, Sub};
 use std::pin::Pin;
-use std::{mem, slice};
+use std::{io, mem, slice};
 
 use nsql_pager::PAGE_DATA_SIZE;
 use nsql_rkyv::{align_archived_ptr_offset, archived_size_of, DefaultSerializer};
 use rkyv::rend::BigEndian;
 use rkyv::{Archive, Archived, Serialize};
+
+const HEAP_MAGIC: [u8; 4] = *b"HEAP";
 
 #[repr(C)]
 pub(crate) struct HeapView<'a, T: Archive> {
@@ -17,6 +19,18 @@ pub(crate) struct HeapView<'a, T: Archive> {
 }
 
 impl<'a, T: Archive> HeapView<'a, T> {
+    pub fn view(buf: &'a [u8; PAGE_DATA_SIZE]) -> Self {
+        let (header, buf) = buf.split_array_ref();
+        let header = unsafe { nsql_rkyv::archived_root::<SlottedPageHeader>(header) };
+
+        let slot_len = header.slot_len.value() as usize;
+        let (slot_bytes, data) = buf.split_at(slot_len * mem::size_of::<Archived<Slot>>());
+        let slots =
+            unsafe { slice::from_raw_parts(slot_bytes.as_ptr() as *mut Archived<Slot>, slot_len) };
+
+        Self { header, slots, data, marker: PhantomData }
+    }
+
     fn adjusted_slot_range(&self, slot: Slot) -> Range<usize> {
         // adjust the offset to be relative to the start of the slots
         // as we keep shifting the slots and data around the actual offsets change dependending on the number of slots
@@ -35,6 +49,14 @@ impl<'a, T: Archive> Index<Slot> for HeapView<'a, T> {
 
     fn index(&self, slot: Slot) -> &Self::Output {
         &self.data[self.adjusted_slot_range(slot)]
+    }
+}
+
+impl<'a, T: Archive> Index<SlotIndex> for HeapView<'a, T> {
+    type Output = T::Archived;
+
+    fn index(&self, idx: SlotIndex) -> &Self::Output {
+        unsafe { rkyv::archived_root::<T>(&self[self.slots[idx.0 as usize]]) }
     }
 }
 
@@ -59,21 +81,30 @@ impl<'a, T: Archive> Deref for HeapViewMut<'a, T> {
 impl<'a, T: Archive> Index<Slot> for HeapViewMut<'a, T> {
     type Output = [u8];
 
-    fn index(&self, index: Slot) -> &Self::Output {
-        &(**self)[index]
+    fn index(&self, slot: Slot) -> &Self::Output {
+        &(**self)[slot]
     }
 }
 
 impl<'a, T: Archive> IndexMut<Slot> for HeapViewMut<'a, T> {
-    fn index_mut(&mut self, index: Slot) -> &mut Self::Output {
-        let range = self.adjusted_slot_range(index);
+    fn index_mut(&mut self, slot: Slot) -> &mut Self::Output {
+        let range = self.adjusted_slot_range(slot);
         &mut self.data[range]
+    }
+}
+
+impl<'a, T: Archive> Index<SlotIndex> for HeapViewMut<'a, T> {
+    type Output = T::Archived;
+
+    fn index(&self, index: SlotIndex) -> &Self::Output {
+        &(**self)[index]
     }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Archive, Serialize)]
 #[archive(as = "Self")]
 pub(crate) struct SlottedPageHeader {
+    magic: [u8; 4],
     free_start: Offset,
     free_end: Offset,
     slot_len: BigEndian<u16>,
@@ -86,6 +117,7 @@ impl<'a, T: Archive> HeapViewMut<'a, T> {
     pub fn init(buf: &'a mut [u8; PAGE_DATA_SIZE]) -> Self {
         let free_end = PAGE_DATA_SIZE as u16 - archived_size_of!(SlottedPageHeader);
         let header = SlottedPageHeader {
+            magic: HEAP_MAGIC,
             free_start: Offset::from(0),
             free_end: Offset::from(free_end),
             slot_len: 0.into(),
@@ -94,12 +126,15 @@ impl<'a, T: Archive> HeapViewMut<'a, T> {
         let header_bytes = nsql_rkyv::to_bytes(&header);
         buf[..header_bytes.len()].copy_from_slice(&header_bytes);
 
-        Self::view_mut(buf)
+        Self::view_mut(buf).expect("should have valid magic")
     }
 
-    pub fn view_mut(buf: &'a mut [u8; PAGE_DATA_SIZE]) -> Self {
+    pub fn view_mut(buf: &'a mut [u8; PAGE_DATA_SIZE]) -> io::Result<Self> {
         let (header, buf) = buf.split_array_mut();
         let header = unsafe { nsql_rkyv::archived_root_mut::<SlottedPageHeader>(header) };
+        if header.magic != HEAP_MAGIC {
+            return Err(io::Error::new(io::ErrorKind::InvalidData, "invalid heap page magic"));
+        }
 
         let slot_len = header.slot_len.value() as usize;
         let (slot_bytes, data) = buf.split_at_mut(slot_len * mem::size_of::<Archived<Slot>>());
@@ -107,7 +142,7 @@ impl<'a, T: Archive> HeapViewMut<'a, T> {
             slice::from_raw_parts_mut(slot_bytes.as_ptr() as *mut Archived<Slot>, slot_len)
         };
 
-        Self { header, slots, data, marker: PhantomData }
+        Ok(Self { header, slots, data, marker: PhantomData })
     }
 
     pub fn push(&mut self, value: &T) -> Result<SlotIndex, HeapPageFull>
@@ -118,6 +153,7 @@ impl<'a, T: Archive> HeapViewMut<'a, T> {
         unsafe { self.push_raw(&serialized_value) }
     }
 
+    // Safety: the caller must ensure that the serialized value is a valid archived `T`
     pub unsafe fn push_raw(&mut self, serialized_value: &[u8]) -> Result<SlotIndex, HeapPageFull> {
         let length = serialized_value.len() as u16;
         if length > PAGE_DATA_SIZE as u16 / 4 {
@@ -127,11 +163,19 @@ impl<'a, T: Archive> HeapViewMut<'a, T> {
             );
         }
 
-        let slot = self.new_aligned_slot(self.header.free_end - length, length);
-        if slot.offset - archived_size_of!(Slot) < self.header.free_start {
+        // initial naive check to see if we have enough space
+        // this is necesary to avoid overflow
+        if self.header.free_start + archived_size_of!(Slot) + length > self.header.free_end {
             return Err(HeapPageFull);
         }
 
+        let slot = self.new_aligned_slot(self.header.free_end - length, length);
+        // recheck accounting for alignment
+        if slot.offset < self.header.free_start + archived_size_of!(Slot) {
+            return Err(HeapPageFull);
+        }
+
+        self.header.free_start += archived_size_of!(Slot);
         self.header.free_end = slot.offset;
         self[slot].copy_from_slice(serialized_value);
         debug_assert_eq!(&self[slot], serialized_value);
@@ -193,6 +237,20 @@ impl From<u16> for SlotIndex {
 #[repr(transparent)]
 pub(crate) struct Offset(BigEndian<u16>);
 
+impl AddAssign<u16> for Offset {
+    fn add_assign(&mut self, rhs: u16) {
+        self.0 += rhs;
+    }
+}
+
+impl Add<u16> for Offset {
+    type Output = Self;
+
+    fn add(self, rhs: u16) -> Self::Output {
+        Self::from(self.0 + rhs)
+    }
+}
+
 impl Sub<usize> for Offset {
     type Output = Self;
 
@@ -214,3 +272,6 @@ impl From<u16> for Offset {
         Self(BigEndian::from(offset))
     }
 }
+
+#[cfg(test)]
+mod tests;
