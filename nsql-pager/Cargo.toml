@@ -7,12 +7,13 @@ edition = "2021"
 async-trait = "0.1.64"
 bytes = "1.4.0"
 crc = "3.0"
-futures-executor = { version = "0.3.27", default-features = false, features = ["std"] }
 nsql-serde = { path = "../nsql-serde" }
 nsql-util = { path = "../nsql-util" }
 pin-utils = "0.1.0"
 tokio = { version = "1.25.0", default-features = false, features = ["io-util", "sync"] }
 rkyv = { version = "0.7.40", default-features = false, features = ["archive_be", "size_16"] }
+parking_lot = { version = "0.12.1" }
+tracing = "0.1.37"
 
 [dependencies.nsql-fs]
 path = "../nsql-fs"

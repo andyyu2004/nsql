@@ -1,6 +1,5 @@
 #![deny(rust_2018_idioms)]
 #![feature(async_fn_in_trait)]
-#![feature(once_cell)]
 #![allow(incomplete_features)]
 
 pub mod schema;

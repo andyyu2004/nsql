@@ -8,7 +8,8 @@ use std::fmt;
 
 pub(crate) use node::{NodeMut, NodeView, NodeViewMut};
 use nsql_pager::PAGE_DATA_SIZE;
-use rkyv::Archive;
+use nsql_rkyv::DefaultSerializer;
+use rkyv::{Archive, Serialize};
 
 pub(crate) use self::interior::{InteriorPageView, InteriorPageViewMut};
 pub(crate) use self::leaf::{LeafPageView, LeafPageViewMut};
@@ -71,19 +72,19 @@ impl PageHeader {
     }
 }
 
-pub(crate) enum PageView<'a, K: Archive, V: Archive> {
+pub(crate) enum PageView<'a, K: Archive + 'static, V: Archive> {
     Interior(InteriorPageView<'a, K>),
     Leaf(LeafPageView<'a, K, V>),
 }
 
 impl<'a, K, V> PageView<'a, K, V>
 where
-    K: Archive + fmt::Debug,
+    K: Archive + fmt::Debug + 'static,
     K::Archived: fmt::Debug + Ord,
-    V: Archive + fmt::Debug,
+    V: Archive + fmt::Debug + 'static,
     V::Archived: fmt::Debug,
 {
-    pub(crate) async unsafe fn view(data: &'a [u8; PAGE_DATA_SIZE]) -> Result<PageView<'a, K, V>> {
+    pub(crate) unsafe fn view(data: &'a [u8; PAGE_DATA_SIZE]) -> Result<PageView<'a, K, V>> {
         // read the header to determine if it's a leaf or interior page
         let (header_bytes, _) = data.split_array_ref();
         let header = unsafe { nsql_rkyv::archived_root::<PageHeader>(header_bytes) };
@@ -95,19 +96,19 @@ where
     }
 }
 
-pub(crate) enum PageViewMut<'a, K, V> {
+pub(crate) enum PageViewMut<'a, K: Archive + 'static, V> {
     Interior(InteriorPageViewMut<'a, K>),
     Leaf(LeafPageViewMut<'a, K, V>),
 }
 
 impl<'a, K, V> PageViewMut<'a, K, V>
 where
-    K: Archive + fmt::Debug + 'static,
+    K: Archive + Serialize<DefaultSerializer> + fmt::Debug + 'static,
     K::Archived: fmt::Debug + Ord,
     V: Archive + fmt::Debug + 'static,
     V::Archived: fmt::Debug,
 {
-    pub(crate) async unsafe fn view_mut(
+    pub(crate) unsafe fn view_mut(
         data: &'a mut [u8; PAGE_DATA_SIZE],
     ) -> Result<PageViewMut<'a, K, V>> {
         let (header_bytes, _) = data.split_array_ref();

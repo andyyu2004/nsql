@@ -3,18 +3,27 @@ use std::pin::Pin;
 
 use nsql_pager::{PageIndex, PAGE_DATA_SIZE};
 use nsql_rkyv::DefaultSerializer;
+use rkyv::option::ArchivedOption;
 use rkyv::{Archive, Archived, Deserialize, Serialize};
 
 use super::slotted::{SlottedPageView, SlottedPageViewMut};
 use super::{Flags, InteriorPageViewMut, PageFull, PageHeader};
+use crate::btree::ConcurrentSplit;
 use crate::Result;
 
 pub(crate) trait NodeHeader: Unpin {
-    fn left_link(&self) -> Archived<Option<PageIndex>>;
+    fn right_link(&self) -> Option<PageIndex>;
 
     fn set_left_link(&mut self, left_link: PageIndex);
 
     fn set_right_link(&mut self, right_link: PageIndex);
+}
+
+// FIXME this isn't actually used below
+pub(crate) trait Extra<K: Archive> {
+    fn high_key(&self) -> &Archived<Option<K>>;
+
+    fn set_high_key(&mut self, high_key: Archived<Option<K>>);
 }
 
 /// Abstraction over `Leaf` and `Interior` btree nodes
@@ -27,17 +36,29 @@ where
 {
     type ArchivedNodeHeader: NodeHeader;
 
-    fn slotted_page(&self) -> &SlottedPageView<'a, K, V>;
+    type Extra: Archive + 'a;
+
+    fn slotted_page(&self) -> &SlottedPageView<'a, K, V, Self::Extra>;
 
     fn page_header(&self) -> &Archived<PageHeader>;
 
     fn node_header(&self) -> &Self::ArchivedNodeHeader;
 
-    /// A node has a low key iff it is not the root.
-    /// All other nodes have a low key. In particular, the non-root left-most nodes have `K::MIN` as the low key.
-    // FIXME run into lifetime issues if we try to write a default implementation
-    // the impl copied into each implementation for now
-    fn low_key(&self) -> Option<&K::Archived>;
+    /// The "high key" of a node as part of L&Y btrees.
+    /// A node has a high key iff it is not the rightmost page.
+    /// A `None` high key effectively represents `infinity`.
+    fn high_key(&self) -> &Archived<Option<K>>;
+
+    /// The smallest/leftmost key in the node.
+    fn min_key(&self) -> Option<&K::Archived>;
+
+    fn right_link(&self) -> Option<PageIndex> {
+        self.node_header().right_link()
+    }
+
+    fn is_rightmost(&self) -> bool {
+        self.right_link().is_none()
+    }
 
     fn is_root(&self) -> bool {
         self.page_header().flags.contains(Flags::IS_ROOT)
@@ -82,6 +103,7 @@ where
         right_page_idx: PageIndex,
         right: &mut Self::ViewMut<'_>,
     ) where
+        K::Archived: Clone,
         V::Archived: Deserialize<V, rkyv::Infallible> + fmt::Debug,
     {
         assert!(root.is_root());
@@ -111,43 +133,64 @@ where
             )
         }
 
-        right.set_left_link(left_page_idx);
         left.set_right_link(right_page_idx);
+        left.set_high_key(ArchivedOption::Some(
+            right.min_key().expect("rhs should be non-empty and therefore have a min key").clone(),
+        ));
+        right.set_left_link(left_page_idx);
 
-        root.slotted_page_mut().set_len(0);
+        root.slotted_page_mut().truncate(0);
     }
 
-    fn split_left_into(
-        view: &mut Self::ViewMut<'_>,
-        view_page_idx: PageIndex,
+    /// split `left` into a newly allocated page `right`
+    fn split(
         left: &mut Self::ViewMut<'_>,
         left_page_idx: PageIndex,
+        right: &mut Self::ViewMut<'_>,
+        right_page_idx: PageIndex,
     ) where
-        K::Archived: Deserialize<K, rkyv::Infallible>,
+        K::Archived: Deserialize<K, rkyv::Infallible> + Clone,
         V::Archived: Deserialize<V, rkyv::Infallible>,
     {
-        assert!(view.slotted_page().len() >= 3);
-        assert!(left.slotted_page().is_empty());
+        assert!(left.slotted_page().len() >= 3);
+        assert!(right.slotted_page().is_empty());
 
-        let slots = view.slotted_page().slots();
+        let initial_left_high_key = left.high_key().clone();
+        let initial_right_link = left.right_link();
+
+        let left_slots = left.slotted_page_mut();
+        let slots = left_slots.slots();
         let (lhs, rhs) = slots.split_at(slots.len() / 2);
 
-        let ours = view.slotted_page_mut();
-        let theirs = left.slotted_page_mut();
+        let right_slots = right.slotted_page_mut();
+
+        // copy over the right entries to the new right page
         for &slot in rhs {
-            let entry_bytes = &ours[slot];
+            let entry_bytes = &left_slots[slot];
             assert!(
-                unsafe { theirs.insert_raw(entry_bytes) }
+                unsafe { right_slots.insert_raw(entry_bytes) }
                     .expect("new page should not be full")
                     .is_none(),
                 "should not have a previous value"
             );
         }
 
-        ours.set_len(lhs.len() as u16);
+        left_slots.truncate(lhs.len() as u16);
 
-        view.set_left_link(left_page_idx);
-        left.set_right_link(view_page_idx);
+        left.set_right_link(right_page_idx);
+        left.set_high_key(match right_slots.first() {
+            Some(key) => ArchivedOption::Some(key.clone()),
+            None => ArchivedOption::None,
+        });
+
+        right.set_left_link(left_page_idx);
+        if let Some(right_link) = initial_right_link {
+            right.set_right_link(right_link);
+        }
+        right.set_high_key(initial_left_high_key);
+
+        debug_assert_eq!(left.len(), lhs.len());
+        debug_assert_eq!(right.len(), rhs.len());
     }
 }
 
@@ -160,7 +203,9 @@ where
 {
     fn node_header_mut(&mut self) -> Pin<&mut Self::ArchivedNodeHeader>;
 
-    fn slotted_page_mut(&mut self) -> &mut SlottedPageViewMut<'a, K, V>;
+    fn slotted_page_mut(&mut self) -> &mut SlottedPageViewMut<'a, K, V, Self::Extra>;
+
+    fn set_high_key(&mut self, high_key: Archived<Option<K>>);
 
     /// SAFETY: The page header must be archived at the start of the page
     /// This is assumed by the implementation of `raw_bytes_mut`
@@ -174,9 +219,14 @@ where
 
     /// Reinitialize the root node as a root interior node.
     /// This is intended for use when splitting a root node.
-    fn reinitialize_as_root_interior(&mut self) -> InteriorPageViewMut<'_, K> {
+    fn reinitialize_as_root_interior(&mut self) -> InteriorPageViewMut<'_, K>
+    where
+        K: Serialize<DefaultSerializer>,
+    {
         assert!(self.page_header().flags.contains(Flags::IS_ROOT));
-        InteriorPageViewMut::initialize_root(self.raw_bytes_mut())
+        let root_interior = InteriorPageViewMut::initialize_root(self.raw_bytes_mut());
+        assert!(root_interior.is_root());
+        root_interior
     }
 
     fn set_left_link(&mut self, left_link: PageIndex) {
@@ -187,17 +237,19 @@ where
         self.node_header_mut().set_right_link(right_link);
     }
 
-    fn insert(&mut self, key: &K, value: &V) -> Result<Option<V>, PageFull>
+    fn insert(&mut self, key: &K, value: &V) -> Result<Result<Option<V>, PageFull>, ConcurrentSplit>
     where
         K: Serialize<DefaultSerializer>,
         K::Archived: Deserialize<K, rkyv::Infallible> + PartialOrd<K>,
         V: Serialize<DefaultSerializer>,
         V::Archived: Deserialize<V, rkyv::Infallible>,
     {
-        if let Some(low_key) = self.low_key() {
-            assert!(low_key <= key, "key must be no less than low key {low_key:?} !<= {key:?}");
+        if let Some(high_key) = self.high_key().as_ref() {
+            if high_key < key {
+                return Err(ConcurrentSplit)?;
+            }
         }
 
-        self.slotted_page_mut().insert(key, value)
+        Ok(self.slotted_page_mut().insert(key, value))
     }
 }

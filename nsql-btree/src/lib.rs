@@ -1,5 +1,6 @@
 #![feature(min_specialization, rustc_attrs)]
 #![feature(async_fn_in_trait)]
+#![feature(ptr_sub_ptr)]
 #![feature(generic_const_exprs)]
 #![feature(is_sorted)]
 #![feature(split_array)]
@@ -8,6 +9,7 @@
 #![deny(rust_2018_idioms)]
 
 mod btree;
+pub mod mem;
 mod page;
 
 pub use btree::{BTree, Min};

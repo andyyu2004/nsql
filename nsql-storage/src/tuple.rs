@@ -23,9 +23,9 @@ impl Serialize for Tuple {
 impl DeserializeWith for Tuple {
     type Context<'a> = TupleDeserializationContext;
 
-    async fn deserialize_with(
+    async fn deserialize_with<D: Deserializer>(
         ctx: &Self::Context<'_>,
-        de: &mut dyn Deserializer,
+        de: &mut D,
     ) -> nsql_serde::Result<Self> {
         let attributes = ctx.schema.attributes();
         let mut values = Vec::with_capacity(attributes.len());

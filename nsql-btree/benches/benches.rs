@@ -25,17 +25,33 @@ fn new_runtime() -> impl AsyncExecutor {
 }
 
 fn bench_insertions(c: &mut Criterion) {
-    c.bench_function("insertions", |b| b.to_async(new_runtime()).iter(insertions));
+    c.bench_function("single-threaded insertions", |b| {
+        b.to_async(new_runtime()).iter(single_threaded_insertions)
+    });
+
+    c.bench_function("single-threaded insert and get", |b| {
+        b.to_async(new_runtime()).iter(single_threaded_insert_and_get)
+    });
+
     c.bench_function("concurrent insertions", |b| {
         b.to_async(new_runtime()).iter(concurrent_insertions)
     });
 }
 
-async fn insertions() {
+async fn single_threaded_insertions() {
     let pool = nsql_test::mk_fast_mem_buffer_pool!();
     let btree = BTree::<u32, u64>::initialize(pool).await.unwrap();
     for i in 0..60000 {
         btree.insert(&i, &(i as u64)).await.unwrap();
+    }
+}
+
+async fn single_threaded_insert_and_get() {
+    let pool = nsql_test::mk_fast_mem_buffer_pool!();
+    let btree = BTree::<u32, u64>::initialize(pool).await.unwrap();
+    for i in 0..60000 {
+        btree.insert(&i, &(i as u64)).await.unwrap();
+        assert_eq!(btree.get(&i).await.unwrap(), Some(i as u64));
     }
 }
 

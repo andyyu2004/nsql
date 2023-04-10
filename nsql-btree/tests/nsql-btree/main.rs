@@ -21,7 +21,7 @@ fn test_btree_empty() -> Result<()> {
 }
 
 #[test]
-fn test_btree_insert_and_get() -> Result<()> {
+fn test_btree_insert_and_get_simple() -> Result<()> {
     nsql_test::start(async {
         let pool = mk_fast_mem_buffer_pool!();
         let btree = BTree::<u32, u64>::initialize(pool).await?;
@@ -44,6 +44,7 @@ fn test_btree_root_leaf_page_split() -> Result<()> {
 }
 
 #[test]
+#[tracing_test::traced_test]
 fn test_btree_leaf_page_split() -> Result<()> {
     cov_mark::check!(non_root_leaf_split);
     run_serial_inserts::<500>()
@@ -132,19 +133,19 @@ fn test_btree_insert_and_get_random(pairs: Box<[(u32, u16)]>) {
 }
 
 #[test]
-fn test_insert_duplicate_reuse_slot() -> Result<()> {
+fn test_btree_insert_duplicate_reuse_slot() -> Result<()> {
     cov_mark::check!(slotted_page_insert_duplicate_reuse);
     let inputs = (0..10000).map(|i| (i % 7, i)).collect::<Vec<_>>();
     run_insertions(&inputs)
 }
 
 #[test]
-fn test_insert_duplicate_into_full_page() -> Result<()> {
+fn test_btree_insert_duplicate_into_full_page() -> Result<()> {
     // Inserting duplicates into a full page requires some special handling.
     // This testcase tests the easy case where we can reuse the evicted slot.
     cov_mark::check!(slotted_page_insert_duplicate_full_reuse);
-    // We exercise the case by filling up a page and then inserting the same keys again.
-    let inputs = (0..2).flat_map(|_| (0..580).map(|i| (i, i))).collect::<Vec<_>>();
+    // We exercise the case by exactly filling up a page and then inserting the same keys again.
+    let inputs = (0..2).flat_map(|_| (0..505).map(|i| (i, i))).collect::<Vec<_>>();
     run_insertions(&inputs)
 }
 
@@ -159,7 +160,8 @@ where
         + Send
         + Sync
         + 'static,
-    K::Archived: Deserialize<K, rkyv::Infallible> + PartialOrd<K> + fmt::Debug + Ord + Send + Sync,
+    K::Archived:
+        Deserialize<K, rkyv::Infallible> + PartialOrd<K> + fmt::Debug + Clone + Ord + Send + Sync,
     V: Archive + Eq + Serialize<DefaultSerializer> + fmt::Debug + Send + Sync + 'static,
     V::Archived: Deserialize<V, rkyv::Infallible> + fmt::Debug + Send + Sync,
 {

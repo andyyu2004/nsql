@@ -1,5 +1,5 @@
 use std::marker::PhantomData;
-use std::ops::{AddAssign, Deref, Index, IndexMut, Sub, SubAssign};
+use std::ops::{Add, AddAssign, Deref, Index, IndexMut, Sub, SubAssign};
 use std::pin::Pin;
 use std::{fmt, mem, ptr, slice};
 
@@ -16,19 +16,21 @@ use crate::page::archived_align_of;
 // NOTE: the layout of this MUST match the layout of the mutable version
 #[repr(C)]
 #[derive(Copy, Clone)]
-pub(crate) struct SlottedPageView<'a, K: Archive, V: Archive> {
+pub(crate) struct SlottedPageView<'a, K: Archive, V: Archive, X: Archive = ()> {
     header: &'a Archived<SlottedPageMeta>,
-    slots: &'a [Slot],
+    extra: &'a Archived<X>,
+    slots: &'a [Archived<Slot>],
     data: &'a [u8],
     marker: PhantomData<&'a (K::Archived, V::Archived)>,
 }
 
-impl<'a, K, V> fmt::Debug for SlottedPageView<'a, K, V>
+impl<'a, K, V, X> fmt::Debug for SlottedPageView<'a, K, V, X>
 where
     K: Archive,
     K::Archived: Ord + fmt::Debug,
     V: Archive,
     V::Archived: fmt::Debug,
+    X: Archive,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("SlottedPageView")
@@ -38,18 +40,23 @@ where
     }
 }
 
-impl<'a, K: Archive, V: Archive> SlottedPageView<'a, K, V> {
+impl<'a, K: Archive, V: Archive, X: Archive> SlottedPageView<'a, K, V, X> {
     /// Safety: `buf` must contain a valid slotted page
-    pub(crate) unsafe fn view(buf: &'a [u8]) -> SlottedPageView<'a, K, V> {
+    // Should be analogous to `Self::view_mut`
+    pub(crate) unsafe fn view(buf: &'a [u8]) -> SlottedPageView<'a, K, V, X> {
         let (header_bytes, buf) = buf.split_array_ref();
         let header = unsafe { nsql_rkyv::archived_root::<SlottedPageMeta>(header_bytes) };
 
         let slot_len = header.slot_len.value() as usize;
         let (slot_bytes, data) = buf.split_at(slot_len * mem::size_of::<Slot>());
+        let slots =
+            unsafe { slice::from_raw_parts(slot_bytes.as_ptr() as *mut Archived<Slot>, slot_len) };
 
-        let slots = unsafe { slice::from_raw_parts(slot_bytes.as_ptr() as *mut Slot, slot_len) };
+        let extra_start = data.len() - header.extra_len.value() as usize;
+        let (data, extra_bytes) = data.split_at(extra_start);
+        let extra = rkyv::archived_root::<X>(extra_bytes);
 
-        Self { header, slots, data, marker: PhantomData }
+        Self { header, slots, data, extra, marker: PhantomData }
     }
 
     #[inline]
@@ -62,16 +69,25 @@ impl<'a, K: Archive, V: Archive> SlottedPageView<'a, K, V> {
         self.slots.len()
     }
 
-    pub(crate) fn slots(&self) -> &'a [Slot] {
+    pub(crate) fn free_space(&self) -> u16 {
+        self.header.free_end.0.value() - self.header.free_start.0.value()
+    }
+
+    pub(crate) fn slots(&self) -> &'a [Archived<Slot>] {
         self.slots
+    }
+
+    pub(crate) fn extra(&self) -> &'a Archived<X> {
+        self.extra
     }
 }
 
-impl<'a, K, V> SlottedPageView<'a, K, V>
+impl<'a, K, V, X> SlottedPageView<'a, K, V, X>
 where
     K: Archive,
     K::Archived: Ord,
     V: Archive,
+    X: Archive,
 {
     pub(crate) fn get<Q>(&self, key: &Q) -> Option<&V::Archived>
     where
@@ -82,7 +98,7 @@ where
         Some(&self.get_by_slot(slot).value)
     }
 
-    fn values(&self) -> impl Iterator<Item = &V::Archived> {
+    fn values(&self) -> impl Iterator<Item = &V::Archived> + fmt::Debug {
         self.slots.iter().map(move |&slot| &self.get_by_slot(slot).value)
     }
 
@@ -99,7 +115,7 @@ where
         unsafe { rkyv::archived_root::<Entry<&K, &V>>(&self[slot]) }
     }
 
-    pub(crate) fn low_key(&self) -> Option<&K::Archived> {
+    pub(crate) fn first(&self) -> Option<&K::Archived> {
         let slot = *self.slots.first()?;
         Some(&self.get_by_slot(slot).key)
     }
@@ -118,7 +134,7 @@ where
     }
 }
 
-impl<K: Archive, V: Archive> Index<Slot> for SlottedPageView<'_, K, V> {
+impl<K: Archive, V: Archive, X: Archive> Index<Slot> for SlottedPageView<'_, K, V, X> {
     type Output = [u8];
 
     fn index(&self, slot: Slot) -> &Self::Output {
@@ -130,13 +146,13 @@ impl<K: Archive, V: Archive> Index<Slot> for SlottedPageView<'_, K, V> {
             self.header.slot_len.value() * archived_size_of!(Slot)
         );
         let adjusted_offset = adjusted_slot_offset.0.value() as usize;
-        let end = adjusted_offset + slot.length.value() as usize;
-        debug_assert!(end <= PAGE_DATA_SIZE);
-        &self.data[adjusted_offset..end]
+        &self.data[adjusted_offset..adjusted_offset + slot.length.value() as usize]
     }
 }
 
-impl<'a, K: Archive + 'static, V: Archive + 'static> Index<Slot> for SlottedPageViewMut<'a, K, V> {
+impl<'a, K: Archive + 'static, V: Archive + 'static, X: Archive> Index<Slot>
+    for SlottedPageViewMut<'a, K, V, X>
+{
     type Output = [u8];
 
     fn index(&self, slot: Slot) -> &Self::Output {
@@ -144,8 +160,8 @@ impl<'a, K: Archive + 'static, V: Archive + 'static> Index<Slot> for SlottedPage
     }
 }
 
-impl<'a, K: Archive + 'static, V: Archive + 'static> IndexMut<Slot>
-    for SlottedPageViewMut<'a, K, V>
+impl<'a, K: Archive + 'static, V: Archive + 'static, X: Archive> IndexMut<Slot>
+    for SlottedPageViewMut<'a, K, V, X>
 {
     fn index_mut(&mut self, slot: Slot) -> &mut Self::Output {
         let adjusted_slot_offset: SlotOffset = slot.offset - mem::size_of_val(self.slots) as u16;
@@ -159,10 +175,11 @@ impl<'a, K: Archive + 'static, V: Archive + 'static> IndexMut<Slot>
 }
 
 // NOK, VE: must match the layout of `SlottedPageView`
-#[derive(Eq)]
+// #[derive(Eq)]
 #[repr(C)]
-pub(crate) struct SlottedPageViewMut<'a, K, V> {
+pub(crate) struct SlottedPageViewMut<'a, K, V, X: Archive = ()> {
     header: Pin<&'a mut Archived<SlottedPageMeta>>,
+    extra: Pin<&'a mut Archived<X>>,
     slots: &'a mut [Slot],
     data: &'a mut [u8],
     marker: PhantomData<(K, V)>,
@@ -178,20 +195,16 @@ impl<'a, K, V> fmt::Debug for SlottedPageViewMut<'a, K, V> {
     }
 }
 
-impl<'a, K, V> PartialEq for SlottedPageViewMut<'a, K, V> {
-    fn eq(&self, other: &Self) -> bool {
-        self.header == other.header && self.slots == other.slots && self.data == other.data
-    }
-}
-
 #[derive(Debug, Archive, rkyv::Serialize)]
 #[archive_attr(derive(Debug, PartialEq, Eq))]
 #[archive(compare(PartialEq))]
 struct SlottedPageMeta {
-    // start offset initially starts from 0 and end offset is relative to that
+    // free_start offset initially starts from 0 and end offset is relative to that
     free_start: SlotOffset,
     free_end: SlotOffset,
     slot_len: u16,
+    /// `extra` is stored at the very end of the page
+    extra_len: u16,
 }
 
 nsql_util::static_assert_eq!(
@@ -199,17 +212,25 @@ nsql_util::static_assert_eq!(
     mem::size_of::<ArchivedSlottedPageMeta>()
 );
 
-impl<'a, K: Archive, V: Archive> SlottedPageViewMut<'a, K, V> {
-    /// `prefix_size` is the size of the page header and the page-specific header` (and anything else that comes before the slots)
-    /// slot offsets are relative to the initla value of `free_start`
-    pub(crate) fn init(buf: &'a mut [u8], prefix_size: u16) -> SlottedPageViewMut<'a, K, V> {
-        let free_end = PAGE_DATA_SIZE as u16 - prefix_size - archived_size_of!(SlottedPageMeta);
-        assert_eq!(free_end, buf.len() as u16 - archived_size_of!(SlottedPageMeta));
+impl<'a, K: Archive, V: Archive, X: Serialize<nsql_rkyv::DefaultSerializer>>
+    SlottedPageViewMut<'a, K, V, X>
+{
+    /// slot offsets are relative to the initial value of `free_start`
+    pub(crate) fn init(buf: &'a mut [u8], extra: X) -> SlottedPageViewMut<'a, K, V, X> {
+        let extra_bytes = nsql_rkyv::to_bytes(&extra);
+
+        let mut extra_start = buf.len() - extra_bytes.len();
+        let offset = align_archived_ptr_offset::<X>(buf[extra_start..].as_ptr());
+        extra_start -= offset;
+        buf[extra_start..].copy_from_slice(&extra_bytes[..]);
+
+        let free_end = extra_start as u16 - archived_size_of!(SlottedPageMeta);
 
         let header = SlottedPageMeta {
-            free_start: SlotOffset::from(0),
+            free_start: SlotOffset::from(0u16),
             free_end: SlotOffset::from(free_end),
             slot_len: 0,
+            extra_len: extra_bytes.len() as u16,
         };
 
         let bytes = nsql_rkyv::to_bytes(&header);
@@ -219,25 +240,27 @@ impl<'a, K: Archive, V: Archive> SlottedPageViewMut<'a, K, V> {
     }
 
     /// Safety: `buf` must point at the start of a valid slotted page
-    pub(crate) unsafe fn view_mut(buf: &'a mut [u8]) -> SlottedPageViewMut<'a, K, V> {
+    // Should be analogous to `Self::view`
+    pub(crate) unsafe fn view_mut(buf: &'a mut [u8]) -> SlottedPageViewMut<'a, K, V, X> {
         let (header_bytes, buf) = buf.split_array_mut();
         let header = unsafe { nsql_rkyv::archived_root_mut::<SlottedPageMeta>(header_bytes) };
 
         let slot_len = header.slot_len.value() as usize;
         let (slot_bytes, data) = buf.split_at_mut(slot_len * mem::size_of::<Slot>());
-
         let slots =
             unsafe { slice::from_raw_parts_mut(slot_bytes.as_ptr() as *mut Slot, slot_len) };
 
-        Self { header, slots, data, marker: PhantomData }
-    }
+        let extra_start = data.len() - header.extra_len.value() as usize;
+        let (data, extra_bytes) = data.split_at_mut(extra_start);
+        let extra = rkyv::archived_root_mut::<X>(Pin::new(extra_bytes));
 
-    pub(crate) fn set_len(&mut self, len: u16) {
-        self.header.slot_len = len.into();
+        Self { header, slots, data, extra, marker: PhantomData }
     }
 }
 
-impl<'a, K: Archive + 'static, V: Archive + 'static> Deref for SlottedPageViewMut<'a, K, V> {
+impl<'a, K: Archive + 'static, V: Archive + 'static, X: Archive> Deref
+    for SlottedPageViewMut<'a, K, V, X>
+{
     type Target = SlottedPageView<'a, K, V>;
 
     fn deref(&self) -> &Self::Target {
@@ -251,17 +274,110 @@ impl<'a, K: Archive + 'static, V: Archive + 'static> Deref for SlottedPageViewMu
     }
 }
 
-impl<'a, K, V> SlottedPageViewMut<'a, K, V>
+impl<'a, K, V, X> SlottedPageViewMut<'a, K, V, X>
 where
     K: Archive + 'static,
-    K::Archived: Ord,
+    K::Archived: Ord + fmt::Debug,
     V: Archive + 'static,
+    V::Archived: fmt::Debug,
+    X: Archive,
 {
+    /// Truncate the page to the leftmost `new_len` slots
+    pub(crate) fn truncate(&mut self, new_len: u16) {
+        // FIXME refactor the mess
+        // A lot of the bit fiddling stuff is duplicated from `SlottedPageView::insert`
+
+        let prev_data_len = self.data.len();
+        assert!(new_len as usize <= prev_data_len);
+        // FIXME keep track of freed space for reuse
+        self.header.slot_len = new_len.into();
+
+        // shift slots and data slices appropriately
+        let (slots, freed_data) = mem::take(&mut self.slots).split_at_mut(new_len as usize);
+        self.slots = slots;
+
+        let freed_ptr = freed_data.as_ptr() as *mut u8;
+        let freed_bytes = freed_data.len() * mem::size_of::<Slot>();
+        assert_eq!(self.data.as_ptr(), freed_ptr.wrapping_add(freed_bytes) as *mut u8);
+        self.data = unsafe {
+            slice::from_raw_parts_mut(freed_data.as_ptr() as *mut u8, prev_data_len + freed_bytes)
+        };
+        self.header.free_start -= freed_bytes as u16;
+
+        #[cfg(debug_assertions)]
+        self.assert_invariants();
+    }
+
     /// Safety: `serialized_entry` must be the serialized bytes of an `Entry<&K, &V>`
     pub(crate) unsafe fn insert_raw(
         &mut self,
         serialized_entry: &[u8],
     ) -> Result<Option<V>, PageFull>
+    where
+        V::Archived: Deserialize<V, Infallible> + fmt::Debug,
+    {
+        match self.insert_raw_inner(serialized_entry) {
+            Ok(prev) => Ok(prev),
+            Err(PageFull) => {
+                self.defragment();
+                self.insert_raw_inner(serialized_entry)
+            }
+        }
+    }
+
+    /// Defragment the slotted page by rewriting all the data in slot order with no gaps
+    fn defragment(&mut self) {
+        let mut new_data = Vec::with_capacity(self.data.len());
+        // copy the data in slot order into a new buffer
+        for &slot in self.slots.iter() {
+            let bytes = &self[slot];
+            debug_assert_eq!(bytes.len(), slot.length.value() as usize);
+            new_data.extend_from_slice(bytes);
+        }
+
+        // The `page_end_offset` is the offset to the very end of the page.
+        // We compute it by getting the offset where `data` (i.e. `free_start`) starts and adding its length.
+        let page_end_offset: SlotOffset = self.header.free_start + self.data.len() as u16;
+
+        // the new `free_end` is the end of the page minus the size of the compacted data
+        self.header.free_end = self.aligned_offset(page_end_offset - new_data.len() as u16);
+        assert!(self.header.free_end >= self.header.free_start);
+
+        // update the offsets of the slots in place
+        let mut offset = self.header.free_end;
+        for slot in self.slots.iter_mut() {
+            slot.offset = offset;
+            offset += slot.length.value();
+        }
+
+        // copy the buffer back into the page in the appropriate place
+        assert!(
+            new_data.len() <= self.data.len(),
+            "defragmented data should be no larger than original"
+        );
+
+        let length = new_data.len() as u16;
+        // not really a slot, but we can reuse the indexing logic to copy the data
+        let fake_slot = Slot { offset: self.header.free_end, length: length.into() };
+        self[fake_slot].copy_from_slice(&new_data);
+
+        #[cfg(debug_assertions)]
+        self.assert_invariants();
+    }
+
+    /// Create a new slot with the given offset and length, ensuring that the slot is aligned
+    /// by shifting the offset left if necessary>
+    fn new_aligned_slot(&self, offset: SlotOffset, length: u16) -> Slot {
+        Slot { offset: self.aligned_offset(offset), length: length.into() }
+    }
+
+    fn aligned_offset(&self, offset: SlotOffset) -> SlotOffset {
+        let ptr = self[Slot { offset, length: 0.into() }].as_ptr();
+        let adjustment = align_archived_ptr_offset::<Entry<&K, &V>>(ptr);
+        offset - adjustment as u16
+    }
+
+    unsafe fn insert_raw_inner(&mut self, serialized_entry: &[u8]) -> Result<Option<V>, PageFull>
     where
         V::Archived: Deserialize<V, Infallible> + fmt::Debug,
     {
@@ -277,8 +393,7 @@ where
         let idx = self.slot_index_of_key(&entry.key);
 
         let length = serialized_entry.len() as u16;
-        let has_space =
-            length + archived_size_of!(Slot) <= self.header.free_end - self.header.free_start;
+        let has_space = length + archived_size_of!(Slot) <= self.free_space();
 
         let prev = match idx {
             Ok(idx) => {
@@ -320,19 +435,7 @@ where
                 }
 
                 self.header.free_end -= length;
-                let mut slot = Slot { offset: self.header.free_end, length: length.into() };
-                let entry_align = archived_align_of!(Entry<&K, &V>) as u16;
-                let align_offset = self[slot].as_ptr().align_offset(entry_align as usize) as u16;
-
-                if align_offset != 0 {
-                    assert!(
-                        align_offset < entry_align,
-                        "the offset required to meet alignment should be less than the alignment"
-                    );
-                    // We apply the alignment offset to make the slot aligned, but now we're using
-                    // the next entries space. Therefore, we subtract an entire alignments worth of space.
-                    slot.offset -= entry_align - align_offset;
-                }
+                let slot = self.new_aligned_slot(self.header.free_end, length);
 
                 self.header.free_start += archived_size_of!(Slot);
                 assert!(
@@ -365,15 +468,14 @@ where
                 // we have to shift over the slice of data as we expect it to start after the slots (at `free_start`)
                 // we some small tricks to avoid lifetime issues without using unsafe
                 // see https://stackoverflow.com/questions/61223234/can-i-reassign-a-mutable-slice-reference-to-a-sub-slice-of-itself
-                let data: &'a mut [u8] = mem::take(&mut self.data);
-                let (_, data) = data.split_array_mut::<{ mem::size_of::<Archived<Slot>>() }>();
-                self.data = data;
+                (_, self.data) = mem::take(&mut self.data)
+                    .split_array_mut::<{ mem::size_of::<Archived<Slot>>() }>();
                 None
             }
         };
 
         #[cfg(debug_assertions)]
-        self.assert_sorted();
+        self.assert_invariants();
 
         Ok(prev)
     }
@@ -390,21 +492,41 @@ where
         unsafe { self.insert_raw(&bytes) }
     }
 
+    pub(crate) fn extra_mut(&mut self) -> Pin<&mut Archived<X>> {
+        self.extra.as_mut()
+    }
+
     #[cfg(debug_assertions)]
-    fn assert_sorted(&self) {
-        let mut values = Vec::<&Entry<K::Archived, V::Archived>>::with_capacity(
+    fn assert_invariants(&self) {
+        assert!(self.header.free_start <= self.header.free_end);
+        assert_eq!(self.header.slot_len, self.slots.len() as u16);
+        assert_eq!(
+            self.slots.as_ptr().wrapping_add(self.slots.len()).cast::<u8>(),
+            self.data.as_ptr(),
+            "slots and data pointers are not contiguous"
+        );
+
+        // testing internal assertions of `+`
+        let _ = self.header.free_start + self.data.len() as u16;
+
+        let mut entries = Vec::<&Entry<K::Archived, V::Archived>>::with_capacity(
             self.header.slot_len.value() as usize,
         );
+
         for &slot in self.slots.iter() {
-            values.push(self.get_by_slot(slot));
+            let entry = self.get_by_slot(slot);
+            entries.push(entry);
         }
 
-        assert!(values.is_sorted());
+        assert!(entries.is_sorted());
+        // should only be checking keys for dups
+        // entries.dedup();
+        // assert_eq!(entries.len(), self.header.slot_len.value() as usize, "duplicate keys");
     }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Archive)]
-#[archive_attr(derive(Debug))]
+#[archive(as = "Self")]
 pub struct Slot {
     /// The offset of the entry from the start of the page
     offset: SlotOffset,
@@ -420,6 +542,15 @@ pub struct Slot {
 #[repr(transparent)]
 pub struct SlotOffset(BigEndian<u16>);
 
+impl Add<u16> for SlotOffset {
+    type Output = Self;
+
+    #[track_caller]
+    fn add(self, rhs: u16) -> Self::Output {
+        Self::from(self.0 + rhs)
+    }
+}
+
 impl AddAssign<u16> for SlotOffset {
     fn add_assign(&mut self, rhs: u16) {
         self.0 += rhs;
@@ -432,9 +563,16 @@ impl SubAssign<u16> for SlotOffset {
     }
 }
 
+impl From<usize> for SlotOffset {
+    fn from(offset: usize) -> Self {
+        Self::from(offset as u16)
+    }
+}
+
 impl From<u16> for SlotOffset {
+    #[track_caller]
     fn from(offset: u16) -> Self {
-        assert!(offset < PAGE_DATA_SIZE as u16);
+        assert!(offset < PAGE_DATA_SIZE as u16, "offset `{offset}` is too large");
         Self(BigEndian::from(offset))
     }
 }
@@ -450,7 +588,27 @@ impl Sub for SlotOffset {
 impl Sub<u16> for SlotOffset {
     type Output = SlotOffset;
 
+    #[track_caller]
     fn sub(self, rhs: u16) -> Self::Output {
         Self::from(self.0 - rhs)
+    }
+}
+
+/// Wrapper around `align_offset` specialized to archived types and represents a left offset rather than right.
+/// i.e. the offset should be subtracted from the pointer to align it.
+fn align_archived_ptr_offset<T: Archive>(ptr: *const u8) -> usize {
+    let alignment = archived_align_of!(T);
+    let align_offset = ptr.align_offset(alignment);
+    if align_offset != 0 {
+        debug_assert!(
+            align_offset < alignment,
+            "the offset required to meet alignment should be less than the alignment"
+        );
+        // We apply the alignment offset to make the slot aligned, but we can't shift the
+        // pointer forward as we might be going into used space.
+        // Therefore, we subtract an entire alignments worth of space first.
+        alignment - align_offset
+    } else {
+        0
     }
 }

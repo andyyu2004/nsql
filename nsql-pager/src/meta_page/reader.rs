@@ -3,9 +3,7 @@ use std::task::{ready, Context, Poll};
 use std::{cmp, io, mem};
 
 use bytes::Buf;
-use futures_executor::block_on;
 use tokio::io::{AsyncRead, ReadBuf};
-use tokio::task::block_in_place;
 
 use super::try_io;
 use crate::{BoxFuture, Page, PageIndex, Pager, Result, PAGE_DATA_SIZE};
@@ -61,7 +59,7 @@ impl<P: Pager> AsyncRead for MetaPageReader<'_, P> {
                     self.state = State::Read { page, byte_index: 0 };
                 }
                 State::Read { page, byte_index } => {
-                    let view = block_in_place(|| block_on(page.read()));
+                    let view = page.read();
                     let data = &view[mem::size_of::<PageIndex>() + *byte_index..];
                     let amt = cmp::min(data.len(), buf.remaining());
                     buf.put_slice(&data[..amt]);

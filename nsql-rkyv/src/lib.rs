@@ -7,19 +7,15 @@ use std::mem;
 use std::pin::Pin;
 
 use rkyv::ser::serializers::{
-    AlignedSerializer, AllocScratch, BufferSerializer, CompositeSerializer, FallbackScratch,
-    HeapScratch,
+    AlignedSerializer, AllocScratch, BufferSerializer, CompositeSerializer,
 };
 use rkyv::ser::Serializer as _;
 use rkyv::{
     AlignedVec, Archive, ArchiveUnsized, Deserialize, Infallible, Serialize, SerializeUnsized,
 };
 
-pub type DefaultSerializer = CompositeSerializer<
-    AlignedSerializer<AlignedVec>,
-    FallbackScratch<HeapScratch<256>, AllocScratch>,
-    Infallible,
->;
+pub type DefaultSerializer =
+    CompositeSerializer<AlignedSerializer<AlignedVec>, AllocScratch, Infallible>;
 
 #[inline]
 pub fn deserialize<A, T>(archived: &A) -> T

@@ -114,17 +114,14 @@ impl<W: AsyncWrite + Send + Unpin> Serializer for W {
     }
 }
 
-pub trait Deserializer: AsyncRead + Send + Unpin {
-    fn read_str<'de>(self) -> Pin<Box<dyn Future<Output = io::Result<SmolStr>> + Send + 'de>>
+pub trait Deserializer: AsyncRead + Unpin {
+    fn read_str<'de>(self) -> Pin<Box<dyn Future<Output = io::Result<SmolStr>> + 'de>>
     where
         Self: Sized + Unpin + 'de;
 
     /// skip the filled bytes
     #[inline]
-    fn skip_fill<'de>(
-        mut self,
-        n: u16,
-    ) -> Pin<Box<dyn Future<Output = io::Result<()>> + Send + 'de>>
+    fn skip_fill<'de>(mut self, n: u16) -> Pin<Box<dyn Future<Output = io::Result<()>> + 'de>>
     where
         Self: Sized + 'de,
     {
@@ -137,9 +134,9 @@ pub trait Deserializer: AsyncRead + Send + Unpin {
     }
 }
 
-impl<D: AsyncRead + Send + Unpin> Deserializer for D {
+impl<D: AsyncRead + Unpin> Deserializer for D {
     #[inline]
-    fn read_str<'de>(mut self) -> Pin<Box<dyn Future<Output = io::Result<SmolStr>> + Send + 'de>>
+    fn read_str<'de>(mut self) -> Pin<Box<dyn Future<Output = io::Result<SmolStr>> + 'de>>
     where
         Self: Sized + Unpin + 'de,
     {
@@ -230,29 +227,33 @@ impl<S: Serialize> SerializeWith for S {
 pub trait DeserializeWith: Sized {
     type Context<'a>;
 
-    async fn deserialize_with(ctx: &Self::Context<'_>, de: &mut dyn Deserializer) -> Result<Self>;
+    async fn deserialize_with<D: Deserializer>(ctx: &Self::Context<'_>, de: &mut D)
+    -> Result<Self>;
 }
 
-impl<D: Deserialize> DeserializeWith for D {
+impl<T: Deserialize> DeserializeWith for T {
     type Context<'a> = ();
 
     #[inline]
-    async fn deserialize_with(_ctx: &Self::Context<'_>, de: &mut dyn Deserializer) -> Result<Self> {
-        D::deserialize(de).await
+    async fn deserialize_with<D: Deserializer>(
+        _ctx: &Self::Context<'_>,
+        de: &mut D,
+    ) -> Result<Self> {
+        T::deserialize(de).await
     }
 }
 
 pub trait Deserialize: Sized {
-    async fn deserialize(de: &mut dyn Deserializer) -> Result<Self>;
+    async fn deserialize<D: Deserializer>(de: &mut D) -> Result<Self>;
 }
 
-impl<D: Deserialize> Deserialize for Vec<D> {
+impl<T: Deserialize> Deserialize for Vec<T> {
     #[inline]
-    async fn deserialize(de: &mut dyn Deserializer) -> Result<Self> {
+    async fn deserialize<D: Deserializer>(de: &mut D) -> Result<Self> {
         let len = de.read_u32().await? as usize;
         let mut items = Vec::with_capacity(len);
         for _ in 0..len {
-            items.push(D::deserialize(de).await?);
+            items.push(T::deserialize(de).await?);
         }
         Ok(items)
     }
@@ -370,7 +371,7 @@ impl Serialize for SmolStr {
 
 impl Deserialize for SmolStr {
     #[inline]
-    async fn deserialize(de: &mut dyn Deserializer) -> Result<Self> {
+    async fn deserialize<D: Deserializer>(de: &mut D) -> Result<Self> {
         Ok(de.read_str().await?)
     }
 }
@@ -379,7 +380,7 @@ macro_rules! impl_deserialize_primitive {
     ($method:ident: $ty:ty) => {
         impl Deserialize for $ty {
             #[inline]
-            async fn deserialize(de: &mut dyn Deserializer) -> Result<$ty> {
+            async fn deserialize<D: Deserializer>(de: &mut D) -> Result<$ty> {
                 Ok(de.$method().await?)
             }
         }
@@ -395,7 +396,7 @@ macro_rules! impl_deserialize_big_endian_primitive {
     ($ty:ty) => {
         impl Deserialize for rend::BigEndian<$ty> {
             #[inline]
-            async fn deserialize(de: &mut dyn Deserializer) -> Result<Self> {
+            async fn deserialize<D: Deserializer>(de: &mut D) -> Result<Self> {
                 <$ty>::deserialize(de).await.map(Self::new)
             }
         }
@@ -416,7 +417,7 @@ impl Serialize for bool {
 
 impl Deserialize for bool {
     #[inline]
-    async fn deserialize(de: &mut dyn Deserializer) -> Result<Self> {
+    async fn deserialize<D: Deserializer>(de: &mut D) -> Result<Self> {
         Ok(de.read_u8().await? != 0)
     }
 }
@@ -435,7 +436,7 @@ impl SerializeSized for NonZeroU32 {
 
 impl Deserialize for NonZeroU32 {
     #[inline]
-    async fn deserialize(de: &mut dyn Deserializer) -> Result<Self> {
+    async fn deserialize<D: Deserializer>(de: &mut D) -> Result<Self> {
         Ok(NonZeroU32::new(de.read_u32().await?)
             .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "non-zero u32 is zero"))?)
     }
@@ -444,7 +445,7 @@ impl Deserialize for NonZeroU32 {
 // FIXME when specialization is fixed
 // impl<const N: usize> Deserialize for [u8; N] {
 //     #[inline]
-//     async fn deserialize(de: &mut dyn Deserializer) -> Result<Self> {
+//     async fn deserialize<D: Deserializer>(de: &mut D) -> Result<Self> {
 //         let mut buf = [0; N];
 //         de.read_exact(&mut buf).await?;
 //         Ok(buf)
@@ -453,7 +454,7 @@ impl Deserialize for NonZeroU32 {
 
 impl<const N: usize, T: Deserialize> Deserialize for [T; N] {
     #[inline]
-    async fn deserialize(de: &mut dyn Deserializer) -> Result<Self> {
+    async fn deserialize<D: Deserializer>(de: &mut D) -> Result<Self> {
         let xs = ArrayVec::<T, N>::deserialize(de).await?;
         // SAFETY: we just initialized each item in the array
         Ok(unsafe { xs.into_inner_unchecked() })
@@ -462,7 +463,7 @@ impl<const N: usize, T: Deserialize> Deserialize for [T; N] {
 
 impl<const N: usize, T: Deserialize> Deserialize for ArrayVec<T, N> {
     #[inline]
-    async fn deserialize(de: &mut dyn Deserializer) -> Result<Self> {
+    async fn deserialize<D: Deserializer>(de: &mut D) -> Result<Self> {
         let mut xs = ArrayVec::new();
         for _ in 0..N {
             xs.push(T::deserialize(de).await?);
@@ -481,7 +482,7 @@ impl Serialize for Decimal {
 
 impl Deserialize for Decimal {
     #[inline]
-    async fn deserialize(de: &mut dyn Deserializer) -> Result<Self> {
+    async fn deserialize<D: Deserializer>(de: &mut D) -> Result<Self> {
         let mut buf = [0; 16];
         de.read_exact(&mut buf).await?;
         Ok(Decimal::deserialize(buf))
@@ -505,14 +506,14 @@ impl Serialize for RawIdx {
 
 impl<T> Deserialize for Idx<T> {
     #[inline]
-    async fn deserialize(de: &mut dyn Deserializer) -> Result<Self> {
+    async fn deserialize<D: Deserializer>(de: &mut D) -> Result<Self> {
         Ok(Idx::from_raw(RawIdx::deserialize(de).await?))
     }
 }
 
 impl Deserialize for RawIdx {
     #[inline]
-    async fn deserialize(de: &mut dyn Deserializer) -> Result<Self> {
+    async fn deserialize<D: Deserializer>(de: &mut D) -> Result<Self> {
         Ok(RawIdx::from(de.read_u32().await?))
     }
 }
@@ -543,7 +544,7 @@ where
     T: Deserialize + PartialEq,
 {
     #[inline]
-    async fn deserialize(de: &mut dyn Deserializer) -> Result<Self> {
+    async fn deserialize<D: Deserializer>(de: &mut D) -> Result<Self> {
         let valid = de.read_u8().await?;
         if valid == 0 {
             return Ok(None);
@@ -562,7 +563,7 @@ impl<T> Serialize for PhantomData<T> {
 
 impl<T> Deserialize for PhantomData<T> {
     #[inline]
-    async fn deserialize(_: &mut dyn Deserializer) -> Result<Self> {
+    async fn deserialize<D: Deserializer>(_: &mut D) -> Result<Self> {
         Ok(PhantomData)
     }
 }
@@ -580,7 +581,7 @@ impl<T: Serialize> Serialize for Arena<T> {
 
 impl<T: Deserialize> Deserialize for Arena<T> {
     #[inline]
-    async fn deserialize(de: &mut dyn Deserializer) -> Result<Self> {
+    async fn deserialize<D: Deserializer>(de: &mut D) -> Result<Self> {
         let len = de.read_u32().await? as usize;
         let mut arena = Arena::with_capacity(len);
         for _ in 0..len {
@@ -601,7 +602,7 @@ impl<T: Serialize, U: Serialize> Serialize for (T, U) {
 
 impl<T: Deserialize, U: Deserialize> Deserialize for (T, U) {
     #[inline]
-    async fn deserialize(de: &mut dyn Deserializer) -> Result<Self> {
+    async fn deserialize<D: Deserializer>(de: &mut D) -> Result<Self> {
         let a = T::deserialize(de).await?;
         let b = U::deserialize(de).await?;
         Ok((a, b))
@@ -615,7 +616,7 @@ pub trait SliceSerExt<T> {
 }
 
 pub trait SliceDeExt<T> {
-    async fn deserialize_noninline_len(de: &mut dyn Deserializer, len: usize) -> Result<Self>
+    async fn deserialize_noninline_len<D: Deserializer>(de: &mut D, len: usize) -> Result<Self>
     where
         Self: Sized;
 }
@@ -632,7 +633,7 @@ where
 
 impl<T: Deserialize> SliceDeExt<T> for Vec<T> {
     #[inline]
-    async fn deserialize_noninline_len(de: &mut dyn Deserializer, len: usize) -> Result<Self>
+    async fn deserialize_noninline_len<D: Deserializer>(de: &mut D, len: usize) -> Result<Self>
     where
         Self: Sized,
     {
