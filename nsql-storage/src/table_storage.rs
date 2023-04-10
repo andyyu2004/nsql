@@ -33,12 +33,16 @@ impl TableStorage {
         };
         let ctx = TupleDeserializationContext { schema: Arc::clone(&self.info.schema) };
         let handle = self.pool.load(idx).await?;
-        let mut page = HeapTuplePage::deserialize_with(&ctx, &mut handle.page().read()).await?;
-        let _slot = match page.insert_tuple(tuple).await? {
-            Ok(slot) => slot,
-            Err(HeapTuplePageFull) => panic!("there should be enough space as we checked fsm"),
-        };
-        Ok(())
+        let mut guard = handle.page().read();
+        todo!();
+        // FIXME we should have a different trait that isn't async as this just reads one page
+        // (opposed to the meta page)
+        // let mut page = HeapTuplePage::deserialize_with(&ctx, &mut guard).await?;
+        // let _slot = match page.insert_tuple(tuple).await? {
+        //     Ok(slot) => slot,
+        //     Err(HeapTuplePageFull) => panic!("there should be enough space as we checked fsm"),
+        // };
+        // Ok(())
     }
 
     pub async fn scan(_tx: &Transaction) -> Vec<Tuple> {
