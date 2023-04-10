@@ -93,7 +93,7 @@ impl Default for HeapTuplePage {
 }
 
 impl Serialize for HeapTuplePage {
-    async fn serialize(&self, ser: &mut dyn Serializer) -> nsql_serde::Result<()> {
+    async fn serialize<S: Serializer>(&self, ser: &mut S) -> nsql_serde::Result<()> {
         let ser = &mut ser.limit(PAGE_DATA_SIZE as u16);
         self.header.serialize(ser).await?;
 

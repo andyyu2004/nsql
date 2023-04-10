@@ -111,7 +111,7 @@ pub fn derive_serialize(input: proc_macro::TokenStream) -> proc_macro::TokenStre
 
     quote! {
         impl #impl_generics ::nsql_serde::Serialize for #name #ty_generics #where_clause {
-            async fn serialize(&self, ser: &mut dyn ::nsql_serde::Serializer) -> ::nsql_serde::Result<()> {
+            async fn serialize<S: ::nsql_serde::Serializer>(&self, ser: &mut S) -> ::nsql_serde::Result<()> {
                 #body
             }
         }

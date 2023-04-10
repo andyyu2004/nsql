@@ -15,7 +15,7 @@ pub struct Tuple {
 }
 
 impl Serialize for Tuple {
-    async fn serialize(&self, ser: &mut dyn Serializer) -> nsql_serde::Result<()> {
+    async fn serialize<S: Serializer>(&self, ser: &mut S) -> nsql_serde::Result<()> {
         self.values.noninline_len().serialize(ser).await
     }
 }

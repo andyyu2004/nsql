@@ -152,7 +152,7 @@ impl<D: AsyncRead + Unpin> Deserializer for D {
 }
 
 pub trait Serialize {
-    async fn serialize(&self, ser: &mut dyn Serializer) -> Result<()>;
+    async fn serialize<S: Serializer>(&self, ser: &mut S) -> Result<()>;
 
     #[inline]
     async fn serialize_into(&self, ser: &mut [u8]) -> Result<()> {
@@ -173,16 +173,16 @@ pub trait SerializeSized: Serialize {
     const SERIALIZED_SIZE: u16;
 }
 
-impl<S: Serialize + ?Sized> Serialize for Box<S> {
+impl<T: Serialize + ?Sized> Serialize for Box<T> {
     #[inline]
-    async fn serialize(&self, ser: &mut dyn Serializer) -> Result<()> {
+    async fn serialize<S: Serializer>(&self, ser: &mut S) -> Result<()> {
         (**self).serialize(ser).await
     }
 }
 
-impl<S: Serialize> Serialize for [S] {
+impl<T: Serialize> Serialize for [T] {
     #[inline]
-    async fn serialize(&self, ser: &mut dyn Serializer) -> Result<()> {
+    async fn serialize<S: Serializer>(&self, ser: &mut S) -> Result<()> {
         ser.write_u32(self.len() as u32).await?;
         for item in self {
             item.serialize(ser).await?;
@@ -191,35 +191,16 @@ impl<S: Serialize> Serialize for [S] {
     }
 }
 
-impl<S: Serialize> Serialize for Arc<S> {
+impl<T: Serialize> Serialize for Arc<T> {
     #[inline]
-    async fn serialize(&self, ser: &mut dyn Serializer) -> Result<()> {
+    async fn serialize<S: Serializer>(&self, ser: &mut S) -> Result<()> {
         (**self).serialize(ser).await
     }
 }
 
-impl<S: Serialize> Serialize for Vec<S> {
-    async fn serialize(&self, ser: &mut dyn Serializer) -> Result<()> {
+impl<T: Serialize> Serialize for Vec<T> {
+    async fn serialize<S: Serializer>(&self, ser: &mut S) -> Result<()> {
         self.as_slice().serialize(ser).await
-    }
-}
-
-pub trait SerializeWith: Sized {
-    type Context<'a>;
-
-    async fn serialize_with(&self, ctx: &Self::Context<'_>, ser: &mut dyn Serializer)
-    -> Result<()>;
-}
-
-impl<S: Serialize> SerializeWith for S {
-    type Context<'a> = ();
-
-    async fn serialize_with(
-        &self,
-        _ctx: &Self::Context<'_>,
-        ser: &mut dyn Serializer,
-    ) -> Result<()> {
-        self.serialize(ser).await
     }
 }
 
@@ -291,7 +272,7 @@ macro_rules! impl_serialize_primitive {
     ($method:ident: $ty:ty) => {
         impl Serialize for $ty {
             #[inline]
-            async fn serialize(&self, ser: &mut dyn Serializer) -> Result<()> {
+            async fn serialize<S: Serializer>(&self, ser: &mut S) -> Result<()> {
                 ser.$method(*self).await?;
                 Ok(())
             }
@@ -312,7 +293,7 @@ macro_rules! impl_serialize_big_endian_primitive {
     ($ty:ty) => {
         impl Serialize for rend::BigEndian<$ty> {
             #[inline]
-            async fn serialize(&self, ser: &mut dyn Serializer) -> Result<()> {
+            async fn serialize<S: Serializer>(&self, ser: &mut S) -> Result<()> {
                 self.value().serialize(ser).await
             }
         }
@@ -343,7 +324,7 @@ impl<T: SerializeSized, const N: usize> SerializeSized for [T; N] {
 
 impl<const N: usize, T: Serialize> Serialize for [T; N] {
     #[inline]
-    async fn serialize(&self, ser: &mut dyn Serializer) -> Result<()> {
+    async fn serialize<S: Serializer>(&self, ser: &mut S) -> Result<()> {
         // no need to serialize the length as it's encoded in the type
         for item in self {
             item.serialize(ser).await?;
@@ -354,7 +335,7 @@ impl<const N: usize, T: Serialize> Serialize for [T; N] {
 
 impl<const N: usize, T: Serialize> Serialize for ArrayVec<T, N> {
     #[inline]
-    async fn serialize(&self, ser: &mut dyn Serializer) -> Result<()> {
+    async fn serialize<S: Serializer>(&self, ser: &mut S) -> Result<()> {
         for item in self {
             item.serialize(ser).await?;
         }
@@ -364,7 +345,7 @@ impl<const N: usize, T: Serialize> Serialize for ArrayVec<T, N> {
 
 impl Serialize for SmolStr {
     #[inline]
-    async fn serialize(&self, ser: &mut dyn Serializer) -> Result<()> {
+    async fn serialize<S: Serializer>(&self, ser: &mut S) -> Result<()> {
         ser.write_str(self).await
     }
 }
@@ -409,7 +390,7 @@ impl_deserialize_big_endian_primitive!(u64);
 
 impl Serialize for bool {
     #[inline]
-    async fn serialize(&self, ser: &mut dyn Serializer) -> Result<()> {
+    async fn serialize<S: Serializer>(&self, ser: &mut S) -> Result<()> {
         ser.write_u8(*self as u8).await?;
         Ok(())
     }
@@ -424,7 +405,7 @@ impl Deserialize for bool {
 
 impl Serialize for NonZeroU32 {
     #[inline]
-    async fn serialize(&self, ser: &mut dyn Serializer) -> Result<()> {
+    async fn serialize<S: Serializer>(&self, ser: &mut S) -> Result<()> {
         ser.write_u32(self.get()).await?;
         Ok(())
     }
@@ -474,7 +455,7 @@ impl<const N: usize, T: Deserialize> Deserialize for ArrayVec<T, N> {
 
 impl Serialize for Decimal {
     #[inline]
-    async fn serialize(&self, ser: &mut dyn Serializer) -> Result<()> {
+    async fn serialize<S: Serializer>(&self, ser: &mut S) -> Result<()> {
         ser.write_all(&self.serialize()).await?;
         Ok(())
     }
@@ -491,14 +472,14 @@ impl Deserialize for Decimal {
 
 impl<T> Serialize for Idx<T> {
     #[inline]
-    async fn serialize(&self, ser: &mut dyn Serializer) -> Result<()> {
+    async fn serialize<S: Serializer>(&self, ser: &mut S) -> Result<()> {
         self.into_raw().serialize(ser).await
     }
 }
 
 impl Serialize for RawIdx {
     #[inline]
-    async fn serialize(&self, ser: &mut dyn Serializer) -> Result<()> {
+    async fn serialize<S: Serializer>(&self, ser: &mut S) -> Result<()> {
         ser.write_u32(u32::from(*self)).await?;
         Ok(())
     }
@@ -523,7 +504,7 @@ where
     T: Serialize,
 {
     #[inline]
-    async fn serialize(&self, ser: &mut dyn Serializer) -> Result<()> {
+    async fn serialize<S: Serializer>(&self, ser: &mut S) -> Result<()> {
         match self {
             Some(it) => {
                 ser.write_u8(1).await?;
@@ -556,7 +537,7 @@ where
 
 impl<T> Serialize for PhantomData<T> {
     #[inline]
-    async fn serialize(&self, _: &mut dyn Serializer) -> Result<()> {
+    async fn serialize<S: Serializer>(&self, _: &mut S) -> Result<()> {
         Ok(())
     }
 }
@@ -570,7 +551,7 @@ impl<T> Deserialize for PhantomData<T> {
 
 impl<T: Serialize> Serialize for Arena<T> {
     #[inline]
-    async fn serialize(&self, ser: &mut dyn Serializer) -> Result<()> {
+    async fn serialize<S: Serializer>(&self, ser: &mut S) -> Result<()> {
         ser.write_u32(self.len() as u32).await?;
         for (_idx, v) in self.iter() {
             v.serialize(ser).await?;
@@ -593,7 +574,7 @@ impl<T: Deserialize> Deserialize for Arena<T> {
 
 impl<T: Serialize, U: Serialize> Serialize for (T, U) {
     #[inline]
-    async fn serialize(&self, ser: &mut dyn Serializer) -> Result<()> {
+    async fn serialize<S: Serializer>(&self, ser: &mut S) -> Result<()> {
         self.0.serialize(ser).await?;
         self.1.serialize(ser).await?;
         Ok(())
@@ -652,7 +633,7 @@ pub struct NonInlineLengthSlice<'a, T> {
 
 impl<T: Serialize> Serialize for NonInlineLengthSlice<'_, T> {
     #[inline]
-    async fn serialize(&self, ser: &mut dyn Serializer) -> Result<()> {
+    async fn serialize<S: Serializer>(&self, ser: &mut S) -> Result<()> {
         for v in self.data {
             v.serialize(ser).await?;
         }
