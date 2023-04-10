@@ -12,15 +12,9 @@ pub struct TupleDeserializationContext {
     pub schema: Arc<Schema>,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, rkyv::Archive, rkyv::Serialize)]
 pub struct Tuple {
     values: Box<[Value]>,
-}
-
-impl StreamSerialize for Tuple {
-    async fn serialize<S: StreamSerializer>(&self, ser: &mut S) -> nsql_serde::Result<()> {
-        self.values.noninline_len().serialize(ser).await
-    }
 }
 
 impl StreamDeserializeWith for Tuple {
@@ -76,14 +70,13 @@ impl FromIterator<Value> for Tuple {
     }
 }
 
-#[derive(Debug, PartialEq, StreamSerialize)]
+#[derive(Debug, PartialEq, rkyv::Archive, rkyv::Serialize)]
 pub enum Value {
     Literal(Literal),
 }
 
-#[derive(Debug, PartialEq, StreamSerialize)]
+#[derive(Debug, PartialEq, rkyv::Archive, rkyv::Serialize)]
 pub enum Literal {
-    #[serde(skip)]
     Null,
     Bool(bool),
     Decimal(Decimal),

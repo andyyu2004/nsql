@@ -9,7 +9,6 @@
 #![deny(rust_2018_idioms)]
 
 mod btree;
-pub mod mem;
 mod page;
 
 pub use btree::{BTree, Min};

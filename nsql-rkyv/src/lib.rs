@@ -154,3 +154,36 @@ mod tests {
         assert_eq!(archived_value, value);
     }
 }
+
+/// Wrapper around `align_offset` specialized to archived types and represents a left offset rather than right.
+/// i.e. the offset should be subtracted from the pointer to align it.
+pub fn align_archived_ptr_offset<T: Archive>(ptr: *const u8) -> usize {
+    let alignment = archived_align_of!(T);
+    let align_offset = ptr.align_offset(alignment);
+    if align_offset != 0 {
+        debug_assert!(
+            align_offset < alignment,
+            "the offset required to meet alignment should be less than the alignment"
+        );
+        // We apply the alignment offset to make the slot aligned, but we can't shift the
+        // pointer forward as we might be going into used space.
+        // Therefore, we subtract an entire alignments worth of space first.
+        alignment - align_offset
+    } else {
+        0
+    }
+}
+
+#[macro_export]
+macro_rules! archived_size_of {
+    ($ty:ty) => {
+        ::std::mem::size_of::<::rkyv::Archived<$ty>>() as u16
+    };
+}
+
+#[macro_export]
+macro_rules! archived_align_of {
+    ($ty:ty) => {
+        ::std::mem::align_of::<::rkyv::Archived<$ty>>()
+    };
+}

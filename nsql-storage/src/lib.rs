@@ -1,5 +1,6 @@
 #![deny(rust_2018_idioms)]
 #![feature(async_fn_in_trait)]
+#![feature(split_array)]
 #![allow(incomplete_features)]
 
 mod table_storage;

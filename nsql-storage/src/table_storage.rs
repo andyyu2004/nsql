@@ -1,4 +1,5 @@
 mod fsm;
+mod heap;
 
 use std::sync::Arc;
 
@@ -26,14 +27,14 @@ impl TableStorage {
     }
 
     pub async fn append(&self, _tx: &Transaction, tuple: Tuple) -> nsql_serde::Result<()> {
-        let size = tuple.serialized_size().await?;
-        let idx = match self.find_free_space(size) {
-            Some(_) => todo!(),
-            None => self.pool.pager().alloc_page().await?,
-        };
-        let ctx = TupleDeserializationContext { schema: Arc::clone(&self.info.schema) };
-        let handle = self.pool.load(idx).await?;
-        let mut guard = handle.page().read();
+        // let size = tuple.serialized_size().await?;
+        // let idx = match self.find_free_space(size) {
+        //     Some(_) => todo!(),
+        //     None => self.pool.pager().alloc_page().await?,
+        // };
+        // let ctx = TupleDeserializationContext { schema: Arc::clone(&self.info.schema) };
+        // let handle = self.pool.load(idx).await?;
+        // let mut guard = handle.page().read();
         // todo!();
         // FIXME we should have a different trait that isn't async as this just reads one page
         // (opposed to the meta page)
@@ -92,61 +93,11 @@ impl Default for HeapTuplePage {
     }
 }
 
-impl StreamSerialize for HeapTuplePage {
-    async fn serialize<S: StreamSerializer>(&self, ser: &mut S) -> nsql_serde::Result<()> {
-        let ser = &mut ser.limit(PAGE_DATA_SIZE as u16);
-        self.header.serialize(ser).await?;
-
-        ser.write_u16(self.slots.len() as u16).await?;
-        for offset in &self.slots {
-            offset.serialize(ser).await?;
-        }
-
-        // put the padding for free space
-        ser.fill(self.header.free_space()).await?;
-
-        // don't use the vec impl for serialize, as we don't want the length prefix
-        for tuple in &self.tuples {
-            tuple.serialize(ser).await?;
-        }
-
-        Ok(())
-    }
-}
-
-impl StreamDeserializeWith for HeapTuplePage {
-    type Context<'a> = TupleDeserializationContext;
-
-    async fn deserialize_with<D: StreamDeserializer>(
-        ctx: &Self::Context<'_>,
-        de: &mut D,
-    ) -> nsql_serde::Result<Self> {
-        let header = HeapTuplePageHeader::deserialize(de).await?;
-        let n = de.read_u16().await? as usize;
-
-        let mut slots = Arena::with_capacity(n);
-        for _ in 0..n {
-            slots.alloc(Slot::deserialize(de).await?);
-        }
-
-        // read the padding for free space
-        de.skip_fill(header.free_space()).await?;
-
-        let mut tuples = Vec::with_capacity(n);
-        for offset in &slots {
-            let mut tuple_de = de.take(offset.length as u64);
-            tuples.push(HeapTuple::deserialize_with(ctx, &mut tuple_de).await?);
-        }
-
-        Ok(Self { header, slots, tuples })
-    }
-}
-
-#[derive(Debug, PartialEq, StreamSerialize, StreamDeserialize)]
+#[derive(Debug, PartialEq, rkyv::Archive, rkyv::Serialize)]
 struct TupleId {
     page_idx: PageIndex,
     // FIXME this should be a u8
-    slot_idx: Idx<Slot>,
+    slot_idx: u8,
 }
 
 #[derive(Debug, PartialEq, SerializeSized, StreamDeserialize)]
@@ -165,22 +116,23 @@ impl HeapTuplePage {
         &mut self,
         tuple: Tuple,
     ) -> nsql_serde::Result<Result<Idx<Slot>, HeapTuplePageFull>> {
-        let length = tuple.serialized_size().await? as u16;
-        let heap_tuple = HeapTuple { header: HeapTupleHeader {}, tuple };
-        // FIXME account for slot size too
-        if self.header.free_space() < length + HeapTupleHeader::SERIALIZED_SIZE {
-            return Ok(Err(HeapTuplePageFull));
-        }
-
-        self.header.free_end -= length;
-        self.header.free_start += HeapTuplePageHeader::SERIALIZED_SIZE;
-        debug_assert!(self.header.free_start <= self.header.free_end);
-
-        let offset = Slot { offset: self.header.free_end, length };
-        let slot_idx = self.slots.alloc(offset);
-        self.tuples.push(heap_tuple);
-
-        Ok(Ok(slot_idx))
+        todo!();
+        // let length = tuple.serialized_size().await? as u16;
+        // let heap_tuple = HeapTuple { header: HeapTupleHeader {}, tuple };
+        // // FIXME account for slot size too
+        // if self.header.free_space() < length + HeapTupleHeader::SERIALIZED_SIZE {
+        //     return Ok(Err(HeapTuplePageFull));
+        // }
+        //
+        // self.header.free_end -= length;
+        // self.header.free_start += HeapTuplePageHeader::SERIALIZED_SIZE;
+        // debug_assert!(self.header.free_start <= self.header.free_end);
+        //
+        // let offset = Slot { offset: self.header.free_end, length };
+        // let slot_idx = self.slots.alloc(offset);
+        // self.tuples.push(heap_tuple);
+        //
+        // Ok(Ok(slot_idx))
     }
 }
 
@@ -196,7 +148,7 @@ impl HeapTuplePageHeader {
     }
 }
 
-#[derive(Debug, PartialEq, StreamSerialize)]
+#[derive(Debug, PartialEq, rkyv::Archive, rkyv::Serialize)]
 struct HeapTuple {
     header: HeapTupleHeader,
     tuple: Tuple,
@@ -208,22 +160,9 @@ impl HeapTuple {
         PAGE_DATA_SIZE as u16 - HeapTuplePageHeader::SERIALIZED_SIZE - Slot::SERIALIZED_SIZE;
 }
 
-impl StreamDeserializeWith for HeapTuple {
-    type Context<'a> = TupleDeserializationContext;
-
-    async fn deserialize_with<D: StreamDeserializer>(
-        ctx: &Self::Context<'_>,
-        de: &mut D,
-    ) -> nsql_serde::Result<Self> {
-        let header = HeapTupleHeader::deserialize(de).await?;
-        let tuple = Tuple::deserialize_with(ctx, de).await?;
-        Ok(Self { header, tuple })
-    }
-}
-
 impl HeapTuple {}
 
-#[derive(Debug, PartialEq, SerializeSized, StreamDeserialize)]
+#[derive(Debug, PartialEq, rkyv::Archive, rkyv::Serialize)]
 struct HeapTupleHeader {}
 
 #[cfg(test)]

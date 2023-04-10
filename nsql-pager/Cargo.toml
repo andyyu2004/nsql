@@ -11,7 +11,7 @@ nsql-serde = { path = "../nsql-serde" }
 nsql-util = { path = "../nsql-util" }
 pin-utils = "0.1.0"
 tokio = { version = "1.25.0", default-features = false, features = ["io-util", "sync"] }
-rkyv = { version = "0.7.40", default-features = false, features = ["archive_be", "size_16"] }
+rkyv = { version = "0.7.40", default-features = false, features = ["archive_be"] }
 parking_lot = { version = "0.12.1" }
 tracing = "0.1.37"
 

@@ -1,23 +1,24 @@
 use std::marker::PhantomData;
-use std::ops::{Add, AddAssign, Deref, Index, IndexMut, Sub, SubAssign};
+use std::ops::{Add, AddAssign, Deref, Index, IndexMut, Range, Sub, SubAssign};
 use std::pin::Pin;
 use std::{fmt, mem, ptr, slice};
 
 use nsql_pager::PAGE_DATA_SIZE;
-use nsql_rkyv::DefaultSerializer;
+use nsql_rkyv::{
+    align_archived_ptr_offset, archived_align_of, archived_size_of, DefaultSerializer,
+};
 use nsql_util::static_assert_eq;
 use rkyv::rend::BigEndian;
 use rkyv::{Archive, Archived, Deserialize, Infallible, Serialize};
 
 use super::entry::Entry;
-use super::{archived_size_of, PageFull};
-use crate::page::archived_align_of;
+use super::PageFull;
 
 // NOTE: the layout of this MUST match the layout of the mutable version
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub(crate) struct SlottedPageView<'a, K: Archive, V: Archive, X: Archive = ()> {
-    header: &'a Archived<SlottedPageMeta>,
+    header: &'a Archived<SlottedPageHeader>,
     extra: &'a Archived<X>,
     slots: &'a [Archived<Slot>],
     data: &'a [u8],
@@ -45,7 +46,7 @@ impl<'a, K: Archive, V: Archive, X: Archive> SlottedPageView<'a, K, V, X> {
     // Should be analogous to `Self::view_mut`
     pub(crate) unsafe fn view(buf: &'a [u8]) -> SlottedPageView<'a, K, V, X> {
         let (header_bytes, buf) = buf.split_array_ref();
-        let header = unsafe { nsql_rkyv::archived_root::<SlottedPageMeta>(header_bytes) };
+        let header = unsafe { nsql_rkyv::archived_root::<SlottedPageHeader>(header_bytes) };
 
         let slot_len = header.slot_len.value() as usize;
         let (slot_bytes, data) = buf.split_at(slot_len * mem::size_of::<Slot>());
@@ -69,7 +70,7 @@ impl<'a, K: Archive, V: Archive, X: Archive> SlottedPageView<'a, K, V, X> {
         self.slots.len()
     }
 
-    pub(crate) fn free_space(&self) -> u16 {
+    fn free_space(&self) -> u16 {
         self.header.free_end.0.value() - self.header.free_start.0.value()
     }
 
@@ -79,6 +80,18 @@ impl<'a, K: Archive, V: Archive, X: Archive> SlottedPageView<'a, K, V, X> {
 
     pub(crate) fn extra(&self) -> &'a Archived<X> {
         self.extra
+    }
+
+    fn adjusted_slot_range(&self, slot: Slot) -> Range<usize> {
+        // adjust the offset to be relative to the start of the slots
+        // as we keep shifting the slots and data around the actual offsets change dependending on the number of slots
+        let adjusted_slot_offset: Offset = slot.offset - mem::size_of_val(self.slots) as u16;
+        debug_assert_eq!(
+            mem::size_of_val(self.slots) as u16,
+            self.header.slot_len.value() * archived_size_of!(Slot)
+        );
+        let adjusted_offset = adjusted_slot_offset.0.value() as usize;
+        adjusted_offset..adjusted_offset + slot.length.value() as usize
     }
 }
 
@@ -138,15 +151,8 @@ impl<K: Archive, V: Archive, X: Archive> Index<Slot> for SlottedPageView<'_, K, 
     type Output = [u8];
 
     fn index(&self, slot: Slot) -> &Self::Output {
-        // adjust the offset to be relative to the start of the slots
-        // as we keep shifting the slots and data around the actual offsets change dependending on the number of slots
-        let adjusted_slot_offset: SlotOffset = slot.offset - mem::size_of_val(self.slots) as u16;
-        debug_assert_eq!(
-            mem::size_of_val(self.slots) as u16,
-            self.header.slot_len.value() * archived_size_of!(Slot)
-        );
-        let adjusted_offset = adjusted_slot_offset.0.value() as usize;
-        &self.data[adjusted_offset..adjusted_offset + slot.length.value() as usize]
+        let range = self.adjusted_slot_range(slot);
+        &self.data[range]
     }
 }
 
@@ -164,13 +170,8 @@ impl<'a, K: Archive + 'static, V: Archive + 'static, X: Archive> IndexMut<Slot>
     for SlottedPageViewMut<'a, K, V, X>
 {
     fn index_mut(&mut self, slot: Slot) -> &mut Self::Output {
-        let adjusted_slot_offset: SlotOffset = slot.offset - mem::size_of_val(self.slots) as u16;
-        debug_assert_eq!(
-            mem::size_of_val(self.slots) as u16,
-            self.header.slot_len.value() * archived_size_of!(Slot)
-        );
-        let adjusted_offset = adjusted_slot_offset.0.value() as usize;
-        &mut self.data[adjusted_offset..adjusted_offset + slot.length.value() as usize]
+        let range = self.adjusted_slot_range(slot);
+        &mut self.data[range]
     }
 }
 
@@ -178,7 +179,7 @@ impl<'a, K: Archive + 'static, V: Archive + 'static, X: Archive> IndexMut<Slot>
 // #[derive(Eq)]
 #[repr(C)]
 pub(crate) struct SlottedPageViewMut<'a, K, V, X: Archive = ()> {
-    header: Pin<&'a mut Archived<SlottedPageMeta>>,
+    header: Pin<&'a mut Archived<SlottedPageHeader>>,
     extra: Pin<&'a mut Archived<X>>,
     slots: &'a mut [Slot],
     data: &'a mut [u8],
@@ -198,18 +199,18 @@ impl<'a, K, V> fmt::Debug for SlottedPageViewMut<'a, K, V> {
 #[derive(Debug, Archive, rkyv::Serialize)]
 #[archive_attr(derive(Debug, PartialEq, Eq))]
 #[archive(compare(PartialEq))]
-struct SlottedPageMeta {
+struct SlottedPageHeader {
     // free_start offset initially starts from 0 and end offset is relative to that
-    free_start: SlotOffset,
-    free_end: SlotOffset,
+    free_start: Offset,
+    free_end: Offset,
     slot_len: u16,
     /// `extra` is stored at the very end of the page
     extra_len: u16,
 }
 
 nsql_util::static_assert_eq!(
-    mem::size_of::<SlottedPageMeta>(),
-    mem::size_of::<ArchivedSlottedPageMeta>()
+    mem::size_of::<SlottedPageHeader>(),
+    mem::size_of::<ArchivedSlottedPageHeader>()
 );
 
 impl<'a, K: Archive, V: Archive, X: Serialize<nsql_rkyv::DefaultSerializer>>
@@ -224,11 +225,11 @@ impl<'a, K: Archive, V: Archive, X: Serialize<nsql_rkyv::DefaultSerializer>>
         extra_start -= offset;
         buf[extra_start..].copy_from_slice(&extra_bytes[..]);
 
-        let free_end = extra_start as u16 - archived_size_of!(SlottedPageMeta);
+        let free_end = extra_start as u16 - archived_size_of!(SlottedPageHeader);
 
-        let header = SlottedPageMeta {
-            free_start: SlotOffset::from(0u16),
-            free_end: SlotOffset::from(free_end),
+        let header = SlottedPageHeader {
+            free_start: Offset::from(0u16),
+            free_end: Offset::from(free_end),
             slot_len: 0,
             extra_len: extra_bytes.len() as u16,
         };
@@ -243,12 +244,13 @@ impl<'a, K: Archive, V: Archive, X: Serialize<nsql_rkyv::DefaultSerializer>>
     // Should be analogous to `Self::view`
     pub(crate) unsafe fn view_mut(buf: &'a mut [u8]) -> SlottedPageViewMut<'a, K, V, X> {
         let (header_bytes, buf) = buf.split_array_mut();
-        let header = unsafe { nsql_rkyv::archived_root_mut::<SlottedPageMeta>(header_bytes) };
+        let header = unsafe { nsql_rkyv::archived_root_mut::<SlottedPageHeader>(header_bytes) };
 
         let slot_len = header.slot_len.value() as usize;
-        let (slot_bytes, data) = buf.split_at_mut(slot_len * mem::size_of::<Slot>());
-        let slots =
-            unsafe { slice::from_raw_parts_mut(slot_bytes.as_ptr() as *mut Slot, slot_len) };
+        let (slot_bytes, data) = buf.split_at_mut(slot_len * mem::size_of::<Archived<Slot>>());
+        let slots = unsafe {
+            slice::from_raw_parts_mut(slot_bytes.as_ptr() as *mut Archived<Slot>, slot_len)
+        };
 
         let extra_start = data.len() - header.extra_len.value() as usize;
         let (data, extra_bytes) = data.split_at_mut(extra_start);
@@ -337,7 +339,7 @@ where
 
         // The `page_end_offset` is the offset to the very end of the page.
         // We compute it by getting the offset where `data` (i.e. `free_start`) starts and adding its length.
-        let page_end_offset: SlotOffset = self.header.free_start + self.data.len() as u16;
+        let page_end_offset: Offset = self.header.free_start + self.data.len() as u16;
 
         // the new `free_end` is the end of the page minus the size of the compacted data
         self.header.free_end = self.aligned_offset(page_end_offset - new_data.len() as u16);
@@ -367,11 +369,11 @@ where
 
     /// Create a new slot with the given offset and length, ensuring that the slot is aligned
     /// by shifting the offset left if necessary>
-    fn new_aligned_slot(&self, offset: SlotOffset, length: u16) -> Slot {
+    fn new_aligned_slot(&self, offset: Offset, length: u16) -> Slot {
         Slot { offset: self.aligned_offset(offset), length: length.into() }
     }
 
-    fn aligned_offset(&self, offset: SlotOffset) -> SlotOffset {
+    fn aligned_offset(&self, offset: Offset) -> Offset {
         let ptr = self[Slot { offset, length: 0.into() }].as_ptr();
         let adjustment = align_archived_ptr_offset::<Entry<&K, &V>>(ptr);
         offset - adjustment as u16
@@ -393,7 +395,11 @@ where
         let idx = self.slot_index_of_key(&entry.key);
 
         let length = serialized_entry.len() as u16;
-        let has_space = length + archived_size_of!(Slot) <= self.free_space();
+
+        // naive check to see if we have enough space to insert the new entry
+        // this does not account for the fact we may have to use extra space due to alignment
+        // This may have false positives, but no false negatives.
+        let naive_has_space = length + archived_size_of!(Slot) <= self.free_space();
 
         let prev = match idx {
             Ok(idx) => {
@@ -406,14 +412,14 @@ where
 
                 let slot = if prev_slot.length >= length {
                     cov_mark::hit!(slotted_page_insert_duplicate_reuse);
-                    if !has_space {
+                    if !naive_has_space {
                         cov_mark::hit!(slotted_page_insert_duplicate_full_reuse);
                     }
                     // if the previous slot is large enough, we just reuse it
                     // FIXME: need to mark the (prev_slot_length - length) as free space
                     prev_slot
                 } else {
-                    if !has_space {
+                    if !naive_has_space {
                         todo!("page is full with duplicate key, need to do something");
                     }
                     // otherwise, we need to allocate fresh space
@@ -430,13 +436,20 @@ where
                 Some(prev)
             }
             Err(idx) => {
+                if !naive_has_space {
+                    return Err(PageFull);
+                }
+
+                let slot = self.new_aligned_slot(self.header.free_end - length, length);
+
+                // Recheck whether we actually have free space after aligning the slot.
+                // This check will need to be smarter if we start reusing freed space
+                let has_space = slot.offset >= self.header.free_start + archived_size_of!(Slot);
                 if !has_space {
                     return Err(PageFull);
                 }
 
-                self.header.free_end -= length;
-                let slot = self.new_aligned_slot(self.header.free_end, length);
-
+                self.header.free_end = slot.offset;
                 self.header.free_start += archived_size_of!(Slot);
                 assert!(
                     self[slot].as_ptr().is_aligned_to(archived_align_of!(Entry<&K, &V>)),
@@ -445,6 +458,13 @@ where
                 );
                 self[slot].copy_from_slice(serialized_entry);
                 debug_assert_eq!(&self[slot], serialized_entry);
+
+                // we have to shift over the slice of data as we expect it to start after the slots (at `free_start`)
+                // we some small tricks to avoid lifetime issues without using unsafe
+                // see https://stackoverflow.com/questions/61223234/can-i-reassign-a-mutable-slice-reference-to-a-sub-slice-of-itself
+                // do this before recreating the slice to avoid potential UB with overlapping mutable references
+                (_, self.data) = mem::take(&mut self.data)
+                    .split_array_mut::<{ mem::size_of::<Archived<Slot>>() }>();
 
                 unsafe {
                     // shift everything right of `idx` to the right by 1 (include `idx`) to make space
@@ -465,11 +485,6 @@ where
                     );
                 }
 
-                // we have to shift over the slice of data as we expect it to start after the slots (at `free_start`)
-                // we some small tricks to avoid lifetime issues without using unsafe
-                // see https://stackoverflow.com/questions/61223234/can-i-reassign-a-mutable-slice-reference-to-a-sub-slice-of-itself
-                (_, self.data) = mem::take(&mut self.data)
-                    .split_array_mut::<{ mem::size_of::<Archived<Slot>>() }>();
                 None
             }
         };
@@ -527,9 +542,9 @@ where
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Archive)]
 #[archive(as = "Self")]
-pub struct Slot {
+pub(crate) struct Slot {
     /// The offset of the entry from the start of the page
-    offset: SlotOffset,
+    offset: Offset,
     /// The length of the entry
     // FIXME this is a large use of space for small entries
     // is there a more efficient way to store the length (or an alternative to storing the length entirely)?
@@ -540,9 +555,9 @@ pub struct Slot {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Archive, rkyv::Serialize)]
 #[archive(as = "Self")]
 #[repr(transparent)]
-pub struct SlotOffset(BigEndian<u16>);
+pub(crate) struct Offset(BigEndian<u16>);
 
-impl Add<u16> for SlotOffset {
+impl Add<u16> for Offset {
     type Output = Self;
 
     #[track_caller]
@@ -551,25 +566,25 @@ impl Add<u16> for SlotOffset {
     }
 }
 
-impl AddAssign<u16> for SlotOffset {
+impl AddAssign<u16> for Offset {
     fn add_assign(&mut self, rhs: u16) {
         self.0 += rhs;
     }
 }
 
-impl SubAssign<u16> for SlotOffset {
+impl SubAssign<u16> for Offset {
     fn sub_assign(&mut self, rhs: u16) {
         self.0 -= rhs;
     }
 }
 
-impl From<usize> for SlotOffset {
+impl From<usize> for Offset {
     fn from(offset: usize) -> Self {
         Self::from(offset as u16)
     }
 }
 
-impl From<u16> for SlotOffset {
+impl From<u16> for Offset {
     #[track_caller]
     fn from(offset: u16) -> Self {
         assert!(offset < PAGE_DATA_SIZE as u16, "offset `{offset}` is too large");
@@ -577,7 +592,7 @@ impl From<u16> for SlotOffset {
     }
 }
 
-impl Sub for SlotOffset {
+impl Sub for Offset {
     type Output = u16;
 
     fn sub(self, rhs: Self) -> Self::Output {
@@ -585,30 +600,11 @@ impl Sub for SlotOffset {
     }
 }
 
-impl Sub<u16> for SlotOffset {
-    type Output = SlotOffset;
+impl Sub<u16> for Offset {
+    type Output = Offset;
 
     #[track_caller]
     fn sub(self, rhs: u16) -> Self::Output {
         Self::from(self.0 - rhs)
-    }
-}
-
-/// Wrapper around `align_offset` specialized to archived types and represents a left offset rather than right.
-/// i.e. the offset should be subtracted from the pointer to align it.
-fn align_archived_ptr_offset<T: Archive>(ptr: *const u8) -> usize {
-    let alignment = archived_align_of!(T);
-    let align_offset = ptr.align_offset(alignment);
-    if align_offset != 0 {
-        debug_assert!(
-            align_offset < alignment,
-            "the offset required to meet alignment should be less than the alignment"
-        );
-        // We apply the alignment offset to make the slot aligned, but we can't shift the
-        // pointer forward as we might be going into used space.
-        // Therefore, we subtract an entire alignments worth of space first.
-        alignment - align_offset
-    } else {
-        0
     }
 }
