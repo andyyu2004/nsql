@@ -2,7 +2,10 @@ use std::fmt;
 use std::sync::Arc;
 
 use nsql_core::schema::{PhysicalType, Schema};
-use nsql_serde::{Deserialize, DeserializeWith, Deserializer, Serialize, Serializer, SliceSerExt};
+use nsql_serde::{
+    SliceSerExt, StreamDeserialize, StreamDeserializeWith, StreamDeserializer, StreamSerialize,
+    StreamSerializer,
+};
 use rust_decimal::Decimal;
 
 pub struct TupleDeserializationContext {
@@ -14,16 +17,16 @@ pub struct Tuple {
     values: Box<[Value]>,
 }
 
-impl Serialize for Tuple {
-    async fn serialize<S: Serializer>(&self, ser: &mut S) -> nsql_serde::Result<()> {
+impl StreamSerialize for Tuple {
+    async fn serialize<S: StreamSerializer>(&self, ser: &mut S) -> nsql_serde::Result<()> {
         self.values.noninline_len().serialize(ser).await
     }
 }
 
-impl DeserializeWith for Tuple {
+impl StreamDeserializeWith for Tuple {
     type Context<'a> = TupleDeserializationContext;
 
-    async fn deserialize_with<D: Deserializer>(
+    async fn deserialize_with<D: StreamDeserializer>(
         ctx: &Self::Context<'_>,
         de: &mut D,
     ) -> nsql_serde::Result<Self> {
@@ -37,7 +40,7 @@ impl DeserializeWith for Tuple {
                     Value::Literal(Literal::Bool(b))
                 }
                 PhysicalType::Decimal => {
-                    let d = <Decimal as Deserialize>::deserialize(de).await?;
+                    let d = <Decimal as StreamDeserialize>::deserialize(de).await?;
                     Value::Literal(Literal::Decimal(d))
                 }
                 PhysicalType::Int32 => todo!(),
@@ -73,12 +76,12 @@ impl FromIterator<Value> for Tuple {
     }
 }
 
-#[derive(Debug, PartialEq, Serialize)]
+#[derive(Debug, PartialEq, StreamSerialize)]
 pub enum Value {
     Literal(Literal),
 }
 
-#[derive(Debug, PartialEq, Serialize)]
+#[derive(Debug, PartialEq, StreamSerialize)]
 pub enum Literal {
     #[serde(skip)]
     Null,

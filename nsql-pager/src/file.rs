@@ -4,7 +4,7 @@ use std::sync::atomic::{self, AtomicU32};
 use std::{io, mem};
 
 use nsql_fs::File;
-use nsql_serde::{Deserialize, Serialize};
+use nsql_serde::{StreamDeserialize, StreamSerialize};
 use nsql_util::static_assert;
 use tokio::io::{AsyncWriteExt, BufReader};
 use tokio::sync::{OnceCell, RwLock};
@@ -22,14 +22,14 @@ const N_RESERVED_PAGES: u32 = 3;
 
 pub const CURRENT_VERSION: u32 = 1;
 
-#[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Eq, StreamSerialize, StreamDeserialize)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 pub struct FileHeader {
     magic: [u8; 4],
     version: u32,
 }
 
-#[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Eq, StreamSerialize, StreamDeserialize)]
 #[cfg_attr(test, derive(test_strategy::Arbitrary))]
 struct PagerHeader {
     free_list_head: Option<PageIndex>,

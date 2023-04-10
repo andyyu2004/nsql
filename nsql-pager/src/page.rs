@@ -6,7 +6,7 @@ use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::{fmt, io, mem};
 
-use nsql_serde::{Deserialize, Serialize, SerializeSized};
+use nsql_serde::{SerializeSized, StreamDeserialize, StreamSerialize};
 use nsql_util::static_assert_eq;
 use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 use rkyv::{Archive, Archived};
@@ -107,7 +107,7 @@ impl Page {
     Eq,
     PartialOrd,
     Ord,
-    Deserialize,
+    StreamDeserialize,
     SerializeSized,
     Archive,
     rkyv::Serialize,
@@ -287,7 +287,9 @@ fn checksum(data: impl AsRef<[u8]>) -> u64 {
     crc::Crc::<u64>::new(&crc::CRC_64_WE).checksum(data.as_ref())
 }
 
-#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(
+    Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord, StreamSerialize, StreamDeserialize,
+)]
 pub struct PageOffset {
     offset: u32,
 }

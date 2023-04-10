@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use nsql_buffer::Pool;
 use nsql_pager::PageIndex;
-use nsql_serde::{Deserialize, Serialize};
+use nsql_serde::{StreamDeserialize, StreamSerialize};
 
 use self::fsm_page::FsmPage;
 use crate::table_storage::HeapTuple;
@@ -14,7 +14,7 @@ pub struct FreeSpaceMap {
     meta: FreeSpaceMapMeta,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, StreamSerialize, StreamDeserialize)]
 pub struct FreeSpaceMapMeta {
     root_fsm_page: PageIndex,
     // pages: Vec<PageIndex>,

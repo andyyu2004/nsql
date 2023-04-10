@@ -63,7 +63,7 @@ fn get_serde_meta_items(attr: &syn::Attribute) -> Vec<syn::NestedMeta> {
     }
 }
 
-#[proc_macro_derive(Serialize, attributes(serde))]
+#[proc_macro_derive(StreamSerialize, attributes(serde))]
 pub fn derive_serialize(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = syn::parse_macro_input!(input);
     let mut data = preprocess(input);
@@ -71,7 +71,7 @@ pub fn derive_serialize(input: proc_macro::TokenStream) -> proc_macro::TokenStre
     let type_params = data.generics.type_params();
     let extended_predicates = syn::parse::<syn::WhereClause>(
         quote! {
-            where #(#type_params: ::nsql_serde::Serialize),*
+            where #(#type_params: ::nsql_serde::StreamSerialize),*
         }
         .into(),
     )
@@ -87,9 +87,9 @@ pub fn derive_serialize(input: proc_macro::TokenStream) -> proc_macro::TokenStre
             let field_name = fields.iter().map(|f| f.ident.as_ref().unwrap());
             let ty = fields.iter().map(|field| &field.ty);
             quote! {
-                use ::nsql_serde::Serialize as _;
+                use ::nsql_serde::StreamSerialize as _;
                 #(
-                    <#ty as ::nsql_serde::Serialize>::serialize(&self.#field_name, ser).await?;
+                    <#ty as ::nsql_serde::StreamSerialize>::serialize(&self.#field_name, ser).await?;
                 )*
                 Ok(())
             }
@@ -97,10 +97,10 @@ pub fn derive_serialize(input: proc_macro::TokenStream) -> proc_macro::TokenStre
         DataKind::Enum { variants } => {
             let variant_name = variants.iter().map(|v| &v.ident);
             quote! {
-                use ::nsql_serde::Serialize as _;
+                use ::nsql_serde::StreamSerialize as _;
                 match self {
                     #(
-                        Self::#variant_name(x) => ::nsql_serde::Serialize::serialize(x, ser).await?,
+                        Self::#variant_name(x) => ::nsql_serde::StreamSerialize::serialize(x, ser).await?,
                     )*
                     _ => (),
                 }
@@ -110,15 +110,15 @@ pub fn derive_serialize(input: proc_macro::TokenStream) -> proc_macro::TokenStre
     };
 
     quote! {
-        impl #impl_generics ::nsql_serde::Serialize for #name #ty_generics #where_clause {
-            async fn serialize<S: ::nsql_serde::Serializer>(&self, ser: &mut S) -> ::nsql_serde::Result<()> {
+        impl #impl_generics ::nsql_serde::StreamSerialize for #name #ty_generics #where_clause {
+            async fn serialize<S: ::nsql_serde::StreamSerializer>(&self, ser: &mut S) -> ::nsql_serde::Result<()> {
                 #body
             }
         }
     }.into()
 }
 
-#[proc_macro_derive(Deserialize, attributes(serde))]
+#[proc_macro_derive(StreamDeserialize, attributes(serde))]
 pub fn derive_deserialize(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = syn::parse_macro_input!(input as syn::DeriveInput);
     let mut data = preprocess(input);
@@ -127,7 +127,7 @@ pub fn derive_deserialize(input: proc_macro::TokenStream) -> proc_macro::TokenSt
     let type_params = data.generics.type_params();
     let extended_predicates = syn::parse::<syn::WhereClause>(
         quote! {
-        where #(#type_params: ::nsql_serde::Deserialize),*
+        where #(#type_params: ::nsql_serde::StreamDeserialize),*
         }
         .into(),
     )
@@ -141,11 +141,11 @@ pub fn derive_deserialize(input: proc_macro::TokenStream) -> proc_macro::TokenSt
             let field_name = fields.iter().map(|f| f.ident.as_ref().unwrap()).collect::<Vec<_>>();
             let ty = fields.iter().map(|field| &field.ty);
             quote! {
-                impl #impl_generics ::nsql_serde::Deserialize for #name #ty_generics #where_clause {
-                    async fn deserialize<D: ::nsql_serde::Deserializer>(de: &mut D) -> ::nsql_serde::Result<Self> {
-                        use ::nsql_serde::Deserialize as _;
+                impl #impl_generics ::nsql_serde::StreamDeserialize for #name #ty_generics #where_clause {
+                    async fn deserialize<D: ::nsql_serde::StreamDeserializer>(de: &mut D) -> ::nsql_serde::Result<Self> {
+                        use ::nsql_serde::StreamDeserialize as _;
                         #(
-                            let #field_name = <#ty as ::nsql_serde::Deserialize>::deserialize(de).await?;
+                            let #field_name = <#ty as ::nsql_serde::StreamDeserialize>::deserialize(de).await?;
                         )*
                         Ok(Self {
                             #(#field_name),*
@@ -159,6 +159,7 @@ pub fn derive_deserialize(input: proc_macro::TokenStream) -> proc_macro::TokenSt
     .into()
 }
 
+// FIXME remove this?
 #[proc_macro_derive(SerializeSized, attributes(serde))]
 pub fn derive_serialize_sized(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let serialize_impl = proc_macro2::TokenStream::from(derive_serialize(input.clone()));

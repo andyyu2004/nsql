@@ -1,10 +1,10 @@
-use nsql_serde::{Deserialize, Deserializer, Serialize};
+use nsql_serde::{StreamDeserialize, StreamDeserializer, StreamSerialize};
 
 use crate::private::CatalogEntity;
 use crate::set::CatalogSet;
 use crate::{Catalog, Container, Entity, Name, Table};
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, StreamSerialize)]
 pub struct Namespace {
     name: Name,
     pub(crate) tables: CatalogSet<Table>,
@@ -21,8 +21,8 @@ pub struct CreateNamespaceInfo {
     pub name: Name,
 }
 
-impl Deserialize for CreateNamespaceInfo {
-    async fn deserialize<D: Deserializer>(de: &mut D) -> nsql_serde::Result<Self> {
+impl StreamDeserialize for CreateNamespaceInfo {
+    async fn deserialize<D: StreamDeserializer>(de: &mut D) -> nsql_serde::Result<Self> {
         let s = de.read_str().await?;
         Ok(Self { name: Name::from(s.as_str()) })
     }

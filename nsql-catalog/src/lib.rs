@@ -87,13 +87,13 @@ pub trait Container {
 }
 
 pub(crate) mod private {
-    use nsql_serde::Serialize;
+    use nsql_serde::StreamSerialize;
 
     use super::*;
 
     /// This trait is sealed and cannot be implemented for types outside of this crate.
     /// These method should also not be visible to users of this crate.
-    pub trait CatalogEntity: Entity + Serialize + Sized {
+    pub trait CatalogEntity: Entity + StreamSerialize + Sized {
         type Container;
 
         type CreateInfo;

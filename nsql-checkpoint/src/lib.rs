@@ -2,7 +2,7 @@ use std::io;
 
 use nsql_catalog::{Catalog, Container, Namespace, Table};
 use nsql_pager::{MetaPageReader, MetaPageWriter, Pager};
-use nsql_serde::Serialize;
+use nsql_serde::StreamSerialize;
 use nsql_transaction::Transaction;
 use thiserror::Error;
 

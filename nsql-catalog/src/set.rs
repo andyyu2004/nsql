@@ -3,7 +3,8 @@ use std::sync::Arc;
 use dashmap::DashMap;
 use nsql_core::Name;
 use nsql_serde::{
-    AsyncReadExt, AsyncWriteExt, Deserialize, DeserializeWith, Deserializer, Serialize, Serializer,
+    AsyncReadExt, AsyncWriteExt, StreamDeserialize, StreamDeserializeWith, StreamDeserializer,
+    StreamSerialize, StreamSerializer,
 };
 use nsql_transaction::{Transaction, Txid};
 
@@ -25,8 +26,8 @@ impl<T> CatalogSet<T> {
     }
 }
 
-impl<T: Serialize> Serialize for CatalogSet<T> {
-    async fn serialize<S: Serializer>(&self, ser: &mut S) -> nsql_serde::Result<()> {
+impl<T: StreamSerialize> StreamSerialize for CatalogSet<T> {
+    async fn serialize<S: StreamSerializer>(&self, ser: &mut S) -> nsql_serde::Result<()> {
         ser.write_u32(self.entries.len() as u32).await?;
         for entry in self.entries.iter() {
             entry.value().committed_version().item().serialize(ser).await?;
@@ -35,14 +36,14 @@ impl<T: Serialize> Serialize for CatalogSet<T> {
     }
 }
 
-impl<T> DeserializeWith for CatalogSet<T>
+impl<T> StreamDeserializeWith for CatalogSet<T>
 where
     T: CatalogEntity,
-    T::CreateInfo: Deserialize,
+    T::CreateInfo: StreamDeserialize,
 {
     type Context<'a> = Transaction;
 
-    async fn deserialize_with<D: Deserializer>(
+    async fn deserialize_with<D: StreamDeserializer>(
         tx: &Self::Context<'_>,
         de: &mut D,
     ) -> nsql_serde::Result<Self> {

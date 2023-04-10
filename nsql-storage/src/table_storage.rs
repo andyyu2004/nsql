@@ -7,8 +7,8 @@ use nsql_buffer::Pool;
 use nsql_core::schema::Schema;
 use nsql_pager::{PageIndex, PAGE_DATA_SIZE};
 use nsql_serde::{
-    AsyncReadExt, AsyncWriteExt, Deserialize, DeserializeWith, Deserializer, Serialize,
-    SerializeSized, Serializer,
+    AsyncReadExt, AsyncWriteExt, SerializeSized, StreamDeserialize, StreamDeserializeWith,
+    StreamDeserializer, StreamSerialize, StreamSerializer,
 };
 use nsql_transaction::Transaction;
 
@@ -34,7 +34,7 @@ impl TableStorage {
         let ctx = TupleDeserializationContext { schema: Arc::clone(&self.info.schema) };
         let handle = self.pool.load(idx).await?;
         let mut guard = handle.page().read();
-        todo!();
+        // todo!();
         // FIXME we should have a different trait that isn't async as this just reads one page
         // (opposed to the meta page)
         // let mut page = HeapTuplePage::deserialize_with(&ctx, &mut guard).await?;
@@ -42,7 +42,7 @@ impl TableStorage {
         //     Ok(slot) => slot,
         //     Err(HeapTuplePageFull) => panic!("there should be enough space as we checked fsm"),
         // };
-        // Ok(())
+        Ok(())
     }
 
     pub async fn scan(_tx: &Transaction) -> Vec<Tuple> {
@@ -92,8 +92,8 @@ impl Default for HeapTuplePage {
     }
 }
 
-impl Serialize for HeapTuplePage {
-    async fn serialize<S: Serializer>(&self, ser: &mut S) -> nsql_serde::Result<()> {
+impl StreamSerialize for HeapTuplePage {
+    async fn serialize<S: StreamSerializer>(&self, ser: &mut S) -> nsql_serde::Result<()> {
         let ser = &mut ser.limit(PAGE_DATA_SIZE as u16);
         self.header.serialize(ser).await?;
 
@@ -114,10 +114,10 @@ impl Serialize for HeapTuplePage {
     }
 }
 
-impl DeserializeWith for HeapTuplePage {
+impl StreamDeserializeWith for HeapTuplePage {
     type Context<'a> = TupleDeserializationContext;
 
-    async fn deserialize_with<D: Deserializer>(
+    async fn deserialize_with<D: StreamDeserializer>(
         ctx: &Self::Context<'_>,
         de: &mut D,
     ) -> nsql_serde::Result<Self> {
@@ -142,14 +142,14 @@ impl DeserializeWith for HeapTuplePage {
     }
 }
 
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, StreamSerialize, StreamDeserialize)]
 struct TupleId {
     page_idx: PageIndex,
     // FIXME this should be a u8
     slot_idx: Idx<Slot>,
 }
 
-#[derive(Debug, PartialEq, SerializeSized, Deserialize)]
+#[derive(Debug, PartialEq, SerializeSized, StreamDeserialize)]
 struct Slot {
     /// The offset of the tuple from the start of the page
     offset: u16,
@@ -184,7 +184,7 @@ impl HeapTuplePage {
     }
 }
 
-#[derive(Debug, PartialEq, SerializeSized, Deserialize)]
+#[derive(Debug, PartialEq, SerializeSized, StreamDeserialize)]
 struct HeapTuplePageHeader {
     free_start: u16,
     free_end: u16,
@@ -196,7 +196,7 @@ impl HeapTuplePageHeader {
     }
 }
 
-#[derive(Debug, PartialEq, Serialize)]
+#[derive(Debug, PartialEq, StreamSerialize)]
 struct HeapTuple {
     header: HeapTupleHeader,
     tuple: Tuple,
@@ -208,10 +208,10 @@ impl HeapTuple {
         PAGE_DATA_SIZE as u16 - HeapTuplePageHeader::SERIALIZED_SIZE - Slot::SERIALIZED_SIZE;
 }
 
-impl DeserializeWith for HeapTuple {
+impl StreamDeserializeWith for HeapTuple {
     type Context<'a> = TupleDeserializationContext;
 
-    async fn deserialize_with<D: Deserializer>(
+    async fn deserialize_with<D: StreamDeserializer>(
         ctx: &Self::Context<'_>,
         de: &mut D,
     ) -> nsql_serde::Result<Self> {
@@ -223,7 +223,7 @@ impl DeserializeWith for HeapTuple {
 
 impl HeapTuple {}
 
-#[derive(Debug, PartialEq, SerializeSized, Deserialize)]
+#[derive(Debug, PartialEq, SerializeSized, StreamDeserialize)]
 struct HeapTupleHeader {}
 
 #[cfg(test)]

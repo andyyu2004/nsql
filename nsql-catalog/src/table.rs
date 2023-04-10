@@ -2,14 +2,14 @@ use std::fmt;
 use std::sync::Arc;
 
 use nsql_core::schema::LogicalType;
-use nsql_serde::{Deserialize, Serialize};
+use nsql_serde::{StreamDeserialize, StreamSerialize};
 use nsql_storage::TableStorage;
 
 use crate::private::CatalogEntity;
 use crate::set::CatalogSet;
 use crate::{Entity, Name, Namespace};
 
-#[derive(Clone, Serialize)]
+#[derive(Clone, StreamSerialize)]
 pub struct Table {
     name: Name,
     #[serde(skip)]
@@ -45,7 +45,7 @@ impl fmt::Debug for CreateTableInfo {
     }
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, StreamDeserialize)]
 pub struct CreateColumnInfo {
     pub name: Name,
     pub ty: LogicalType,
