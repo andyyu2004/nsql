@@ -121,14 +121,13 @@ where
         K::Archived: PartialOrd<Q>,
         Q: ?Sized + fmt::Debug,
     {
-        if let Some(high_key) = self.high_key().as_ref() {
-            tracing::debug!(?high_key, "detected concurrent leaf split");
-            if high_key < key {
-                return Err(ConcurrentSplit);
+        match self.high_key().as_ref() {
+            Some(high_key) if high_key < key => {
+                tracing::debug!(?high_key, ?key, "detected concurrent leaf split");
+                Err(ConcurrentSplit)
             }
+            _ => Ok(self.slotted_page.get(key)),
         }
-
-        Ok(self.slotted_page.get(key))
     }
 }
 

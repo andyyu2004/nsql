@@ -133,9 +133,21 @@ where
             let node = unsafe { PageView::<K, V>::view(&guard)? };
             tracing::trace!(?idx, ?key, "found leaf page");
             match node {
-                PageView::Leaf(_) => {
+                PageView::Leaf(leaf) => {
                     tracing::trace!(?idx, ?key, "found leaf page");
-                    return Ok(idx);
+                    match leaf.high_key().as_ref() {
+                        Some(high_key) if high_key < key => {
+                            tracing::debug!(
+                                ?idx,
+                                ?high_key,
+                                ?key,
+                                "detected concurrent split when searching for leaf page to insert into"
+                            );
+                            leaf.right_link()
+                                .expect("did not have a right link when high key was set")
+                        }
+                        _ => return Ok(idx),
+                    }
                 }
                 PageView::Interior(interior) => {
                     stack.push(idx);
