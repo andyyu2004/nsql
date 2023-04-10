@@ -7,7 +7,6 @@ edition = "2021"
 async-trait = "0.1.64"
 bytes = "1.4.0"
 crc = "3.0"
-futures-executor = { version = "0.3.27", default-features = false, features = ["std"] }
 nsql-serde = { path = "../nsql-serde" }
 nsql-util = { path = "../nsql-util" }
 pin-utils = "0.1.0"

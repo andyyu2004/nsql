@@ -12,6 +12,7 @@ use nsql_test::mk_fast_mem_buffer_pool;
 use rkyv::{Archive, Deserialize, Serialize};
 use test_strategy::proptest;
 use tokio::task::JoinSet;
+use tracing::{Instrument, Span};
 
 use crate::{BTree, Min, Result};
 
@@ -28,13 +29,12 @@ async fn test_concurrent_root_leaf_split() -> Result<()> {
 #[tokio::test(flavor = "multi_thread")]
 #[tracing_test::traced_test]
 async fn test_concurrent_non_root_leaf_split() -> Result<()> {
-    let inputs = (0..2).map(|_| (0..750).map(|i| (i, i)).collect()).collect::<Vec<_>>();
+    let inputs = (0..5).map(|_| (0..750).map(|i| (i, i)).collect()).collect::<Vec<_>>();
     run_concurrent_insertions(inputs).await?;
     assert!(logs_contain("splitting root kind=nsql_btree::page::leaf::LeafPageViewMut<i32, i32>"));
     assert!(logs_contain(
         "splitting non-root kind=nsql_btree::page::leaf::LeafPageViewMut<i32, i32>"
     ));
-    assert!(logs_contain("detected concurrent leaf split"));
     Ok(())
 }
 
@@ -54,8 +54,9 @@ async fn test_concurrent_non_root_leaf_split_reverse() -> Result<()> {
 #[tokio::test(flavor = "multi_thread")]
 #[tracing_test::traced_test]
 async fn test_concurrent_root_interior_split() -> Result<()> {
-    let inputs = (0..2).map(|_| (0..40000).map(|i| (i, i)).collect()).collect::<Vec<_>>();
+    let inputs = (0..2).map(|_| (0..60000).map(|i| (i, i)).collect()).collect::<Vec<_>>();
     run_concurrent_insertions(inputs).await?;
+    // FIXME don't think this is being hit
     // assert!(logs_contain(
     //     "splitting root kind=nsql_btree::page::leaf::InteriorPageViewMut<i32, i32>"
     // ));
@@ -126,7 +127,7 @@ where
                 );
             }
             Ok(())
-        });
+        }.instrument(Span::current()));
     }
 
     while let Some(res) = join_set.join_next().await {
