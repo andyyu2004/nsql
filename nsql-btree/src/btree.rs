@@ -297,12 +297,6 @@ where
             Err(ConcurrentSplit) => todo!(),
         };
 
-        drop(old_node);
-        drop(old_guard);
-
-        drop(new_node);
-        drop(new_guard);
-
         Ok((prev, sep_key, new_node_page_idx))
     }
 

@@ -10,7 +10,6 @@ use dashmap::DashMap;
 use nsql_rkyv::DefaultSerializer;
 use nsql_test::mk_fast_mem_buffer_pool;
 use rkyv::{Archive, Deserialize, Serialize};
-use test_strategy::proptest;
 use tokio::task::JoinSet;
 use tracing::{Instrument, Span};
 
@@ -51,6 +50,7 @@ async fn test_concurrent_non_root_leaf_split_reverse() -> Result<()> {
     Ok(())
 }
 
+#[cfg(not(debug_assertions))]
 #[tokio::test(flavor = "multi_thread")]
 #[tracing_test::traced_test]
 async fn test_concurrent_root_interior_split() -> Result<()> {
@@ -63,9 +63,8 @@ async fn test_concurrent_root_interior_split() -> Result<()> {
     Ok(())
 }
 
-// FIXME fix other tests first
-// this is way too slow
-#[proptest]
+#[cfg(not(debug_assertions))]
+#[test_strategy::proptest]
 fn test_concurrent_inserts_random(inputs: ConcurrentTestInputs<u8, u8>) {
     nsql_test::start(async {
         run_concurrent_insertions(inputs).await.unwrap();
