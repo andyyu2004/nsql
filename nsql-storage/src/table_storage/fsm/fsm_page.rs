@@ -1,7 +1,7 @@
 use std::mem;
 use std::pin::Pin;
 
-use nsql_pager::{PageOffset, PAGE_DATA_SIZE, PAGE_SIZE};
+use nsql_pager::{PageIndex, PageOffset, PAGE_DATA_SIZE, PAGE_SIZE};
 use nsql_util::{static_assert, static_assert_eq};
 use rkyv::Archive;
 
@@ -12,7 +12,7 @@ use crate::table_storage::HeapTuple;
 pub(super) struct FsmPage {
     // page indexes that the leaf node corresponds to
     // this field should come first so the u32s are aligned
-    leaves: [u32; LEAF_COUNT as usize],
+    leaves: [PageIndex; LEAF_COUNT as usize],
     nodes: [Bucket; NODES_PER_PAGE as usize],
     flags: u8,
 }
@@ -32,7 +32,7 @@ impl Default for FsmPage {
     fn default() -> Self {
         Self {
             nodes: [Bucket::default(); NODES_PER_PAGE as usize],
-            leaves: [0; LEAF_COUNT as usize],
+            leaves: [PageIndex::ZERO; LEAF_COUNT as usize],
             flags: 0,
         }
     }

@@ -148,6 +148,7 @@ where
         left_page_idx: PageIndex,
         right: &mut Self::ViewMut<'_>,
         right_page_idx: PageIndex,
+        prev_right_page: Option<&mut Self::ViewMut<'_>>,
     ) where
         K::Archived: Deserialize<K, rkyv::Infallible> + Clone,
         V::Archived: Deserialize<V, rkyv::Infallible>,
@@ -155,8 +156,14 @@ where
         assert!(left.slotted_page().len() >= 3);
         assert!(right.slotted_page().is_empty());
 
+        // update the left link of the former right page to point to the new right page
+        if let Some(prev_right_page) = prev_right_page {
+            let prev_right_link = left.right_link().expect("should match `prev_right_page`");
+            prev_right_page.set_left_link(right_page_idx);
+            right.set_right_link(prev_right_link);
+        }
+
         let initial_left_high_key = left.high_key().clone();
-        let initial_right_link = left.right_link();
 
         let left_slots = left.slotted_page_mut();
         let slots = left_slots.slots();
@@ -184,9 +191,6 @@ where
         });
 
         right.set_left_link(left_page_idx);
-        if let Some(right_link) = initial_right_link {
-            right.set_right_link(right_link);
-        }
         right.set_high_key(initial_left_high_key);
 
         debug_assert_eq!(left.len(), lhs.len());

@@ -1074,6 +1074,7 @@ name = "nsql-storage"
 version = "0.1.0"
 dependencies = [
  "nsql-arena",
+ "nsql-btree",
  "nsql-buffer",
  "nsql-core",
  "nsql-pager",

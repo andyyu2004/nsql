@@ -18,9 +18,9 @@ nsql-pager = { path = "../nsql-pager" }
 nsql-rkyv = { version = "0.1.0", path = "../nsql-rkyv" }
 nsql-util = { version = "0.1.0", path = "../nsql-util" }
 parking_lot = "0.12.1"
-rkyv = { version = "0.7.40", default-features = false, features = ["archive_be", "strict", "std"] }
+rkyv = { version = "0.7.40", default-features = false, features = ["archive_be", "std"] }
 test-strategy = "0.3.0"
-tokio = "1.26.0"
+tokio = { version = "1.26.0", default-features = false, features = ["parking_lot", "macros"] }
 tracing = "0.1.37"
 
 [dev-dependencies]

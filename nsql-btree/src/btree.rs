@@ -8,7 +8,7 @@ use async_recursion::async_recursion;
 use nsql_buffer::Pool;
 use nsql_pager::PageIndex;
 use nsql_rkyv::DefaultSerializer;
-use rkyv::{Archive, Deserialize, Serialize};
+use rkyv::{rend, Archive, Deserialize, Serialize};
 use tokio::runtime::Handle;
 
 use crate::page::{
@@ -55,6 +55,11 @@ where
         let _root = LeafPageViewMut::<K, V>::initialize_root(&mut guard);
 
         let root_idx = handle.page_idx();
+        Ok(Self { pool, root_idx, marker: PhantomData })
+    }
+
+    #[inline]
+    pub async fn load(pool: Arc<dyn Pool>, root_idx: PageIndex) -> Result<Self> {
         Ok(Self { pool, root_idx, marker: PhantomData })
     }
 
@@ -206,7 +211,23 @@ where
                             .map(Ok);
                     } else {
                         cov_mark::hit!(non_root_leaf_split);
-                        self.split_non_root::<LeafPageViewMut<'_, K, V>, _>(leaf_guard, key, value)?
+                        let right_handle = leaf
+                            .right_link()
+                            .map(|right_idx| {
+                                tokio::task::block_in_place(|| {
+                                    Handle::current().block_on(self.pool.load(right_idx))
+                                })
+                            })
+                            .transpose()?;
+                        let right_guard =
+                            right_handle.as_ref().map(|right_page| right_page.write());
+
+                        self.split_non_root::<LeafPageViewMut<'_, K, V>, _>(
+                            leaf_guard,
+                            right_guard,
+                            key,
+                            value,
+                        )?
                     }
                 }
                 Err(ConcurrentSplit) => return Ok(Err(ConcurrentSplit)),
@@ -253,8 +274,21 @@ where
                         return Ok(());
                     } else {
                         cov_mark::hit!(non_root_interior_split);
+
+                        let right_handle = parent
+                            .right_link()
+                            .map(|right_idx| {
+                                tokio::task::block_in_place(|| {
+                                    Handle::current().block_on(self.pool.load(right_idx))
+                                })
+                            })
+                            .transpose()?;
+                        let right_guard =
+                            right_handle.as_ref().map(|right_page| right_page.write());
+
                         self.split_non_root::<InteriorPageViewMut<'_, K>, _>(
                             parent_guard,
+                            right_guard,
                             sep,
                             &child_idx,
                         )?
@@ -271,6 +305,7 @@ where
     fn split_non_root<N, T>(
         &self,
         mut old_guard: nsql_pager::PageWriteGuard<'_>,
+        mut prev_right_guard: Option<nsql_pager::PageWriteGuard<'_>>,
         key: &K,
         value: &T,
     ) -> Result<(Option<T>, K, PageIndex)>
@@ -295,7 +330,16 @@ where
         let new_node_page_idx = new_guard.page_idx();
         let mut new_node = N::initialize(&mut new_guard);
 
-        N::split(&mut old_node, old_node_page_idx, &mut new_node, new_node_page_idx);
+        let mut prev_right_page =
+            prev_right_guard.as_mut().map(|guard| unsafe { N::view_mut(guard) }).transpose()?;
+
+        N::split(
+            &mut old_node,
+            old_node_page_idx,
+            &mut new_node,
+            new_node_page_idx,
+            prev_right_page.as_mut(),
+        );
 
         // a separator between the new left node and the right node is the min key of the right node
         let sep = new_node.min_key().unwrap();
@@ -373,12 +417,24 @@ where
 }
 
 // hack to make implementation of btree easier for now. Shouldn't be necessary
-pub trait Min: Archive {
+pub trait Min {
     const MIN: Self;
 }
 
-impl Min for u8 {
-    const MIN: Self = 0;
+impl<T, U> Min for (T, U)
+where
+    T: Min,
+    U: Min,
+{
+    const MIN: Self = (T::MIN, U::MIN);
+}
+
+impl Min for PageIndex {
+    const MIN: Self = PageIndex::ZERO;
+}
+
+impl Min for rend::BigEndian<u16> {
+    const MIN: Self = Self::new(0);
 }
 
 macro_rules! impl_min_numeric {
@@ -391,4 +447,4 @@ macro_rules! impl_min_numeric {
     };
 }
 
-impl_min_numeric!(i16, i32, i64, u16, u32, u64);
+impl_min_numeric!(i8, i16, i32, i64, u8, u16, u32, u64);

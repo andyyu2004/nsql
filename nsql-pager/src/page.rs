@@ -144,6 +144,7 @@ impl PageIndex {
     // do not make this public, it is mostly a hack that we haven't entirely managed to get rid of
     // it is used in the meta page reader
     pub(crate) const INVALID: Self = Self { idx: unsafe { NonZeroU32::new_unchecked(u32::MAX) } };
+    pub const ZERO: Self = Self::new(0);
 
     #[inline]
     pub(crate) const fn new(idx: u32) -> Self {
