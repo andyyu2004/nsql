@@ -97,6 +97,7 @@ where
             match node {
                 PageView::Leaf(leaf) => match leaf.get(key) {
                     Ok(value) => return Ok(value.map(nsql_rkyv::deserialize)),
+                    // FIXME do we need to crab the locks when moving right?
                     Err(ConcurrentSplit) => match leaf.right_link() {
                         Some(idx) => idx,
                         None => return Ok(None),
@@ -298,6 +299,7 @@ where
             }
         };
 
+        // FIXME do we need to crab the locks when ascending?
         self.insert_interior(parents, &sep, new_node_page_idx).await?;
         Ok(())
     }
