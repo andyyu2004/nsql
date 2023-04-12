@@ -1,16 +1,12 @@
-use std::io::Write;
 use std::num::NonZeroU32;
 use std::ops::{Add, Deref, DerefMut, Sub};
-use std::pin::Pin;
 use std::sync::Arc;
-use std::task::{Context, Poll};
-use std::{fmt, io, mem};
+use std::{fmt, mem};
 
 use nsql_serde::{SerializeSized, StreamDeserialize, StreamSerialize};
 use nsql_util::static_assert_eq;
 use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 use rkyv::{Archive, Archived};
-use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 
 use crate::{PAGE_DATA_SIZE, PAGE_META_LENGTH, PAGE_SIZE};
 
@@ -50,7 +46,7 @@ impl Page {
         let idx = self.page_idx();
         tracing::trace!(?idx, "read-lock page");
         let bytes = self.bytes.read();
-        PageReadGuard { idx, bytes, read_offset: PAGE_META_LENGTH }
+        PageReadGuard { idx, bytes }
     }
 
     /// Lock the page with a write lock and a mutable reference to the data bytes of the page
@@ -59,7 +55,7 @@ impl Page {
         let idx = self.page_idx();
         let bytes = self.bytes.write();
         tracing::trace!(?idx, "write-lock page");
-        PageWriteGuard { idx, bytes, write_offset: PAGE_META_LENGTH }
+        PageWriteGuard { idx, bytes }
     }
 
     #[inline]
@@ -179,31 +175,12 @@ impl fmt::Display for PageIndex {
 pub struct PageReadGuard<'a> {
     idx: PageIndex,
     bytes: RwLockReadGuard<'a, [u8; PAGE_SIZE]>,
-    read_offset: usize,
 }
 
 impl PageReadGuard<'_> {
     #[inline]
     pub fn page_idx(&self) -> PageIndex {
         self.idx
-    }
-}
-
-impl AsyncRead for PageReadGuard<'_> {
-    #[inline]
-    fn poll_read(
-        mut self: Pin<&mut Self>,
-        _cx: &mut Context<'_>,
-        buf: &mut ReadBuf<'_>,
-    ) -> Poll<io::Result<()>> {
-        let offset = self.read_offset;
-        if offset >= PAGE_SIZE {
-            return Poll::Ready(Ok(()));
-        }
-        let amt = buf.remaining().min(self.bytes.len() - offset);
-        buf.put_slice(&self.bytes[offset..offset + amt]);
-        self.read_offset += amt;
-        Poll::Ready(Ok(()))
     }
 }
 
@@ -229,44 +206,12 @@ where
 pub struct PageWriteGuard<'a> {
     idx: PageIndex,
     bytes: RwLockWriteGuard<'a, [u8; PAGE_SIZE]>,
-    write_offset: usize,
 }
 
 impl<'a> PageWriteGuard<'a> {
     #[inline]
     pub fn page_idx(&self) -> PageIndex {
         self.idx
-    }
-}
-
-impl AsyncWrite for PageWriteGuard<'_> {
-    fn poll_write(
-        mut self: Pin<&mut Self>,
-        _cx: &mut Context<'_>,
-        buf: &[u8],
-    ) -> Poll<Result<usize, io::Error>> {
-        let offset = self.write_offset;
-        if offset + buf.len() > PAGE_SIZE {
-            return Poll::Ready(Err(io::Error::new(
-                io::ErrorKind::Other,
-                format!(
-                    "write to page exceeds page size ({} > {PAGE_DATA_SIZE})",
-                    offset + buf.len()
-                ),
-            )));
-        }
-
-        let n = self.bytes[offset..].as_mut().write(buf)?;
-        self.write_offset += n;
-        Poll::Ready(Ok(n))
-    }
-
-    fn poll_flush(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Result<(), io::Error>> {
-        Poll::Ready(Ok(()))
-    }
-
-    fn poll_shutdown(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Result<(), io::Error>> {
-        Poll::Ready(Ok(()))
     }
 }
 

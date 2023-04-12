@@ -64,10 +64,26 @@ where
     }
 
     #[inline]
+    pub fn root_page(&self) -> PageIndex {
+        self.root_idx
+    }
+
+    #[inline]
     #[tracing::instrument(skip(key))]
     // we instrument the key with `search_node`, we just want `self` here
     pub async fn get(&self, key: &K) -> Result<Option<V>> {
         self.search_node(self.root_idx, key).await
+    }
+
+    #[inline]
+    #[tracing::instrument]
+    /// Find the smallest value of the given key or the next largest key
+    pub async fn find_min<Q>(&self, lower_bound: &Q) -> Result<Option<V>>
+    where
+        K: PartialOrd<Q>,
+        Q: fmt::Debug + ?Sized,
+    {
+        todo!()
     }
 
     /// Insert a key-value pair into the tree returning the previous value if it existed
@@ -85,6 +101,12 @@ where
 
         // FIXME need to handle this properly rather than braindead retrying
         panic!("failed to insert after {MAX_ATTEMPTS} attempts")
+    }
+
+    #[inline]
+    #[tracing::instrument]
+    pub async fn remove(&self, key: &K) -> Result<Option<V>> {
+        todo!()
     }
 
     #[async_recursion]
@@ -194,8 +216,9 @@ where
             let mut leaf = match view {
                 PageViewMut::Interior(interior) => {
                     // We expected `leaf_page_idx` to be a leaf page, but it may have been concurrently
-                    // changed to an interior page due to a root split.
+                    // changed to an interior page due to being split.
                     // We just return a special error and allow the caller to retry the operation.
+                    // A leaf node should never become an interior node unless it was the root.
                     return Ok(Err(Self::concurrent_root_split(interior)));
                 }
                 PageViewMut::Leaf(leaf) => leaf,

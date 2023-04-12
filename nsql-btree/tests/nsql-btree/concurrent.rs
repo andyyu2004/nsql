@@ -7,13 +7,12 @@ use std::sync::Arc;
 use std::{fmt, io};
 
 use dashmap::DashMap;
+use nsql_btree::{BTree, Min, Result};
 use nsql_rkyv::DefaultSerializer;
 use nsql_test::mk_fast_mem_buffer_pool;
 use rkyv::{Archive, Deserialize, Serialize};
 use tokio::task::JoinSet;
 use tracing::{Instrument, Span};
-
-use crate::{BTree, Min, Result};
 
 #[tokio::test(flavor = "multi_thread")]
 #[tracing_test::traced_test]
