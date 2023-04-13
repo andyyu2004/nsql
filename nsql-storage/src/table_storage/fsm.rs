@@ -77,6 +77,7 @@ impl FreeSpaceMap {
     }
 
     /// find a page with at least `required_size` free space, returning the page index
+    // should the interface to the fsm be find and release instead of find and update?
     pub async fn find(&self, required_size: u16) -> nsql_buffer::Result<Option<PageIndex>> {
         assert!(required_size > 0);
         assert!(required_size <= HeapTuple::MAX_SIZE);
@@ -94,7 +95,7 @@ impl FreeSpaceMap {
             assert_eq!(self.itree.remove(&sz).await?, Some(page_idx));
         }
         self.itree.insert(&key, &page_idx).await?;
-        todo!()
+        Ok(())
     }
 
     fn next_unique(&self) -> u64 {
