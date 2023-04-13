@@ -34,13 +34,13 @@ impl Min for Key {
     const MIN: Self = Self { size: 0, unique: 0 };
 }
 
-impl PartialEq<u16> for Key {
+impl PartialEq<u16> for ArchivedKey {
     fn eq(&self, other: &u16) -> bool {
         self.size == *other
     }
 }
 
-impl PartialOrd<u16> for Key {
+impl PartialOrd<u16> for ArchivedKey {
     fn partial_cmp(&self, other: &u16) -> Option<std::cmp::Ordering> {
         self.size.partial_cmp(other)
     }

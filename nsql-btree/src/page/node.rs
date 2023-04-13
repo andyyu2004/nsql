@@ -52,16 +52,18 @@ where
     /// The smallest/leftmost key in the node.
     fn min_key(&self) -> Option<&K::Archived>;
 
-    fn ensure_can_contain(&self, key: &K) -> Result<(), ConcurrentSplit>
+    fn ensure_can_contain<Q>(&self, key: &Q) -> Result<(), ConcurrentSplit>
     where
-        K::Archived: PartialOrd<K>,
+        K::Archived: PartialOrd<Q>,
+        Q: ?Sized,
     {
         if !self.can_contain(key) { Err(ConcurrentSplit) } else { Ok(()) }
     }
 
-    fn can_contain(&self, key: &K) -> bool
+    fn can_contain<Q>(&self, key: &Q) -> bool
     where
-        K::Archived: PartialOrd<K>,
+        K::Archived: PartialOrd<Q>,
+        Q: ?Sized,
     {
         match self.high_key().as_ref() {
             Some(high_key) => high_key >= key,

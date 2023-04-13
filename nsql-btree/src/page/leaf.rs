@@ -121,13 +121,21 @@ where
         K::Archived: PartialOrd<Q>,
         Q: ?Sized + fmt::Debug,
     {
-        match self.high_key().as_ref() {
-            Some(high_key) if high_key < key => {
-                tracing::debug!(?high_key, ?key, "detected concurrent leaf split");
-                Err(ConcurrentSplit)
-            }
-            _ => Ok(self.slotted_page.get(key)),
-        }
+        self.ensure_can_contain(key)?;
+        Ok(self.slotted_page.get(key))
+    }
+
+    #[tracing::instrument(skip(self))]
+    pub(crate) fn find_min<Q>(
+        &self,
+        lower_bound: &Q,
+    ) -> Result<Option<&V::Archived>, ConcurrentSplit>
+    where
+        K::Archived: PartialOrd<Q>,
+        Q: ?Sized + fmt::Debug,
+    {
+        self.ensure_can_contain(lower_bound)?;
+        Ok(self.slotted_page.find_min(lower_bound) )
     }
 }
 

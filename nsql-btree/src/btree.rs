@@ -91,10 +91,19 @@ where
     /// Find the smallest value of the given key or the next largest key
     pub async fn find_min<Q>(&self, lower_bound: &Q) -> Result<Option<V>>
     where
-        K: PartialOrd<Q>,
-        Q: fmt::Debug + ?Sized,
+        K::Archived: PartialOrd<Q>,
+        Q: Send + Sync + fmt::Debug + ?Sized,
     {
-        todo!()
+        for _ in 0..MAX_ATTEMPTS {
+            let (leaf_idx, _parents) = self.find_leaf_page_idx(lower_bound).await?;
+            match self.leaf_find_min(leaf_idx, lower_bound).await? {
+                Ok(prev) => return Ok(prev),
+                Err(ConcurrentSplit) => continue,
+            }
+        }
+
+        // FIXME need to handle this properly rather than braindead retrying
+        panic!("failed to get after {MAX_ATTEMPTS} attempts")
     }
 
     /// Insert a key-value pair into the tree returning the previous value if it existed
@@ -130,19 +139,27 @@ where
 
     /// Find the leaf page that should contain the given key, and return the index of that page and
     /// stack of parent page indices.
-    async fn find_leaf_page_idx(&self, key: &K) -> Result<(PageIndex, SmallVec<[PageIndex; 4]>)> {
+    async fn find_leaf_page_idx<Q>(&self, key: &Q) -> Result<(PageIndex, SmallVec<[PageIndex; 4]>)>
+    where
+        K::Archived: PartialOrd<Q>,
+        Q: Send + Sync + fmt::Debug + ?Sized,
+    {
         let mut parents = SmallVec::new();
         let leaf_idx = self.find_leaf_page_idx_rec(self.root_idx, key, &mut parents).await?;
         Ok((leaf_idx, parents))
     }
 
     #[async_recursion]
-    async fn find_leaf_page_idx_rec(
+    async fn find_leaf_page_idx_rec<Q>(
         &self,
         idx: PageIndex,
-        key: &K,
+        key: &Q,
         stack: &mut SmallVec<[PageIndex; 4]>,
-    ) -> Result<PageIndex> {
+    ) -> Result<PageIndex>
+    where
+        K::Archived: PartialOrd<Q>,
+        Q: Send + Sync + fmt::Debug + ?Sized,
+    {
         tracing::trace!(?idx, ?key, "find_leaf_page_idx_rec");
         let child_idx = {
             let handle = self.pool.load(idx).await?;
@@ -243,37 +260,11 @@ where
         Ok(Ok(_prev))
     }
 
-    #[tracing::instrument(skip(self))]
-    #[inline]
-    async fn leaf_get(
+    async fn leaf_op<R>(
         &self,
         leaf_page_idx: PageIndex,
-        key: &K,
-    ) -> Result<Result<Option<V>, ConcurrentSplit>> {
-        let leaf_handle = self.pool.load(leaf_page_idx).await?;
-        let mut leaf_guard = leaf_handle.write();
-        let view = unsafe { PageViewMut::<K, V>::view_mut(&mut leaf_guard)? };
-
-        let leaf = match view {
-            PageViewMut::Interior(interior) => {
-                return Ok(Err(Self::concurrent_root_split(interior)));
-            }
-            PageViewMut::Leaf(leaf) => leaf,
-        };
-
-        Ok(match leaf.get(key) {
-            Ok(v) => Ok(v.map(nsql_rkyv::deserialize)),
-            Err(ConcurrentSplit) => Err(ConcurrentSplit),
-        })
-    }
-
-    #[tracing::instrument(skip(self))]
-    #[inline]
-    async fn leaf_remove(
-        &self,
-        leaf_page_idx: PageIndex,
-        key: &K,
-    ) -> Result<Result<Option<V>, ConcurrentSplit>> {
+        f: impl FnOnce(&mut LeafPageViewMut<'_, K, V>) -> Result<R, ConcurrentSplit>,
+    ) -> Result<Result<R, ConcurrentSplit>> {
         let leaf_handle = self.pool.load(leaf_page_idx).await?;
         let mut leaf_guard = leaf_handle.write();
         let view = unsafe { PageViewMut::<K, V>::view_mut(&mut leaf_guard)? };
@@ -285,7 +276,70 @@ where
             PageViewMut::Leaf(leaf) => leaf,
         };
 
-        Ok(leaf.remove(key))
+        Ok(f(&mut leaf))
+    }
+
+    #[tracing::instrument(skip(self))]
+    #[inline]
+    async fn leaf_get(
+        &self,
+        leaf_page_idx: PageIndex,
+        key: &K,
+    ) -> Result<Result<Option<V>, ConcurrentSplit>> {
+        self.leaf_op(leaf_page_idx, |leaf| Ok(leaf.get(key)?.map(nsql_rkyv::deserialize))).await
+    }
+
+    #[tracing::instrument(skip(self, leaf_page_idx, lower_bound))]
+    #[inline]
+    async fn leaf_find_min<Q>(
+        &self,
+        leaf_page_idx: PageIndex,
+        lower_bound: &Q,
+    ) -> Result<Result<Option<V>, ConcurrentSplit>>
+    where
+        K::Archived: PartialOrd<Q>,
+        Q: fmt::Debug + ?Sized,
+    {
+        tracing::trace!(?leaf_page_idx, ?lower_bound, "finding min value in leaf page");
+        let mut next_page_idx = Some(leaf_page_idx);
+        while let Some(page_idx) = next_page_idx {
+            match self
+                .leaf_op(page_idx, |leaf| {
+                    match leaf.find_min(lower_bound)?.map(nsql_rkyv::deserialize) {
+                        // we found some suitable value, return it
+                        Some(value) => Ok(Some(value)),
+                        // need to check the next right link page if we didn't find any suitable value in the current page
+                        None => {
+                            next_page_idx = leaf.right_link();
+                            tracing::trace!(
+                                ?next_page_idx,
+                                "no suitable value found, checking next page"
+                            );
+                            Ok(None)
+                        }
+                    }
+                })
+                .await?
+            {
+                // return the value returned by the closure
+                Ok(Some(value)) => return Ok(Ok(Some(value))),
+                Err(ConcurrentSplit) => return Ok(Err(ConcurrentSplit)),
+                // the closure updated the `leaf_page_idx` and we need to loop around and look at the next page
+                Ok(None) => continue,
+            }
+        }
+
+        Ok(Ok(None))
+    }
+
+    #[tracing::instrument(skip(self))]
+    #[inline]
+    async fn leaf_remove(
+        &self,
+        leaf_page_idx: PageIndex,
+        key: &K,
+    ) -> Result<Result<Option<V>, ConcurrentSplit>> {
+        self.leaf_op(leaf_page_idx, |leaf| leaf.remove(key)).await
     }
 
     #[async_recursion]

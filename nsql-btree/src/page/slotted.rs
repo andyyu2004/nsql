@@ -114,6 +114,27 @@ where
         Some(&self.get_by_slot(slot).value)
     }
 
+    pub(crate) fn find_min<Q>(&self, lower_bound: &Q) -> Option<&V::Archived>
+    where
+        K::Archived: PartialOrd<Q>,
+        Q: ?Sized,
+    {
+        let mut idx = match self.slot_index_of_key(lower_bound) {
+            Ok(idx) => idx,
+            Err(idx) => idx,
+        };
+
+        while idx < self.slots.len() {
+            let slot = self.slots[idx];
+            if !slot.flags.is_deleted() {
+                return Some(&self.get_by_slot(slot).value);
+            }
+            idx += 1;
+        }
+
+        None
+    }
+
     fn values(&self) -> impl Iterator<Item = &V::Archived> + fmt::Debug {
         self.slots.iter().map(move |&slot| &self.get_by_slot(slot).value)
     }
@@ -123,8 +144,8 @@ where
         K::Archived: PartialOrd<Q>,
         Q: ?Sized,
     {
-        let offset = self.slot_index_of_key(key);
-        offset.ok().map(|offset| self.slots[offset])
+        let idx = self.slot_index_of_key(key);
+        idx.ok().map(|idx| self.slots[idx])
     }
 
     pub(crate) fn get_by_slot(&self, slot: Slot) -> &Entry<K::Archived, V::Archived> {
