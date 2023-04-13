@@ -91,7 +91,7 @@ impl<'a, K: Archive, V: Archive, X: Archive> SlottedPageView<'a, K, V, X> {
             self.header.slot_len.value() * archived_size_of!(Slot)
         );
         let adjusted_offset = adjusted_slot_offset.0.value() as usize;
-        adjusted_offset..adjusted_offset + slot.length.value() as usize
+        adjusted_offset..adjusted_offset + slot.flags.length() as usize
     }
 }
 
@@ -108,6 +108,9 @@ where
         Q: ?Sized,
     {
         let slot = self.slot_of(key)?;
+        if slot.flags.is_deleted() {
+            return None;
+        }
         Some(&self.get_by_slot(slot).value)
     }
 
@@ -333,7 +336,7 @@ where
         // copy the data in slot order into a new buffer
         for &slot in self.slots.iter() {
             let bytes = &self[slot];
-            debug_assert_eq!(bytes.len(), slot.length.value() as usize);
+            debug_assert_eq!(bytes.len(), slot.flags.length() as usize);
             new_data.extend_from_slice(bytes);
         }
 
@@ -349,7 +352,7 @@ where
         let mut offset = self.header.free_end;
         for slot in self.slots.iter_mut() {
             slot.offset = offset;
-            offset += slot.length.value();
+            offset += slot.flags.length();
         }
 
         // copy the buffer back into the page in the appropriate place
@@ -360,7 +363,7 @@ where
 
         let length = new_data.len() as u16;
         // not really a slot, but we can reuse the indexing logic to copy the data
-        let fake_slot = Slot { offset: self.header.free_end, length: length.into() };
+        let fake_slot = Slot { offset: self.header.free_end, flags: SlotFlags::new(length) };
         self[fake_slot].copy_from_slice(&new_data);
 
         #[cfg(debug_assertions)]
@@ -370,13 +373,30 @@ where
     /// Create a new slot with the given offset and length, ensuring that the slot is aligned
     /// by shifting the offset left if necessary>
     fn new_aligned_slot(&self, offset: Offset, length: u16) -> Slot {
-        Slot { offset: self.aligned_offset(offset), length: length.into() }
+        Slot { offset: self.aligned_offset(offset), flags: SlotFlags::new(length) }
     }
 
     fn aligned_offset(&self, offset: Offset) -> Offset {
-        let ptr = self[Slot { offset, length: 0.into() }].as_ptr();
+        let ptr = self[Slot { offset, flags: SlotFlags::new(0) }].as_ptr();
         let adjustment = align_archived_ptr_offset::<Entry<&K, &V>>(ptr);
         offset - adjustment as u16
+    }
+
+    pub(crate) fn remove<Q>(&mut self, key: &Q) -> Option<V>
+    where
+        K::Archived: PartialOrd<Q>,
+        Q: ?Sized,
+        V::Archived: Deserialize<V, Infallible> + fmt::Debug,
+    {
+        // FIXME reclaim the freed space
+        let idx = self.slot_index_of_key(key).ok()?;
+        self.slots[idx].flags.set_deleted();
+        let slot = self.slots[idx];
+        assert!(slot.flags.is_deleted());
+        let prev = nsql_rkyv::deserialize(unsafe {
+            &rkyv::archived_root::<Entry<&K, &V>>(&self[slot]).value
+        });
+        Some(prev)
     }
 
     unsafe fn insert_raw_inner(&mut self, serialized_entry: &[u8]) -> Result<Option<V>, PageFull>
@@ -406,11 +426,12 @@ where
                 // key already exists, overwrite the slot to point to the new value
                 cov_mark::hit!(slotted_page_insert_duplicate);
                 let prev_slot = self.slots[idx];
+
                 let prev = nsql_rkyv::deserialize(unsafe {
                     &rkyv::archived_root::<Entry<&K, &V>>(&self[prev_slot]).value
                 });
 
-                let slot = if prev_slot.length >= length {
+                let slot = if prev_slot.flags.length() >= length {
                     cov_mark::hit!(slotted_page_insert_duplicate_reuse);
                     if !naive_has_space {
                         cov_mark::hit!(slotted_page_insert_duplicate_full_reuse);
@@ -426,7 +447,7 @@ where
                     // FIXME: need to mark the previous space as free space
                     self.header.free_end -= length;
                     self.header.free_start += archived_size_of!(Slot);
-                    Slot { offset: self.header.free_end, length: length.into() }
+                    Slot { offset: self.header.free_end, flags: SlotFlags::new(length) }
                 };
 
                 self[slot].copy_from_slice(serialized_entry);
@@ -545,11 +566,48 @@ where
 pub(crate) struct Slot {
     /// The offset of the entry from the start of the page
     offset: Offset,
-    /// The length of the entry
-    // FIXME this is a large use of space for small entries
-    // is there a more efficient way to store the length (or an alternative to storing the length entirely)?
-    // FIXME use a u8 and multiple the value by some constant to get the proper offset
-    length: BigEndian<u16>,
+    flags: SlotFlags,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Archive)]
+#[archive(as = "Self")]
+#[repr(transparent)]
+pub(crate) struct SlotFlags([u8; 2]);
+
+impl SlotFlags {
+    const LENGTH_BITS: u16 = 12;
+    const LENGTH_MASK: u16 = (1 << Self::LENGTH_BITS) - 1;
+
+    const IS_DELETED_IDX: usize = 0;
+
+    fn new(length: u16) -> Self {
+        assert!(length <= 1 << Self::LENGTH_BITS, "length `{length}` is too large");
+        Self(u16::to_be_bytes(length))
+    }
+
+    const fn length(self) -> u16 {
+        let len = u16::from_be_bytes(self.0) & Self::LENGTH_MASK;
+        debug_assert!(len <= 1 << Self::LENGTH_BITS);
+        len
+    }
+
+    fn is_deleted(self) -> bool {
+        self.is_set(Self::IS_DELETED_IDX)
+    }
+
+    fn set_deleted(&mut self) {
+        self.set(Self::IS_DELETED_IDX)
+    }
+
+    fn set(&mut self, idx: usize) {
+        assert!(idx < 4, "only high 4 bits are reserved for flags");
+        self.0[0] |= 1 << (7 - idx);
+    }
+
+    fn is_set(&self, idx: usize) -> bool {
+        assert!(idx < 4, "only high 4 bits are reserved for flags");
+        self.0[0] & (1 << (7 - idx)) != 0
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Archive, rkyv::Serialize)]

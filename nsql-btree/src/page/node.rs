@@ -241,19 +241,40 @@ where
         self.node_header_mut().set_right_link(right_link);
     }
 
+    fn ensure_can_contain(&self, key: &K) -> Result<(), ConcurrentSplit>
+    where
+        K::Archived: PartialOrd<K>,
+    {
+        if !self.can_contain(key) { Err(ConcurrentSplit) } else { Ok(()) }
+    }
+
+    fn can_contain(&self, key: &K) -> bool
+    where
+        K::Archived: PartialOrd<K>,
+    {
+        match self.high_key().as_ref() {
+            Some(high_key) => high_key >= key,
+            None => true,
+        }
+    }
+
     fn insert(&mut self, key: &K, value: &V) -> Result<Result<Option<V>, PageFull>, ConcurrentSplit>
     where
         K: Serialize<DefaultSerializer>,
-        K::Archived: Deserialize<K, rkyv::Infallible> + PartialOrd<K>,
+        K::Archived: PartialOrd<K>,
         V: Serialize<DefaultSerializer>,
         V::Archived: Deserialize<V, rkyv::Infallible>,
     {
-        if let Some(high_key) = self.high_key().as_ref() {
-            if high_key < key {
-                return Err(ConcurrentSplit)?;
-            }
-        }
-
+        self.ensure_can_contain(key)?;
         Ok(self.slotted_page_mut().insert(key, value))
+    }
+
+    fn remove(&mut self, key: &K) -> Result<Option<V>, ConcurrentSplit>
+    where
+        K::Archived: PartialOrd<K>,
+        V::Archived: Deserialize<V, rkyv::Infallible>,
+    {
+        self.ensure_can_contain(key)?;
+        Ok(self.slotted_page_mut().remove(key))
     }
 }

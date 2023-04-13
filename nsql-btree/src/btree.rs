@@ -90,7 +90,7 @@ where
     #[inline]
     #[tracing::instrument]
     pub async fn insert(&self, key: &K, value: &V) -> Result<Option<V>> {
-        const MAX_ATTEMPTS: usize = 100;
+        const MAX_ATTEMPTS: usize = 5;
         for _ in 0..MAX_ATTEMPTS {
             let (leaf_idx, parents) = self.find_leaf_page_idx(key).await?;
             match self.insert_leaf(leaf_idx, &parents, key, value).await? {
@@ -106,7 +106,17 @@ where
     #[inline]
     #[tracing::instrument]
     pub async fn remove(&self, key: &K) -> Result<Option<V>> {
-        todo!()
+        const MAX_ATTEMPTS: usize = 5;
+        for _ in 0..MAX_ATTEMPTS {
+            let (leaf_idx, _parents) = self.find_leaf_page_idx(key).await?;
+            match self.remove_leaf(leaf_idx, key).await? {
+                Ok(prev) => return Ok(prev),
+                Err(ConcurrentSplit) => continue,
+            }
+        }
+
+        // FIXME need to handle this properly rather than braindead retrying
+        panic!("failed to remove after {MAX_ATTEMPTS} attempts")
     }
 
     #[async_recursion]
@@ -260,6 +270,27 @@ where
 
         self.insert_interior(parents, &sep, new_page_idx).await?;
         Ok(Ok(_prev))
+    }
+
+    #[tracing::instrument(skip(self))]
+    #[inline]
+    async fn remove_leaf(
+        &self,
+        leaf_page_idx: PageIndex,
+        key: &K,
+    ) -> Result<Result<Option<V>, ConcurrentSplit>> {
+        let leaf_handle = self.pool.load(leaf_page_idx).await?;
+        let mut leaf_guard = leaf_handle.write();
+        let view = unsafe { PageViewMut::<K, V>::view_mut(&mut leaf_guard)? };
+
+        let mut leaf = match view {
+            PageViewMut::Interior(interior) => {
+                return Ok(Err(Self::concurrent_root_split(interior)));
+            }
+            PageViewMut::Leaf(leaf) => leaf,
+        };
+
+        Ok(leaf.remove(key))
     }
 
     #[async_recursion]
