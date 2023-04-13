@@ -52,6 +52,23 @@ where
     /// The smallest/leftmost key in the node.
     fn min_key(&self) -> Option<&K::Archived>;
 
+    fn ensure_can_contain(&self, key: &K) -> Result<(), ConcurrentSplit>
+    where
+        K::Archived: PartialOrd<K>,
+    {
+        if !self.can_contain(key) { Err(ConcurrentSplit) } else { Ok(()) }
+    }
+
+    fn can_contain(&self, key: &K) -> bool
+    where
+        K::Archived: PartialOrd<K>,
+    {
+        match self.high_key().as_ref() {
+            Some(high_key) => high_key >= key,
+            None => true,
+        }
+    }
+
     fn right_link(&self) -> Option<PageIndex> {
         self.node_header().right_link()
     }
@@ -239,23 +256,6 @@ where
 
     fn set_right_link(&mut self, right_link: PageIndex) {
         self.node_header_mut().set_right_link(right_link);
-    }
-
-    fn ensure_can_contain(&self, key: &K) -> Result<(), ConcurrentSplit>
-    where
-        K::Archived: PartialOrd<K>,
-    {
-        if !self.can_contain(key) { Err(ConcurrentSplit) } else { Ok(()) }
-    }
-
-    fn can_contain(&self, key: &K) -> bool
-    where
-        K::Archived: PartialOrd<K>,
-    {
-        match self.high_key().as_ref() {
-            Some(high_key) => high_key >= key,
-            None => true,
-        }
     }
 
     fn insert(&mut self, key: &K, value: &V) -> Result<Result<Option<V>, PageFull>, ConcurrentSplit>

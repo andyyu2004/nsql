@@ -17,6 +17,8 @@ use crate::page::{
 };
 use crate::Result;
 
+const MAX_ATTEMPTS: usize = 5;
+
 /// A B+ tree
 pub struct BTree<K, V> {
     pool: Arc<dyn Pool>,
@@ -72,7 +74,16 @@ where
     #[tracing::instrument(skip(key))]
     // we instrument the key with `search_node`, we just want `self` here
     pub async fn get(&self, key: &K) -> Result<Option<V>> {
-        self.search_node(self.root_idx, key).await
+        for _ in 0..MAX_ATTEMPTS {
+            let (leaf_idx, _parents) = self.find_leaf_page_idx(key).await?;
+            match self.leaf_get(leaf_idx, key).await? {
+                Ok(prev) => return Ok(prev),
+                Err(ConcurrentSplit) => continue,
+            }
+        }
+
+        // FIXME need to handle this properly rather than braindead retrying
+        panic!("failed to remove after {MAX_ATTEMPTS} attempts")
     }
 
     #[inline]
@@ -90,10 +101,9 @@ where
     #[inline]
     #[tracing::instrument]
     pub async fn insert(&self, key: &K, value: &V) -> Result<Option<V>> {
-        const MAX_ATTEMPTS: usize = 5;
         for _ in 0..MAX_ATTEMPTS {
             let (leaf_idx, parents) = self.find_leaf_page_idx(key).await?;
-            match self.insert_leaf(leaf_idx, &parents, key, value).await? {
+            match self.leaf_insert(leaf_idx, &parents, key, value).await? {
                 Ok(prev) => return Ok(prev),
                 Err(ConcurrentSplit) => continue,
             }
@@ -106,10 +116,9 @@ where
     #[inline]
     #[tracing::instrument]
     pub async fn remove(&self, key: &K) -> Result<Option<V>> {
-        const MAX_ATTEMPTS: usize = 5;
         for _ in 0..MAX_ATTEMPTS {
             let (leaf_idx, _parents) = self.find_leaf_page_idx(key).await?;
-            match self.remove_leaf(leaf_idx, key).await? {
+            match self.leaf_remove(leaf_idx, key).await? {
                 Ok(prev) => return Ok(prev),
                 Err(ConcurrentSplit) => continue,
             }
@@ -117,36 +126,6 @@ where
 
         // FIXME need to handle this properly rather than braindead retrying
         panic!("failed to remove after {MAX_ATTEMPTS} attempts")
-    }
-
-    #[async_recursion]
-    #[tracing::instrument(skip(self))]
-    async fn search_node(&self, idx: PageIndex, key: &K) -> Result<Option<V>> {
-        let next_idx = {
-            let handle = self.pool.load(idx).await?;
-            let guard = handle.read();
-            let node = unsafe { PageView::<K, V>::view(&guard)? };
-            match node {
-                PageView::Leaf(leaf) => match leaf.get(key) {
-                    Ok(value) => return Ok(value.map(nsql_rkyv::deserialize)),
-                    // FIXME do we need to crab the locks when moving right?
-                    Err(ConcurrentSplit) => match leaf.right_link() {
-                        Some(idx) => idx,
-                        None => return Ok(None),
-                    },
-                },
-                PageView::Interior(interior) => {
-                    let child_idx = interior.search(key);
-                    assert_ne!(
-                        child_idx, idx,
-                        "child index should not be the same as parent index"
-                    );
-                    child_idx
-                }
-            }
-        };
-
-        self.search_node(next_idx, key).await
     }
 
     /// Find the leaf page that should contain the given key, and return the index of that page and
@@ -173,18 +152,10 @@ where
             match node {
                 PageView::Leaf(leaf) => {
                     tracing::trace!(?idx, ?key, "found leaf page");
-                    match leaf.high_key().as_ref() {
-                        Some(high_key) if high_key < key => {
-                            tracing::debug!(
-                                ?idx,
-                                ?high_key,
-                                ?key,
-                                "detected concurrent split when searching for leaf page to insert into"
-                            );
-                            leaf.right_link()
-                                .expect("did not have a right link when high key was set")
-                        }
-                        _ => return Ok(idx),
+                    if leaf.can_contain(key) {
+                        return Ok(idx);
+                    } else {
+                        leaf.right_link().expect("did not have a right link when high key was set")
                     }
                 }
                 PageView::Interior(interior) => {
@@ -211,7 +182,7 @@ where
 
     #[tracing::instrument(skip(self, key, value))]
     #[inline]
-    async fn insert_leaf(
+    async fn leaf_insert(
         &self,
         leaf_page_idx: PageIndex,
         parents: &[PageIndex],
@@ -268,13 +239,37 @@ where
             }
         };
 
-        self.insert_interior(parents, &sep, new_page_idx).await?;
+        self.interior_insert(parents, &sep, new_page_idx).await?;
         Ok(Ok(_prev))
     }
 
     #[tracing::instrument(skip(self))]
     #[inline]
-    async fn remove_leaf(
+    async fn leaf_get(
+        &self,
+        leaf_page_idx: PageIndex,
+        key: &K,
+    ) -> Result<Result<Option<V>, ConcurrentSplit>> {
+        let leaf_handle = self.pool.load(leaf_page_idx).await?;
+        let mut leaf_guard = leaf_handle.write();
+        let view = unsafe { PageViewMut::<K, V>::view_mut(&mut leaf_guard)? };
+
+        let leaf = match view {
+            PageViewMut::Interior(interior) => {
+                return Ok(Err(Self::concurrent_root_split(interior)));
+            }
+            PageViewMut::Leaf(leaf) => leaf,
+        };
+
+        Ok(match leaf.get(key) {
+            Ok(v) => Ok(v.map(nsql_rkyv::deserialize)),
+            Err(ConcurrentSplit) => Err(ConcurrentSplit),
+        })
+    }
+
+    #[tracing::instrument(skip(self))]
+    #[inline]
+    async fn leaf_remove(
         &self,
         leaf_page_idx: PageIndex,
         key: &K,
@@ -294,7 +289,7 @@ where
     }
 
     #[async_recursion]
-    async fn insert_interior(
+    async fn interior_insert(
         &self,
         parents: &[PageIndex],
         sep: &K,
@@ -354,7 +349,7 @@ where
         };
 
         // FIXME do we need to crab the locks when ascending?
-        self.insert_interior(parents, &sep, new_node_page_idx).await?;
+        self.interior_insert(parents, &sep, new_node_page_idx).await?;
         Ok(())
     }
 
