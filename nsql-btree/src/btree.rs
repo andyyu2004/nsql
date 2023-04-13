@@ -9,6 +9,7 @@ use nsql_buffer::Pool;
 use nsql_pager::PageIndex;
 use nsql_rkyv::DefaultSerializer;
 use rkyv::{rend, Archive, Deserialize, Serialize};
+use smallvec::SmallVec;
 use tokio::runtime::Handle;
 
 use crate::page::{
@@ -71,8 +72,7 @@ where
     }
 
     #[inline]
-    #[tracing::instrument(skip(key))]
-    // we instrument the key with `search_node`, we just want `self` here
+    #[tracing::instrument]
     pub async fn get(&self, key: &K) -> Result<Option<V>> {
         for _ in 0..MAX_ATTEMPTS {
             let (leaf_idx, _parents) = self.find_leaf_page_idx(key).await?;
@@ -83,7 +83,7 @@ where
         }
 
         // FIXME need to handle this properly rather than braindead retrying
-        panic!("failed to remove after {MAX_ATTEMPTS} attempts")
+        panic!("failed to get after {MAX_ATTEMPTS} attempts")
     }
 
     #[inline]
@@ -130,8 +130,8 @@ where
 
     /// Find the leaf page that should contain the given key, and return the index of that page and
     /// stack of parent page indices.
-    async fn find_leaf_page_idx(&self, key: &K) -> Result<(PageIndex, Vec<PageIndex>)> {
-        let mut parents = vec![];
+    async fn find_leaf_page_idx(&self, key: &K) -> Result<(PageIndex, SmallVec<[PageIndex; 4]>)> {
+        let mut parents = SmallVec::new();
         let leaf_idx = self.find_leaf_page_idx_rec(self.root_idx, key, &mut parents).await?;
         Ok((leaf_idx, parents))
     }
@@ -141,7 +141,7 @@ where
         &self,
         idx: PageIndex,
         key: &K,
-        stack: &mut Vec<PageIndex>,
+        stack: &mut SmallVec<[PageIndex; 4]>,
     ) -> Result<PageIndex> {
         tracing::trace!(?idx, ?key, "find_leaf_page_idx_rec");
         let child_idx = {
