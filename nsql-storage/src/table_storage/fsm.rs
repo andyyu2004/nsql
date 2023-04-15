@@ -89,12 +89,19 @@ impl FreeSpaceMap {
         // FIXME these assertions aren't really safe under concurrent workloads
         // FIXME these operations should be transactional
         assert!(size <= HeapTuple::MAX_SIZE);
-        let key = Key { size, unique: self.next_unique() };
-        let prior_free_space = self.tree.insert(&page_idx, &key).await?;
-        if let Some(sz) = prior_free_space {
-            assert_eq!(self.itree.remove(&sz).await?, Some(page_idx));
+        let new_key = Key { size, unique: self.next_unique() };
+        let prior_key = self.tree.insert(&page_idx, &new_key).await?;
+        assert!(
+            self.itree.insert(&new_key, &page_idx).await?.is_none(),
+            "the new_key should be unique"
+        );
+        if let Some(prior_key) = prior_key {
+            assert_eq!(
+                self.itree.remove(&prior_key).await?,
+                Some(page_idx),
+                "the prior key should exist"
+            );
         }
-        self.itree.insert(&key, &page_idx).await?;
         Ok(())
     }
 

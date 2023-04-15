@@ -8,12 +8,11 @@ use nsql_buffer::Pool;
 use nsql_core::schema::Schema;
 use nsql_pager::{PageIndex, PAGE_DATA_SIZE};
 use nsql_serde::{
-    AsyncReadExt, AsyncWriteExt, SerializeSized, StreamDeserialize, StreamDeserializeWith,
-    StreamDeserializer, StreamSerialize, StreamSerializer,
+    SerializeSized, StreamDeserialize, StreamSerializer,
 };
 use nsql_transaction::Transaction;
 
-use crate::tuple::{Tuple, TupleDeserializationContext};
+use crate::tuple::{Tuple};
 use crate::Result;
 
 pub struct TableStorage {
@@ -26,7 +25,7 @@ impl TableStorage {
         Self { pool, info }
     }
 
-    pub async fn append(&self, _tx: &Transaction, tuple: Tuple) -> nsql_serde::Result<()> {
+    pub async fn append(&self, _tx: &Transaction, _tuple: Tuple) -> nsql_serde::Result<()> {
         // let size = tuple.serialized_size().await?;
         // let idx = match self.find_free_space(size) {
         //     Some(_) => todo!(),
@@ -114,7 +113,7 @@ struct HeapTuplePageFull;
 impl HeapTuplePage {
     async fn insert_tuple(
         &mut self,
-        tuple: Tuple,
+        _tuple: Tuple,
     ) -> nsql_serde::Result<Result<Idx<Slot>, HeapTuplePageFull>> {
         todo!();
         // let length = tuple.serialized_size().await? as u16;
