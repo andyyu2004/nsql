@@ -28,6 +28,7 @@ impl Planner {
                 let source = self.plan_table_expr(source);
                 Plan::Insert { namespace, table, source, returning }
             }
+            ir::Stmt::Query(_) => todo!(),
         };
 
         Box::new(plan)
@@ -36,6 +37,7 @@ impl Planner {
     fn plan_table_expr(&self, table_expr: ir::TableExpr) -> Box<Plan> {
         let plan = match table_expr {
             ir::TableExpr::Values(values) => Plan::Values { values },
+            ir::TableExpr::Selection(sel) => todo!(),
         };
 
         Box::new(plan)

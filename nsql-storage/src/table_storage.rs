@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use nsql_buffer::Pool;
 use nsql_core::schema::Schema;
-use nsql_pager::{PageIndex, PAGE_DATA_SIZE};
+use nsql_pager::PageIndex;
 use nsql_transaction::Transaction;
 
 use self::heap::Heap;

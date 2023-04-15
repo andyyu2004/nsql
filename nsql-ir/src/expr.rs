@@ -1,15 +1,25 @@
 use std::fmt;
 
+use nsql_catalog::{Column, Namespace, Oid, Table};
 use rust_decimal::Decimal;
 
 #[derive(Debug, Clone)]
 pub enum TableExpr {
+    Selection(Vec<Expr>),
     Values(Values),
 }
 
 #[derive(Debug, Clone)]
 pub enum Expr {
     Literal(Literal),
+    ColumnRef(ColumnRef),
+}
+
+#[derive(Debug, Clone)]
+pub struct ColumnRef {
+    pub namespace: Oid<Namespace>,
+    pub table: Oid<Table>,
+    pub column: Oid<Column>,
 }
 
 #[derive(Debug, Clone)]

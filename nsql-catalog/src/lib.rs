@@ -2,10 +2,9 @@
 #![allow(incomplete_features)]
 #![deny(rust_2018_idioms)]
 
+mod entity;
 mod entry;
-mod namespace;
 mod set;
-mod table;
 
 use std::sync::Arc;
 
@@ -13,11 +12,11 @@ use nsql_core::Name;
 use nsql_transaction::Transaction;
 use thiserror::Error;
 
+pub use self::entity::namespace::{CreateNamespaceInfo, Namespace, NamespaceEntity};
+pub use self::entity::table::{Column, CreateColumnInfo, CreateTableInfo, Table};
 pub use self::entry::Oid;
-pub use self::namespace::{CreateNamespaceInfo, Namespace, NamespaceEntity};
 use self::private::CatalogEntity;
 use self::set::CatalogSet;
-pub use self::table::{CreateColumnInfo, CreateTableInfo, Table};
 
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 
@@ -43,9 +42,9 @@ impl Catalog {
 impl Container for Catalog {}
 
 pub trait Entity {
-    fn desc() -> &'static str;
+    fn name(&self) -> Name;
 
-    fn name(&self) -> &Name;
+    fn desc() -> &'static str;
 }
 
 pub trait Container {
@@ -54,7 +53,7 @@ pub trait Container {
         tx: &Transaction,
         info: T::CreateInfo,
     ) -> Result<()> {
-        T::new(info).insert(self, tx);
+        T::new(tx, info).insert(self, tx);
         Ok(())
     }
 
@@ -81,7 +80,7 @@ pub trait Container {
     fn all<'a, T: CatalogEntity<Container = Self>>(
         &'a self,
         tx: &'a Transaction,
-    ) -> Result<Vec<Arc<T>>> {
+    ) -> Result<Vec<(Oid<T>, Arc<T>)>> {
         Ok(T::all(self, tx))
     }
 }
@@ -101,7 +100,7 @@ pub(crate) mod private {
         /// extract the `CatalogSet` from the `container` for `Self`
         fn catalog_set(container: &Self::Container) -> &CatalogSet<Self>;
 
-        fn new(info: Self::CreateInfo) -> Self;
+        fn new(tx: &Transaction, info: Self::CreateInfo) -> Self;
 
         #[inline]
         fn insert(self, container: &Self::Container, tx: &Transaction) -> Oid<Self> {
@@ -128,7 +127,7 @@ pub(crate) mod private {
         }
 
         #[inline]
-        fn all(container: &Self::Container, tx: &Transaction) -> Vec<Arc<Self>> {
+        fn all(container: &Self::Container, tx: &Transaction) -> Vec<(Oid<Self>, Arc<Self>)> {
             Self::catalog_set(container).entries(tx)
         }
     }

@@ -89,11 +89,10 @@ impl<T> VersionedEntry<T> {
 }
 
 impl<T: CatalogEntity> CatalogSet<T> {
-    pub(crate) fn entries<'a>(&'a self, tx: &'a Transaction) -> Vec<Arc<T>> {
+    pub(crate) fn entries(&self, tx: &Transaction) -> Vec<(Oid<T>, Arc<T>)> {
         self.entries
             .iter()
-            .flat_map(|entry| entry.version_for_tx(tx))
-            .map(|entry| entry.item())
+            .flat_map(|entry| entry.version_for_tx(tx).map(|ent| (*entry.key(), ent.item())))
             .collect()
     }
 
@@ -111,12 +110,12 @@ impl<T: CatalogEntity> CatalogSet<T> {
 
     #[inline]
     fn create(&self, tx: &Transaction, info: T::CreateInfo) -> Oid<T> {
-        self.insert(tx, T::new(info))
+        self.insert(tx, T::new(tx, info))
     }
 
     pub(crate) fn insert(&self, tx: &Transaction, value: T) -> Oid<T> {
         let oid = self.next_oid();
-        self.name_mapping.insert(value.name().clone(), oid);
+        self.name_mapping.insert(value.name(), oid);
         self.entries.entry(oid).or_default().push_version(CatalogEntry::new(tx, value));
         oid
     }

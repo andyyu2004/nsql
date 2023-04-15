@@ -6,7 +6,8 @@ edition = "2021"
 [dependencies]
 nsql-catalog = { version = "0.1.0", path = "../nsql-catalog" }
 nsql-core = { version = "0.1.0", path = "../nsql-core" }
-nsql-ir = { version = "0.1.0", path = "../nsql-ir" }
+ir = { version = "0.1.0", path = "../nsql-ir", package = "nsql-ir" }
 nsql-parse = { version = "0.1.0", path = "../nsql-parse" }
 nsql-transaction = { version = "0.1.0", path = "../nsql-transaction" }
+rpds = "0.13.0"
 thiserror = "1"

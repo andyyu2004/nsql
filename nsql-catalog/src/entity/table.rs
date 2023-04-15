@@ -1,17 +1,21 @@
+mod column;
+
 use std::fmt;
 use std::sync::Arc;
 
-use nsql_core::schema::LogicalType;
-use nsql_serde::{StreamDeserialize, StreamSerialize};
+use nsql_serde::StreamSerialize;
 use nsql_storage::TableStorage;
+use nsql_transaction::Transaction;
 
+pub use self::column::{Column, CreateColumnInfo};
 use crate::private::CatalogEntity;
 use crate::set::CatalogSet;
-use crate::{Entity, Name, Namespace};
+use crate::{Container, Entity, Name, Namespace};
 
-#[derive(Clone, StreamSerialize)]
+#[derive(StreamSerialize)]
 pub struct Table {
     name: Name,
+    columns: CatalogSet<Column>,
     #[serde(skip)]
     storage: Arc<TableStorage>,
 }
@@ -45,17 +49,13 @@ impl fmt::Debug for CreateTableInfo {
     }
 }
 
-#[derive(Debug, Clone, StreamDeserialize)]
-pub struct CreateColumnInfo {
-    pub name: Name,
-    pub ty: LogicalType,
-}
-
 impl Entity for Table {
-    fn name(&self) -> &Name {
-        &self.name
+    #[inline]
+    fn name(&self) -> Name {
+        Name::clone(&self.name)
     }
 
+    #[inline]
     fn desc() -> &'static str {
         "table"
     }
@@ -70,7 +70,13 @@ impl CatalogEntity for Table {
         &container.tables
     }
 
-    fn new(info: Self::CreateInfo) -> Self {
-        Self { name: info.name, storage: info.storage }
+    fn new(tx: &Transaction, info: Self::CreateInfo) -> Self {
+        let columns = CatalogSet::default();
+        for column in info.columns {
+            columns.insert(tx, Column::new(tx, column));
+        }
+        Self { name: info.name, storage: info.storage, columns }
     }
 }
+
+impl Container for Table {}

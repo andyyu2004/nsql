@@ -1,4 +1,5 @@
-use nsql_serde::{StreamDeserialize, StreamDeserializer, StreamSerialize};
+use nsql_serde::{StreamDeserialize, StreamSerialize};
+use nsql_transaction::Transaction;
 
 use crate::private::CatalogEntity;
 use crate::set::CatalogSet;
@@ -16,16 +17,9 @@ impl<T: CatalogEntity<Container = Namespace>> NamespaceEntity for T {}
 
 impl Container for Namespace {}
 
-#[derive(Debug)]
+#[derive(Debug, StreamSerialize, StreamDeserialize)]
 pub struct CreateNamespaceInfo {
     pub name: Name,
-}
-
-impl StreamDeserialize for CreateNamespaceInfo {
-    async fn deserialize<D: StreamDeserializer>(de: &mut D) -> nsql_serde::Result<Self> {
-        let s = de.read_str().await?;
-        Ok(Self { name: Name::from(s.as_str()) })
-    }
 }
 
 impl CatalogEntity for Namespace {
@@ -39,21 +33,21 @@ impl CatalogEntity for Namespace {
     }
 
     #[inline]
-    fn new(info: Self::CreateInfo) -> Self {
+    fn new(_tx: &Transaction, info: Self::CreateInfo) -> Self {
         Self { name: info.name, tables: Default::default() }
     }
 }
 
 impl Entity for Namespace {
     #[inline]
+    fn name(&self) -> Name {
+        Name::clone(&self.name)
+    }
+
+    #[inline]
     fn desc() -> &'static str {
         // we still call this a "schema" in the sql world, but not internally to avoid confusion
         // with the other schema
         "schema"
-    }
-
-    #[inline]
-    fn name(&self) -> &Name {
-        &self.name
     }
 }

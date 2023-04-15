@@ -1,19 +1,22 @@
 #![deny(rust_2018_idioms)]
 
+mod scope;
+
 use std::fmt;
 use std::str::FromStr;
 
 use ir::Decimal;
 use nsql_catalog::{
-    Catalog, Container, CreateColumnInfo, Entity, Namespace, NamespaceEntity, Oid, Table,
+    Catalog, Column, Container, CreateColumnInfo, Entity, Namespace, NamespaceEntity, Oid, Table,
     DEFAULT_SCHEMA,
 };
 use nsql_core::schema::LogicalType;
 use nsql_core::Name;
-use nsql_ir as ir;
 use nsql_parse::ast::{self, HiveDistributionStyle};
 use nsql_transaction::Transaction;
 use thiserror::Error;
+
+use self::scope::Scope;
 
 pub struct Binder<'a> {
     catalog: &'a Catalog,
@@ -28,7 +31,7 @@ pub enum Error {
     #[error(transparent)]
     Catalog(#[from] nsql_catalog::Error),
 
-    #[error("unbound {kind} in `{ident}`")]
+    #[error("unbound {kind} `{ident}`")]
     Unbound { kind: &'static str, ident: Ident },
 
     #[error("{kind} already exists: `{ident}`")]
@@ -51,6 +54,11 @@ impl<'a> Binder<'a> {
     }
 
     pub fn bind(&self, stmt: &ast::Statement) -> Result<ir::Stmt> {
+        let init_scope = Scope::default();
+        self.bind_stmt(&init_scope, stmt)
+    }
+
+    fn bind_stmt(&self, scope: &Scope, stmt: &ast::Statement) -> Result<ir::Stmt> {
         let stmt = match stmt {
             ast::Statement::CreateTable {
                 or_replace,
@@ -98,7 +106,7 @@ impl<'a> Binder<'a> {
                 ensure!(on_commit.is_none());
                 ensure!(on_cluster.is_none());
 
-                let ident = self.lower_name(name)?;
+                let ident = self.lower_ident(&name.0)?;
                 match self.bind_ident::<Table>(&ident) {
                     Ok(_oid) => {
                         return Err(Error::AlreadyExists {
@@ -135,17 +143,19 @@ impl<'a> Binder<'a> {
                 ensure!(returning.is_none());
                 // ensure!(columns.is_empty());
 
-                let (namespace, table) = self.bind_name::<Table>(table_name)?;
-                let source = self.bind_query(source)?;
+                let table_name = self.lower_ident(&table_name.0)?;
+                let (namespace, table) = self.bind_namespaced_entity::<Table>(&table_name)?;
+                let source = self.bind_query(scope, source)?;
                 let returning = returning.as_ref().map(|items| {
                     items
                         .iter()
-                        .map(|selection| self.bind_select(selection))
+                        .map(|selection| self.bind_select_item(scope, selection))
                         .collect::<Result<Vec<_>>>()
                         .unwrap()
                 });
                 ir::Stmt::Insert { namespace, table, source, returning }
             }
+            ast::Statement::Query(query) => ir::Stmt::Query(self.bind_query(scope, query)?),
             _ => return Err(Error::Unimplemented("unimplemented stmt".into())),
         };
 
@@ -204,16 +214,16 @@ impl<'a> Binder<'a> {
         }
     }
 
-    fn bind_name<T: NamespaceEntity>(
+    fn bind_namespaced_entity<T: NamespaceEntity>(
         &self,
-        name: &ast::ObjectName,
+        name: &Ident,
     ) -> Result<(Oid<Namespace>, Oid<T>)> {
-        self.bind_ident(&self.lower_name(name)?)
+        self.bind_ident(name)
     }
 
-    fn lower_name(&self, name: &ast::ObjectName) -> Result<Ident> {
+    fn lower_ident(&self, name: &[ast::Ident]) -> Result<Ident> {
         // FIXME naive impl for now
-        match &name.0[..] {
+        match name {
             [] => unreachable!("empty name?"),
             [name] => Ok(Ident::Unqualified { name: name.value.as_str().into() }),
             [schema, name] => Ok(Ident::Qualified {
@@ -224,7 +234,7 @@ impl<'a> Binder<'a> {
         }
     }
 
-    fn bind_query(&self, query: &ast::Query) -> Result<ir::TableExpr> {
+    fn bind_query(&self, scope: &Scope, query: &ast::Query) -> Result<ir::TableExpr> {
         let ast::Query { with, body, order_by, limit, offset, fetch, locks } = query;
         ensure!(with.is_none());
         ensure!(order_by.is_empty());
@@ -233,15 +243,15 @@ impl<'a> Binder<'a> {
         ensure!(fetch.is_none());
         ensure!(locks.is_empty());
 
-        self.bind_table_expr(body)
+        self.bind_table_expr(scope, body)
     }
 
-    fn bind_table_expr(&self, body: &ast::SetExpr) -> Result<ir::TableExpr> {
+    fn bind_table_expr(&self, scope: &Scope, body: &ast::SetExpr) -> Result<ir::TableExpr> {
         let expr = match body {
-            ast::SetExpr::Select(_) => todo!(),
+            ast::SetExpr::Select(sel) => ir::TableExpr::Selection(self.bind_select(scope, sel)?),
             ast::SetExpr::Query(_) => todo!(),
             ast::SetExpr::SetOperation { .. } => todo!(),
-            ast::SetExpr::Values(values) => ir::TableExpr::Values(self.bind_values(values)?),
+            ast::SetExpr::Values(values) => ir::TableExpr::Values(self.bind_values(scope, values)?),
             ast::SetExpr::Insert(_) => todo!(),
             ast::SetExpr::Table(_) => todo!(),
         };
@@ -249,24 +259,99 @@ impl<'a> Binder<'a> {
         Ok(expr)
     }
 
-    fn bind_select(&self, select: &ast::SelectItem) -> Result<ir::Expr> {
-        match select {
-            ast::SelectItem::UnnamedExpr(expr) => self.bind_expr(expr),
+    fn bind_select(&self, scope: &Scope, select: &ast::Select) -> Result<Vec<ir::Expr>> {
+        let ast::Select {
+            distinct,
+            projection,
+            top,
+            into,
+            from,
+            lateral_views,
+            selection,
+            group_by,
+            cluster_by,
+            distribute_by,
+            sort_by,
+            having,
+            qualify,
+        } = select;
+        ensure!(!distinct);
+        ensure!(top.is_none());
+        ensure!(into.is_none());
+        ensure!(lateral_views.is_empty());
+        ensure!(selection.is_none());
+        ensure!(group_by.is_empty());
+        ensure!(cluster_by.is_empty());
+        ensure!(distribute_by.is_empty());
+        ensure!(sort_by.is_empty());
+        ensure!(having.is_none());
+        ensure!(qualify.is_none());
+
+        let scope = match &from[..] {
+            [] => scope.clone(),
+            [table] => self.bind_tables(scope, table)?,
+            _ => todo!(),
+        };
+
+        projection.iter().map(|item| self.bind_select_item(&scope, item)).collect()
+    }
+
+    fn bind_tables(&self, scope: &Scope, tables: &ast::TableWithJoins) -> Result<Scope> {
+        ensure!(tables.joins.is_empty());
+        let table = &tables.relation;
+        match table {
+            ast::TableFactor::Table { name, alias, args, with_hints } => {
+                ensure!(args.is_none());
+                ensure!(with_hints.is_empty());
+                ensure!(alias.is_none());
+
+                let (name, (namespace_oid, table_oid)) = self.bind_table(name)?;
+                let namespace = self.catalog.get(self.tx, namespace_oid)?.unwrap();
+                let table = namespace.get(self.tx, table_oid)?.unwrap();
+                let columns = table.all::<Column>(self.tx)?;
+                Ok(scope.bind_table(name, (namespace_oid, table_oid), columns))
+            }
+            ast::TableFactor::Derived { .. } => todo!(),
+            ast::TableFactor::TableFunction { .. } => todo!(),
+            ast::TableFactor::UNNEST { .. } => todo!(),
+            ast::TableFactor::NestedJoin { .. } => todo!(),
+        }
+    }
+
+    fn bind_table(
+        &self,
+        table_name: &ast::ObjectName,
+    ) -> Result<(Ident, (Oid<Namespace>, Oid<Table>))> {
+        let table_name = self.lower_ident(&table_name.0)?;
+        let bound = self.bind_namespaced_entity::<Table>(&table_name)?;
+        Ok((table_name, bound))
+    }
+
+    fn bind_select_item(&self, scope: &Scope, item: &ast::SelectItem) -> Result<ir::Expr> {
+        match item {
+            ast::SelectItem::UnnamedExpr(expr) => self.bind_expr(scope, expr),
             _ => todo!(),
         }
     }
 
-    fn bind_values(&self, values: &ast::Values) -> Result<ir::Values> {
-        values.rows.iter().map(|row| self.bind_row(row)).collect()
+    fn bind_values(&self, scope: &Scope, values: &ast::Values) -> Result<ir::Values> {
+        values.rows.iter().map(|row| self.bind_row(scope, row)).collect()
     }
 
-    fn bind_row(&self, row: &[ast::Expr]) -> Result<Vec<ir::Expr>> {
-        row.iter().map(|expr| self.bind_expr(expr)).collect()
+    fn bind_row(&self, scope: &Scope, row: &[ast::Expr]) -> Result<Vec<ir::Expr>> {
+        row.iter().map(|expr| self.bind_expr(scope, expr)).collect()
     }
 
-    fn bind_expr(&self, expr: &ast::Expr) -> Result<ir::Expr> {
+    fn bind_expr(&self, scope: &Scope, expr: &ast::Expr) -> Result<ir::Expr> {
         let expr = match expr {
             ast::Expr::Value(literal) => ir::Expr::Literal(self.bind_literal(literal)),
+            ast::Expr::Identifier(ident) => ir::Expr::ColumnRef(
+                scope.lookup_column(&Ident::Unqualified { name: ident.value.clone().into() })?,
+            ),
+            ast::Expr::CompoundIdentifier(ident) => {
+                let ident = self.lower_ident(ident)?;
+                ir::Expr::ColumnRef(scope.lookup_column(&ident)?)
+            }
             _ => todo!(),
         };
         Ok(expr)
@@ -294,7 +379,7 @@ impl<'a> Binder<'a> {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Ident {
     Qualified { schema: Name, name: Name },
     Unqualified { name: Name },

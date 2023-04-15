@@ -1,6 +1,6 @@
 use std::sync::OnceLock;
 
-use nsql_serde::{StreamDeserialize, StreamDeserializer};
+use nsql_serde::{StreamDeserialize, StreamDeserializer, StreamSerialize, StreamSerializer};
 
 use crate::Name;
 
@@ -43,6 +43,12 @@ pub enum LogicalType {
     Bool,
     Int,
     Decimal,
+}
+
+impl StreamSerialize for LogicalType {
+    async fn serialize<S: StreamSerializer>(&self, _ser: &mut S) -> nsql_serde::Result<()> {
+        todo!()
+    }
 }
 
 impl StreamDeserialize for LogicalType {

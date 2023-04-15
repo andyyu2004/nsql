@@ -20,6 +20,7 @@ impl Evaluator {
                 nsql_ir::Literal::Bool(b) => Value::Literal(Literal::Bool(*b)),
                 nsql_ir::Literal::Decimal(d) => Value::Literal(Literal::Decimal(*d)),
             },
+            Expr::ColumnRef { .. } => todo!(),
         }
     }
 }
