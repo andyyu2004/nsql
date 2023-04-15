@@ -55,7 +55,7 @@ impl Page {
         let idx = self.page_idx();
         let bytes = self.bytes.write();
         tracing::trace!(?idx, "write-lock page");
-        PageWriteGuard { idx, bytes }
+        PageWriteGuard { page_idx: idx, bytes }
     }
 
     #[inline]
@@ -202,16 +202,21 @@ where
     }
 }
 
-#[derive(Debug)]
 pub struct PageWriteGuard<'a> {
-    idx: PageIndex,
+    page_idx: PageIndex,
     bytes: RwLockWriteGuard<'a, [u8; PAGE_SIZE]>,
+}
+
+impl fmt::Debug for PageWriteGuard<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("PageWriteGuard").field("page_idx", &self.page_idx).finish_non_exhaustive()
+    }
 }
 
 impl<'a> PageWriteGuard<'a> {
     #[inline]
     pub fn page_idx(&self) -> PageIndex {
-        self.idx
+        self.page_idx
     }
 }
 

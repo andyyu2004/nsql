@@ -165,7 +165,6 @@ where
             let handle = self.pool.load(idx).await?;
             let guard = handle.read();
             let node = unsafe { PageView::<K, V>::view(&guard)? };
-            tracing::trace!(?idx, ?key, "found leaf page");
             match node {
                 PageView::Leaf(leaf) => {
                     tracing::trace!(?idx, ?key, "found leaf page");
@@ -339,6 +338,7 @@ where
         leaf_page_idx: PageIndex,
         key: &K,
     ) -> Result<Result<Option<V>, ConcurrentSplit>> {
+        tracing::trace!(?leaf_page_idx, ?key, "removing value from leaf page");
         self.leaf_op(leaf_page_idx, |leaf| leaf.remove(key)).await
     }
 

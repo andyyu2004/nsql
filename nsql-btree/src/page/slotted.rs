@@ -116,7 +116,8 @@ where
 
     pub(crate) fn find_min<Q>(&self, lower_bound: &Q) -> Option<&V::Archived>
     where
-        K::Archived: PartialOrd<Q>,
+        K::Archived: PartialOrd<Q> + fmt::Debug,
+        V::Archived: fmt::Debug,
         Q: ?Sized,
     {
         let mut idx = match self.slot_index_of_key(lower_bound) {
@@ -126,6 +127,8 @@ where
 
         while idx < self.slots.len() {
             let slot = self.slots[idx];
+            dbg!(slot);
+            dbg!(self.get_by_slot(slot));
             if !slot.flags.is_deleted() {
                 return Some(&self.get_by_slot(slot).value);
             }
@@ -353,6 +356,7 @@ where
 
     /// Defragment the slotted page by rewriting all the data in slot order with no gaps
     fn defragment(&mut self) {
+        tracing::debug!("defragmenting page");
         let mut new_data = Vec::with_capacity(self.data.len());
         // copy the data in slot order into a new buffer
         for &slot in self.slots.iter() {
@@ -411,6 +415,10 @@ where
     {
         // FIXME reclaim the freed space
         let idx = self.slot_index_of_key(key).ok()?;
+        if self.slots[idx].flags.is_deleted() {
+            // key is already deleted
+            return None;
+        }
         self.slots[idx].flags.set_deleted();
         let slot = self.slots[idx];
         assert!(slot.flags.is_deleted());
@@ -590,10 +598,19 @@ pub(crate) struct Slot {
     flags: SlotFlags,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Archive)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Archive)]
 #[archive(as = "Self")]
 #[repr(transparent)]
 pub(crate) struct SlotFlags([u8; 2]);
+
+impl fmt::Debug for SlotFlags {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("SlotFlags")
+            .field("length", &self.length())
+            .field("is_deleted", &self.is_deleted())
+            .finish()
+    }
+}
 
 impl SlotFlags {
     const LENGTH_BITS: u16 = 12;
@@ -622,7 +639,10 @@ impl SlotFlags {
 
     fn set(&mut self, idx: usize) {
         assert!(idx < 4, "only high 4 bits are reserved for flags");
+        let prev_len = self.length();
         self.0[0] |= 1 << (7 - idx);
+        debug_assert_eq!(prev_len, self.length(), "setting flag changed the length");
+        debug_assert!(self.is_set(idx), "setting flag failed");
     }
 
     fn is_set(&self, idx: usize) -> bool {

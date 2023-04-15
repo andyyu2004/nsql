@@ -34,3 +34,25 @@ fn test_btree_find_min_after_removal() -> Result<()> {
         Ok(())
     })
 }
+
+#[test]
+#[tracing_test::traced_test]
+fn test_btree_find_min_after_removal_multipage() -> Result<()> {
+    nsql_test::start(async {
+        let pool = mk_fast_mem_buffer_pool!();
+        let btree = BTree::initialize(pool).await?;
+
+        const N: u32 = 340;
+
+        for i in (0..N).rev() {
+            assert!(btree.insert(&i, &i).await?.is_none());
+            assert_eq!(btree.find_min(&i).await?, Some(i));
+            if i == 3 {
+                dbg!("hi");
+            }
+            assert_eq!(btree.remove(&i).await?, Some(i));
+            assert!(btree.find_min(&i).await?.is_none(), "i={}", i);
+        }
+        Ok(())
+    })
+}
