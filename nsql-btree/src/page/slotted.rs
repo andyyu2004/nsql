@@ -411,12 +411,12 @@ where
 
         // reshuffle `slots` and `data` (opposite of what is done in `insert`)
         self.header.slot_len -= 1;
-        let ptr;
-        (self.slots, ptr) =
+        let data;
+        (self.slots, data) =
             mem::take(&mut self.slots).split_at_mut(self.header.slot_len.value() as usize);
         self.header.free_start -= archived_size_of!(Slot);
         let new_data_len = self.data.len() + archived_size_of!(Slot) as usize;
-        self.data = unsafe { slice::from_raw_parts_mut(ptr.as_ptr() as *mut u8, new_data_len) };
+        self.data = unsafe { slice::from_raw_parts_mut(data.as_ptr() as *mut u8, new_data_len) };
         Some(prev)
     }
 

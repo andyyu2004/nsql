@@ -1,5 +1,3 @@
-mod fsm_page;
-
 use std::fmt;
 use std::sync::Arc;
 
@@ -130,6 +128,3 @@ impl FreeSpaceMap {
 
 #[cfg(test)]
 mod tests;
-
-#[cfg(test)]
-mod fsm_page_tests;

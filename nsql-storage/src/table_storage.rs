@@ -7,12 +7,10 @@ use nsql_arena::{Arena, Idx};
 use nsql_buffer::Pool;
 use nsql_core::schema::Schema;
 use nsql_pager::{PageIndex, PAGE_DATA_SIZE};
-use nsql_serde::{
-    SerializeSized, StreamDeserialize, StreamSerializer,
-};
+use nsql_serde::{SerializeSized, StreamDeserialize, StreamSerializer};
 use nsql_transaction::Transaction;
 
-use crate::tuple::{Tuple};
+use crate::tuple::Tuple;
 use crate::Result;
 
 pub struct TableStorage {
