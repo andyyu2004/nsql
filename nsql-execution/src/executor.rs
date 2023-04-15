@@ -1,9 +1,7 @@
 use std::sync::Arc;
 
 use nsql_arena::Idx;
-use nsql_catalog::Catalog;
 use nsql_storage::tuple::Tuple;
-use nsql_transaction::Transaction;
 use parking_lot::RwLock;
 
 use crate::physical_plan::PhysicalPlan;
@@ -53,25 +51,22 @@ impl Executor {
 }
 
 async fn execute_meta_pipeline(
-    tx: &Transaction,
-    catalog: &Catalog,
+    ctx: &ExecutionContext<'_>,
     arena: PipelineArena,
     root: Idx<MetaPipeline>,
 ) -> ExecutionResult<()> {
-    let ctx = ExecutionContext::new(tx, catalog);
     let executor = Executor { arena };
-    executor.execute(&ctx, root).await
+    executor.execute(ctx, root).await
 }
 
 pub async fn execute(
-    tx: &Transaction,
-    catalog: &Catalog,
+    ctx: &ExecutionContext<'_>,
     plan: PhysicalPlan,
 ) -> ExecutionResult<Vec<Tuple>> {
     let sink = Arc::new(OutputSink::default());
     let (arena, root) = build_pipelines(Arc::clone(&sink) as Arc<dyn PhysicalSink>, plan);
 
-    execute_meta_pipeline(tx, catalog, arena, root.cast()).await?;
+    execute_meta_pipeline(ctx, arena, root.cast()).await?;
 
     Ok(Arc::try_unwrap(sink).expect("should be last reference").tuples.into_inner())
 }

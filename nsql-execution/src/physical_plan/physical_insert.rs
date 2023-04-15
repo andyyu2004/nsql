@@ -12,7 +12,7 @@ pub(crate) struct PhysicalInsert {
 }
 
 impl PhysicalInsert {
-    pub fn make(
+    pub fn plan(
         schema: Oid<Namespace>,
         table: Oid<Table>,
         source: Arc<dyn PhysicalNode>,
@@ -62,7 +62,7 @@ impl PhysicalSink for PhysicalInsert {
 #[async_trait::async_trait]
 impl PhysicalSource for PhysicalInsert {
     async fn source(&self, _ctx: &ExecutionContext<'_>) -> ExecutionResult<Option<Tuple>> {
-        todo!()
+        if self.returning.is_some() { todo!() } else { Ok(None) }
     }
 
     fn estimated_cardinality(&self) -> usize {

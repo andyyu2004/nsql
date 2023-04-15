@@ -18,9 +18,9 @@ pub type DefaultSerializer =
     CompositeSerializer<AlignedSerializer<AlignedVec>, AllocScratch, Infallible>;
 
 #[inline]
-pub fn deserialize<A, T>(archived: &A) -> T
+pub fn deserialize<T: Archive>(archived: &T::Archived) -> T
 where
-    A: Deserialize<T, Infallible> + ?Sized,
+    T::Archived: Deserialize<T, Infallible>,
 {
     archived.deserialize(&mut Infallible).unwrap()
 }

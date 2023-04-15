@@ -9,7 +9,7 @@ use nsql_bind::Binder;
 use nsql_buffer::{BufferPool, Pool};
 use nsql_catalog::Catalog;
 use nsql_core::schema::LogicalType;
-use nsql_execution::PhysicalPlanner;
+use nsql_execution::{ExecutionContext, PhysicalPlanner};
 use nsql_opt::optimize;
 use nsql_pager::{InMemoryPager, Pager, SingleFilePager};
 use nsql_plan::Planner;
@@ -50,7 +50,8 @@ impl Nsql {
         let plan = optimize(plan);
 
         let physical_plan = PhysicalPlanner::new(Arc::clone(&self.inner.buffer_pool)).plan(&plan);
-        let tuples = nsql_execution::execute(&tx, catalog, physical_plan).await?;
+        let ctx = ExecutionContext::new(Arc::clone(&self.inner.buffer_pool), &tx, catalog);
+        let tuples = nsql_execution::execute(&ctx, physical_plan).await?;
 
         tx.commit().await;
 

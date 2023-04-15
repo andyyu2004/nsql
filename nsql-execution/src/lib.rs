@@ -11,6 +11,7 @@ use std::{fmt, io};
 
 use error_stack::Report;
 use nsql_arena::Idx;
+use nsql_buffer::Pool;
 use nsql_catalog::Catalog;
 use nsql_storage::tuple::Tuple;
 use nsql_transaction::Transaction;
@@ -116,14 +117,21 @@ trait PhysicalSink: PhysicalSource {
     async fn sink(&self, ctx: &ExecutionContext<'_>, tuple: Tuple) -> ExecutionResult<()>;
 }
 
-struct ExecutionContext<'a> {
+pub struct ExecutionContext<'a> {
+    pool: Arc<dyn Pool>,
     tx: &'a Transaction,
     catalog: &'a Catalog,
 }
 
 impl<'a> ExecutionContext<'a> {
-    pub fn new(tx: &'a Transaction, catalog: &'a Catalog) -> Self {
-        Self { tx, catalog }
+    #[inline]
+    pub fn new(pool: Arc<dyn Pool>, tx: &'a Transaction, catalog: &'a Catalog) -> Self {
+        Self { pool, tx, catalog }
+    }
+
+    #[inline]
+    pub fn pool(&self) -> Arc<dyn Pool> {
+        Arc::clone(&self.pool)
     }
 
     #[inline]

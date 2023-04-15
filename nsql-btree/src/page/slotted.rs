@@ -231,7 +231,7 @@ impl<'a, K: Archive, V: Archive, X: Serialize<nsql_rkyv::DefaultSerializer>>
     SlottedPageViewMut<'a, K, V, X>
 {
     /// slot offsets are relative to the initial value of `free_start`
-    pub(crate) fn init(buf: &'a mut [u8], extra: X) -> SlottedPageViewMut<'a, K, V, X> {
+    pub(crate) fn initialize(buf: &'a mut [u8], extra: X) -> SlottedPageViewMut<'a, K, V, X> {
         let extra_bytes = nsql_rkyv::to_bytes(&extra);
 
         let mut extra_start = buf.len() - extra_bytes.len();
@@ -616,18 +616,19 @@ impl SlotFlags {
         len
     }
 
-    fn set(&mut self, idx: usize) {
-        assert!(idx < 4, "only high 4 bits are reserved for flags");
-        let prev_len = self.length();
-        self.0[0] |= 1 << (7 - idx);
-        debug_assert_eq!(prev_len, self.length(), "setting flag changed the length");
-        debug_assert!(self.is_set(idx), "setting flag failed");
-    }
-
-    fn is_set(&self, idx: usize) -> bool {
-        assert!(idx < 4, "only high 4 bits are reserved for flags");
-        self.0[0] & (1 << (7 - idx)) != 0
-    }
+    // can reuse this code when there are flags again
+    // fn set(&mut self, idx: usize) {
+    //     assert!(idx < 4, "only high 4 bits are reserved for flags");
+    //     let prev_len = self.length();
+    //     self.0[0] |= 1 << (7 - idx);
+    //     debug_assert_eq!(prev_len, self.length(), "setting flag changed the length");
+    //     debug_assert!(self.is_set(idx), "setting flag failed");
+    // }
+    //
+    // fn is_set(&self, idx: usize) -> bool {
+    //     assert!(idx < 4, "only high 4 bits are reserved for flags");
+    //     self.0[0] & (1 << (7 - idx)) != 0
+    // }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Archive, rkyv::Serialize)]

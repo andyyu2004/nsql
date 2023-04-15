@@ -135,7 +135,7 @@ where
         Q: ?Sized + fmt::Debug,
     {
         self.ensure_can_contain(lower_bound)?;
-        Ok(self.slotted_page.find_min(lower_bound) )
+        Ok(self.slotted_page.find_min(lower_bound))
     }
 }
 
@@ -265,7 +265,7 @@ where
         let header = unsafe { nsql_rkyv::archived_root_mut::<LeafPageHeader>(header_bytes) };
         header.check_magic().expect("sanity check");
 
-        let slotted_page = SlottedPageViewMut::init(data, LeafExtra { high_key: None });
+        let slotted_page = SlottedPageViewMut::initialize(data, LeafExtra { high_key: None });
 
         LeafPageViewMut { page_header, header, slotted_page }
     }

@@ -1,15 +1,16 @@
-use std::fmt;
 use std::sync::Arc;
+use std::{fmt, io};
 
 use nsql_btree::{BTree, Min};
 use nsql_buffer::{BufferHandle, Pool};
 use nsql_pager::{PageIndex, PageWriteGuard};
 use rkyv::{Archive, Deserialize, Serialize};
 
-use crate::table_storage::HeapTuple;
+const FSM_MAGIC: [u8; 4] = *b"FSMM";
 
 #[derive(Debug, Archive, Serialize)]
 struct FsmMeta {
+    magic: [u8; 4],
     tree_root_page: PageIndex,
     itree_root_page: PageIndex,
     unique: u64,
@@ -51,6 +52,7 @@ impl FreeSpaceMap {
             tree_root_page: tree.root_page(),
             itree_root_page: itree.root_page(),
             unique: 0,
+            magic: FSM_MAGIC,
         };
 
         let mut guard = meta_page.write();
@@ -67,6 +69,10 @@ impl FreeSpaceMap {
         let guard = meta_page.read();
         let (meta_bytes, _) = guard.split_array_ref();
         let meta = unsafe { nsql_rkyv::archived_root::<FsmMeta>(meta_bytes) };
+        if meta.magic != FSM_MAGIC {
+            Err(io::Error::new(io::ErrorKind::InvalidData, "invalid fsm magic"))?;
+        }
+
         let tree = BTree::load(Arc::clone(&pool), meta.tree_root_page.into()).await?;
         let itree = BTree::load(pool, meta.itree_root_page.into()).await?;
         drop(guard);
@@ -78,7 +84,6 @@ impl FreeSpaceMap {
     #[tracing::instrument]
     pub async fn find(&self, required_size: u16) -> nsql_buffer::Result<Option<PageIndex>> {
         assert!(required_size > 0);
-        assert!(required_size <= HeapTuple::MAX_SIZE);
         self.itree.find_min(&Key { size: required_size, unique: Min::MIN }).await
     }
 
@@ -90,7 +95,6 @@ impl FreeSpaceMap {
         let page_idx = guard.page_idx();
         // FIXME these assertions aren't really safe under concurrent workloads
         // FIXME these operations should be transactional
-        assert!(size <= HeapTuple::MAX_SIZE);
         let new_key = Key { size, unique: self.next_unique() };
         let prior_key = self.tree.insert(&page_idx, &new_key).await?;
         assert!(
@@ -115,6 +119,11 @@ impl FreeSpaceMap {
             );
         }
         Ok(())
+    }
+
+    #[inline]
+    pub fn meta_page_idx(&self) -> PageIndex {
+        self.meta_page_idx
     }
 
     fn next_unique(&self) -> u64 {

@@ -11,27 +11,14 @@ use super::*;
 pub struct PhysicalCreateTable {
     finished: AtomicBool,
     namespace: Oid<Namespace>,
-    info: CreateTableInfo,
+    info: nsql_ir::CreateTableInfo,
 }
 
 impl PhysicalCreateTable {
-    pub(crate) fn make(
-        pool: Arc<dyn Pool>,
+    pub(crate) fn plan(
         namespace: Oid<Namespace>,
         info: nsql_ir::CreateTableInfo,
     ) -> Arc<dyn PhysicalNode> {
-        let attrs = info
-            .columns
-            .iter()
-            .map(|c| Attribute::new(c.name.clone(), c.ty.clone()))
-            .collect::<Vec<_>>();
-
-        let schema = Arc::new(Schema::new(attrs));
-        let info = CreateTableInfo {
-            name: info.name,
-            columns: info.columns,
-            storage: Arc::new(TableStorage::new(pool, TableStorageInfo::create(schema))),
-        };
         Arc::new(Self { finished: AtomicBool::new(false), namespace, info })
     }
 }
@@ -65,11 +52,27 @@ impl PhysicalSource for PhysicalCreateTable {
             return Ok(None);
         }
 
+        let attrs = self
+            .info
+            .columns
+            .iter()
+            .map(|c| Attribute::new(c.name.clone(), c.ty.clone()))
+            .collect::<Vec<_>>();
+        let schema = Arc::new(Schema::new(attrs));
+
+        let info = CreateTableInfo {
+            name: self.info.name.clone(),
+            columns: self.info.columns.clone(),
+            storage: Arc::new(
+                TableStorage::initialize(ctx.pool(), TableStorageInfo::create(schema)).await?,
+            ),
+        };
+
         let catalog = ctx.catalog();
         let schema = catalog
             .get::<Namespace>(ctx.tx(), self.namespace)?
             .expect("schema not found during execution");
-        schema.create::<Table>(ctx.tx(), self.info.clone())?;
+        schema.create::<Table>(ctx.tx(), info)?;
 
         Ok(None)
     }
