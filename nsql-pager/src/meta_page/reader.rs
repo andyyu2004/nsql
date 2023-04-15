@@ -59,7 +59,7 @@ impl<P: Pager> AsyncRead for MetaPageReader<'_, P> {
                     self.state = State::Read { page, byte_index: 0 };
                 }
                 State::Read { page, byte_index } => {
-                    let view = page.read();
+                    let view = tokio::task::block_in_place(|| page.blocking_read());
                     let data = &view[mem::size_of::<PageIndex>() + *byte_index..];
                     let amt = cmp::min(data.len(), buf.remaining());
                     buf.put_slice(&data[..amt]);

@@ -63,7 +63,7 @@ impl<'a, P: Pager> AsyncWrite for MetaPageWriter<'a, P> {
                 State::PollNext { read_page_fut } => {
                     let page = try_io!(ready!(read_page_fut.as_mut().poll(cx)));
                     // initialize the next page index to invalid so the reader knows won't accidentally keep reading forever
-                    let mut view = page.write();
+                    let mut view = tokio::task::block_in_place(|| page.blocking_write());
                     view[..].as_mut().put_u32(PageIndex::INVALID.as_u32());
                     drop(view);
                     self.state =
@@ -71,7 +71,8 @@ impl<'a, P: Pager> AsyncWrite for MetaPageWriter<'a, P> {
                 }
                 State::Write { page, byte_index } => {
                     let amt = cmp::min(buf.len(), PAGE_DATA_SIZE - *byte_index);
-                    let mut view = page.as_ref().unwrap().write();
+                    let mut view =
+                        tokio::task::block_in_place(|| page.as_ref().unwrap().blocking_write());
                     view[*byte_index..*byte_index + amt].copy_from_slice(&buf[..amt]);
                     debug_assert_eq!(view[*byte_index..*byte_index + amt], buf[..amt]);
                     drop(view);
@@ -90,7 +91,7 @@ impl<'a, P: Pager> AsyncWrite for MetaPageWriter<'a, P> {
                     let next_page_idx = try_io!(ready!(alloc_fut.as_mut().poll(cx)));
 
                     let page = page.take().unwrap();
-                    let mut view = page.write();
+                    let mut view = tokio::task::block_in_place(|| page.blocking_write());
                     view[..].as_mut().put_u32(next_page_idx.as_u32());
                     drop(view);
 
@@ -120,7 +121,7 @@ impl<'a, P: Pager> AsyncWrite for MetaPageWriter<'a, P> {
             match &mut self.state {
                 State::PollNext { read_page_fut } => {
                     let page = try_io!(ready!(read_page_fut.as_mut().poll(cx)));
-                    let mut view = page.write();
+                    let mut view = tokio::task::block_in_place(|| page.blocking_write());
                     view[..].as_mut().put_u32(PageIndex::INVALID.as_u32());
                     drop(view);
                     self.state = State::PollWrite {

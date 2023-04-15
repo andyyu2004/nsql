@@ -55,7 +55,7 @@ impl FreeSpaceMap {
             magic: FSM_MAGIC,
         };
 
-        let mut guard = meta_page.write();
+        let mut guard = meta_page.write().await;
         let bytes = nsql_rkyv::to_bytes(&meta);
         guard[..bytes.len()].copy_from_slice(&bytes);
         drop(guard);
@@ -66,7 +66,7 @@ impl FreeSpaceMap {
     #[tracing::instrument(skip(pool))]
     pub async fn load(pool: Arc<dyn Pool>, meta_page_idx: PageIndex) -> nsql_buffer::Result<Self> {
         let meta_page = pool.load(meta_page_idx).await?;
-        let guard = meta_page.read();
+        let guard = meta_page.read().await;
         let (meta_bytes, _) = guard.split_array_ref();
         let meta = unsafe { nsql_rkyv::archived_root::<FsmMeta>(meta_bytes) };
         if meta.magic != FSM_MAGIC {
@@ -95,7 +95,7 @@ impl FreeSpaceMap {
         let page_idx = guard.page_idx();
         // FIXME these assertions aren't really safe under concurrent workloads
         // FIXME these operations should be transactional
-        let new_key = Key { size, unique: self.next_unique() };
+        let new_key = Key { size, unique: self.next_unique().await };
         let prior_key = self.tree.insert(&page_idx, &new_key).await?;
         assert!(
             self.itree.insert(&new_key, &page_idx).await?.is_none(),
@@ -126,8 +126,8 @@ impl FreeSpaceMap {
         self.meta_page_idx
     }
 
-    fn next_unique(&self) -> u64 {
-        let mut guard = self.meta_page.write();
+    async fn next_unique(&self) -> u64 {
+        let mut guard = self.meta_page.write().await;
         let (meta_bytes, _) = guard.split_array_mut();
         let mut meta = unsafe { nsql_rkyv::archived_root_mut::<FsmMeta>(meta_bytes) };
         meta.unique += 1;

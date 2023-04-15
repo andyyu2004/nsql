@@ -53,7 +53,7 @@ where
     #[inline]
     pub async fn initialize(pool: Arc<dyn Pool>) -> Result<Self> {
         let handle = pool.alloc().await?;
-        let mut guard = handle.write();
+        let mut guard = handle.write().await;
 
         let _root = LeafPageViewMut::<K, V>::initialize_root(&mut guard);
 
@@ -163,7 +163,7 @@ where
         tracing::trace!(?idx, ?key, "find_leaf_page_idx_rec");
         let child_idx = {
             let handle = self.pool.load(idx).await?;
-            let guard = handle.read();
+            let guard = handle.read().await;
             let node = unsafe { PageView::<K, V>::view(&guard)? };
             match node {
                 PageView::Leaf(leaf) => {
@@ -207,7 +207,7 @@ where
     ) -> Result<Result<Option<V>, ConcurrentSplit>> {
         let (_prev, sep, new_page_idx) = {
             let leaf_handle = self.pool.load(leaf_page_idx).await?;
-            let mut leaf_guard = leaf_handle.write();
+            let mut leaf_guard = leaf_handle.write().await;
             let view = unsafe { PageViewMut::<K, V>::view_mut(&mut leaf_guard)? };
 
             let mut leaf = match view {
@@ -229,6 +229,7 @@ where
                         cov_mark::hit!(root_leaf_split);
                         return self
                             .split_root_and_insert::<LeafPageViewMut<'_, K, V>, _>(leaf, key, value)
+                            .await
                             .map(Ok);
                     } else {
                         cov_mark::hit!(non_root_leaf_split);
@@ -240,15 +241,19 @@ where
                                 })
                             })
                             .transpose()?;
-                        let right_guard =
-                            right_handle.as_ref().map(|right_page| right_page.write());
+
+                        let right_guard = match right_handle.as_ref() {
+                            Some(right_handle) => Some(right_handle.write().await),
+                            None => None,
+                        };
 
                         self.split_non_root::<LeafPageViewMut<'_, K, V>, _>(
                             leaf_guard,
                             right_guard,
                             key,
                             value,
-                        )?
+                        )
+                        .await?
                     }
                 }
                 Err(ConcurrentSplit) => return Ok(Err(ConcurrentSplit)),
@@ -265,7 +270,7 @@ where
         f: impl FnOnce(&mut LeafPageViewMut<'_, K, V>) -> Result<R, ConcurrentSplit>,
     ) -> Result<Result<R, ConcurrentSplit>> {
         let leaf_handle = self.pool.load(leaf_page_idx).await?;
-        let mut leaf_guard = leaf_handle.write();
+        let mut leaf_guard = leaf_handle.write().await;
         let view = unsafe { PageViewMut::<K, V>::view_mut(&mut leaf_guard)? };
 
         let mut leaf = match view {
@@ -355,7 +360,7 @@ where
         let (_prev, sep, new_node_page_idx) = {
             let parent_page = self.pool.load(parent_idx).await?;
 
-            let mut parent_guard = parent_page.write();
+            let mut parent_guard = parent_page.write().await;
             let parent_view = unsafe { PageViewMut::<K, V>::view_mut(&mut parent_guard)? };
             let mut parent = match parent_view {
                 PageViewMut::Interior(interior) => interior,
@@ -374,7 +379,8 @@ where
                         cov_mark::hit!(root_interior_split);
                         self.split_root_and_insert::<InteriorPageViewMut<'_, K>, _>(
                             parent, sep, &child_idx,
-                        )?;
+                        )
+                        .await?;
                         return Ok(());
                     } else {
                         cov_mark::hit!(non_root_interior_split);
@@ -387,15 +393,19 @@ where
                                 })
                             })
                             .transpose()?;
-                        let right_guard =
-                            right_handle.as_ref().map(|right_page| right_page.write());
+
+                        let right_guard = match right_handle.as_ref() {
+                            Some(right_handle) => Some(right_handle.write().await),
+                            None => None,
+                        };
 
                         self.split_non_root::<InteriorPageViewMut<'_, K>, _>(
                             parent_guard,
                             right_guard,
                             sep,
                             &child_idx,
-                        )?
+                        )
+                        .await?
                     }
                 }
                 Err(ConcurrentSplit) => todo!(),
@@ -407,7 +417,7 @@ where
         Ok(())
     }
 
-    fn split_non_root<N, T>(
+    async fn split_non_root<N, T>(
         &self,
         mut old_guard: nsql_pager::PageWriteGuard<'_>,
         mut prev_right_guard: Option<nsql_pager::PageWriteGuard<'_>>,
@@ -431,7 +441,7 @@ where
         let new_page =
             tokio::task::block_in_place(|| Handle::current().block_on(self.pool.alloc()))?;
         tracing::debug!(new_page_idx = ?new_page.page_idx(), "allocated new page for split");
-        let mut new_guard = new_page.page().write();
+        let mut new_guard = new_page.page().write().await;
         let new_node_page_idx = new_guard.page_idx();
         let mut new_node = N::initialize(&mut new_guard);
 
@@ -462,7 +472,7 @@ where
     }
 
     #[tracing::instrument(skip(root))]
-    fn split_root_and_insert<N, T>(
+    async fn split_root_and_insert<N, T>(
         &self,
         mut root: N::ViewMut<'_>,
         key: &K,
@@ -484,8 +494,8 @@ where
             })
         })?;
 
-        let mut left_guard = left_page.write();
-        let mut right_guard = right_page.write();
+        let mut left_guard = left_page.write().await;
+        let mut right_guard = right_page.write().await;
 
         let left_page_idx = left_guard.page_idx();
         let right_page_idx = right_guard.page_idx();

@@ -46,16 +46,16 @@ impl<'a, K: Archive, V: Archive, X: Archive> SlottedPageView<'a, K, V, X> {
     // Should be analogous to `Self::view_mut`
     pub(crate) unsafe fn view(buf: &'a [u8]) -> SlottedPageView<'a, K, V, X> {
         let (header_bytes, buf) = buf.split_array_ref();
+        let header_len = header_bytes.len();
         let header = unsafe { nsql_rkyv::archived_root::<SlottedPageHeader>(header_bytes) };
+
+        let (buf, extra_bytes) = buf.split_at(header.extra_start.value() as usize - header_len);
+        let extra = rkyv::archived_root::<X>(&extra_bytes[..header.extra_len.value() as usize]);
 
         let slot_len = header.slot_len.value() as usize;
         let (slot_bytes, data) = buf.split_at(slot_len * mem::size_of::<Slot>());
         let slots =
             unsafe { slice::from_raw_parts(slot_bytes.as_ptr() as *mut Archived<Slot>, slot_len) };
-
-        let extra_start = data.len() - header.extra_len.value() as usize;
-        let (data, extra_bytes) = data.split_at(extra_start);
-        let extra = rkyv::archived_root::<X>(extra_bytes);
 
         Self { header, slots, data, extra, marker: PhantomData }
     }
@@ -219,6 +219,7 @@ struct SlottedPageHeader {
     free_end: Offset,
     slot_len: u16,
     /// `extra` is stored at the very end of the page
+    extra_start: u16,
     extra_len: u16,
 }
 
@@ -237,7 +238,7 @@ impl<'a, K: Archive, V: Archive, X: Serialize<nsql_rkyv::DefaultSerializer>>
         let mut extra_start = buf.len() - extra_bytes.len();
         let offset = align_archived_ptr_offset::<X>(buf[extra_start..].as_ptr());
         extra_start -= offset;
-        buf[extra_start..].copy_from_slice(&extra_bytes[..]);
+        buf[extra_start..extra_start + extra_bytes.len()].copy_from_slice(&extra_bytes);
 
         let free_end = extra_start as u16 - archived_size_of!(SlottedPageHeader);
 
@@ -245,6 +246,7 @@ impl<'a, K: Archive, V: Archive, X: Serialize<nsql_rkyv::DefaultSerializer>>
             free_start: Offset::from(0u16),
             free_end: Offset::from(free_end),
             slot_len: 0,
+            extra_start: extra_start as u16,
             extra_len: extra_bytes.len() as u16,
         };
 
@@ -258,17 +260,20 @@ impl<'a, K: Archive, V: Archive, X: Serialize<nsql_rkyv::DefaultSerializer>>
     // Should be analogous to `Self::view`
     pub(crate) unsafe fn view_mut(buf: &'a mut [u8]) -> SlottedPageViewMut<'a, K, V, X> {
         let (header_bytes, buf) = buf.split_array_mut();
+        let header_len = header_bytes.len();
         let header = unsafe { nsql_rkyv::archived_root_mut::<SlottedPageHeader>(header_bytes) };
+
+        // adjusting for header length that we chopped off as `extra_start` is relative to the start of the page
+        let (buf, extra_bytes) = buf.split_at_mut(header.extra_start.value() as usize - header_len);
+        let extra = rkyv::archived_root_mut::<X>(Pin::new(
+            &mut extra_bytes[..header.extra_len.value() as usize],
+        ));
 
         let slot_len = header.slot_len.value() as usize;
         let (slot_bytes, data) = buf.split_at_mut(slot_len * mem::size_of::<Archived<Slot>>());
         let slots = unsafe {
             slice::from_raw_parts_mut(slot_bytes.as_ptr() as *mut Archived<Slot>, slot_len)
         };
-
-        let extra_start = data.len() - header.extra_len.value() as usize;
-        let (data, extra_bytes) = data.split_at_mut(extra_start);
-        let extra = rkyv::archived_root_mut::<X>(Pin::new(extra_bytes));
 
         Self { header, slots, data, extra, marker: PhantomData }
     }

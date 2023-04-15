@@ -39,7 +39,7 @@ impl<T> Heap<T> {
             meta_page_idx: meta_page.page_idx(),
         };
 
-        let mut guard = meta_page.write();
+        let mut guard = meta_page.write().await;
         let bytes = nsql_rkyv::to_bytes(&meta);
         guard[..bytes.len()].copy_from_slice(&bytes);
 
@@ -48,7 +48,7 @@ impl<T> Heap<T> {
 
     pub async fn load(pool: Arc<dyn Pool>, meta_page_idx: PageIndex) -> nsql_buffer::Result<Self> {
         let meta_page = pool.load(meta_page_idx).await?;
-        let guard = meta_page.read();
+        let guard = meta_page.read().await;
         let (meta_bytes, _) = guard.split_array_ref();
         let meta = unsafe { nsql_rkyv::archived_root::<HeapMeta>(meta_bytes) };
         let meta = nsql_rkyv::deserialize::<HeapMeta>(meta);
@@ -84,7 +84,7 @@ impl<T: Archive> Heap<T> {
         match self.fsm.find(required_space).await? {
             Some(idx) => {
                 let page = self.pool.load(idx).await?;
-                let mut guard = page.write();
+                let mut guard = page.write().await;
 
                 let mut view = HeapViewMut::<T>::view_mut(&mut guard)?;
                 let free_space = view.free_space();
@@ -96,7 +96,7 @@ impl<T: Archive> Heap<T> {
             }
             None => {
                 let page = self.pool.alloc().await?;
-                let mut guard = page.write();
+                let mut guard = page.write().await;
 
                 let view = HeapViewMut::<T>::initialize(&mut guard);
                 let free_space = view.free_space();
