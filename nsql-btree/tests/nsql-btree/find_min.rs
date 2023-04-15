@@ -47,9 +47,6 @@ fn test_btree_find_min_after_removal_multipage() -> Result<()> {
         for i in (0..N).rev() {
             assert!(btree.insert(&i, &i).await?.is_none());
             assert_eq!(btree.find_min(&i).await?, Some(i));
-            if i == 3 {
-                dbg!("hi");
-            }
             assert_eq!(btree.remove(&i).await?, Some(i));
             assert!(btree.find_min(&i).await?.is_none(), "i={}", i);
         }

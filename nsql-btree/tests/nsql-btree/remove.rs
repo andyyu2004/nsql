@@ -54,6 +54,7 @@ fn test_btree_get_after_removal_multipage() -> Result<()> {
             // this assertion was triggered by a former bug
             assert!(btree.get(&(i + 1)).await?.is_none(), "i+1={}", i + 1);
         }
+
         Ok(())
     })
 }

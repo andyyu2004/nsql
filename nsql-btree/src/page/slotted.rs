@@ -108,9 +108,6 @@ where
         Q: ?Sized,
     {
         let slot = self.slot_of(key)?;
-        if slot.flags.is_deleted() {
-            return None;
-        }
         Some(&self.get_by_slot(slot).value)
     }
 
@@ -120,22 +117,12 @@ where
         V::Archived: fmt::Debug,
         Q: ?Sized,
     {
-        let mut idx = match self.slot_index_of_key(lower_bound) {
+        let idx = match self.slot_index_of_key(lower_bound) {
             Ok(idx) => idx,
             Err(idx) => idx,
         };
 
-        while idx < self.slots.len() {
-            let slot = self.slots[idx];
-            dbg!(slot);
-            dbg!(self.get_by_slot(slot));
-            if !slot.flags.is_deleted() {
-                return Some(&self.get_by_slot(slot).value);
-            }
-            idx += 1;
-        }
-
-        None
+        (idx < self.slots.len()).then(|| &self.get_by_slot(self.slots[idx]).value)
     }
 
     fn values(&self) -> impl Iterator<Item = &V::Archived> + fmt::Debug {
@@ -413,18 +400,23 @@ where
         Q: ?Sized,
         V::Archived: Deserialize<V, Infallible> + fmt::Debug,
     {
-        // FIXME reclaim the freed space
         let idx = self.slot_index_of_key(key).ok()?;
-        if self.slots[idx].flags.is_deleted() {
-            // key is already deleted
-            return None;
-        }
-        self.slots[idx].flags.set_deleted();
         let slot = self.slots[idx];
-        assert!(slot.flags.is_deleted());
         let prev = nsql_rkyv::deserialize(unsafe {
             &rkyv::archived_root::<Entry<&K, &V>>(&self[slot]).value
         });
+
+        // remove the slot at `idx` by shifting all the slots after it to the left
+        self.slots.copy_within(idx + 1.., idx);
+
+        // reshuffle `slots` and `data` (opposite of what is done in `insert`)
+        self.header.slot_len -= 1;
+        let ptr;
+        (self.slots, ptr) =
+            mem::take(&mut self.slots).split_at_mut(self.header.slot_len.value() as usize);
+        self.header.free_start -= archived_size_of!(Slot);
+        let new_data_len = self.data.len() + archived_size_of!(Slot) as usize;
+        self.data = unsafe { slice::from_raw_parts_mut(ptr.as_ptr() as *mut u8, new_data_len) };
         Some(prev)
     }
 
@@ -605,18 +597,13 @@ pub(crate) struct SlotFlags([u8; 2]);
 
 impl fmt::Debug for SlotFlags {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("SlotFlags")
-            .field("length", &self.length())
-            .field("is_deleted", &self.is_deleted())
-            .finish()
+        f.debug_struct("SlotFlags").field("length", &self.length()).finish()
     }
 }
 
 impl SlotFlags {
     const LENGTH_BITS: u16 = 12;
     const LENGTH_MASK: u16 = (1 << Self::LENGTH_BITS) - 1;
-
-    const IS_DELETED_IDX: usize = 0;
 
     fn new(length: u16) -> Self {
         assert!(length <= 1 << Self::LENGTH_BITS, "length `{length}` is too large");
@@ -627,14 +614,6 @@ impl SlotFlags {
         let len = u16::from_be_bytes(self.0) & Self::LENGTH_MASK;
         debug_assert!(len <= 1 << Self::LENGTH_BITS);
         len
-    }
-
-    fn is_deleted(self) -> bool {
-        self.is_set(Self::IS_DELETED_IDX)
-    }
-
-    fn set_deleted(&mut self) {
-        self.set(Self::IS_DELETED_IDX)
     }
 
     fn set(&mut self, idx: usize) {

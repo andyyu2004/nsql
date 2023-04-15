@@ -1,6 +1,5 @@
 use nsql_buffer::Pool;
 use nsql_test::mk_fast_mem_buffer_pool;
-use test_strategy::proptest;
 
 use super::FreeSpaceMap;
 
@@ -73,9 +72,4 @@ fn test_fsm_update_removes_old_entries() -> nsql_buffer::Result<()> {
 
         Ok(())
     })
-}
-
-#[proptest]
-fn proptest_fsm() {
-    nsql_test::start(async {})
 }
