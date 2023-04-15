@@ -44,23 +44,23 @@ impl<const N: usize> File<N> {
     }
 
     #[inline]
-    pub async fn read_at(&self, pos: u64) -> Result<[u8; N]> {
+    pub async fn read_at(&self, pos: u64) -> Result<rkyv::AlignedBytes<N>> {
         Self::assert_aligned(pos);
         // uring impl
         // let (res, buf) = self.file.read_exact_at(vec![0; N], pos).await;
         // res?;
         // Ok(buf.try_into().expect("we specified the correct length"))
 
-        let mut buf = [0; N];
-        self.file.read_at(&mut buf, pos)?;
+        let mut buf = rkyv::AlignedBytes([0; N]);
+        self.file.read_at(&mut *buf, pos)?;
         Ok(buf)
     }
 
     #[inline]
-    pub async fn write_at(&self, pos: u64, data: [u8; N]) -> Result<()> {
+    pub async fn write_at(&self, pos: u64, data: rkyv::AlignedBytes<N>) -> Result<()> {
         Self::assert_aligned(pos);
         // self.file.write_all_at(data.to_vec(), pos).await.0?;
-        self.file.write_all_at(&data, pos)?;
+        self.file.write_all_at(&*data, pos)?;
         Ok(())
     }
 

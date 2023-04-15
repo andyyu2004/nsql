@@ -125,7 +125,7 @@ impl SingleFilePager {
     pub async fn create(path: impl AsRef<Path>) -> Result<SingleFilePager> {
         let storage = File::create(&path).await?;
 
-        let mut buf = [0; PAGE_SIZE];
+        let mut buf = rkyv::AlignedBytes([0; PAGE_SIZE]);
         let file_header = FileHeader { magic: MAGIC, version: CURRENT_VERSION };
         file_header.serialize(&mut Cursor::new(&mut buf[..])).await?;
         storage.write_at(FILE_HEADER_START, buf).await?;

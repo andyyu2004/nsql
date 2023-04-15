@@ -1,5 +1,5 @@
 use std::sync::Arc;
-use std::{fmt, io};
+use std::{fmt, io, mem};
 
 use nsql_btree::{BTree, Min};
 use nsql_buffer::{BufferHandle, Pool};
@@ -9,12 +9,15 @@ use rkyv::{Archive, Deserialize, Serialize};
 const FSM_MAGIC: [u8; 4] = *b"FSMM";
 
 #[derive(Debug, Archive, Serialize)]
+#[repr(C)]
 struct FsmMeta {
     magic: [u8; 4],
+    unique: u64,
     tree_root_page: PageIndex,
     itree_root_page: PageIndex,
-    unique: u64,
 }
+
+nsql_util::static_assert_eq!(mem::align_of::<FsmMeta>(), mem::align_of::<u64>());
 
 pub struct FreeSpaceMap {
     meta_page_idx: PageIndex,
@@ -34,6 +37,7 @@ impl fmt::Debug for FreeSpaceMap {
 #[derive(Debug, Archive, Serialize, Deserialize, Ord, PartialOrd, Eq, PartialEq, Clone, Copy)]
 #[archive_attr(derive(Debug, Ord, PartialOrd, Eq, PartialEq, Clone, Copy))]
 #[archive(compare(PartialOrd, PartialEq))]
+#[repr(C)]
 struct Key {
     size: u16,
     unique: u64,

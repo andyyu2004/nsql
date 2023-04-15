@@ -10,10 +10,12 @@ use tokio::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use crate::{PAGE_DATA_SIZE, PAGE_META_LENGTH, PAGE_SIZE};
 
+/// A page of data in the database allocated by the pager.
+/// The data is aligned to 16 bytes.
 #[derive(Clone)]
 pub struct Page {
     idx: PageIndex,
-    bytes: Arc<RwLock<[u8; PAGE_SIZE]>>,
+    bytes: Arc<RwLock<rkyv::AlignedBytes<PAGE_SIZE>>>,
 }
 
 // this is used purely to make `Page` `mem::take`able
@@ -36,7 +38,7 @@ impl Page {
     }
 
     #[inline]
-    pub fn arced_data(&self) -> Arc<RwLock<[u8; PAGE_SIZE]>> {
+    pub fn arced_data(&self) -> Arc<RwLock<rkyv::AlignedBytes<PAGE_SIZE>>> {
         Arc::clone(&self.bytes)
     }
 
@@ -75,17 +77,17 @@ impl Page {
     }
 
     #[inline]
-    pub(crate) fn new(idx: PageIndex, bytes: [u8; PAGE_SIZE]) -> Self {
+    pub(crate) fn new(idx: PageIndex, bytes: rkyv::AlignedBytes<PAGE_SIZE>) -> Self {
         Self { idx, bytes: Arc::new(RwLock::new(bytes)) }
     }
 
     #[inline]
     pub(crate) fn zeroed(idx: PageIndex) -> Self {
-        Self::new(idx, [0; PAGE_SIZE])
+        Self::new(idx, rkyv::AlignedBytes([0; PAGE_SIZE]))
     }
 
     #[inline]
-    pub(crate) async fn bytes(&self) -> RwLockReadGuard<'_, [u8; PAGE_SIZE]> {
+    pub(crate) async fn bytes(&self) -> RwLockReadGuard<'_, rkyv::AlignedBytes<PAGE_SIZE>> {
         self.bytes.read().await
     }
 
@@ -190,7 +192,7 @@ impl fmt::Display for PageIndex {
 #[derive(Debug)]
 pub struct PageReadGuard<'a> {
     idx: PageIndex,
-    bytes: RwLockReadGuard<'a, [u8; PAGE_SIZE]>,
+    bytes: RwLockReadGuard<'a, rkyv::AlignedBytes<PAGE_SIZE>>,
 }
 
 impl PageReadGuard<'_> {
@@ -220,7 +222,7 @@ where
 
 pub struct PageWriteGuard<'a> {
     page_idx: PageIndex,
-    bytes: RwLockWriteGuard<'a, [u8; PAGE_SIZE]>,
+    bytes: RwLockWriteGuard<'a, rkyv::AlignedBytes<PAGE_SIZE>>,
 }
 
 impl fmt::Debug for PageWriteGuard<'_> {

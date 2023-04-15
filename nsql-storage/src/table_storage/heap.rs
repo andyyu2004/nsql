@@ -23,6 +23,7 @@ pub struct Heap<T> {
 const HEAP_META_MAGIC: [u8; 4] = *b"HEPM";
 
 #[derive(Debug, Archive, Serialize, Deserialize)]
+#[repr(C)]
 struct HeapMeta {
     magic: [u8; 4],
     meta_page_idx: PageIndex,
