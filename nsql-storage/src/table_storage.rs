@@ -30,7 +30,7 @@ impl TableStorage {
         Ok(())
     }
 
-    pub async fn scan(_tx: &Transaction) -> Vec<Tuple> {
+    pub async fn scan(&self, _tx: &Transaction) -> Vec<Tuple> {
         todo!()
     }
 

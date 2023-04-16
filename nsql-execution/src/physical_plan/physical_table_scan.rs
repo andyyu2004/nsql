@@ -24,6 +24,9 @@ impl PhysicalSource for PhysicalTableScan {
             Ok::<_, nsql_catalog::Error>(namespace.get(ctx.tx, self.table_ref.table)?.unwrap())
         })?;
 
+        let storage = table.storage();
+        storage.scan(ctx.tx);
+
         todo!()
     }
 

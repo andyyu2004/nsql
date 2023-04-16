@@ -3,8 +3,9 @@ use std::ops::{Add, AddAssign, Deref, Index, IndexMut, Range, Sub};
 use std::pin::Pin;
 use std::{io, mem, slice};
 
-use nsql_pager::PAGE_DATA_SIZE;
+use nsql_pager::{PageIndex, PAGE_DATA_SIZE};
 use nsql_rkyv::{align_archived_ptr_offset, archived_size_of, DefaultSerializer};
+use rkyv::option::ArchivedOption;
 use rkyv::rend::BigEndian;
 use rkyv::{Archive, Archived, Serialize};
 
@@ -12,23 +13,31 @@ const HEAP_PAGE_HEADER_MAGIC: [u8; 4] = *b"HEAP";
 
 #[repr(C)]
 pub(crate) struct HeapView<'a, T: Archive> {
-    header: &'a SlottedPageHeader,
+    header: &'a Archived<HeapPageHeader>,
     slots: &'a [Archived<Slot>],
     data: &'a [u8],
     marker: PhantomData<&'a T::Archived>,
 }
 
 impl<'a, T: Archive> HeapView<'a, T> {
-    pub fn view(buf: &'a [u8; PAGE_DATA_SIZE]) -> Self {
+    pub fn view(buf: &'a [u8; PAGE_DATA_SIZE]) -> nsql_buffer::Result<Self> {
         let (header, buf) = buf.split_array_ref();
-        let header = unsafe { nsql_rkyv::archived_root::<SlottedPageHeader>(header) };
+        let header = unsafe { nsql_rkyv::archived_root::<HeapPageHeader>(header) };
+        if header.magic != HEAP_PAGE_HEADER_MAGIC {
+            Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("invalid heap page magic: {}", unsafe {
+                    std::str::from_utf8_unchecked(&header.magic)
+                }),
+            ))?
+        }
 
         let slot_len = header.slot_len.value() as usize;
         let (slot_bytes, data) = buf.split_at(slot_len * mem::size_of::<Archived<Slot>>());
         let slots =
             unsafe { slice::from_raw_parts(slot_bytes.as_ptr() as *mut Archived<Slot>, slot_len) };
 
-        Self { header, slots, data, marker: PhantomData }
+        Ok(Self { header, slots, data, marker: PhantomData })
     }
 
     #[inline]
@@ -69,7 +78,7 @@ impl<'a, T: Archive> Index<SlotIndex> for HeapView<'a, T> {
 // mutable version to the immutable version.
 #[repr(C)]
 pub(crate) struct HeapViewMut<'a, T: Archive> {
-    header: Pin<&'a mut SlottedPageHeader>,
+    header: Pin<&'a mut Archived<HeapPageHeader>>,
     slots: &'a mut [Archived<Slot>],
     data: &'a mut [u8],
     marker: PhantomData<&'a mut T::Archived>,
@@ -107,12 +116,13 @@ impl<'a, T: Archive> Index<SlotIndex> for HeapViewMut<'a, T> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Archive, Serialize)]
-#[archive(as = "Self")]
-pub(crate) struct SlottedPageHeader {
+pub(crate) struct HeapPageHeader {
     magic: [u8; 4],
     free_start: Offset,
     free_end: Offset,
     slot_len: BigEndian<u16>,
+    left_link: Option<PageIndex>,
+    right_link: Option<PageIndex>,
 }
 
 #[derive(Debug)]
@@ -120,12 +130,14 @@ pub struct HeapPageFull;
 
 impl<'a, T: Archive> HeapViewMut<'a, T> {
     pub fn initialize(buf: &'a mut [u8; PAGE_DATA_SIZE]) -> Self {
-        let free_end = PAGE_DATA_SIZE as u16 - archived_size_of!(SlottedPageHeader);
-        let header = SlottedPageHeader {
+        let free_end = PAGE_DATA_SIZE as u16 - archived_size_of!(HeapPageHeader);
+        let header = HeapPageHeader {
             magic: HEAP_PAGE_HEADER_MAGIC,
             free_start: Offset::from(0),
             free_end: Offset::from(free_end),
             slot_len: 0.into(),
+            left_link: None,
+            right_link: None,
         };
 
         let header_bytes = nsql_rkyv::to_bytes(&header);
@@ -136,9 +148,14 @@ impl<'a, T: Archive> HeapViewMut<'a, T> {
 
     pub fn view_mut(buf: &'a mut [u8; PAGE_DATA_SIZE]) -> io::Result<Self> {
         let (header, buf) = buf.split_array_mut();
-        let header = unsafe { nsql_rkyv::archived_root_mut::<SlottedPageHeader>(header) };
+        let header = unsafe { nsql_rkyv::archived_root_mut::<HeapPageHeader>(header) };
         if header.magic != HEAP_PAGE_HEADER_MAGIC {
-            return Err(io::Error::new(io::ErrorKind::InvalidData, "invalid heap page magic"));
+            Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("invalid heap page magic: {}", unsafe {
+                    std::str::from_utf8_unchecked(&header.magic)
+                }),
+            ))?
         }
 
         let slot_len = header.slot_len.value() as usize;
@@ -148,6 +165,14 @@ impl<'a, T: Archive> HeapViewMut<'a, T> {
         };
 
         Ok(Self { header, slots, data, marker: PhantomData })
+    }
+
+    pub fn set_left_link(&mut self, link: PageIndex) {
+        self.header.left_link = ArchivedOption::Some(link.into());
+    }
+
+    pub fn set_right_link(&mut self, link: PageIndex) {
+        self.header.right_link = ArchivedOption::Some(link.into());
     }
 
     pub fn push(&mut self, value: &T) -> Result<SlotIndex, HeapPageFull>

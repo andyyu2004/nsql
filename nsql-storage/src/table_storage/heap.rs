@@ -1,10 +1,13 @@
+use std::future::Future;
 use std::marker::PhantomData;
+use std::pin::Pin;
 use std::sync::Arc;
 
-use nsql_buffer::Pool;
+use nsql_buffer::{BufferHandle, Pool};
 use nsql_pager::PageIndex;
 use nsql_transaction::Transaction;
-use rkyv::{Archive, Deserialize, Serialize};
+use rkyv::option::ArchivedOption;
+use rkyv::{Archive, Archived, Deserialize, Serialize};
 
 use self::view::{HeapViewMut, SlotIndex};
 use super::fsm::FreeSpaceMap;
@@ -14,6 +17,7 @@ mod view;
 
 pub struct Heap<T> {
     meta: HeapMeta,
+    meta_page: BufferHandle,
     fsm: FreeSpaceMap,
     pool: Arc<dyn Pool>,
     _phantom: std::marker::PhantomData<T>,
@@ -28,6 +32,20 @@ struct HeapMeta {
     magic: [u8; 4],
     meta_page_idx: PageIndex,
     fsm_meta_page_idx: PageIndex,
+    head_and_tail: Option<HeadAndTail>,
+}
+
+#[derive(Debug, Archive, Serialize, Deserialize)]
+#[repr(C)]
+struct HeadAndTail {
+    head: PageIndex,
+    tail: PageIndex,
+}
+
+impl From<HeadAndTail> for Archived<HeadAndTail> {
+    fn from(head_and_tail: HeadAndTail) -> Self {
+        Self { head: head_and_tail.head.into(), tail: head_and_tail.tail.into() }
+    }
 }
 
 impl<T> Heap<T> {
@@ -38,13 +56,15 @@ impl<T> Heap<T> {
             magic: HEAP_META_MAGIC,
             fsm_meta_page_idx: fsm.meta_page_idx(),
             meta_page_idx: meta_page.page_idx(),
+            head_and_tail: None,
         };
 
         let mut guard = meta_page.write().await;
         let bytes = nsql_rkyv::to_bytes(&meta);
         guard[..bytes.len()].copy_from_slice(&bytes);
+        drop(guard);
 
-        Ok(Self { meta, fsm, pool, _phantom: PhantomData })
+        Ok(Self { meta, meta_page, fsm, pool, _phantom: PhantomData })
     }
 
     pub async fn load(pool: Arc<dyn Pool>, meta_page_idx: PageIndex) -> nsql_buffer::Result<Self> {
@@ -53,10 +73,11 @@ impl<T> Heap<T> {
         let (meta_bytes, _) = guard.split_array_ref();
         let meta = unsafe { nsql_rkyv::archived_root::<HeapMeta>(meta_bytes) };
         let meta = nsql_rkyv::deserialize::<HeapMeta>(meta);
+        drop(guard);
 
         let fsm = FreeSpaceMap::load(Arc::clone(&pool), meta.fsm_meta_page_idx).await?;
 
-        Ok(Self { meta, fsm, pool, _phantom: PhantomData })
+        Ok(Self { meta, meta_page, fsm, pool, _phantom: PhantomData })
     }
 }
 
@@ -75,6 +96,20 @@ impl<T: Archive> Heap<T> {
             Ok(HeapId { page_idx, slot })
         })
         .await
+    }
+
+    pub async fn scan(&self, _tx: &Transaction) -> Vec<T> {
+        todo!()
+    }
+
+    async fn with_meta_view_mut<F>(&self, f: impl FnOnce(Pin<&mut Archived<HeapMeta>>) -> F)
+    where
+        F: Future<Output = ()>,
+    {
+        let mut guard = self.meta_page.write().await;
+        let (meta_bytes, _) = guard.split_array_mut();
+        let meta = unsafe { nsql_rkyv::archived_root_mut::<HeapMeta>(meta_bytes) };
+        f(meta).await
     }
 
     async fn with_free_space<R>(
@@ -97,6 +132,7 @@ impl<T: Archive> Heap<T> {
             }
             None => {
                 let page = self.pool.alloc().await?;
+                let page_idx = page.page_idx();
                 let mut guard = page.write().await;
 
                 let view = HeapViewMut::<T>::initialize(&mut guard);
@@ -105,8 +141,32 @@ impl<T: Archive> Heap<T> {
                 self.fsm.update(&guard, free_space).await?;
                 let mut view = HeapViewMut::<T>::view_mut(&mut guard)?;
                 let r = f(page.page_idx(), &mut view)?;
+
+                // update left and right page links
+                let mut meta_guard = self.meta_page.write().await;
+                let (meta_bytes, _) = meta_guard.split_array_mut();
+                let mut meta = unsafe { nsql_rkyv::archived_root_mut::<HeapMeta>(meta_bytes) };
+
+                match meta.head_and_tail.as_mut() {
+                    Some(ArchivedHeadAndTail { head: _, tail }) => {
+                        // if this was not the first allocated page, update the last page's right link to the new page
+                        let tail_page = self.pool.load((*tail).into()).await.unwrap();
+                        view.set_left_link((*tail).into());
+                        let mut tail_guard = tail_page.write().await;
+                        let mut tail_view = HeapViewMut::<T>::view_mut(&mut tail_guard)?;
+                        tail_view.set_right_link(page_idx);
+                    }
+                    None => {
+                        // if this was the first allocated page, update the first and last page indices
+                        meta.head_and_tail = ArchivedOption::Some(
+                            HeadAndTail { head: page_idx, tail: page_idx }.into(),
+                        );
+                    }
+                }
+
                 // assume that the caller will write to the page and use the requested space
                 self.fsm.update(&guard, free_space - required_space).await?;
+
                 Ok(r)
             }
         }
