@@ -5,8 +5,16 @@ use rust_decimal::Decimal;
 
 #[derive(Debug, Clone)]
 pub enum TableExpr {
-    Selection(Vec<Expr>),
+    TableRef(TableRef),
+    Selection(Selection),
     Values(Values),
+    Empty,
+}
+
+#[derive(Debug, Clone)]
+pub struct Selection {
+    pub source: Box<TableExpr>,
+    pub projection: Vec<Expr>,
 }
 
 #[derive(Debug, Clone)]
@@ -15,10 +23,15 @@ pub enum Expr {
     ColumnRef(ColumnRef),
 }
 
-#[derive(Debug, Clone)]
-pub struct ColumnRef {
+#[derive(Debug, Copy, Clone)]
+pub struct TableRef {
     pub namespace: Oid<Namespace>,
     pub table: Oid<Table>,
+}
+
+#[derive(Debug, Copy, Clone)]
+pub struct ColumnRef {
+    pub table_ref: TableRef,
     pub column: Oid<Column>,
 }
 

@@ -49,7 +49,8 @@ impl Nsql {
         let plan = Planner::default().plan(stmt);
         let plan = optimize(plan);
 
-        let physical_plan = PhysicalPlanner::new(Arc::clone(&self.inner.buffer_pool)).plan(&plan);
+        let physical_plan = PhysicalPlanner::new().plan(plan);
+        dbg!(&physical_plan);
         let ctx = ExecutionContext::new(Arc::clone(&self.inner.buffer_pool), &tx, catalog);
         let tuples = nsql_execution::execute(&ctx, physical_plan).await?;
 

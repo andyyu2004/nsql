@@ -1,5 +1,4 @@
 use nsql_catalog::{Container, Namespace, Oid, Table};
-use nsql_ir::Expr;
 
 use super::*;
 
@@ -8,7 +7,7 @@ pub(crate) struct PhysicalInsert {
     children: Vec<Arc<dyn PhysicalNode>>,
     schema: Oid<Namespace>,
     table: Oid<Table>,
-    returning: Option<Vec<Expr>>,
+    returning: Option<Vec<ir::Expr>>,
 }
 
 impl PhysicalInsert {
@@ -16,7 +15,7 @@ impl PhysicalInsert {
         schema: Oid<Namespace>,
         table: Oid<Table>,
         source: Arc<dyn PhysicalNode>,
-        returning: Option<Vec<Expr>>,
+        returning: Option<Vec<ir::Expr>>,
     ) -> Arc<dyn PhysicalNode> {
         Arc::new(Self { schema, table, returning, children: vec![source] })
     }

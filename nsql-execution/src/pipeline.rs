@@ -128,7 +128,7 @@ impl PipelineBuilder {
 
     pub(crate) fn finish(self) -> Pipeline {
         Pipeline {
-            source: self.source.expect("didn't provide source of pipeline to pipeline builder"),
+            source: self.source.expect("did not provide source of pipeline to pipeline builder"),
             operators: self.operators,
             sink: self.sink,
         }

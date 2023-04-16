@@ -1,17 +1,15 @@
 use std::sync::atomic::{self, AtomicUsize};
 
-use nsql_ir::Values;
-
 use super::*;
 
 #[derive(Debug)]
 pub struct PhysicalValues {
-    values: Values,
+    values: ir::Values,
     index: AtomicUsize,
 }
 
 impl PhysicalValues {
-    pub(crate) fn make(values: Values) -> Arc<dyn PhysicalNode> {
+    pub(crate) fn plan(values: ir::Values) -> Arc<dyn PhysicalNode> {
         Arc::new(PhysicalValues { values, index: AtomicUsize::new(0) })
     }
 }

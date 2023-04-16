@@ -1,22 +1,21 @@
 use std::sync::Arc;
 
-use ir::ColumnRef;
-use nsql_catalog::{Column, Entity, Namespace, Oid, Table};
+use nsql_catalog::{Column, Entity, Oid};
 use nsql_core::Name;
 
 use crate::{Error, Ident, Result};
 
 #[derive(Debug, Clone, Default)]
 pub(crate) struct Scope {
-    tables: rpds::HashTrieMap<Ident, (Oid<Namespace>, Oid<Table>)>,
-    columns: rpds::HashTrieMap<Name, ColumnRef>,
+    tables: rpds::HashTrieMap<Ident, ir::TableRef>,
+    columns: rpds::HashTrieMap<Name, ir::ColumnRef>,
 }
 
 impl Scope {
     pub fn bind_table(
         &self,
         name: Ident,
-        (namespace, table): (Oid<Namespace>, Oid<Table>),
+        table_ref: ir::TableRef,
         table_columns: Vec<(Oid<Column>, Arc<Column>)>,
     ) -> Scope {
         let mut columns = self.columns.clone();
@@ -26,10 +25,10 @@ impl Scope {
             }
             columns = self
                 .columns
-                .insert(column.name().clone(), ColumnRef { namespace, table, column: oid });
+                .insert(column.name().clone(), ir::ColumnRef { table_ref, column: oid });
         }
 
-        Self { tables: self.tables.insert(name, (namespace, table)), columns }
+        Self { tables: self.tables.insert(name, table_ref), columns }
     }
 
     pub fn lookup_column(&self, ident: &Ident) -> Result<ir::ColumnRef> {

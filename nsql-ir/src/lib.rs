@@ -5,7 +5,7 @@ use nsql_catalog::{CreateColumnInfo, Namespace, Oid, Table};
 use nsql_core::Name;
 pub use rust_decimal::Decimal;
 
-pub use self::expr::{ColumnRef, Expr, Literal, TableExpr, Values};
+pub use self::expr::*;
 
 #[derive(Debug, Clone)]
 pub struct CreateTableInfo {

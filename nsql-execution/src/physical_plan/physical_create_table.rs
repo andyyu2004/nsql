@@ -11,13 +11,13 @@ use super::*;
 pub struct PhysicalCreateTable {
     finished: AtomicBool,
     namespace: Oid<Namespace>,
-    info: nsql_ir::CreateTableInfo,
+    info: ir::CreateTableInfo,
 }
 
 impl PhysicalCreateTable {
     pub(crate) fn plan(
         namespace: Oid<Namespace>,
-        info: nsql_ir::CreateTableInfo,
+        info: ir::CreateTableInfo,
     ) -> Arc<dyn PhysicalNode> {
         Arc::new(Self { finished: AtomicBool::new(false), namespace, info })
     }

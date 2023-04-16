@@ -259,7 +259,7 @@ impl<'a> Binder<'a> {
         Ok(expr)
     }
 
-    fn bind_select(&self, scope: &Scope, select: &ast::Select) -> Result<Vec<ir::Expr>> {
+    fn bind_select(&self, scope: &Scope, select: &ast::Select) -> Result<ir::Selection> {
         let ast::Select {
             distinct,
             projection,
@@ -287,16 +287,25 @@ impl<'a> Binder<'a> {
         ensure!(having.is_none());
         ensure!(qualify.is_none());
 
-        let scope = match &from[..] {
-            [] => scope.clone(),
+        let (scope, source) = match &from[..] {
+            [] => (scope.clone(), Box::new(ir::TableExpr::Empty)),
             [table] => self.bind_tables(scope, table)?,
             _ => todo!(),
         };
 
-        projection.iter().map(|item| self.bind_select_item(&scope, item)).collect()
+        let projection = projection
+            .iter()
+            .map(|item| self.bind_select_item(&scope, item))
+            .collect::<Result<Vec<_>, _>>()?;
+
+        Ok(ir::Selection { source, projection })
     }
 
-    fn bind_tables(&self, scope: &Scope, tables: &ast::TableWithJoins) -> Result<Scope> {
+    fn bind_tables(
+        &self,
+        scope: &Scope,
+        tables: &ast::TableWithJoins,
+    ) -> Result<(Scope, Box<ir::TableExpr>)> {
         ensure!(tables.joins.is_empty());
         let table = &tables.relation;
         match table {
@@ -305,11 +314,14 @@ impl<'a> Binder<'a> {
                 ensure!(with_hints.is_empty());
                 ensure!(alias.is_none());
 
-                let (name, (namespace_oid, table_oid)) = self.bind_table(name)?;
-                let namespace = self.catalog.get(self.tx, namespace_oid)?.unwrap();
-                let table = namespace.get(self.tx, table_oid)?.unwrap();
+                let (name, table_ref) = self.bind_table(name)?;
+                let namespace = self.catalog.get(self.tx, table_ref.namespace)?.unwrap();
+                let table = namespace.get(self.tx, table_ref.table)?.unwrap();
                 let columns = table.all::<Column>(self.tx)?;
-                Ok(scope.bind_table(name, (namespace_oid, table_oid), columns))
+                Ok((
+                    scope.bind_table(name, table_ref, columns),
+                    Box::new(ir::TableExpr::TableRef(table_ref)),
+                ))
             }
             ast::TableFactor::Derived { .. } => todo!(),
             ast::TableFactor::TableFunction { .. } => todo!(),
@@ -318,13 +330,10 @@ impl<'a> Binder<'a> {
         }
     }
 
-    fn bind_table(
-        &self,
-        table_name: &ast::ObjectName,
-    ) -> Result<(Ident, (Oid<Namespace>, Oid<Table>))> {
+    fn bind_table(&self, table_name: &ast::ObjectName) -> Result<(Ident, ir::TableRef)> {
         let table_name = self.lower_ident(&table_name.0)?;
-        let bound = self.bind_namespaced_entity::<Table>(&table_name)?;
-        Ok((table_name, bound))
+        let (namespace, table) = self.bind_namespaced_entity::<Table>(&table_name)?;
+        Ok((table_name, ir::TableRef { namespace, table }))
     }
 
     fn bind_select_item(&self, scope: &Scope, item: &ast::SelectItem) -> Result<ir::Expr> {

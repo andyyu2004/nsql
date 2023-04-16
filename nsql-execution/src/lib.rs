@@ -1,5 +1,6 @@
 #![deny(rust_2018_idioms)]
 #![feature(trait_upcasting)]
+#![feature(once_cell_try)]
 
 mod eval;
 mod executor;
@@ -75,7 +76,7 @@ trait PhysicalNode: Send + Sync + fmt::Debug + 'static {
                 assert_eq!(
                     op.children().len(),
                     1,
-                    "default `build_pipelines` implementation only supports unary operators for sinks"
+                    "default `build_pipelines` implementation only supports unary nodes for sinks"
                 );
                 let child = Arc::clone(&op.children()[0]);
                 // If we have a sink `op` (which is also a source), we set the source of current to `op`
@@ -89,11 +90,15 @@ trait PhysicalNode: Send + Sync + fmt::Debug + 'static {
                 Ok(source) => arena[current].set_source(source),
                 Err(node) => {
                     let operator = node.as_operator().unwrap();
+                    let children = operator.children();
                     assert_eq!(
-                        operator.children().len(),
+                        children.len(),
                         1,
-                        "default `build_pipelines` implementation only supports unary operators for operators"
+                        "default `build_pipelines` implementation only supports unary operators"
                     );
+                    let child = Arc::clone(&children[0]);
+                    arena[current].add_operator(operator);
+                    child.build_pipelines(arena, current, meta_builder);
                 }
             },
         }

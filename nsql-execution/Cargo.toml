@@ -13,7 +13,7 @@ nsql-arena = { version = "0.1.0", path = "../nsql-arena" }
 nsql-buffer = { version = "0.1.0", path = "../nsql-buffer" }
 nsql-catalog = { version = "0.1.0", path = "../nsql-catalog" }
 nsql-core = { version = "0.1.0", path = "../nsql-core" }
-nsql-ir = { version = "0.1.0", path = "../nsql-ir" }
+ir = { version = "0.1.0", path = "../nsql-ir", package = "nsql-ir" }
 nsql-pager = { version = "0.1.0", path = "../nsql-pager" }
 nsql-plan = { version = "0.1.0", path = "../nsql-plan" }
 nsql-storage = { version = "0.1.0", path = "../nsql-storage" }

@@ -1,7 +1,10 @@
 use nsql_catalog::{Namespace, Oid, Table};
-use nsql_ir as ir;
 
 pub enum Plan {
+    Project {
+        source: Box<Plan>,
+        projection: Vec<ir::Expr>,
+    },
     CreateTable {
         namespace: Oid<Namespace>,
         info: ir::CreateTableInfo,
@@ -13,8 +16,12 @@ pub enum Plan {
         returning: Option<Vec<ir::Expr>>,
     },
     Values {
-        values: nsql_ir::Values,
+        values: ir::Values,
     },
+    Scan {
+        table_ref: ir::TableRef,
+    },
+    Dummy,
 }
 
 #[derive(Default)]
@@ -28,7 +35,7 @@ impl Planner {
                 let source = self.plan_table_expr(source);
                 Plan::Insert { namespace, table, source, returning }
             }
-            ir::Stmt::Query(_) => todo!(),
+            ir::Stmt::Query(query) => return self.plan_table_expr(query),
         };
 
         Box::new(plan)
@@ -37,9 +44,16 @@ impl Planner {
     fn plan_table_expr(&self, table_expr: ir::TableExpr) -> Box<Plan> {
         let plan = match table_expr {
             ir::TableExpr::Values(values) => Plan::Values { values },
-            ir::TableExpr::Selection(sel) => todo!(),
+            ir::TableExpr::Selection(sel) => self.plan_select(sel),
+            ir::TableExpr::TableRef(table_ref) => Plan::Scan { table_ref },
+            ir::TableExpr::Empty => todo!(),
         };
 
         Box::new(plan)
+    }
+
+    fn plan_select(&self, sel: ir::Selection) -> Plan {
+        let source = self.plan_table_expr(*sel.source);
+        Plan::Project { source, projection: sel.projection }
     }
 }

@@ -1,33 +1,28 @@
 #![feature(never_type)]
 
+use std::error::Error;
 use std::path::Path;
 use std::time::Duration;
 
 use async_trait::async_trait;
 use nsql::Nsql;
 use nsql_core::schema::LogicalType;
-use sqllogictest::{AsyncDB, ColumnType, DBOutput, Runner, TestError};
-use walkdir::WalkDir;
+use sqllogictest::{AsyncDB, ColumnType, DBOutput, Runner};
 
-#[test]
-fn nsql_sqllogictest() -> nsql::Result<(), Vec<TestError>> {
+fn nsql_sqllogictest(path: &Path) -> nsql::Result<(), Box<dyn Error>> {
     nsql_test::start(async {
-        let mut errors = vec![];
         let db = TestDb(Nsql::mem().await.unwrap());
         let mut tester = Runner::new(db);
-        let test_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/nsql/sqllogictest");
-        for entry in WalkDir::new(test_path) {
-            let entry = entry.unwrap();
-            if entry.file_type().is_file() && entry.path().extension() == Some("slt".as_ref()) {
-                if let Err(err) = tester.run_file_async(entry.path()).await {
-                    errors.push(err);
-                }
-            }
-        }
-
-        if !errors.is_empty() { Err(errors) } else { Ok(()) }
+        tester.run_file_async(path).await?;
+        Ok(())
     })
 }
+
+datatest_stable::harness!(
+    nsql_sqllogictest,
+    format!("{}/{}", env!("CARGO_MANIFEST_DIR"), "tests/nsql-test/sqllogictest"),
+    r"^.*/test_insert.slt"
+);
 
 // FIXME we need to test the single file pager too, but it's currently not `Send` due to `tokio_uring::File` not being send
 pub struct TestDb(Nsql);
