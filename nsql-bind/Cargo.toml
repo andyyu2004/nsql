@@ -11,3 +11,4 @@ nsql-parse = { version = "0.1.0", path = "../nsql-parse" }
 nsql-transaction = { version = "0.1.0", path = "../nsql-transaction" }
 rpds = "0.13.0"
 thiserror = "1"
+tracing = "0.1.37"

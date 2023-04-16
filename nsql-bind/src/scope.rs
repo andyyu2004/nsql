@@ -12,20 +12,21 @@ pub(crate) struct Scope {
 }
 
 impl Scope {
+    #[tracing::instrument(skip(self, table_ref))]
     pub fn bind_table(
         &self,
         name: Ident,
         table_ref: ir::TableRef,
         table_columns: Vec<(Oid<Column>, Arc<Column>)>,
     ) -> Scope {
+        tracing::debug!("binding table");
         let mut columns = self.columns.clone();
         for (oid, column) in table_columns {
             if columns.contains_key(&column.name()) {
                 todo!("handle duplicate names")
             }
-            columns = self
-                .columns
-                .insert(column.name().clone(), ir::ColumnRef { table_ref, column: oid });
+            columns =
+                columns.insert(column.name().clone(), ir::ColumnRef { table_ref, column: oid });
         }
 
         Self { tables: self.tables.insert(name, table_ref), columns }

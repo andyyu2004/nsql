@@ -937,6 +937,7 @@ dependencies = [
  "sqllogictest",
  "thiserror",
  "tokio",
+ "tracing-subscriber",
 ]
 
 [[package]]
@@ -954,6 +955,7 @@ dependencies = [
  "nsql-transaction",
  "rpds",
  "thiserror",
+ "tracing",
 ]
 
 [[package]]

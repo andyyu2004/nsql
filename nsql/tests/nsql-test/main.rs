@@ -9,6 +9,7 @@ use sqllogictest::{AsyncDB, ColumnType, DBOutput, Runner};
 
 fn nsql_sqllogictest(path: &Path) -> nsql::Result<(), Box<dyn Error>> {
     nsql_test::start(async {
+        let _ = tracing_subscriber::fmt::fmt().with_env_filter("nsql=DEBUG").try_init();
         let db = TestDb(Nsql::mem().await.unwrap());
         let mut tester = Runner::new(db);
         tester.run_file_async(path).await?;

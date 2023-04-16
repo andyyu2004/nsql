@@ -388,7 +388,7 @@ impl<'a> Binder<'a> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Clone, PartialEq, Eq, Hash)]
 pub enum Ident {
     Qualified { schema: Name, name: Name },
     Unqualified { name: Name },
@@ -407,6 +407,12 @@ impl Ident {
             Ident::Qualified { name, .. } => name.as_str().into(),
             Ident::Unqualified { name } => name.as_str().into(),
         }
+    }
+}
+
+impl fmt::Debug for Ident {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{self}")
     }
 }
 
