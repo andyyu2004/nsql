@@ -32,8 +32,8 @@ impl ColumnType for TypeWrapper {
     fn from_char(value: char) -> Option<Self> {
         let ty = match value {
             'I' => LogicalType::Int,
-            'b' => LogicalType::Bool,
-            'd' => LogicalType::Decimal,
+            'B' => LogicalType::Bool,
+            'D' => LogicalType::Decimal,
             _ => return None,
         };
         Some(TypeWrapper(ty))

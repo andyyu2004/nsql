@@ -11,7 +11,7 @@ fn test_heap_page_append() -> nsql_buffer::Result<()> {
         let pool = nsql_test::mk_fast_mem_buffer_pool!();
         let heap = Heap::initialize(pool).await?;
 
-        const N: u32 = 300;
+        const N: u32 = 3000;
         for i in 0..N {
             let id = heap.append(&tx, &i).await?;
             assert_eq!(heap.get(&tx, id).await?, i);
@@ -20,8 +20,6 @@ fn test_heap_page_append() -> nsql_buffer::Result<()> {
         Ok(())
     })
 }
-
-// FIXME tests are broken if we increase N to require more than one page
 
 #[test]
 fn test_heap_scan() -> nsql_buffer::Result<()> {

@@ -3,12 +3,12 @@ use std::sync::Arc;
 
 use nsql_buffer::{BufferHandle, Pool};
 use nsql_pager::PageIndex;
-use nsql_rkyv::DefaultSerializer;
+use nsql_rkyv::{archived_size_of, DefaultSerializer};
 use nsql_transaction::Transaction;
 use rkyv::option::ArchivedOption;
 use rkyv::{Archive, Archived, Deserialize, Serialize};
 
-use self::view::{HeapView, HeapViewMut, SlotIndex};
+use self::view::{HeapView, HeapViewMut, Slot, SlotIndex};
 use super::fsm::FreeSpaceMap;
 
 mod view;
@@ -88,7 +88,7 @@ impl<T> Heap<T>
 where
     T: Serialize<DefaultSerializer>,
 {
-    pub async fn get(&self, tx: &Transaction, id: HeapId) -> nsql_buffer::Result<T>
+    pub async fn get(&self, _tx: &Transaction, id: HeapId) -> nsql_buffer::Result<T>
     where
         T::Archived: Deserialize<T, rkyv::Infallible>,
     {
@@ -137,17 +137,19 @@ where
         required_space: u16,
         f: impl FnOnce(PageIndex, &mut HeapViewMut<'_, T>) -> nsql_buffer::Result<R>,
     ) -> nsql_buffer::Result<R> {
+        let required_space = required_space + archived_size_of!(Slot);
+
         match self.fsm.find(required_space).await? {
             Some(idx) => {
                 let page = self.pool.load(idx).await?;
                 let mut guard = page.write().await;
 
                 let mut view = HeapViewMut::<T>::view_mut(&mut guard)?;
-                let free_space = view.free_space();
-                assert!(free_space >= required_space);
+                debug_assert!(view.free_space() >= required_space);
                 let r = f(page.page_idx(), &mut view)?;
+                let updated_free_space = view.free_space();
                 // assume that the caller will write to the page and use the requested space
-                self.fsm.update(&guard, free_space - required_space).await?;
+                self.fsm.update(&guard, updated_free_space).await?;
                 Ok(r)
             }
             None => {
@@ -156,11 +158,12 @@ where
                 let mut guard = page.write().await;
 
                 let view = HeapViewMut::<T>::initialize(&mut guard);
-                let free_space = view.free_space();
-                assert!(free_space >= required_space);
-                self.fsm.update(&guard, free_space).await?;
+                let initial_free_space = view.free_space();
+                assert!(initial_free_space >= required_space);
+                self.fsm.update(&guard, initial_free_space).await?;
                 let mut view = HeapViewMut::<T>::view_mut(&mut guard)?;
                 let r = f(page.page_idx(), &mut view)?;
+                let updated_free_space = view.free_space();
 
                 // update left and right page links
                 let mut meta_guard = self.meta_page.write().await;
@@ -184,8 +187,7 @@ where
                     }
                 }
 
-                // assume that the caller will write to the page and use the requested space
-                self.fsm.update(&guard, free_space - required_space).await?;
+                self.fsm.update(&guard, updated_free_space).await?;
 
                 Ok(r)
             }
