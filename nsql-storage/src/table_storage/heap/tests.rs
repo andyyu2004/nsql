@@ -30,7 +30,7 @@ fn test_heap_scan() -> nsql_buffer::Result<()> {
         let pool = nsql_test::mk_fast_mem_buffer_pool!();
         let heap = Heap::initialize(pool).await?;
 
-        const N: u32 = 500;
+        const N: u32 = 5000;
         for i in 0..N {
             heap.append(&tx, &i).await?;
         }

@@ -118,9 +118,8 @@ where
         let (meta_bytes, _) = meta_guard.split_array_ref();
         let meta = unsafe { nsql_rkyv::archived_root::<HeapMeta>(meta_bytes) };
 
-        let mut next = meta.head_and_tail.as_ref().map(|h| h.head.into());
-
         let mut tuples = vec![];
+        let mut next = meta.head_and_tail.as_ref().map(|h| h.head.into());
         while let Some(idx) = next {
             let head = self.pool.load(idx).await?;
             let guard = head.read().await;
@@ -172,12 +171,14 @@ where
 
                 match meta.head_and_tail.as_mut() {
                     Some(ArchivedHeadAndTail { head: _, tail }) => {
-                        // if this was not the first allocated page, update the last page's right link to the new page
-                        let tail_page = self.pool.load((*tail).into()).await.unwrap();
+                        // if this was not the first allocated page, update the tail page's right link to the new page,
+                        // the new page's left link to the prev tail page, and the tail page index to the new page
+                        let prev_tail_page = self.pool.load((*tail).into()).await.unwrap();
                         view.set_left_link((*tail).into());
-                        let mut tail_guard = tail_page.write().await;
-                        let mut tail_view = HeapViewMut::<T>::view_mut(&mut tail_guard)?;
-                        tail_view.set_right_link(page_idx);
+                        let mut prev_tail_guard = prev_tail_page.write().await;
+                        let mut prev_tail_view = HeapViewMut::<T>::view_mut(&mut prev_tail_guard)?;
+                        prev_tail_view.set_right_link(page_idx);
+                        *tail = page_idx.into();
                     }
                     None => {
                         // if this was the first allocated page, update the first and last page indices
