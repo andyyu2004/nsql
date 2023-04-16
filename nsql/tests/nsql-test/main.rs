@@ -19,7 +19,7 @@ fn nsql_sqllogictest(path: &Path) -> nsql::Result<(), Box<dyn Error>> {
 datatest_stable::harness!(
     nsql_sqllogictest,
     format!("{}/{}", env!("CARGO_MANIFEST_DIR"), "tests/nsql-test/sqllogictest"),
-    r"^.*/test_insert.slt"
+    r"^.*/*.slt"
 );
 
 // FIXME we need to test the single file pager too, but it's currently not `Send` due to `tokio_uring::File` not being send

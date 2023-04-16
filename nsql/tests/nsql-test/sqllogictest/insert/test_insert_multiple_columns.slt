@@ -1,0 +1,13 @@
+statement ok
+CREATE TABLE t(x int, y int)
+
+statement ok
+INSERT INTO t(x, y) VALUES (1, 2), (3, 4), (5, 6)
+
+query II rowsort
+SELECT x, y FROM t
+----
+1
+2
+3
+

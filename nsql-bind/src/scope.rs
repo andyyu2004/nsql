@@ -33,7 +33,7 @@ impl Scope {
 
     pub fn lookup_column(&self, ident: &Ident) -> Result<ir::ColumnRef> {
         match ident {
-            Ident::Qualified { schema, name } => todo!(),
+            Ident::Qualified { .. } => todo!(),
             Ident::Unqualified { name } => self
                 .columns
                 .get(name)
