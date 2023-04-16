@@ -1,3 +1,4 @@
+use futures_util::TryStreamExt;
 use nsql_transaction::TransactionManager;
 
 use super::Heap;
@@ -35,7 +36,14 @@ fn test_heap_scan() -> nsql_buffer::Result<()> {
             heap.append(&tx, &i).await?;
         }
 
-        let values = heap.scan(&tx).await?;
+        let values = heap
+            .scan(tx)
+            .await
+            .try_fold(vec![], |mut acc, next| async move {
+                acc.extend(next);
+                Ok(acc)
+            })
+            .await?;
         assert_eq!(values.len(), N as usize);
         assert_eq!(values, (0..N).collect::<Vec<_>>());
 

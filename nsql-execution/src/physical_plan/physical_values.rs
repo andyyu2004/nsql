@@ -16,7 +16,7 @@ impl PhysicalValues {
 
 #[async_trait::async_trait]
 impl PhysicalSource for PhysicalValues {
-    async fn source(&self, _ctx: &ExecutionContext<'_>) -> ExecutionResult<Option<Tuple>> {
+    async fn source(&self, _ctx: &ExecutionContext) -> ExecutionResult<Option<Tuple>> {
         let index = self.index.fetch_add(1, atomic::Ordering::SeqCst);
         if index >= self.values.len() {
             return Ok(None);

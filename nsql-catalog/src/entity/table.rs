@@ -22,8 +22,8 @@ pub struct Table {
 
 impl Table {
     #[inline]
-    pub fn storage(&self) -> &TableStorage {
-        self.storage.as_ref()
+    pub fn storage(&self) -> &Arc<TableStorage> {
+        &self.storage
     }
 }
 

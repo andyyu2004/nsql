@@ -107,30 +107,30 @@ trait PhysicalNode: Send + Sync + fmt::Debug + 'static {
 
 #[async_trait::async_trait]
 trait PhysicalOperator: PhysicalNode {
-    async fn execute(&self, ctx: &ExecutionContext<'_>, input: Tuple) -> ExecutionResult<Tuple>;
+    async fn execute(&self, ctx: &ExecutionContext, input: Tuple) -> ExecutionResult<Tuple>;
 }
 
 #[async_trait::async_trait]
 trait PhysicalSource: PhysicalNode {
-    async fn source(&self, ctx: &ExecutionContext<'_>) -> ExecutionResult<Option<Tuple>>;
+    async fn source(&self, ctx: &ExecutionContext) -> ExecutionResult<Option<Tuple>>;
 
     fn estimated_cardinality(&self) -> usize;
 }
 
 #[async_trait::async_trait]
 trait PhysicalSink: PhysicalSource {
-    async fn sink(&self, ctx: &ExecutionContext<'_>, tuple: Tuple) -> ExecutionResult<()>;
+    async fn sink(&self, ctx: &ExecutionContext, tuple: Tuple) -> ExecutionResult<()>;
 }
 
-pub struct ExecutionContext<'a> {
+pub struct ExecutionContext {
     pool: Arc<dyn Pool>,
-    tx: &'a Transaction,
-    catalog: &'a Catalog,
+    tx: Arc<Transaction>,
+    catalog: Arc<Catalog>,
 }
 
-impl<'a> ExecutionContext<'a> {
+impl ExecutionContext {
     #[inline]
-    pub fn new(pool: Arc<dyn Pool>, tx: &'a Transaction, catalog: &'a Catalog) -> Self {
+    pub fn new(pool: Arc<dyn Pool>, tx: Arc<Transaction>, catalog: Arc<Catalog>) -> Self {
         Self { pool, tx, catalog }
     }
 
@@ -140,12 +140,12 @@ impl<'a> ExecutionContext<'a> {
     }
 
     #[inline]
-    pub fn tx(&self) -> &Transaction {
-        self.tx
+    pub fn tx(&self) -> Arc<Transaction> {
+        Arc::clone(&self.tx)
     }
 
     #[inline]
-    pub fn catalog(&self) -> &Catalog {
-        self.catalog
+    pub fn catalog(&self) -> Arc<Catalog> {
+        Arc::clone(&self.catalog)
     }
 }

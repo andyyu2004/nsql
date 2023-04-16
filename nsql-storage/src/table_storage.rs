@@ -3,6 +3,7 @@ mod heap;
 
 use std::sync::Arc;
 
+use futures_util::Stream;
 use nsql_buffer::Pool;
 use nsql_core::schema::Schema;
 use nsql_pager::PageIndex;
@@ -30,13 +31,11 @@ impl TableStorage {
         Ok(())
     }
 
-    pub async fn scan(&self, tx: &Transaction) -> nsql_buffer::Result<Vec<Tuple>> {
-        let tuples = self.heap.scan(tx).await?;
-        Ok(tuples)
-    }
-
-    fn find_free_space(&self, _size: u16) -> Option<PageIndex> {
-        todo!()
+    pub async fn scan(
+        &self,
+        tx: Arc<Transaction>,
+    ) -> impl Stream<Item = nsql_buffer::Result<Vec<Tuple>>> + Send {
+        self.heap.scan(tx).await
     }
 }
 

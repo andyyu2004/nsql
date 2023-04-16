@@ -1,6 +1,8 @@
 use std::marker::PhantomData;
 use std::sync::Arc;
 
+use async_stream::try_stream;
+use futures_util::Stream;
 use nsql_buffer::{BufferHandle, Pool};
 use nsql_pager::PageIndex;
 use nsql_rkyv::{archived_size_of, DefaultSerializer};
@@ -109,26 +111,36 @@ where
         .await
     }
 
-    // FIXME stream the results in batches
-    pub async fn scan(&self, _tx: &Transaction) -> nsql_buffer::Result<Vec<T>>
+    pub async fn scan(
+        &self,
+        tx: Arc<Transaction>,
+    ) -> impl Stream<Item = nsql_buffer::Result<Vec<T>>> + Send
     where
-        T::Archived: Deserialize<T, rkyv::Infallible>,
+        T: Send + Sync,
+        T::Archived: Deserialize<T, rkyv::Infallible> + Send + Sync,
     {
-        let meta_guard = self.meta_page.read().await;
-        let (meta_bytes, _) = meta_guard.split_array_ref();
-        let meta = unsafe { nsql_rkyv::archived_root::<HeapMeta>(meta_bytes) };
+        let pool = Arc::clone(&self.pool);
+        let mut next = {
+            let meta_guard = self.meta_page.read().await;
+            let (meta_bytes, _) = meta_guard.split_array_ref();
+            let meta = unsafe { nsql_rkyv::archived_root::<HeapMeta>(meta_bytes) };
 
-        let mut tuples = vec![];
-        let mut next = meta.head_and_tail.as_ref().map(|h| h.head.into());
-        while let Some(idx) = next {
-            let head = self.pool.load(idx).await?;
-            let guard = head.read().await;
-            let view = HeapView::<T>::view(&guard)?;
-            view.scan_into(&mut tuples);
-            next = view.right_link();
+            meta.head_and_tail.as_ref().map(|h| h.head.into())
+        };
+
+        try_stream! {
+            while let Some(idx) = next {
+                let mut tuples = vec![];
+                {
+                    let head = pool.load(idx).await?;
+                    let guard = head.read().await;
+                    let view = HeapView::<T>::view(&guard)?;
+                    view.scan_into(&tx, &mut tuples);
+                    next = view.right_link();
+                }
+                yield tuples;
+            }
         }
-
-        Ok(tuples)
     }
 
     async fn with_free_space<R>(

@@ -19,7 +19,7 @@ impl Executor {
     #[async_recursion::async_recursion]
     async fn execute(
         &self,
-        ctx: &ExecutionContext<'_>,
+        ctx: &ExecutionContext,
         root: Idx<MetaPipeline>,
     ) -> ExecutionResult<()> {
         let root = &self.arena[root];
@@ -36,7 +36,7 @@ impl Executor {
 
     async fn execute_pipeline(
         &self,
-        ctx: &ExecutionContext<'_>,
+        ctx: &ExecutionContext,
         pipeline: Idx<Pipeline>,
     ) -> ExecutionResult<()> {
         let pipeline = &self.arena[pipeline];
@@ -51,7 +51,7 @@ impl Executor {
 }
 
 async fn execute_meta_pipeline(
-    ctx: &ExecutionContext<'_>,
+    ctx: &ExecutionContext,
     arena: PipelineArena,
     root: Idx<MetaPipeline>,
 ) -> ExecutionResult<()> {
@@ -59,10 +59,7 @@ async fn execute_meta_pipeline(
     executor.execute(ctx, root).await
 }
 
-pub async fn execute(
-    ctx: &ExecutionContext<'_>,
-    plan: PhysicalPlan,
-) -> ExecutionResult<Vec<Tuple>> {
+pub async fn execute(ctx: &ExecutionContext, plan: PhysicalPlan) -> ExecutionResult<Vec<Tuple>> {
     let sink = Arc::new(OutputSink::default());
     let (arena, root) = build_pipelines(Arc::clone(&sink) as Arc<dyn PhysicalSink>, plan);
 
@@ -100,14 +97,14 @@ impl PhysicalSource for OutputSink {
         self.tuples.read().len()
     }
 
-    async fn source(&self, _ctx: &ExecutionContext<'_>) -> ExecutionResult<Option<Tuple>> {
+    async fn source(&self, _ctx: &ExecutionContext) -> ExecutionResult<Option<Tuple>> {
         todo!()
     }
 }
 
 #[async_trait::async_trait]
 impl PhysicalSink for OutputSink {
-    async fn sink(&self, _ctx: &ExecutionContext<'_>, tuple: Tuple) -> ExecutionResult<()> {
+    async fn sink(&self, _ctx: &ExecutionContext, tuple: Tuple) -> ExecutionResult<()> {
         self.tuples.write().push(tuple);
         Ok(())
     }

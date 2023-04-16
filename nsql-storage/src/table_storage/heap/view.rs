@@ -41,7 +41,7 @@ impl<'a, T: Archive> HeapView<'a, T> {
         Ok(Self { header, slots, data, marker: PhantomData })
     }
 
-    pub fn scan_into(&self, acc: &mut Vec<T>)
+    pub fn scan_into(&self, _tx: &Transaction, acc: &mut Vec<T>)
     where
         T::Archived: Deserialize<T, rkyv::Infallible>,
     {

@@ -42,7 +42,7 @@ impl Nsql {
             todo!("multiple statements");
         }
 
-        let catalog = &self.inner.catalog;
+        let catalog = Arc::clone(&self.inner.catalog);
         let stmt = &statements[0];
         let stmt = Binder::new(&tx, &self.inner.catalog).bind(stmt)?;
 
@@ -50,10 +50,12 @@ impl Nsql {
         let plan = optimize(plan);
 
         let physical_plan = PhysicalPlanner::new().plan(plan);
-        let ctx = ExecutionContext::new(Arc::clone(&self.inner.buffer_pool), &tx, catalog);
+        let ctx =
+            ExecutionContext::new(Arc::clone(&self.inner.buffer_pool), Arc::clone(&tx), catalog);
         let tuples = nsql_execution::execute(&ctx, physical_plan).await?;
 
-        tx.commit().await;
+        drop(ctx);
+        tx.commit_arc().await;
 
         Ok(MaterializedQueryOutput { types: vec![], tuples })
     }
@@ -69,7 +71,7 @@ struct Shared {
     storage: Storage,
     buffer_pool: Arc<dyn Pool>,
     txm: TransactionManager,
-    catalog: Catalog,
+    catalog: Arc<Catalog>,
 }
 
 impl Nsql {
@@ -80,8 +82,8 @@ impl Nsql {
         let buffer_pool = Arc::new(BufferPool::new(pager));
 
         let tx = txm.begin().await;
-        let catalog = Catalog::create(&tx)?;
-        tx.commit().await;
+        let catalog = Arc::new(Catalog::create(&tx)?);
+        tx.commit_arc().await;
 
         Ok(Self::new(Shared { storage, buffer_pool, txm, catalog }))
     }
@@ -96,8 +98,7 @@ impl Nsql {
 
         let tx = txm.begin().await;
         storage.load(&tx).await?;
-        tx.commit().await;
-        // let catalog = checkpoint.catalog;
+        tx.commit_arc().await;
         todo!()
 
         // Ok(Self::new(Shared { storage, buffer_pool, txm, catalog }))

@@ -1,4 +1,5 @@
 use std::sync::atomic::{self, AtomicU64};
+use std::sync::Arc;
 
 pub struct TransactionManager {
     current_txid: AtomicU64,
@@ -9,8 +10,8 @@ impl TransactionManager {
         Self { current_txid: AtomicU64::new(0) }
     }
 
-    pub async fn begin(&self) -> Transaction {
-        Transaction::new(self.next_txid())
+    pub async fn begin(&self) -> Arc<Transaction> {
+        Arc::new(Transaction::new(self.next_txid()))
     }
 }
 
@@ -51,6 +52,13 @@ impl Transaction {
     }
 
     pub async fn commit(self) {}
+
+    pub async fn commit_arc(self: Arc<Self>) {
+        Arc::try_unwrap(self)
+            .expect("outstanding references to committing transaction")
+            .commit()
+            .await
+    }
 
     pub async fn rollback(self) {}
 }

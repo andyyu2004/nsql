@@ -47,7 +47,7 @@ impl PhysicalSource for PhysicalCreateTable {
         0
     }
 
-    async fn source(&self, ctx: &ExecutionContext<'_>) -> ExecutionResult<Option<Tuple>> {
+    async fn source(&self, ctx: &ExecutionContext) -> ExecutionResult<Option<Tuple>> {
         if self.finished.load(atomic::Ordering::Relaxed) {
             return Ok(None);
         }
@@ -69,10 +69,11 @@ impl PhysicalSource for PhysicalCreateTable {
         };
 
         let catalog = ctx.catalog();
+        let tx = ctx.tx();
         let schema = catalog
-            .get::<Namespace>(ctx.tx(), self.namespace)?
+            .get::<Namespace>(&tx, self.namespace)?
             .expect("schema not found during execution");
-        schema.create::<Table>(ctx.tx(), info)?;
+        schema.create::<Table>(&tx, info)?;
 
         Ok(None)
     }
