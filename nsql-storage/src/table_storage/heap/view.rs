@@ -5,9 +5,10 @@ use std::{io, mem, slice};
 
 use nsql_pager::{PageIndex, PAGE_DATA_SIZE};
 use nsql_rkyv::{align_archived_ptr_offset, archived_size_of, DefaultSerializer};
+use nsql_transaction::Transaction;
 use rkyv::option::ArchivedOption;
 use rkyv::rend::BigEndian;
-use rkyv::{Archive, Archived, Serialize};
+use rkyv::{Archive, Archived, Deserialize, Serialize};
 
 const HEAP_PAGE_HEADER_MAGIC: [u8; 4] = *b"HEAP";
 
@@ -40,9 +41,35 @@ impl<'a, T: Archive> HeapView<'a, T> {
         Ok(Self { header, slots, data, marker: PhantomData })
     }
 
+    pub fn scan_into(&self, acc: &mut Vec<T>)
+    where
+        T::Archived: Deserialize<T, rkyv::Infallible>,
+    {
+        acc.reserve(self.slots.len());
+        self.slots.iter().for_each(|&slot| acc.push(nsql_rkyv::deserialize(self.get_raw(slot))))
+    }
+
+    #[inline]
+    pub fn right_link(&self) -> Option<PageIndex> {
+        self.header.right_link.as_ref().map(|&idx| idx.into())
+    }
+
     #[inline]
     pub fn free_space(&self) -> u16 {
         self.header.free_end.0 - self.header.free_start.0
+    }
+
+    #[inline]
+    pub fn get_raw(&self, slot: Slot) -> &T::Archived {
+        unsafe { rkyv::archived_root::<T>(&self[slot]) }
+    }
+
+    #[inline]
+    pub fn get(&self, idx: SlotIndex) -> T
+    where
+        T::Archived: Deserialize<T, rkyv::Infallible>,
+    {
+        nsql_rkyv::deserialize(self.get_raw(self.slots[idx.0 as usize]))
     }
 
     fn adjusted_slot_range(&self, slot: Slot) -> Range<usize> {
@@ -167,24 +194,20 @@ impl<'a, T: Archive> HeapViewMut<'a, T> {
         Ok(Self { header, slots, data, marker: PhantomData })
     }
 
-    pub fn set_left_link(&mut self, link: PageIndex) {
-        self.header.left_link = ArchivedOption::Some(link.into());
-    }
-
-    pub fn set_right_link(&mut self, link: PageIndex) {
-        self.header.right_link = ArchivedOption::Some(link.into());
-    }
-
-    pub fn push(&mut self, value: &T) -> Result<SlotIndex, HeapPageFull>
+    pub fn append(&mut self, tx: &Transaction, value: &T) -> Result<SlotIndex, HeapPageFull>
     where
         T: Serialize<DefaultSerializer>,
     {
         let serialized_value = nsql_rkyv::to_bytes(value);
-        unsafe { self.push_raw(&serialized_value) }
+        unsafe { self.append_raw(tx, &serialized_value) }
     }
 
     // Safety: the caller must ensure that the serialized value is a valid archived `T`
-    pub unsafe fn push_raw(&mut self, serialized_value: &[u8]) -> Result<SlotIndex, HeapPageFull> {
+    pub unsafe fn append_raw(
+        &mut self,
+        _tx: &Transaction,
+        serialized_value: &[u8],
+    ) -> Result<SlotIndex, HeapPageFull> {
         let length = serialized_value.len() as u16;
         if length > PAGE_DATA_SIZE as u16 / 4 {
             // we are dividing by 4 not 3 as we're not considering the size of the metadata etc
@@ -242,6 +265,14 @@ impl<'a, T: Archive> HeapViewMut<'a, T> {
 
     fn free_space(&self) -> u16 {
         self.header.free_end.0.value() - self.header.free_start.0.value()
+    }
+
+    pub(crate) fn set_left_link(&mut self, link: PageIndex) {
+        self.header.left_link = ArchivedOption::Some(link.into());
+    }
+
+    pub(crate) fn set_right_link(&mut self, link: PageIndex) {
+        self.header.right_link = ArchivedOption::Some(link.into());
     }
 }
 

@@ -1,22 +1,19 @@
-use std::future::Future;
 use std::marker::PhantomData;
-use std::pin::Pin;
 use std::sync::Arc;
 
 use nsql_buffer::{BufferHandle, Pool};
 use nsql_pager::PageIndex;
+use nsql_rkyv::DefaultSerializer;
 use nsql_transaction::Transaction;
 use rkyv::option::ArchivedOption;
 use rkyv::{Archive, Archived, Deserialize, Serialize};
 
-use self::view::{HeapViewMut, SlotIndex};
+use self::view::{HeapView, HeapViewMut, SlotIndex};
 use super::fsm::FreeSpaceMap;
-use crate::tuple::Tuple;
 
 mod view;
 
 pub struct Heap<T> {
-    meta: HeapMeta,
     meta_page: BufferHandle,
     fsm: FreeSpaceMap,
     pool: Arc<dyn Pool>,
@@ -49,7 +46,7 @@ impl From<HeadAndTail> for Archived<HeadAndTail> {
 }
 
 impl<T> Heap<T> {
-    pub async fn initalize(pool: Arc<dyn Pool>) -> nsql_buffer::Result<Self> {
+    pub async fn initialize(pool: Arc<dyn Pool>) -> nsql_buffer::Result<Self> {
         let meta_page = pool.alloc().await?;
         let fsm = FreeSpaceMap::initialize(Arc::clone(&pool)).await?;
         let meta = HeapMeta {
@@ -64,7 +61,7 @@ impl<T> Heap<T> {
         guard[..bytes.len()].copy_from_slice(&bytes);
         drop(guard);
 
-        Ok(Self { meta, meta_page, fsm, pool, _phantom: PhantomData })
+        Ok(Self { meta_page, fsm, pool, _phantom: PhantomData })
     }
 
     pub async fn load(pool: Arc<dyn Pool>, meta_page_idx: PageIndex) -> nsql_buffer::Result<Self> {
@@ -77,7 +74,7 @@ impl<T> Heap<T> {
 
         let fsm = FreeSpaceMap::load(Arc::clone(&pool), meta.fsm_meta_page_idx).await?;
 
-        Ok(Self { meta, meta_page, fsm, pool, _phantom: PhantomData })
+        Ok(Self { meta_page, fsm, pool, _phantom: PhantomData })
     }
 }
 
@@ -87,29 +84,52 @@ pub struct HeapId {
     slot: SlotIndex,
 }
 
-impl<T: Archive> Heap<T> {
-    pub async fn append(&self, _tx: &Transaction, tuple: Tuple) -> nsql_buffer::Result<HeapId> {
-        let serialized = nsql_rkyv::to_bytes(&tuple);
+impl<T> Heap<T>
+where
+    T: Serialize<DefaultSerializer>,
+{
+    pub async fn get(&self, tx: &Transaction, id: HeapId) -> nsql_buffer::Result<T>
+    where
+        T::Archived: Deserialize<T, rkyv::Infallible>,
+    {
+        let page = self.pool.load(id.page_idx).await?;
+        let guard = page.read().await;
+        let view = HeapView::<T>::view(&guard)?;
+        let tuple = view.get(id.slot);
+        Ok(tuple)
+    }
+
+    pub async fn append(&self, tx: &Transaction, tuple: &T) -> nsql_buffer::Result<HeapId> {
+        let serialized = nsql_rkyv::to_bytes(tuple);
         self.with_free_space(serialized.len() as u16, |page_idx, view| {
-            let slot = unsafe { view.push_raw(&serialized) }
+            let slot = unsafe { view.append_raw(tx, &serialized) }
                 .expect("there should be sufficient space as we checked the fsm");
             Ok(HeapId { page_idx, slot })
         })
         .await
     }
 
-    pub async fn scan(&self, _tx: &Transaction) -> Vec<T> {
-        todo!()
-    }
-
-    async fn with_meta_view_mut<F>(&self, f: impl FnOnce(Pin<&mut Archived<HeapMeta>>) -> F)
+    // FIXME stream the results in batches
+    pub async fn scan(&self, _tx: &Transaction) -> nsql_buffer::Result<Vec<T>>
     where
-        F: Future<Output = ()>,
+        T::Archived: Deserialize<T, rkyv::Infallible>,
     {
-        let mut guard = self.meta_page.write().await;
-        let (meta_bytes, _) = guard.split_array_mut();
-        let meta = unsafe { nsql_rkyv::archived_root_mut::<HeapMeta>(meta_bytes) };
-        f(meta).await
+        let meta_guard = self.meta_page.read().await;
+        let (meta_bytes, _) = meta_guard.split_array_ref();
+        let meta = unsafe { nsql_rkyv::archived_root::<HeapMeta>(meta_bytes) };
+
+        let mut next = meta.head_and_tail.as_ref().map(|h| h.head.into());
+
+        let mut tuples = vec![];
+        while let Some(idx) = next {
+            let head = self.pool.load(idx).await?;
+            let guard = head.read().await;
+            let view = HeapView::<T>::view(&guard)?;
+            view.scan_into(&mut tuples);
+            next = view.right_link();
+        }
+
+        Ok(tuples)
     }
 
     async fn with_free_space<R>(

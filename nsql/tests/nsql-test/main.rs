@@ -31,7 +31,7 @@ pub struct TypeWrapper(LogicalType);
 impl ColumnType for TypeWrapper {
     fn from_char(value: char) -> Option<Self> {
         let ty = match value {
-            'i' => LogicalType::Int,
+            'I' => LogicalType::Int,
             'b' => LogicalType::Bool,
             'd' => LogicalType::Decimal,
             _ => return None,
@@ -41,9 +41,9 @@ impl ColumnType for TypeWrapper {
 
     fn to_char(&self) -> char {
         match self.0 {
-            LogicalType::Int => 'i',
-            LogicalType::Bool => 'b',
-            LogicalType::Decimal => 'd',
+            LogicalType::Int => 'I',
+            LogicalType::Bool => 'B',
+            LogicalType::Decimal => 'D',
         }
     }
 }

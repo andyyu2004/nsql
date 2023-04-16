@@ -21,17 +21,18 @@ impl TableStorage {
         pool: Arc<dyn Pool>,
         info: TableStorageInfo,
     ) -> nsql_buffer::Result<Self> {
-        let heap = Heap::initalize(Arc::clone(&pool)).await?;
+        let heap = Heap::initialize(Arc::clone(&pool)).await?;
         Ok(Self { heap, info })
     }
 
-    pub async fn append(&self, tx: &Transaction, tuple: Tuple) -> nsql_serde::Result<()> {
+    pub async fn append(&self, tx: &Transaction, tuple: &Tuple) -> nsql_buffer::Result<()> {
         self.heap.append(tx, tuple).await?;
         Ok(())
     }
 
-    pub async fn scan(&self, _tx: &Transaction) -> Vec<Tuple> {
-        todo!()
+    pub async fn scan(&self, tx: &Transaction) -> nsql_buffer::Result<Vec<Tuple>> {
+        let tuples = self.heap.scan(tx).await?;
+        Ok(tuples)
     }
 
     fn find_free_space(&self, _size: u16) -> Option<PageIndex> {

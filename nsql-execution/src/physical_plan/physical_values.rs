@@ -24,7 +24,7 @@ impl PhysicalSource for PhysicalValues {
 
         let evaluator = Evaluator::new();
         let exprs = &self.values[index];
-        let tuple = evaluator.evaluate(exprs);
+        let tuple = evaluator.evaluate(&Tuple::empty(), exprs);
 
         Ok(Some(tuple))
     }

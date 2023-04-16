@@ -9,10 +9,9 @@ pub struct TupleDeserializationContext {
     pub schema: Arc<Schema>,
 }
 
-#[derive(Debug, PartialEq, rkyv::Archive, rkyv::Serialize)]
-pub struct Tuple {
-    values: Box<[Value]>,
-}
+#[derive(Debug, Clone, PartialEq, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
+#[repr(transparent)]
+pub struct Tuple(Box<[Value]>);
 
 impl StreamDeserializeWith for Tuple {
     type Context<'a> = TupleDeserializationContext;
@@ -44,14 +43,21 @@ impl StreamDeserializeWith for Tuple {
 }
 
 impl Tuple {
+    #[inline]
     pub fn new(values: Box<[Value]>) -> Self {
         assert!(!values.is_empty(), "tuple must have at least one value");
-        Self { values }
+        Self(values)
+    }
+
+    #[inline]
+    pub fn empty() -> Self {
+        // FIXME consider making this a static to avoid allocations
+        Self(Box::new([]))
     }
 
     #[inline]
     pub fn values(&self) -> &[Value] {
-        self.values.as_ref()
+        self.0.as_ref()
     }
 }
 
@@ -67,12 +73,12 @@ impl FromIterator<Value> for Tuple {
     }
 }
 
-#[derive(Debug, PartialEq, rkyv::Archive, rkyv::Serialize)]
+#[derive(Debug, Clone, PartialEq, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
 pub enum Value {
     Literal(Literal),
 }
 
-#[derive(Debug, PartialEq, rkyv::Archive, rkyv::Serialize)]
+#[derive(Debug, Clone, PartialEq, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
 pub enum Literal {
     Null,
     Bool(bool),

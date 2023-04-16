@@ -4,6 +4,7 @@ use super::*;
 pub struct PhysicalProjection {
     children: Vec<Arc<dyn PhysicalNode>>,
     projections: Vec<ir::Expr>,
+    evaluator: Evaluator,
 }
 
 impl PhysicalProjection {
@@ -11,14 +12,14 @@ impl PhysicalProjection {
         source: Arc<dyn PhysicalNode>,
         projections: Vec<ir::Expr>,
     ) -> Arc<dyn PhysicalNode> {
-        Arc::new(Self { children: vec![source], projections })
+        Arc::new(Self { evaluator: Evaluator::new(), children: vec![source], projections })
     }
 }
 
 #[async_trait::async_trait]
 impl PhysicalOperator for PhysicalProjection {
     async fn execute(&self, ctx: &ExecutionContext<'_>, input: Tuple) -> ExecutionResult<Tuple> {
-        todo!()
+        Ok(self.evaluator.evaluate(&input, &self.projections))
     }
 }
 

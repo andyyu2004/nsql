@@ -1,6 +1,8 @@
+use std::sync::atomic::{self, AtomicUsize};
 use std::sync::OnceLock;
 
 use nsql_catalog::{Container, Table};
+use parking_lot::Mutex;
 
 use super::*;
 
@@ -8,11 +10,18 @@ use super::*;
 pub struct PhysicalTableScan {
     table_ref: ir::TableRef,
     table: OnceLock<Arc<Table>>,
+    next_batch: Mutex<Vec<Tuple>>,
+    batch_index: AtomicUsize,
 }
 
 impl PhysicalTableScan {
     pub(crate) fn plan(table_ref: ir::TableRef) -> Arc<dyn PhysicalNode> {
-        Arc::new(Self { table_ref, table: OnceLock::new() })
+        Arc::new(Self {
+            table_ref,
+            table: OnceLock::new(),
+            next_batch: Default::default(),
+            batch_index: AtomicUsize::new(0),
+        })
     }
 }
 
@@ -25,9 +34,21 @@ impl PhysicalSource for PhysicalTableScan {
         })?;
 
         let storage = table.storage();
-        storage.scan(ctx.tx);
 
-        todo!()
+        // FIXME tmp hack impl
+        let tuples = storage.scan(ctx.tx).await?;
+        {
+            let mut next_batch = self.next_batch.lock();
+            *next_batch = tuples;
+            let idx = self.batch_index.load(atomic::Ordering::Acquire);
+            if idx < next_batch.len() {
+                let tuple = next_batch[idx].clone();
+                self.batch_index.fetch_add(1, atomic::Ordering::Release);
+                return Ok(Some(tuple));
+            }
+        }
+
+        Ok(None)
     }
 
     fn estimated_cardinality(&self) -> usize {

@@ -52,7 +52,7 @@ impl PhysicalSink for PhysicalInsert {
             .expect("table not found during insert execution");
 
         let storage = table.storage();
-        storage.append(ctx.tx(), tuple).await?;
+        storage.append(ctx.tx(), &tuple).await?;
 
         Ok(())
     }
