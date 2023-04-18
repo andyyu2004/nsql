@@ -11,10 +11,16 @@ use crate::{Entity, Name, Table};
 #[derive(Clone, StreamSerialize)]
 pub struct Column {
     name: Name,
+    index: u8,
     ty: LogicalType,
 }
 
 impl Column {
+    #[inline]
+    pub fn index(&self) -> usize {
+        self.index as usize
+    }
+
     #[inline]
     pub fn logical_type(&self) -> &LogicalType {
         &self.ty
@@ -30,6 +36,8 @@ impl fmt::Debug for Column {
 #[derive(Debug, Clone, StreamDeserialize)]
 pub struct CreateColumnInfo {
     pub name: Name,
+    /// The index of the column in the table.
+    pub index: u8,
     pub ty: LogicalType,
 }
 
@@ -55,6 +63,6 @@ impl CatalogEntity for Column {
     }
 
     fn new(_tx: &Transaction, info: Self::CreateInfo) -> Self {
-        Self { name: info.name, ty: info.ty }
+        Self { name: info.name, index: info.index, ty: info.ty }
     }
 }

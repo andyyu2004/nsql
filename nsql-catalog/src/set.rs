@@ -30,7 +30,7 @@ impl<T: StreamSerialize> StreamSerialize for CatalogSet<T> {
     async fn serialize<S: StreamSerializer>(&self, ser: &mut S) -> nsql_serde::Result<()> {
         ser.write_u32(self.entries.len() as u32).await?;
         for entry in self.entries.iter() {
-            entry.value().committed_version().item().serialize(ser).await?;
+            entry.committed_version().value().serialize(ser).await?;
         }
         Ok(())
     }
@@ -89,15 +89,23 @@ impl<T> VersionedEntry<T> {
 }
 
 impl<T: CatalogEntity> CatalogSet<T> {
+    #[inline]
+    fn create(&self, tx: &Transaction, info: T::CreateInfo) -> Oid<T> {
+        self.insert(tx, T::new(tx, info))
+    }
+
     pub(crate) fn entries(&self, tx: &Transaction) -> Vec<(Oid<T>, Arc<T>)> {
         self.entries
             .iter()
-            .flat_map(|entry| entry.version_for_tx(tx).map(|ent| (*entry.key(), ent.item())))
+            .enumerate()
+            .flat_map(|(idx, entry)| {
+                entry.version_for_tx(tx).map(|entry| (Oid::new(idx as u64), entry.value()))
+            })
             .collect()
     }
 
     pub(crate) fn get(&self, tx: &Transaction, oid: Oid<T>) -> Option<Arc<T>> {
-        self.entries.get(&oid).and_then(|entry| entry.version_for_tx(tx)).map(|entry| entry.item())
+        self.entries.get(&oid).and_then(|entry| entry.version_for_tx(tx)).map(|entry| entry.value())
     }
 
     pub(crate) fn get_by_name(&self, tx: &Transaction, name: &str) -> Option<(Oid<T>, Arc<T>)> {
@@ -108,19 +116,19 @@ impl<T: CatalogEntity> CatalogSet<T> {
         Some(*self.name_mapping.get(name.as_ref())?.value())
     }
 
-    #[inline]
-    fn create(&self, tx: &Transaction, info: T::CreateInfo) -> Oid<T> {
-        self.insert(tx, T::new(tx, info))
-    }
-
     pub(crate) fn insert(&self, tx: &Transaction, value: T) -> Oid<T> {
         let oid = self.next_oid();
-        self.name_mapping.insert(value.name(), oid);
+        assert!(
+            self.name_mapping.insert(value.name(), oid).is_none(),
+            "need to handle naming conflicts"
+        );
         self.entries.entry(oid).or_default().push_version(CatalogEntry::new(tx, value));
         oid
     }
 
     fn next_oid(&self) -> Oid<T> {
+        // FIXME this won't work under concurrent workloads, we should use an atomic counter instead
+        // We can run into the case where the lengths are not empty if we are halfway through an insert
         assert_eq!(self.entries.len(), self.name_mapping.len());
         Oid::new(self.entries.len() as u64)
     }
@@ -129,26 +137,26 @@ impl<T: CatalogEntity> CatalogSet<T> {
 #[derive(Debug)]
 struct CatalogEntry<T> {
     txid: Txid,
-    item: Arc<T>,
+    value: Arc<T>,
     deleted: bool,
 }
 
 impl<T> Clone for CatalogEntry<T> {
     fn clone(&self) -> Self {
-        Self { txid: self.txid, item: Arc::clone(&self.item), deleted: self.deleted }
+        Self { txid: self.txid, value: Arc::clone(&self.value), deleted: self.deleted }
     }
 }
 
 impl<T> CatalogEntry<T> {
     pub(crate) fn new(tx: &Transaction, value: T) -> Self {
-        Self { txid: tx.id(), item: Arc::new(value), deleted: false }
+        Self { txid: tx.id(), value: Arc::new(value), deleted: false }
     }
 
     pub fn txid(&self) -> Txid {
         self.txid
     }
 
-    pub fn item(&self) -> Arc<T> {
-        Arc::clone(&self.item)
+    pub fn value(&self) -> Arc<T> {
+        Arc::clone(&self.value)
     }
 }

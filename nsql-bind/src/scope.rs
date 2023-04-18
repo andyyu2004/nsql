@@ -8,10 +8,12 @@ use crate::{Error, Ident, Result};
 #[derive(Debug, Clone, Default)]
 pub(crate) struct Scope {
     tables: rpds::HashTrieMap<Ident, ir::TableRef>,
-    columns: rpds::HashTrieMap<Name, ir::ColumnRef>,
+    columns: rpds::HashTrieMap<Name, (ir::ColumnRef, usize)>,
 }
 
 impl Scope {
+    /// Insert a table and its columns to the scope
+    /// * `name` - Ordered columns of the table being bound.
     #[tracing::instrument(skip(self, table_ref))]
     pub fn bind_table(
         &self,
@@ -25,14 +27,16 @@ impl Scope {
             if columns.contains_key(&column.name()) {
                 todo!("handle duplicate names")
             }
-            columns =
-                columns.insert(column.name().clone(), ir::ColumnRef { table_ref, column: oid });
+            columns = columns.insert(
+                column.name().clone(),
+                (ir::ColumnRef { table_ref, column: oid }, column.index()),
+            );
         }
 
         Self { tables: self.tables.insert(name, table_ref), columns }
     }
 
-    pub fn lookup_column(&self, ident: &Ident) -> Result<ir::ColumnRef> {
+    pub fn lookup_column(&self, ident: &Ident) -> Result<(ir::ColumnRef, usize)> {
         match ident {
             Ident::Qualified { .. } => todo!(),
             Ident::Unqualified { name } => self

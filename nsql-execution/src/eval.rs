@@ -20,10 +20,7 @@ impl Evaluator {
                 ir::Literal::Bool(b) => Value::Literal(Literal::Bool(*b)),
                 ir::Literal::Decimal(d) => Value::Literal(Literal::Decimal(*d)),
             },
-            ir::Expr::ColumnRef(column_ref) => {
-                // FIXME obviously wrong impl
-                input.values()[0].clone()
-            }
+            ir::Expr::ColumnRef(_, idx) => input.values()[*idx].clone(),
         }
     }
 }

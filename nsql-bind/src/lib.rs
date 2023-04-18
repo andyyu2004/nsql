@@ -28,6 +28,9 @@ pub enum Error {
     #[error("unimplemented: {0}")]
     Unimplemented(String),
 
+    #[error("{0}")]
+    Generic(String),
+
     #[error(transparent)]
     Catalog(#[from] nsql_catalog::Error),
 
@@ -38,10 +41,18 @@ pub enum Error {
     AlreadyExists { kind: &'static str, ident: Ident },
 }
 
-macro_rules! ensure {
+macro_rules! not_implemented {
     ($cond:expr) => {
         if !$cond {
             return Err($crate::Error::Unimplemented(stringify!($cond).into()).into());
+        }
+    };
+}
+
+macro_rules! ensure {
+    ($cond:expr, $msg:expr) => {
+        if !$cond {
+            return Err($crate::Error::Generic($msg.into()));
         }
     };
 }
@@ -85,26 +96,26 @@ impl<'a> Binder<'a> {
                 on_commit,
                 on_cluster,
             } => {
-                ensure!(!or_replace);
-                ensure!(!temporary);
-                ensure!(!external);
-                ensure!(global.is_none());
-                ensure!(!if_not_exists);
-                ensure!(constraints.is_empty());
-                ensure!(*hive_distribution == HiveDistributionStyle::NONE);
-                ensure!(table_properties.is_empty());
-                ensure!(with_options.is_empty());
-                ensure!(file_format.is_none());
-                ensure!(location.is_none());
-                ensure!(query.is_none());
-                ensure!(!without_rowid);
-                ensure!(like.is_none());
-                ensure!(clone.is_none());
-                ensure!(engine.is_none());
-                ensure!(default_charset.is_none());
-                ensure!(collation.is_none());
-                ensure!(on_commit.is_none());
-                ensure!(on_cluster.is_none());
+                not_implemented!(!or_replace);
+                not_implemented!(!temporary);
+                not_implemented!(!external);
+                not_implemented!(global.is_none());
+                not_implemented!(!if_not_exists);
+                not_implemented!(constraints.is_empty());
+                not_implemented!(*hive_distribution == HiveDistributionStyle::NONE);
+                not_implemented!(table_properties.is_empty());
+                not_implemented!(with_options.is_empty());
+                not_implemented!(file_format.is_none());
+                not_implemented!(location.is_none());
+                not_implemented!(query.is_none());
+                not_implemented!(!without_rowid);
+                not_implemented!(like.is_none());
+                not_implemented!(clone.is_none());
+                not_implemented!(engine.is_none());
+                not_implemented!(default_charset.is_none());
+                not_implemented!(collation.is_none());
+                not_implemented!(on_commit.is_none());
+                not_implemented!(on_cluster.is_none());
 
                 let ident = self.lower_ident(&name.0)?;
                 match self.bind_ident::<Table>(&ident) {
@@ -135,12 +146,12 @@ impl<'a> Binder<'a> {
                 on,
                 returning,
             } => {
-                ensure!(or.is_none());
-                ensure!(!overwrite);
-                ensure!(partitioned.is_none());
-                ensure!(after_columns.is_empty());
-                ensure!(on.is_none());
-                ensure!(returning.is_none());
+                not_implemented!(or.is_none());
+                not_implemented!(!overwrite);
+                not_implemented!(partitioned.is_none());
+                not_implemented!(after_columns.is_empty());
+                not_implemented!(on.is_none());
+                not_implemented!(returning.is_none());
                 // ensure!(columns.is_empty());
 
                 let table_name = self.lower_ident(&table_name.0)?;
@@ -163,12 +174,15 @@ impl<'a> Binder<'a> {
     }
 
     fn lower_columns(&self, columns: &[ast::ColumnDef]) -> Result<Vec<CreateColumnInfo>> {
-        columns.iter().map(|c| self.lower_column(c)).collect()
+        columns.iter().enumerate().map(|(idx, col)| self.lower_column(idx, col)).collect()
     }
 
-    fn lower_column(&self, column: &ast::ColumnDef) -> Result<CreateColumnInfo> {
+    fn lower_column(&self, idx: usize, column: &ast::ColumnDef) -> Result<CreateColumnInfo> {
+        ensure!(idx < u8::MAX as usize, "too many columns (max 256)");
+
         Ok(CreateColumnInfo {
             name: column.name.value.as_str().into(),
+            index: idx as u8,
             ty: self.lower_ty(&column.data_type)?,
         })
     }
@@ -236,12 +250,12 @@ impl<'a> Binder<'a> {
 
     fn bind_query(&self, scope: &Scope, query: &ast::Query) -> Result<ir::TableExpr> {
         let ast::Query { with, body, order_by, limit, offset, fetch, locks } = query;
-        ensure!(with.is_none());
-        ensure!(order_by.is_empty());
-        ensure!(limit.is_none());
-        ensure!(offset.is_none());
-        ensure!(fetch.is_none());
-        ensure!(locks.is_empty());
+        not_implemented!(with.is_none());
+        not_implemented!(order_by.is_empty());
+        not_implemented!(limit.is_none());
+        not_implemented!(offset.is_none());
+        not_implemented!(fetch.is_none());
+        not_implemented!(locks.is_empty());
 
         self.bind_table_expr(scope, body)
     }
@@ -275,17 +289,17 @@ impl<'a> Binder<'a> {
             having,
             qualify,
         } = select;
-        ensure!(!distinct);
-        ensure!(top.is_none());
-        ensure!(into.is_none());
-        ensure!(lateral_views.is_empty());
-        ensure!(selection.is_none());
-        ensure!(group_by.is_empty());
-        ensure!(cluster_by.is_empty());
-        ensure!(distribute_by.is_empty());
-        ensure!(sort_by.is_empty());
-        ensure!(having.is_none());
-        ensure!(qualify.is_none());
+        not_implemented!(!distinct);
+        not_implemented!(top.is_none());
+        not_implemented!(into.is_none());
+        not_implemented!(lateral_views.is_empty());
+        not_implemented!(selection.is_none());
+        not_implemented!(group_by.is_empty());
+        not_implemented!(cluster_by.is_empty());
+        not_implemented!(distribute_by.is_empty());
+        not_implemented!(sort_by.is_empty());
+        not_implemented!(having.is_none());
+        not_implemented!(qualify.is_none());
 
         let (scope, source) = match &from[..] {
             [] => (scope.clone(), Box::new(ir::TableExpr::Empty)),
@@ -306,13 +320,13 @@ impl<'a> Binder<'a> {
         scope: &Scope,
         tables: &ast::TableWithJoins,
     ) -> Result<(Scope, Box<ir::TableExpr>)> {
-        ensure!(tables.joins.is_empty());
+        not_implemented!(tables.joins.is_empty());
         let table = &tables.relation;
         match table {
             ast::TableFactor::Table { name, alias, args, with_hints } => {
-                ensure!(args.is_none());
-                ensure!(with_hints.is_empty());
-                ensure!(alias.is_none());
+                not_implemented!(args.is_none());
+                not_implemented!(with_hints.is_empty());
+                not_implemented!(alias.is_none());
 
                 let (name, table_ref) = self.bind_table(name)?;
                 let namespace = self.catalog.get(self.tx, table_ref.namespace)?.unwrap();
@@ -354,12 +368,15 @@ impl<'a> Binder<'a> {
     fn bind_expr(&self, scope: &Scope, expr: &ast::Expr) -> Result<ir::Expr> {
         let expr = match expr {
             ast::Expr::Value(literal) => ir::Expr::Literal(self.bind_literal(literal)),
-            ast::Expr::Identifier(ident) => ir::Expr::ColumnRef(
-                scope.lookup_column(&Ident::Unqualified { name: ident.value.clone().into() })?,
-            ),
+            ast::Expr::Identifier(ident) => {
+                let (col, idx) = scope
+                    .lookup_column(&Ident::Unqualified { name: ident.value.clone().into() })?;
+                ir::Expr::ColumnRef(col, idx)
+            }
             ast::Expr::CompoundIdentifier(ident) => {
                 let ident = self.lower_ident(ident)?;
-                ir::Expr::ColumnRef(scope.lookup_column(&ident)?)
+                let (col, idx) = scope.lookup_column(&ident)?;
+                ir::Expr::ColumnRef(col, idx)
             }
             _ => todo!(),
         };

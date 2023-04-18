@@ -20,7 +20,7 @@ pub struct Selection {
 #[derive(Debug, Clone)]
 pub enum Expr {
     Literal(Literal),
-    ColumnRef(ColumnRef),
+    ColumnRef(ColumnRef, usize),
 }
 
 #[derive(Debug, Copy, Clone)]
