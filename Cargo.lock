@@ -1002,6 +1002,7 @@ dependencies = [
 name = "nsql-catalog"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "dashmap",
  "nsql-core",
  "nsql-serde",

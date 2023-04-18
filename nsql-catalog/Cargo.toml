@@ -6,6 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+anyhow = "1.0.70"
 dashmap = "5.4.0"
 nsql-core = { version = "0.1.0", path = "../nsql-core" }
 nsql-serde = { path = "../nsql-serde" }

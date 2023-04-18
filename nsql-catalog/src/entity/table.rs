@@ -73,8 +73,11 @@ impl CatalogEntity for Table {
     fn new(tx: &Transaction, info: Self::CreateInfo) -> Self {
         let columns = CatalogSet::default();
         for column in info.columns {
-            columns.insert(tx, Column::new(tx, column));
+            columns
+                .insert(tx, Column::new(tx, column))
+                .expect("todo either validate earlier or make new fallible");
         }
+
         Self { name: info.name, storage: info.storage, columns }
     }
 }

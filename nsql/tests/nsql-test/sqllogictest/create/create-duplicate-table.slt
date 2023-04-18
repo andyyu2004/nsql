@@ -1,0 +1,5 @@
+statement ok
+CREATE TABLE foo(id int);
+
+statement error table `foo` already exists
+CREATE TABLE foo(id int);

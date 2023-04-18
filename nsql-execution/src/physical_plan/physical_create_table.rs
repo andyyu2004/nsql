@@ -6,6 +6,7 @@ use nsql_core::schema::{Attribute, Schema};
 use nsql_storage::{TableStorage, TableStorageInfo};
 
 use super::*;
+use crate::Error;
 
 #[derive(Debug)]
 pub struct PhysicalCreateTable {
@@ -69,7 +70,8 @@ impl PhysicalSource for PhysicalCreateTable {
         let schema = catalog
             .get::<Namespace>(&tx, self.info.namespace)?
             .expect("schema not found during execution");
-        schema.create::<Table>(&tx, info)?;
+
+        schema.create::<Table>(&tx, info).map_err(Into::into).map_err(Error::Catalog)?;
 
         Ok(None)
     }

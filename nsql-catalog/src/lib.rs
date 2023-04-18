@@ -8,20 +8,17 @@ mod set;
 
 use std::sync::Arc;
 
+pub use anyhow::Error;
 use nsql_core::Name;
 use nsql_transaction::Transaction;
-use thiserror::Error;
 
 pub use self::entity::namespace::{CreateNamespaceInfo, Namespace, NamespaceEntity};
 pub use self::entity::table::{Column, CreateColumnInfo, CreateTableInfo, Table};
 pub use self::entry::Oid;
 use self::private::CatalogEntity;
-use self::set::CatalogSet;
+use self::set::{AlreadyExists, CatalogSet};
 
 pub type Result<T, E = Error> = std::result::Result<T, E>;
-
-#[derive(Debug, Error)]
-pub enum Error {}
 
 #[derive(Debug)]
 pub struct Catalog {
@@ -34,7 +31,9 @@ impl Catalog {
     /// Create a blank catalog with the default schema
     pub fn create(tx: &Transaction) -> Result<Self> {
         let catalog = Self { schemas: Default::default() };
-        catalog.create::<Namespace>(tx, CreateNamespaceInfo { name: DEFAULT_SCHEMA.into() })?;
+        catalog
+            .create::<Namespace>(tx, CreateNamespaceInfo { name: DEFAULT_SCHEMA.into() })
+            .expect("default schema should not already exist");
         Ok(catalog)
     }
 }
@@ -52,8 +51,8 @@ pub trait Container {
         &self,
         tx: &Transaction,
         info: T::CreateInfo,
-    ) -> Result<()> {
-        T::new(tx, info).insert(self, tx);
+    ) -> Result<(), AlreadyExists<T>> {
+        T::new(tx, info).insert(self, tx)?;
         Ok(())
     }
 
@@ -89,6 +88,7 @@ pub(crate) mod private {
     use nsql_serde::StreamSerialize;
 
     use super::*;
+    use crate::set::AlreadyExists;
 
     /// This trait is sealed and cannot be implemented for types outside of this crate.
     /// These method should also not be visible to users of this crate.
@@ -103,7 +103,20 @@ pub(crate) mod private {
         fn new(tx: &Transaction, info: Self::CreateInfo) -> Self;
 
         #[inline]
-        fn insert(self, container: &Self::Container, tx: &Transaction) -> Oid<Self> {
+        fn insert(
+            self,
+            container: &Self::Container,
+            tx: &Transaction,
+        ) -> Result<Oid<Self>, AlreadyExists<Self>> {
+            Self::catalog_set(container).insert(tx, self)
+        }
+
+        #[inline]
+        fn try_insert(
+            self,
+            container: &Self::Container,
+            tx: &Transaction,
+        ) -> Result<Oid<Self>, AlreadyExists<Self>> {
             Self::catalog_set(container).insert(tx, self)
         }
 

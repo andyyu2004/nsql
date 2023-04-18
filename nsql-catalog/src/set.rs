@@ -1,3 +1,5 @@
+use std::error::Error;
+use std::fmt;
 use std::sync::Arc;
 
 use dashmap::DashMap;
@@ -10,6 +12,22 @@ use nsql_transaction::{Transaction, Txid};
 
 use crate::entry::Oid;
 use crate::private::CatalogEntity;
+
+pub struct AlreadyExists<T>(T);
+
+impl<T: CatalogEntity> Error for AlreadyExists<T> {}
+
+impl<T: CatalogEntity> fmt::Debug for AlreadyExists<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{self}")
+    }
+}
+
+impl<T: CatalogEntity> fmt::Display for AlreadyExists<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{} `{}` already exists", T::desc(), self.0.name())
+    }
+}
 
 #[derive(Debug)]
 pub struct CatalogSet<T> {
@@ -51,7 +69,8 @@ where
         let set = Self::with_capacity(len);
         for _ in 0..len {
             let item = T::CreateInfo::deserialize(de).await?;
-            set.create(tx, item);
+            set.create(tx, item)
+                .expect("creation should not fail as it was serialized from a valid state");
         }
         Ok(set)
     }
@@ -90,7 +109,11 @@ impl<T> VersionedEntry<T> {
 
 impl<T: CatalogEntity> CatalogSet<T> {
     #[inline]
-    fn create(&self, tx: &Transaction, info: T::CreateInfo) -> Oid<T> {
+    pub fn create(
+        &self,
+        tx: &Transaction,
+        info: T::CreateInfo,
+    ) -> Result<Oid<T>, AlreadyExists<T>> {
         self.insert(tx, T::new(tx, info))
     }
 
@@ -116,14 +139,14 @@ impl<T: CatalogEntity> CatalogSet<T> {
         Some(*self.name_mapping.get(name.as_ref())?.value())
     }
 
-    pub(crate) fn insert(&self, tx: &Transaction, value: T) -> Oid<T> {
+    pub(crate) fn insert(&self, tx: &Transaction, value: T) -> Result<Oid<T>, AlreadyExists<T>> {
         let oid = self.next_oid();
-        assert!(
-            self.name_mapping.insert(value.name(), oid).is_none(),
-            "need to handle naming conflicts"
-        );
+        if self.name_mapping.insert(value.name(), oid).is_some() {
+            return Err(AlreadyExists(value));
+        }
+
         self.entries.entry(oid).or_default().push_version(CatalogEntry::new(tx, value));
-        oid
+        Ok(oid)
     }
 
     fn next_oid(&self) -> Oid<T> {

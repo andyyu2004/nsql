@@ -36,9 +36,6 @@ pub enum Error {
 
     #[error("unbound {kind} `{ident}`")]
     Unbound { kind: &'static str, ident: Ident },
-
-    #[error("{kind} already exists: `{ident}`")]
-    AlreadyExists { kind: &'static str, ident: Ident },
 }
 
 macro_rules! not_implemented {
@@ -121,20 +118,10 @@ impl<'a> Binder<'a> {
                 not_implemented!(on_cluster.is_none());
 
                 let ident = self.lower_ident(&name.0)?;
-                match self.bind_ident::<Table>(&ident) {
-                    Ok(_oid) => {
-                        return Err(Error::AlreadyExists {
-                            kind: Table::desc(),
-                            ident: ident.clone(),
-                        });
-                    }
-                    Err(_) => {
-                        let namespace = self.bind_namespace(&ident)?;
-                        let columns = self.lower_columns(columns)?;
-                        let info = ir::CreateTableInfo { name: ident.name(), namespace, columns };
-                        ir::Stmt::CreateTable(info)
-                    }
-                }
+                let namespace = self.bind_namespace(&ident)?;
+                let columns = self.lower_columns(columns)?;
+                let info = ir::CreateTableInfo { name: ident.name(), namespace, columns };
+                ir::Stmt::CreateTable(info)
             }
             ast::Statement::CreateSchema { schema_name, if_not_exists } => {
                 not_implemented!(!if_not_exists);

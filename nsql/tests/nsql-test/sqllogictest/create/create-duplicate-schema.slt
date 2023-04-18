@@ -1,0 +1,5 @@
+statement ok
+CREATE SCHEMA foo;
+
+statement error schema `foo` already exists
+CREATE SCHEMA foo;

@@ -4,6 +4,7 @@ use std::sync::Arc;
 use nsql_catalog::{Container, CreateNamespaceInfo, Namespace};
 
 use super::*;
+use crate::Error;
 
 #[derive(Debug)]
 pub struct PhysicalCreateNamespace {
@@ -49,8 +50,11 @@ impl PhysicalSource for PhysicalCreateNamespace {
         let tx = ctx.tx();
         let info = CreateNamespaceInfo { name: self.info.name.clone() };
 
-        // FIXME create needs to handle if it already exists
-        ctx.catalog.create::<Namespace>(&tx, info)?;
+        if let Err(err) = ctx.catalog.create::<Namespace>(&tx, info) {
+            if !self.info.if_not_exists {
+                return Err(Error::Catalog(err.into()))?;
+            }
+        }
 
         Ok(None)
     }
