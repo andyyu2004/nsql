@@ -10,15 +10,20 @@ pub use self::expr::*;
 #[derive(Debug, Clone)]
 pub struct CreateTableInfo {
     pub name: Name,
+    pub namespace: Oid<Namespace>,
     pub columns: Vec<CreateColumnInfo>,
 }
 
 #[derive(Debug, Clone)]
+pub struct CreateNamespaceInfo {
+    pub name: Name,
+    pub if_not_exists: bool,
+}
+
+#[derive(Debug, Clone)]
 pub enum Stmt {
-    CreateTable {
-        namespace: Oid<Namespace>,
-        info: CreateTableInfo,
-    },
+    CreateNamespace(CreateNamespaceInfo),
+    CreateTable(CreateTableInfo),
     Insert {
         namespace: Oid<Namespace>,
         table: Oid<Table>,

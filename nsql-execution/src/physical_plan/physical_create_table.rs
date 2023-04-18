@@ -1,7 +1,7 @@
 use std::sync::atomic::{self, AtomicBool};
 use std::sync::Arc;
 
-use nsql_catalog::{Container, CreateTableInfo, Namespace, Oid, Table};
+use nsql_catalog::{Container, CreateTableInfo, Namespace, Table};
 use nsql_core::schema::{Attribute, Schema};
 use nsql_storage::{TableStorage, TableStorageInfo};
 
@@ -10,16 +10,12 @@ use super::*;
 #[derive(Debug)]
 pub struct PhysicalCreateTable {
     finished: AtomicBool,
-    namespace: Oid<Namespace>,
     info: ir::CreateTableInfo,
 }
 
 impl PhysicalCreateTable {
-    pub(crate) fn plan(
-        namespace: Oid<Namespace>,
-        info: ir::CreateTableInfo,
-    ) -> Arc<dyn PhysicalNode> {
-        Arc::new(Self { finished: AtomicBool::new(false), namespace, info })
+    pub(crate) fn plan(info: ir::CreateTableInfo) -> Arc<dyn PhysicalNode> {
+        Arc::new(Self { finished: AtomicBool::new(false), info })
     }
 }
 
@@ -71,7 +67,7 @@ impl PhysicalSource for PhysicalCreateTable {
         let catalog = ctx.catalog();
         let tx = ctx.tx();
         let schema = catalog
-            .get::<Namespace>(&tx, self.namespace)?
+            .get::<Namespace>(&tx, self.info.namespace)?
             .expect("schema not found during execution");
         schema.create::<Table>(&tx, info)?;
 

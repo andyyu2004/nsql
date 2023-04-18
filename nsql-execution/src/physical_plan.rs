@@ -1,3 +1,4 @@
+mod physical_create_namespace;
 mod physical_create_table;
 mod physical_insert;
 mod physical_projection;
@@ -8,6 +9,7 @@ use std::sync::Arc;
 
 use nsql_plan::Plan;
 
+use self::physical_create_namespace::PhysicalCreateNamespace;
 use self::physical_create_table::PhysicalCreateTable;
 use self::physical_insert::PhysicalInsert;
 use self::physical_projection::PhysicalProjection;
@@ -41,7 +43,8 @@ impl PhysicalPlanner {
 
     fn plan_node(&self, plan: Box<Plan>) -> Arc<dyn PhysicalNode> {
         match *plan {
-            Plan::CreateTable { namespace, info } => PhysicalCreateTable::plan(namespace, info),
+            Plan::CreateTable(info) => PhysicalCreateTable::plan(info),
+            Plan::CreateNamespace(info) => PhysicalCreateNamespace::plan(info),
             Plan::Insert { namespace, table, source, returning } => {
                 let source = self.plan_node(source);
                 PhysicalInsert::plan(namespace, table, source, returning)

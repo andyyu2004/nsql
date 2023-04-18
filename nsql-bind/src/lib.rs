@@ -42,6 +42,9 @@ pub enum Error {
 }
 
 macro_rules! not_implemented {
+    ($msg:literal) => {
+        return Err($crate::Error::Unimplemented($msg.into()).into())
+    };
     ($cond:expr) => {
         if !$cond {
             return Err($crate::Error::Unimplemented(stringify!($cond).into()).into());
@@ -128,10 +131,29 @@ impl<'a> Binder<'a> {
                     Err(_) => {
                         let namespace = self.bind_namespace(&ident)?;
                         let columns = self.lower_columns(columns)?;
-                        let info = ir::CreateTableInfo { name: ident.name(), columns };
-                        ir::Stmt::CreateTable { namespace, info }
+                        let info = ir::CreateTableInfo { name: ident.name(), namespace, columns };
+                        ir::Stmt::CreateTable(info)
                     }
                 }
+            }
+            ast::Statement::CreateSchema { schema_name, if_not_exists } => {
+                not_implemented!(!if_not_exists);
+                let name = match schema_name {
+                    ast::SchemaName::Simple(ident) => match self.lower_ident(&ident.0)? {
+                        Ident::Qualified { .. } => {
+                            todo!("what does it mean for a schema to be qualified?")
+                        }
+                        Ident::Unqualified { name } => name,
+                    },
+                    ast::SchemaName::UnnamedAuthorization(_)
+                    | ast::SchemaName::NamedAuthorization(_, _) => {
+                        not_implemented!("schema name with authorization")
+                    }
+                };
+                ir::Stmt::CreateNamespace(ir::CreateNamespaceInfo {
+                    name,
+                    if_not_exists: *if_not_exists,
+                })
             }
             ast::Statement::Insert {
                 or,

@@ -1,0 +1,24 @@
+statement ok
+CREATE SCHEMA foo;
+
+statement ok
+CREATE TABLE foo.bar (id int);
+
+statement ok
+CREATE TABLE bar (id int);
+
+statement ok
+INSERT INTO foo.bar VALUES (1)
+
+statement ok
+INSERT INTO bar VALUES (2)
+
+query I rowsort
+SELECT id FROM foo.bar
+----
+1
+
+query I rowsort
+SELECT id FROM bar
+----
+2

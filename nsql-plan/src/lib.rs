@@ -1,13 +1,11 @@
 use nsql_catalog::{Namespace, Oid, Table};
 
 pub enum Plan {
+    CreateTable(ir::CreateTableInfo),
+    CreateNamespace(ir::CreateNamespaceInfo),
     Project {
         source: Box<Plan>,
         projection: Vec<ir::Expr>,
-    },
-    CreateTable {
-        namespace: Oid<Namespace>,
-        info: ir::CreateTableInfo,
     },
     Insert {
         namespace: Oid<Namespace>,
@@ -30,7 +28,8 @@ pub struct Planner {}
 impl Planner {
     pub fn plan(&self, stmt: ir::Stmt) -> Box<Plan> {
         let plan = match stmt {
-            ir::Stmt::CreateTable { namespace, info } => Plan::CreateTable { namespace, info },
+            ir::Stmt::CreateTable(info) => Plan::CreateTable(info),
+            ir::Stmt::CreateNamespace(info) => Plan::CreateNamespace(info),
             ir::Stmt::Insert { namespace, table, source, returning } => {
                 let source = self.plan_table_expr(source);
                 Plan::Insert { namespace, table, source, returning }
