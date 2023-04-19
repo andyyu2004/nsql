@@ -19,8 +19,16 @@ impl PhysicalCreateNamespace {
 }
 
 impl PhysicalNode for PhysicalCreateNamespace {
+    fn desc(&self) -> &'static str {
+        "create namespace"
+    }
+
     fn children(&self) -> &[Arc<dyn PhysicalNode>] {
         &[]
+    }
+
+    fn as_source(self: Arc<Self>) -> Result<Arc<dyn PhysicalSource>, Arc<dyn PhysicalNode>> {
+        Ok(self)
     }
 
     fn as_sink(self: Arc<Self>) -> Result<Arc<dyn PhysicalSink>, Arc<dyn PhysicalNode>> {
@@ -29,10 +37,6 @@ impl PhysicalNode for PhysicalCreateNamespace {
 
     fn as_operator(self: Arc<Self>) -> Result<Arc<dyn PhysicalOperator>, Arc<dyn PhysicalNode>> {
         Err(self)
-    }
-
-    fn as_source(self: Arc<Self>) -> Result<Arc<dyn PhysicalSource>, Arc<dyn PhysicalNode>> {
-        Ok(self)
     }
 }
 

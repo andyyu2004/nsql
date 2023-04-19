@@ -6,6 +6,7 @@ mod eval;
 mod executor;
 mod physical_plan;
 mod pipeline;
+mod vis;
 
 use std::sync::Arc;
 use std::{fmt, io};
@@ -44,18 +45,17 @@ impl From<Report<io::Error>> for Error {
     }
 }
 
-fn build_pipelines(
-    sink: Arc<dyn PhysicalSink>,
-    plan: PhysicalPlan,
-) -> (PipelineArena, Idx<MetaPipeline>) {
+fn build_pipelines(sink: Arc<dyn PhysicalSink>, plan: PhysicalPlan) -> RootPipeline {
     let mut arena = PipelineBuilderArena::default();
     let root = MetaPipelineBuilder::new(&mut arena, sink);
     arena.build(root, plan.root());
     let arena = arena.finish();
-    (arena, root.cast())
+    RootPipeline { arena, root: root.cast() }
 }
 
 trait PhysicalNode: Send + Sync + fmt::Debug + 'static {
+    fn desc(&self) -> &'static str;
+
     fn children(&self) -> &[Arc<dyn PhysicalNode>];
 
     // override the default implementation if the node is a source with `Ok(self)`, otherwise `Err(self)`
@@ -72,17 +72,17 @@ trait PhysicalNode: Send + Sync + fmt::Debug + 'static {
         meta_builder: Idx<MetaPipelineBuilder>,
     ) {
         match self.as_sink() {
-            Ok(op) => {
+            Ok(sink) => {
                 assert_eq!(
-                    op.children().len(),
+                    sink.children().len(),
                     1,
                     "default `build_pipelines` implementation only supports unary nodes for sinks"
                 );
-                let child = Arc::clone(&op.children()[0]);
-                // If we have a sink `op` (which is also a source), we set the source of current to `op`
-                // and then build the pipeline for `op`'s child with `t` as the sink of the new pipeline
-                arena[current].set_source(Arc::clone(&op) as Arc<dyn PhysicalSource>);
-                let child_meta_builder = arena.new_child_meta_pipeline(meta_builder, current, op);
+                let child = Arc::clone(&sink.children()[0]);
+                // If we have a sink `op` (which is also a source), we set the source of current to `sink`
+                // and then build the pipeline for `sink`'s child with `sink` as the sink of the new pipeline
+                arena[current].set_source(Arc::clone(&sink) as Arc<dyn PhysicalSource>);
+                let child_meta_builder = arena.new_child_meta_pipeline(meta_builder, current, sink);
                 arena.build(child_meta_builder, child);
             }
             Err(node) => match node.as_source() {
@@ -147,4 +147,9 @@ impl ExecutionContext {
     pub fn catalog(&self) -> Arc<Catalog> {
         Arc::clone(&self.catalog)
     }
+}
+
+struct RootPipeline {
+    arena: PipelineArena,
+    root: Idx<MetaPipeline>,
 }

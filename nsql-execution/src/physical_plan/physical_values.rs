@@ -35,6 +35,10 @@ impl PhysicalSource for PhysicalValues {
 }
 
 impl PhysicalNode for PhysicalValues {
+    fn desc(&self) -> &'static str {
+        "values"
+    }
+
     fn children(&self) -> &[Arc<dyn PhysicalNode>] {
         &[]
     }

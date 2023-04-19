@@ -8,7 +8,7 @@ use crate::physical_plan::PhysicalPlan;
 use crate::pipeline::{MetaPipeline, Pipeline, PipelineArena};
 use crate::{
     build_pipelines, ExecutionContext, ExecutionResult, PhysicalNode, PhysicalOperator,
-    PhysicalSink, PhysicalSource,
+    PhysicalSink, PhysicalSource, RootPipeline,
 };
 
 pub(crate) struct Executor {
@@ -50,20 +50,19 @@ impl Executor {
     }
 }
 
-async fn execute_meta_pipeline(
+async fn execute_root_pipeline(
     ctx: &ExecutionContext,
-    arena: PipelineArena,
-    root: Idx<MetaPipeline>,
+    pipeline: RootPipeline,
 ) -> ExecutionResult<()> {
-    let executor = Executor { arena };
-    executor.execute(ctx, root).await
+    let executor = Executor { arena: pipeline.arena };
+    executor.execute(ctx, pipeline.root).await
 }
 
 pub async fn execute(ctx: &ExecutionContext, plan: PhysicalPlan) -> ExecutionResult<Vec<Tuple>> {
     let sink = Arc::new(OutputSink::default());
-    let (arena, root) = build_pipelines(Arc::clone(&sink) as Arc<dyn PhysicalSink>, plan);
+    let pipeline = build_pipelines(Arc::clone(&sink) as Arc<dyn PhysicalSink>, plan);
 
-    execute_meta_pipeline(ctx, arena, root).await?;
+    execute_root_pipeline(ctx, pipeline).await?;
 
     Ok(Arc::try_unwrap(sink).expect("should be last reference").tuples.into_inner())
 }
@@ -74,6 +73,10 @@ struct OutputSink {
 }
 
 impl PhysicalNode for OutputSink {
+    fn desc(&self) -> &'static str {
+        "output_sink"
+    }
+
     fn children(&self) -> &[Arc<dyn PhysicalNode>] {
         &[]
     }

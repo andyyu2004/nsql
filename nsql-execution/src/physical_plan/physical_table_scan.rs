@@ -81,6 +81,10 @@ impl PhysicalSource for PhysicalTableScan {
 }
 
 impl PhysicalNode for PhysicalTableScan {
+    fn desc(&self) -> &'static str {
+        "scan"
+    }
+
     fn children(&self) -> &[Arc<dyn PhysicalNode>] {
         &[]
     }

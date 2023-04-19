@@ -24,6 +24,10 @@ impl PhysicalOperator for PhysicalProjection {
 }
 
 impl PhysicalNode for PhysicalProjection {
+    fn desc(&self) -> &'static str {
+        "projection"
+    }
+
     fn children(&self) -> &[Arc<dyn PhysicalNode>] {
         &self.children
     }

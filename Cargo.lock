@@ -489,6 +489,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "dot-structures"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "545da7d6df7f8fd0de7106669a7d0bfa3dbcfa24d81da46906ad658188b2ff7c"
+
+[[package]]
 name = "educe"
 version = "0.4.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1038,6 +1044,7 @@ version = "0.1.0"
 dependencies = [
  "async-recursion",
  "async-trait",
+ "dot-structures",
  "error-stack",
  "futures-util",
  "nsql-arena",

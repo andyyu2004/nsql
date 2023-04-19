@@ -18,6 +18,10 @@ impl PhysicalInsert {
 }
 
 impl PhysicalNode for PhysicalInsert {
+    fn desc(&self) -> &'static str {
+        "insert"
+    }
+
     fn children(&self) -> &[Arc<dyn PhysicalNode>] {
         &self.children
     }
