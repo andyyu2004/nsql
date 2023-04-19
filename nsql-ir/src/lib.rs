@@ -1,7 +1,7 @@
 #![deny(rust_2018_idioms)]
 
 mod expr;
-use nsql_catalog::{CreateColumnInfo, Namespace, Oid, Table};
+use nsql_catalog::{CreateColumnInfo, Namespace, Oid};
 use nsql_core::Name;
 pub use rust_decimal::Decimal;
 
@@ -25,8 +25,8 @@ pub enum Stmt {
     CreateNamespace(CreateNamespaceInfo),
     CreateTable(CreateTableInfo),
     Insert {
-        namespace: Oid<Namespace>,
-        table: Oid<Table>,
+        table_ref: TableRef,
+        projection: Vec<Expr>,
         source: TableExpr,
         returning: Option<Vec<Expr>>,
     },

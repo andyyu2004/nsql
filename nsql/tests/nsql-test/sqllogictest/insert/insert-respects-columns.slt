@@ -1,0 +1,21 @@
+statement ok
+CREATE TABLE t(x int, y int)
+
+statement ok
+INSERT INTO t VALUES(1, 10), (2, 20)
+
+statement ok
+insert into t (x, y) values (4, 40)
+
+statement ok
+insert into t (y, x) values (50, 5)
+
+query II rowsort
+SELECT x, y FROM t
+----
+1 10
+2 20
+4 40
+5 50
+
+

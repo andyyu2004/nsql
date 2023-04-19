@@ -18,7 +18,7 @@ impl PhysicalProjection {
 
 #[async_trait::async_trait]
 impl PhysicalOperator for PhysicalProjection {
-    async fn execute(&self, ctx: &ExecutionContext, input: Tuple) -> ExecutionResult<Tuple> {
+    async fn execute(&self, _ctx: &ExecutionContext, input: Tuple) -> ExecutionResult<Tuple> {
         Ok(self.evaluator.evaluate(&input, &self.projections))
     }
 }

@@ -1,15 +1,13 @@
-use nsql_catalog::{Namespace, Oid, Table};
-
 pub enum Plan {
     CreateTable(ir::CreateTableInfo),
     CreateNamespace(ir::CreateNamespaceInfo),
-    Project {
+    Projection {
         source: Box<Plan>,
         projection: Vec<ir::Expr>,
     },
     Insert {
-        namespace: Oid<Namespace>,
-        table: Oid<Table>,
+        table_ref: ir::TableRef,
+        projection: Vec<ir::Expr>,
         source: Box<Plan>,
         returning: Option<Vec<ir::Expr>>,
     },
@@ -30,9 +28,9 @@ impl Planner {
         let plan = match stmt {
             ir::Stmt::CreateTable(info) => Plan::CreateTable(info),
             ir::Stmt::CreateNamespace(info) => Plan::CreateNamespace(info),
-            ir::Stmt::Insert { namespace, table, source, returning } => {
+            ir::Stmt::Insert { table_ref, projection, source, returning } => {
                 let source = self.plan_table_expr(source);
-                Plan::Insert { namespace, table, source, returning }
+                Plan::Insert { table_ref, projection, source, returning }
             }
             ir::Stmt::Query(query) => return self.plan_table_expr(query),
         };
@@ -53,6 +51,6 @@ impl Planner {
 
     fn plan_select(&self, sel: ir::Selection) -> Plan {
         let source = self.plan_table_expr(*sel.source);
-        Plan::Project { source, projection: sel.projection }
+        Plan::Projection { source, projection: sel.projection }
     }
 }

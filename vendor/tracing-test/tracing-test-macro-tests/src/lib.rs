@@ -58,11 +58,7 @@ mod tests {
     fn no_log_from_other_test1() {
         info!("log count");
         logs_assert(|lines: &[&str]| {
-            match lines
-                .iter()
-                .filter(|line| line.contains("log count"))
-                .count()
-            {
+            match lines.iter().filter(|line| line.contains("log count")).count() {
                 1 => Ok(()),
                 n => Err(format!("Count should be 1, but was {}", n)),
             }
@@ -74,11 +70,7 @@ mod tests {
     fn no_log_from_other_test2() {
         info!("log count");
         logs_assert(|lines: &[&str]| {
-            match lines
-                .iter()
-                .filter(|line| line.contains("log count"))
-                .count()
-            {
+            match lines.iter().filter(|line| line.contains("log count")).count() {
                 1 => Ok(()),
                 n => Err(format!("Count should be 1, but was {}", n)),
             }

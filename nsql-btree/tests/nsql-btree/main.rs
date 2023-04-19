@@ -1,4 +1,4 @@
 mod concurrent;
+mod find_min;
 mod insert;
 mod remove;
-mod find_min;

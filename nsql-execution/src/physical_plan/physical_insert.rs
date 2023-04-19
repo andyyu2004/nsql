@@ -1,23 +1,21 @@
-use nsql_catalog::{Container, Namespace, Oid, Table};
+use nsql_catalog::Container;
 
 use super::*;
 
 #[derive(Debug)]
 pub(crate) struct PhysicalInsert {
     children: Vec<Arc<dyn PhysicalNode>>,
-    schema: Oid<Namespace>,
-    table: Oid<Table>,
+    table_ref: ir::TableRef,
     returning: Option<Vec<ir::Expr>>,
 }
 
 impl PhysicalInsert {
     pub fn plan(
-        schema: Oid<Namespace>,
-        table: Oid<Table>,
+        table_ref: ir::TableRef,
         source: Arc<dyn PhysicalNode>,
         returning: Option<Vec<ir::Expr>>,
     ) -> Arc<dyn PhysicalNode> {
-        Arc::new(Self { schema, table, returning, children: vec![source] })
+        Arc::new(Self { table_ref, returning, children: vec![source] })
     }
 }
 
@@ -43,14 +41,7 @@ impl PhysicalNode for PhysicalInsert {
 impl PhysicalSink for PhysicalInsert {
     async fn sink(&self, ctx: &ExecutionContext, tuple: Tuple) -> ExecutionResult<()> {
         let tx = ctx.tx();
-        let schema = ctx
-            .catalog()
-            .get::<Namespace>(&tx, self.schema)?
-            .expect("schema not found during insert execution");
-
-        let table =
-            schema.get::<Table>(&tx, self.table)?.expect("table not found during insert execution");
-
+        let table = self.table_ref.get(&ctx.catalog(), &tx)?;
         let storage = table.storage();
         storage.append(&tx, &tuple).await?;
 

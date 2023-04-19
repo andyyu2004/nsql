@@ -1,6 +1,7 @@
 use std::fmt;
+use std::sync::Arc;
 
-use nsql_catalog::{Column, Namespace, Oid, Table};
+use nsql_catalog::{Catalog, Column, Container, Namespace, Oid, Table, Transaction};
 use rust_decimal::Decimal;
 
 #[derive(Debug, Clone)]
@@ -27,6 +28,13 @@ pub enum Expr {
 pub struct TableRef {
     pub namespace: Oid<Namespace>,
     pub table: Oid<Table>,
+}
+
+impl TableRef {
+    pub fn get(self, catalog: &Catalog, tx: &Transaction) -> nsql_catalog::Result<Arc<Table>> {
+        let namespace = catalog.get::<Namespace>(tx, self.namespace)?.unwrap();
+        Ok(namespace.get::<Table>(tx, self.table)?.unwrap())
+    }
 }
 
 #[derive(Debug, Copy, Clone)]

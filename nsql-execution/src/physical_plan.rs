@@ -45,12 +45,15 @@ impl PhysicalPlanner {
         match *plan {
             Plan::CreateTable(info) => PhysicalCreateTable::plan(info),
             Plan::CreateNamespace(info) => PhysicalCreateNamespace::plan(info),
-            Plan::Insert { namespace, table, source, returning } => {
-                let source = self.plan_node(source);
-                PhysicalInsert::plan(namespace, table, source, returning)
+            Plan::Insert { table_ref, projection, source, returning } => {
+                let mut source = self.plan_node(source);
+                if !projection.is_empty() {
+                    source = PhysicalProjection::plan(source, projection)
+                };
+                PhysicalInsert::plan(table_ref, source, returning)
             }
             Plan::Values { values } => PhysicalValues::plan(values),
-            Plan::Project { source, projection } => {
+            Plan::Projection { source, projection } => {
                 let source = self.plan_node(source);
                 PhysicalProjection::plan(source, projection)
             }
