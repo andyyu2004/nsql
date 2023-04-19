@@ -76,27 +76,23 @@ impl MetaPipelineBuilder {
     }
 }
 
-impl MetaPipelineBuilder {
+impl PipelineBuilderArena {
     pub(crate) fn new_child_meta_pipeline(
-        arena: &mut PipelineBuilderArena,
-        idx: Idx<Self>,
+        &mut self,
+        idx: Idx<MetaPipelineBuilder>,
         current: Idx<PipelineBuilder>,
         sink: Arc<dyn PhysicalSink>,
     ) -> Idx<MetaPipelineBuilder> {
-        let child = MetaPipelineBuilder::new(arena, sink);
-        arena[idx].children.push(child);
-        arena[idx].pipelines.push(current);
+        let child = MetaPipelineBuilder::new(self, sink);
+        self[idx].children.push(child);
+        self[idx].pipelines.push(current);
         child
     }
 
-    pub(crate) fn build(
-        arena: &mut PipelineBuilderArena,
-        idx: Idx<Self>,
-        node: Arc<dyn PhysicalNode>,
-    ) {
-        assert_eq!(arena[idx].pipelines.len(), 1);
-        assert!(arena[idx].children.is_empty());
-        node.build_pipelines(arena, arena[idx].pipelines[0], idx)
+    pub(crate) fn build(&mut self, idx: Idx<MetaPipelineBuilder>, node: Arc<dyn PhysicalNode>) {
+        assert_eq!(self[idx].pipelines.len(), 1);
+        assert!(self[idx].children.is_empty());
+        node.build_pipelines(self, self[idx].pipelines[0], idx)
     }
 }
 

@@ -63,7 +63,7 @@ pub async fn execute(ctx: &ExecutionContext, plan: PhysicalPlan) -> ExecutionRes
     let sink = Arc::new(OutputSink::default());
     let (arena, root) = build_pipelines(Arc::clone(&sink) as Arc<dyn PhysicalSink>, plan);
 
-    execute_meta_pipeline(ctx, arena, root.cast()).await?;
+    execute_meta_pipeline(ctx, arena, root).await?;
 
     Ok(Arc::try_unwrap(sink).expect("should be last reference").tuples.into_inner())
 }
