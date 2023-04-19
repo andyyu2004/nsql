@@ -156,7 +156,6 @@ impl<'a> Binder<'a> {
                 not_implemented!(partitioned.is_none());
                 not_implemented!(after_columns.is_empty());
                 not_implemented!(on.is_none());
-                not_implemented!(returning.is_none());
 
                 // We bind the columns of the table first, so that we can use them in the following projection
                 let (scope, table_ref) = self.bind_table(scope, table_name)?;

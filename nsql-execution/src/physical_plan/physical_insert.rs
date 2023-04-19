@@ -1,5 +1,3 @@
-use nsql_catalog::Container;
-
 use super::*;
 
 #[derive(Debug)]
@@ -52,7 +50,11 @@ impl PhysicalSink for PhysicalInsert {
 #[async_trait::async_trait]
 impl PhysicalSource for PhysicalInsert {
     async fn source(&self, _ctx: &ExecutionContext) -> ExecutionResult<Option<Tuple>> {
-        if self.returning.is_some() { todo!() } else { Ok(None) }
+        let returning = match &self.returning {
+            Some(returning) => returning,
+            None => return Ok(None),
+        };
+        todo!()
     }
 
     fn estimated_cardinality(&self) -> usize {

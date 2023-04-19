@@ -1,3 +1,4 @@
+#[derive(Debug)]
 pub enum Plan {
     CreateTable(ir::CreateTableInfo),
     CreateNamespace(ir::CreateNamespaceInfo),

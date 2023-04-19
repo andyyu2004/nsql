@@ -1,0 +1,9 @@
+statement ok
+CREATE TABLE t(x int, y int)
+
+query III rowsort
+INSERT INTO t VALUES (1, 2), (4, 5) RETURNING x, y
+----
+1 2
+4 5
+

@@ -47,6 +47,7 @@ impl Nsql {
         let stmt = Binder::new(&tx, &self.inner.catalog).bind(stmt)?;
 
         let plan = Planner::default().plan(stmt);
+
         let plan = optimize(plan);
 
         let physical_plan = PhysicalPlanner::new().plan(plan);
