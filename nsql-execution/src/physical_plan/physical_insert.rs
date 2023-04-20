@@ -1,3 +1,7 @@
+use std::collections::VecDeque;
+
+use parking_lot::RwLock;
+
 use super::*;
 
 #[derive(Debug)]
@@ -5,6 +9,8 @@ pub(crate) struct PhysicalInsert {
     children: Vec<Arc<dyn PhysicalNode>>,
     table_ref: ir::TableRef,
     returning: Option<Vec<ir::Expr>>,
+    returning_tuples: RwLock<VecDeque<Tuple>>,
+    returning_evaluator: Evaluator,
 }
 
 impl PhysicalInsert {
@@ -13,7 +19,13 @@ impl PhysicalInsert {
         source: Arc<dyn PhysicalNode>,
         returning: Option<Vec<ir::Expr>>,
     ) -> Arc<dyn PhysicalNode> {
-        Arc::new(Self { table_ref, returning, children: vec![source] })
+        Arc::new(Self {
+            table_ref,
+            returning,
+            children: vec![source],
+            returning_tuples: Default::default(),
+            returning_evaluator: Evaluator::new(),
+        })
     }
 }
 
@@ -46,6 +58,9 @@ impl PhysicalSink for PhysicalInsert {
         let table = self.table_ref.get(&ctx.catalog(), &tx)?;
         let storage = table.storage();
         storage.append(&tx, &tuple).await?;
+        if self.returning.is_some() {
+            self.returning_tuples.write().push_back(tuple);
+        }
 
         Ok(())
     }
@@ -58,7 +73,13 @@ impl PhysicalSource for PhysicalInsert {
             Some(returning) => returning,
             None => return Ok(None),
         };
-        todo!()
+
+        let tuple = match self.returning_tuples.write().pop_front() {
+            Some(tuple) => tuple,
+            None => return Ok(None),
+        };
+
+        Ok(Some(self.returning_evaluator.evaluate(&tuple, returning)))
     }
 
     fn estimated_cardinality(&self) -> usize {

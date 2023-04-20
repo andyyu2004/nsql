@@ -7,3 +7,9 @@ INSERT INTO t VALUES (1, 2), (4, 5) RETURNING x, y
 1 2
 4 5
 
+query III rowsort
+INSERT INTO t VALUES (10, 20), (30, 40) RETURNING y
+----
+20
+40
+
