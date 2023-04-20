@@ -21,7 +21,15 @@ pub struct CreateNamespaceInfo {
 }
 
 #[derive(Debug, Clone)]
+pub enum TransactionKind {
+    Begin,
+    Commit,
+    Rollback,
+}
+
+#[derive(Debug, Clone)]
 pub enum Stmt {
+    Transaction(TransactionKind),
     CreateNamespace(CreateNamespaceInfo),
     CreateTable(CreateTableInfo),
     Insert {

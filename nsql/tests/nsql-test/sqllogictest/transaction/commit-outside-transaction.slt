@@ -1,0 +1,20 @@
+statement error
+COMMIT
+
+statement ok
+BEGIN
+
+statement ok
+commit
+
+statement error
+commit
+
+statement error
+ROLLBACK
+
+statement ok
+BEGIN
+
+statement ok
+

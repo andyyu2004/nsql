@@ -3,6 +3,7 @@ mod physical_create_table;
 mod physical_insert;
 mod physical_projection;
 mod physical_table_scan;
+mod physical_transaction;
 mod physical_values;
 
 use std::sync::Arc;
@@ -14,6 +15,7 @@ use self::physical_create_table::PhysicalCreateTable;
 use self::physical_insert::PhysicalInsert;
 use self::physical_projection::PhysicalProjection;
 use self::physical_table_scan::PhysicalTableScan;
+use self::physical_transaction::PhysicalTransaction;
 use self::physical_values::PhysicalValues;
 use crate::{
     Evaluator, ExecutionContext, ExecutionResult, PhysicalNode, PhysicalOperator, PhysicalSink,
@@ -43,6 +45,7 @@ impl PhysicalPlanner {
 
     fn plan_node(&self, plan: Box<Plan>) -> Arc<dyn PhysicalNode> {
         match *plan {
+            Plan::Transaction(kind) => PhysicalTransaction::plan(kind),
             Plan::CreateTable(info) => PhysicalCreateTable::plan(info),
             Plan::CreateNamespace(info) => PhysicalCreateNamespace::plan(info),
             Plan::Insert { table_ref, projection, source, returning } => {

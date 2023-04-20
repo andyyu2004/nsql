@@ -1,4 +1,3 @@
-use std::sync::atomic::{self, AtomicBool};
 use std::sync::Arc;
 
 use nsql_catalog::{Container, CreateNamespaceInfo, Namespace};
@@ -8,13 +7,12 @@ use crate::Error;
 
 #[derive(Debug)]
 pub struct PhysicalCreateNamespace {
-    finished: AtomicBool,
     info: ir::CreateNamespaceInfo,
 }
 
 impl PhysicalCreateNamespace {
     pub(crate) fn plan(info: ir::CreateNamespaceInfo) -> Arc<dyn PhysicalNode> {
-        Arc::new(Self { finished: AtomicBool::new(false), info })
+        Arc::new(Self { info })
     }
 }
 
@@ -47,10 +45,6 @@ impl PhysicalSource for PhysicalCreateNamespace {
     }
 
     async fn source(&self, ctx: &ExecutionContext) -> ExecutionResult<Option<Tuple>> {
-        if self.finished.load(atomic::Ordering::Relaxed) {
-            return Ok(None);
-        }
-
         let tx = ctx.tx();
         let info = CreateNamespaceInfo { name: self.info.name.clone() };
 

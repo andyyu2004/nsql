@@ -1,4 +1,3 @@
-use std::sync::atomic::{self, AtomicBool};
 use std::sync::Arc;
 
 use nsql_catalog::{Container, CreateTableInfo, Namespace, Table};
@@ -10,13 +9,12 @@ use crate::Error;
 
 #[derive(Debug)]
 pub struct PhysicalCreateTable {
-    finished: AtomicBool,
     info: ir::CreateTableInfo,
 }
 
 impl PhysicalCreateTable {
     pub(crate) fn plan(info: ir::CreateTableInfo) -> Arc<dyn PhysicalNode> {
-        Arc::new(Self { finished: AtomicBool::new(false), info })
+        Arc::new(Self { info })
     }
 }
 
@@ -49,10 +47,6 @@ impl PhysicalSource for PhysicalCreateTable {
     }
 
     async fn source(&self, ctx: &ExecutionContext) -> ExecutionResult<Option<Tuple>> {
-        if self.finished.load(atomic::Ordering::Relaxed) {
-            return Ok(None);
-        }
-
         let attrs = self
             .info
             .columns

@@ -178,6 +178,18 @@ impl<'a> Binder<'a> {
                 ir::Stmt::Insert { table_ref, projection, source, returning }
             }
             ast::Statement::Query(query) => ir::Stmt::Query(self.bind_query(scope, query)?),
+            ast::Statement::StartTransaction { modes } => {
+                not_implemented!(modes.is_empty());
+                ir::Stmt::Transaction(ir::TransactionKind::Begin)
+            }
+            ast::Statement::Rollback { chain } => {
+                not_implemented!(!*chain);
+                ir::Stmt::Transaction(ir::TransactionKind::Rollback)
+            }
+            ast::Statement::Commit { chain } => {
+                not_implemented!(!*chain);
+                ir::Stmt::Transaction(ir::TransactionKind::Commit)
+            }
             _ => return Err(Error::Unimplemented("unimplemented stmt".into())),
         };
 

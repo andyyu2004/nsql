@@ -1,5 +1,6 @@
 #[derive(Debug)]
 pub enum Plan {
+    Transaction(ir::TransactionKind),
     CreateTable(ir::CreateTableInfo),
     CreateNamespace(ir::CreateNamespaceInfo),
     Projection {
@@ -27,6 +28,7 @@ pub struct Planner {}
 impl Planner {
     pub fn plan(&self, stmt: ir::Stmt) -> Box<Plan> {
         let plan = match stmt {
+            ir::Stmt::Transaction(kind) => Plan::Transaction(kind),
             ir::Stmt::CreateTable(info) => Plan::CreateTable(info),
             ir::Stmt::CreateNamespace(info) => Plan::CreateNamespace(info),
             ir::Stmt::Insert { table_ref, projection, source, returning } => {

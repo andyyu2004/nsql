@@ -36,6 +36,8 @@ pub enum Error {
     #[error(transparent)]
     Storage(#[from] nsql_storage::Error),
     #[error(transparent)]
+    Transaction(#[from] nsql_transaction::Error),
+    #[error(transparent)]
     Io(#[from] io::Error),
 }
 
