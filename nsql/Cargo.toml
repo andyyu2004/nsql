@@ -22,7 +22,7 @@ thiserror = "1.0.38"
 
 [dev-dependencies]
 tokio = { version = "1.25.0", features = ["time"] }
-sqllogictest = { path = "../sqllogictest/sqllogictest" }
+sqllogictest = { path = "../vendor/sqllogictest/sqllogictest" }
 async-trait = "0.1.64"
 nsql-test = { path = "../nsql-test" }
 datatest-stable = "0.1.3"

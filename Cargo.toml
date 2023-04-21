@@ -26,8 +26,8 @@ members = [
     "vendor/tracing-test/tracing-test",
     "vendor/tracing-test/tracing-test-macro",
     "vendor/tracing-test/tracing-test-macro-tests",
-    "sqllogictest/sqllogictest",
-    "sqllogictest/tests",
+    "vendor/sqllogictest/sqllogictest",
+    "vendor/sqllogictest/tests",
 
 ]
 
