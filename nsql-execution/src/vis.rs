@@ -100,17 +100,6 @@ use dot_structures::{
     Attribute, Edge, EdgeTy, Graph, GraphAttributes, Id, Node, NodeId, Port, Stmt, Subgraph, Vertex,
 };
 
-/// Context allows to customize the output of the file.
-/// # Example:
-/// ```rust
-/// fn ctx() {
-///     use self::graphviz_rust::printer::PrinterContext;
-///
-///     let mut ctx = PrinterContext::default();
-///     ctx.always_inline();
-///     ctx.with_indent_step(4);
-/// }
-/// ```
 pub struct PrinterContext {
     /// internal flag which is decoupled from the graph
     is_digraph: bool,
