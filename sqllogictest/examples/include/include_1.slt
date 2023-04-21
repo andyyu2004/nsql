@@ -1,0 +1,12 @@
+include ./include_2.slt
+include ./include/*.slt
+
+query I
+select * from example_basic
+----
+Alice
+Bob
+Eve
+
+statement ok
+drop table t

@@ -1,0 +1,33 @@
+on:
+  push:
+    tags:
+      - "v*"
+
+name: Release
+
+jobs:
+  release:
+    name: Release
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v2
+        name: Checkout 🛎️
+      - uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          components: rustfmt, clippy
+      - uses: actions-rs/cargo@v1
+        name: Compile all targets 🚀
+        with:
+          command: build
+          args: --workspace --release
+      - name: create tar
+        run: tar -cvzf sqllogictest-linux-amd64.tar.gz -C target/release sqllogictest
+      - name: release
+        uses: anton-yurchenko/git-release@main
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_NAME_PREFIX: "Release: "
+        with:
+          args: sqllogictest-linux-amd64.tar.gz
