@@ -43,6 +43,7 @@ pub enum LogicalType {
     Bool,
     Int,
     Decimal,
+    Text,
 }
 
 impl StreamSerialize for LogicalType {
@@ -73,6 +74,7 @@ impl<'a> From<&'a LogicalType> for PhysicalType {
             LogicalType::Bool => PhysicalType::Bool,
             LogicalType::Int => PhysicalType::Int32,
             LogicalType::Decimal => PhysicalType::Decimal,
+            LogicalType::Text => todo!(),
         }
     }
 }

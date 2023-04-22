@@ -3,6 +3,7 @@ pub enum Plan {
     Transaction(ir::TransactionKind),
     CreateTable(ir::CreateTableInfo),
     CreateNamespace(ir::CreateNamespaceInfo),
+    Show(ir::Show),
     Projection {
         source: Box<Plan>,
         projection: Vec<ir::Expr>,
@@ -36,6 +37,7 @@ impl Planner {
                 Plan::Insert { table_ref, projection, source, returning }
             }
             ir::Stmt::Query(query) => return self.plan_table_expr(query),
+            ir::Stmt::Show(show) => Plan::Show(show),
         };
 
         Box::new(plan)

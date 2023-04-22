@@ -15,7 +15,7 @@ impl PhysicalTransaction {
 
 impl PhysicalNode for PhysicalTransaction {
     fn desc(&self) -> &'static str {
-        "create table"
+        "transaction"
     }
 
     fn children(&self) -> &[Arc<dyn PhysicalNode>] {

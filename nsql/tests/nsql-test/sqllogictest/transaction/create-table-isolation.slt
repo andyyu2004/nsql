@@ -2,4 +2,12 @@ statement ok con1
 BEGIN
 
 statement ok con1
+CREATE TABLE foo (id INT)
+
+query T con1
+SHOW TABLES
+----
+foo
+
+statement ok con1
 COMMIT

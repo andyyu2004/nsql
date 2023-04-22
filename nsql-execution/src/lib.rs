@@ -110,6 +110,12 @@ trait PhysicalNode: Send + Sync + fmt::Debug + 'static {
 #[derive(Debug)]
 struct Chunk(SmallVec<[Tuple; 1]>);
 
+impl From<Vec<Tuple>> for Chunk {
+    fn from(vec: Vec<Tuple>) -> Self {
+        Self(SmallVec::from_vec(vec))
+    }
+}
+
 impl Chunk {
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()

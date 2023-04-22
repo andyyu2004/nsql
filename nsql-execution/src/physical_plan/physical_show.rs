@@ -1,17 +1,20 @@
+use std::sync::atomic::{self, AtomicBool};
 use std::sync::Arc;
 
-use nsql_catalog::{Container, Namespace};
+use nsql_catalog::{Container, Entity, Namespace, Table};
+use nsql_storage::tuple::{Literal, Value};
 
 use super::*;
 
 #[derive(Debug)]
 pub struct PhysicalShow {
     show: ir::Show,
+    finished: AtomicBool,
 }
 
 impl PhysicalShow {
     pub(crate) fn plan(show: ir::Show) -> Arc<dyn PhysicalNode> {
-        Arc::new(Self { show })
+        Arc::new(Self { show, finished: Default::default() })
     }
 }
 
@@ -44,12 +47,27 @@ impl PhysicalSource for PhysicalShow {
     }
 
     async fn source(&self, ctx: &ExecutionContext) -> ExecutionResult<Chunk> {
+        if self.finished.swap(true, atomic::Ordering::AcqRel) {
+            return Ok(Chunk::empty());
+        }
+
         let catalog = ctx.catalog();
         let tx = ctx.tx();
-        let namespaces = catalog.all::<Namespace>(&tx);
-
-        match self.show {
-            ir::Show::Tables => todo!(),
+        let mut tuples = vec![];
+        let namespaces = catalog.all::<Namespace>(&tx)?;
+        for (_, namespace) in namespaces {
+            match self.show {
+                ir::Show::Tables => {
+                    for (_, table) in namespace.all::<Table>(&tx)? {
+                        tuples.push(Tuple::new(
+                            vec![Value::Literal(Literal::String(table.name().to_string()))]
+                                .into_boxed_slice(),
+                        ));
+                    }
+                }
+            }
         }
+
+        Ok(Chunk::from(tuples))
     }
 }

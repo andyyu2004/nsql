@@ -33,6 +33,7 @@ impl ColumnType for TypeWrapper {
             'I' => LogicalType::Int,
             'B' => LogicalType::Bool,
             'D' => LogicalType::Decimal,
+            'T' => LogicalType::Text,
             _ => return None,
         };
         Some(TypeWrapper(ty))
@@ -43,6 +44,7 @@ impl ColumnType for TypeWrapper {
             LogicalType::Int => 'I',
             LogicalType::Bool => 'B',
             LogicalType::Decimal => 'D',
+            LogicalType::Text => 'T',
         }
     }
 }

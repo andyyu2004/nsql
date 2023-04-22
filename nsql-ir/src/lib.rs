@@ -28,7 +28,13 @@ pub enum TransactionKind {
 }
 
 #[derive(Debug, Clone)]
+pub enum Show {
+    Tables,
+}
+
+#[derive(Debug, Clone)]
 pub enum Stmt {
+    Show(Show),
     Transaction(TransactionKind),
     CreateNamespace(CreateNamespaceInfo),
     CreateTable(CreateTableInfo),
