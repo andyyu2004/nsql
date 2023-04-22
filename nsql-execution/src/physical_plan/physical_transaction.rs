@@ -41,7 +41,7 @@ impl PhysicalSource for PhysicalTransaction {
         0
     }
 
-    async fn source(&self, ctx: &ExecutionContext) -> ExecutionResult<Option<Tuple>> {
+    async fn source(&self, ctx: &ExecutionContext) -> ExecutionResult<Chunk> {
         let tx = ctx.tx();
         match self.kind {
             ir::TransactionKind::Begin => {
@@ -67,6 +67,6 @@ impl PhysicalSource for PhysicalTransaction {
             }
         }
 
-        Ok(None)
+        Ok(Chunk::empty())
     }
 }

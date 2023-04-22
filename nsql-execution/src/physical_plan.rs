@@ -18,8 +18,8 @@ use self::physical_table_scan::PhysicalTableScan;
 use self::physical_transaction::PhysicalTransaction;
 use self::physical_values::PhysicalValues;
 use crate::{
-    Evaluator, ExecutionContext, ExecutionResult, PhysicalNode, PhysicalOperator, PhysicalSink,
-    PhysicalSource, Tuple,
+    Chunk, Evaluator, ExecutionContext, ExecutionResult, PhysicalNode, PhysicalOperator,
+    PhysicalSink, PhysicalSource, Tuple,
 };
 
 pub struct PhysicalPlanner {}

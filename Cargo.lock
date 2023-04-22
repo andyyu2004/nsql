@@ -1142,6 +1142,7 @@ dependencies = [
  "nsql-storage",
  "nsql-transaction",
  "parking_lot",
+ "smallvec",
  "thiserror",
  "tokio",
 ]

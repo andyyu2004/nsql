@@ -18,6 +18,7 @@ use nsql_catalog::Catalog;
 use nsql_storage::tuple::Tuple;
 use nsql_transaction::Transaction;
 pub use physical_plan::PhysicalPlanner;
+use smallvec::SmallVec;
 use thiserror::Error;
 
 use self::eval::Evaluator;
@@ -106,6 +107,33 @@ trait PhysicalNode: Send + Sync + fmt::Debug + 'static {
     }
 }
 
+#[derive(Debug)]
+struct Chunk(SmallVec<[Tuple; 1]>);
+
+impl Chunk {
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    pub fn empty() -> Self {
+        Self(SmallVec::new())
+    }
+
+    pub fn singleton(tuple: Tuple) -> Self {
+        Self(SmallVec::from_buf([tuple]))
+    }
+}
+
+impl IntoIterator for Chunk {
+    type Item = Tuple;
+
+    type IntoIter = smallvec::IntoIter<[Self::Item; 1]>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.into_iter()
+    }
+}
+
 #[async_trait::async_trait]
 trait PhysicalOperator: PhysicalNode {
     async fn execute(&self, ctx: &ExecutionContext, input: Tuple) -> ExecutionResult<Tuple>;
@@ -113,7 +141,8 @@ trait PhysicalOperator: PhysicalNode {
 
 #[async_trait::async_trait]
 trait PhysicalSource: PhysicalNode {
-    async fn source(&self, ctx: &ExecutionContext) -> ExecutionResult<Option<Tuple>>;
+    /// Return the next chunk from the source. An empty chunk indicates that the source is exhausted.
+    async fn source(&self, ctx: &ExecutionContext) -> ExecutionResult<Chunk>;
 
     fn estimated_cardinality(&self) -> usize;
 }

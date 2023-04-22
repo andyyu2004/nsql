@@ -1,24 +1,23 @@
 use std::sync::Arc;
 
-use nsql_catalog::{Container, CreateNamespaceInfo, Namespace};
+use nsql_catalog::{Container, Namespace};
 
 use super::*;
-use crate::{Chunk, Error};
 
 #[derive(Debug)]
-pub struct PhysicalCreateNamespace {
-    info: ir::CreateNamespaceInfo,
+pub struct PhysicalShow {
+    show: ir::Show,
 }
 
-impl PhysicalCreateNamespace {
-    pub(crate) fn plan(info: ir::CreateNamespaceInfo) -> Arc<dyn PhysicalNode> {
-        Arc::new(Self { info })
+impl PhysicalShow {
+    pub(crate) fn plan(show: ir::Show) -> Arc<dyn PhysicalNode> {
+        Arc::new(Self { show })
     }
 }
 
-impl PhysicalNode for PhysicalCreateNamespace {
+impl PhysicalNode for PhysicalShow {
     fn desc(&self) -> &'static str {
-        "create namespace"
+        "create table"
     }
 
     fn children(&self) -> &[Arc<dyn PhysicalNode>] {
@@ -39,21 +38,18 @@ impl PhysicalNode for PhysicalCreateNamespace {
 }
 
 #[async_trait::async_trait]
-impl PhysicalSource for PhysicalCreateNamespace {
+impl PhysicalSource for PhysicalShow {
     fn estimated_cardinality(&self) -> usize {
-        0
+        todo!()
     }
 
     async fn source(&self, ctx: &ExecutionContext) -> ExecutionResult<Chunk> {
+        let catalog = ctx.catalog();
         let tx = ctx.tx();
-        let info = CreateNamespaceInfo { name: self.info.name.clone() };
+        let namespaces = catalog.all::<Namespace>(&tx);
 
-        if let Err(err) = ctx.catalog.create::<Namespace>(&tx, info) {
-            if !self.info.if_not_exists {
-                return Err(Error::Catalog(err.into()))?;
-            }
+        match self.show {
+            ir::Show::Tables => todo!(),
         }
-
-        Ok(Chunk::empty())
     }
 }

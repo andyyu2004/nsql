@@ -7,7 +7,7 @@ use parking_lot::RwLock;
 use crate::physical_plan::PhysicalPlan;
 use crate::pipeline::{MetaPipeline, Pipeline, PipelineArena};
 use crate::{
-    build_pipelines, ExecutionContext, ExecutionResult, PhysicalNode, PhysicalOperator,
+    build_pipelines, Chunk, ExecutionContext, ExecutionResult, PhysicalNode, PhysicalOperator,
     PhysicalSink, PhysicalSource, RootPipeline,
 };
 
@@ -40,12 +40,21 @@ impl Executor {
         pipeline: Idx<Pipeline>,
     ) -> ExecutionResult<()> {
         let pipeline = &self.arena[pipeline];
-        while let Some(mut tuple) = pipeline.source.source(ctx).await? {
-            for op in &pipeline.operators {
-                tuple = op.execute(ctx, tuple).await?;
+        loop {
+            let chunk = pipeline.source.source(ctx).await?;
+            if chunk.is_empty() {
+                break;
             }
-            pipeline.sink.sink(ctx, tuple).await?;
+
+            for tuple in chunk {
+                let mut tuple = tuple;
+                for op in &pipeline.operators {
+                    tuple = op.execute(ctx, tuple).await?;
+                }
+                pipeline.sink.sink(ctx, tuple).await?;
+            }
         }
+
         Ok(())
     }
 }
@@ -100,7 +109,7 @@ impl PhysicalSource for OutputSink {
         self.tuples.read().len()
     }
 
-    async fn source(&self, _ctx: &ExecutionContext) -> ExecutionResult<Option<Tuple>> {
+    async fn source(&self, _ctx: &ExecutionContext) -> ExecutionResult<Chunk> {
         todo!()
     }
 }

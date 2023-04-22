@@ -5,7 +5,7 @@ use nsql_core::schema::{Attribute, Schema};
 use nsql_storage::{TableStorage, TableStorageInfo};
 
 use super::*;
-use crate::Error;
+use crate::{Chunk, Error};
 
 #[derive(Debug)]
 pub struct PhysicalCreateTable {
@@ -46,7 +46,7 @@ impl PhysicalSource for PhysicalCreateTable {
         0
     }
 
-    async fn source(&self, ctx: &ExecutionContext) -> ExecutionResult<Option<Tuple>> {
+    async fn source(&self, ctx: &ExecutionContext) -> ExecutionResult<Chunk> {
         let attrs = self
             .info
             .columns
@@ -71,6 +71,6 @@ impl PhysicalSource for PhysicalCreateTable {
 
         schema.create::<Table>(&tx, info).map_err(Into::into).map_err(Error::Catalog)?;
 
-        Ok(None)
+        Ok(Chunk::empty())
     }
 }

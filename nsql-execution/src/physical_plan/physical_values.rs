@@ -16,17 +16,17 @@ impl PhysicalValues {
 
 #[async_trait::async_trait]
 impl PhysicalSource for PhysicalValues {
-    async fn source(&self, _ctx: &ExecutionContext) -> ExecutionResult<Option<Tuple>> {
+    async fn source(&self, _ctx: &ExecutionContext) -> ExecutionResult<Chunk> {
         let index = self.index.fetch_add(1, atomic::Ordering::SeqCst);
         if index >= self.values.len() {
-            return Ok(None);
+            return Ok(Chunk::empty());
         }
 
         let evaluator = Evaluator::new();
         let exprs = &self.values[index];
         let tuple = evaluator.evaluate(&Tuple::empty(), exprs);
 
-        Ok(Some(tuple))
+        Ok(Chunk::singleton(tuple))
     }
 
     fn estimated_cardinality(&self) -> usize {

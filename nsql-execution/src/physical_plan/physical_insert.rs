@@ -68,18 +68,18 @@ impl PhysicalSink for PhysicalInsert {
 
 #[async_trait::async_trait]
 impl PhysicalSource for PhysicalInsert {
-    async fn source(&self, _ctx: &ExecutionContext) -> ExecutionResult<Option<Tuple>> {
+    async fn source(&self, _ctx: &ExecutionContext) -> ExecutionResult<Chunk> {
         let returning = match &self.returning {
             Some(returning) => returning,
-            None => return Ok(None),
+            None => return Ok(Chunk::empty()),
         };
 
         let tuple = match self.returning_tuples.write().pop_front() {
             Some(tuple) => tuple,
-            None => return Ok(None),
+            None => return Ok(Chunk::empty()),
         };
 
-        Ok(Some(self.returning_evaluator.evaluate(&tuple, returning)))
+        Ok(Chunk::singleton(self.returning_evaluator.evaluate(&tuple, returning)))
     }
 
     fn estimated_cardinality(&self) -> usize {

@@ -41,19 +41,20 @@ impl PhysicalTableScan {
 
 #[async_trait::async_trait]
 impl PhysicalSource for PhysicalTableScan {
-    async fn source(&self, ctx: &ExecutionContext) -> ExecutionResult<Option<Tuple>> {
+    async fn source(&self, ctx: &ExecutionContext) -> ExecutionResult<Chunk> {
         let tx = ctx.tx();
         let table = self.table.get_or_try_init(|| {
             let namespace = ctx.catalog.get(&tx, self.table_ref.namespace)?.unwrap();
             Ok::<_, nsql_catalog::Error>(namespace.get(&tx, self.table_ref.table)?.unwrap())
         })?;
 
+        // FIXME we can return an entire chunk at a time instead now
         loop {
             let mut next_batch = self.current_batch.lock().await;
             let idx = self.current_batch_index.fetch_add(1, atomic::Ordering::AcqRel);
             if idx < next_batch.len() {
                 let tuple = next_batch[idx].clone();
-                return Ok(Some(tuple));
+                return Ok(Chunk::singleton(tuple));
             } else {
                 let stream = self
                     .stream
@@ -69,7 +70,7 @@ impl PhysicalSource for PhysicalTableScan {
                         *next_batch = batch;
                         self.current_batch_index.store(0, atomic::Ordering::Release);
                     }
-                    None => return Ok(None),
+                    None => return Ok(Chunk::empty()),
                 }
             }
         }
