@@ -43,7 +43,7 @@ macro_rules! not_implemented {
         return Err($crate::Error::Unimplemented($msg.into()).into())
     };
     ($cond:expr) => {
-        if !$cond {
+        if $cond {
             return Err($crate::Error::Unimplemented(stringify!($cond).into()).into());
         }
     };
@@ -92,26 +92,26 @@ impl<'a> Binder<'a> {
                 on_commit,
                 on_cluster,
             } => {
-                not_implemented!(!or_replace);
-                not_implemented!(!temporary);
-                not_implemented!(!external);
-                not_implemented!(global.is_none());
-                not_implemented!(!if_not_exists);
-                not_implemented!(constraints.is_empty());
-                not_implemented!(*hive_distribution == HiveDistributionStyle::NONE);
-                not_implemented!(table_properties.is_empty());
-                not_implemented!(with_options.is_empty());
-                not_implemented!(file_format.is_none());
-                not_implemented!(location.is_none());
-                not_implemented!(query.is_none());
-                not_implemented!(!without_rowid);
-                not_implemented!(like.is_none());
-                not_implemented!(clone.is_none());
-                not_implemented!(engine.is_none());
-                not_implemented!(default_charset.is_none());
-                not_implemented!(collation.is_none());
-                not_implemented!(on_commit.is_none());
-                not_implemented!(on_cluster.is_none());
+                not_implemented!(*or_replace);
+                not_implemented!(*temporary);
+                not_implemented!(*external);
+                not_implemented!(global.is_some());
+                not_implemented!(*if_not_exists);
+                not_implemented!(!constraints.is_empty());
+                not_implemented!(*hive_distribution != HiveDistributionStyle::NONE);
+                not_implemented!(!table_properties.is_empty());
+                not_implemented!(!with_options.is_empty());
+                not_implemented!(file_format.is_some());
+                not_implemented!(location.is_some());
+                not_implemented!(query.is_some());
+                not_implemented!(*without_rowid);
+                not_implemented!(like.is_some());
+                not_implemented!(clone.is_some());
+                not_implemented!(engine.is_some());
+                not_implemented!(default_charset.is_some());
+                not_implemented!(collation.is_some());
+                not_implemented!(on_commit.is_some());
+                not_implemented!(on_cluster.is_some());
 
                 let ident = self.lower_ident(&name.0)?;
                 let namespace = self.bind_namespace(&ident)?;
@@ -120,7 +120,7 @@ impl<'a> Binder<'a> {
                 ir::Stmt::CreateTable(info)
             }
             ast::Statement::CreateSchema { schema_name, if_not_exists } => {
-                not_implemented!(!if_not_exists);
+                not_implemented!(*if_not_exists);
                 let name = match schema_name {
                     ast::SchemaName::Simple(ident) => match self.lower_ident(&ident.0)? {
                         Ident::Qualified { .. } => {
@@ -151,11 +151,11 @@ impl<'a> Binder<'a> {
                 on,
                 returning,
             } => {
-                not_implemented!(or.is_none());
-                not_implemented!(!overwrite);
-                not_implemented!(partitioned.is_none());
-                not_implemented!(after_columns.is_empty());
-                not_implemented!(on.is_none());
+                not_implemented!(or.is_some());
+                not_implemented!(*overwrite);
+                not_implemented!(partitioned.is_some());
+                not_implemented!(!after_columns.is_empty());
+                not_implemented!(on.is_some());
 
                 // We bind the columns of the table first, so that we can use them in the following projection
                 let (scope, table_ref) = self.bind_table(scope, table_name)?;
@@ -179,16 +179,23 @@ impl<'a> Binder<'a> {
             }
             ast::Statement::Query(query) => ir::Stmt::Query(self.bind_query(scope, query)?),
             ast::Statement::StartTransaction { modes } => {
-                not_implemented!(modes.is_empty());
+                not_implemented!(!modes.is_empty());
                 ir::Stmt::Transaction(ir::TransactionKind::Begin)
             }
             ast::Statement::Rollback { chain } => {
-                not_implemented!(!*chain);
+                not_implemented!(*chain);
                 ir::Stmt::Transaction(ir::TransactionKind::Rollback)
             }
             ast::Statement::Commit { chain } => {
-                not_implemented!(!*chain);
+                not_implemented!(*chain);
                 ir::Stmt::Transaction(ir::TransactionKind::Commit)
+            }
+            ast::Statement::ShowTables { extended, full, db_name, filter } => {
+                not_implemented!(*extended);
+                not_implemented!(*full);
+                not_implemented!(db_name.is_some());
+                not_implemented!(filter.is_some());
+                ir::Stmt::Show(ir::Show::Tables)
             }
             _ => return Err(Error::Unimplemented("unimplemented stmt".into())),
         };
@@ -273,12 +280,12 @@ impl<'a> Binder<'a> {
 
     fn bind_query(&self, scope: &Scope, query: &ast::Query) -> Result<ir::TableExpr> {
         let ast::Query { with, body, order_by, limit, offset, fetch, locks } = query;
-        not_implemented!(with.is_none());
-        not_implemented!(order_by.is_empty());
-        not_implemented!(limit.is_none());
-        not_implemented!(offset.is_none());
-        not_implemented!(fetch.is_none());
-        not_implemented!(locks.is_empty());
+        not_implemented!(with.is_some());
+        not_implemented!(!order_by.is_empty());
+        not_implemented!(limit.is_some());
+        not_implemented!(offset.is_some());
+        not_implemented!(fetch.is_some());
+        not_implemented!(!locks.is_empty());
 
         self.bind_table_expr(scope, body)
     }
@@ -312,17 +319,17 @@ impl<'a> Binder<'a> {
             having,
             qualify,
         } = select;
-        not_implemented!(!distinct);
-        not_implemented!(top.is_none());
-        not_implemented!(into.is_none());
-        not_implemented!(lateral_views.is_empty());
-        not_implemented!(selection.is_none());
-        not_implemented!(group_by.is_empty());
-        not_implemented!(cluster_by.is_empty());
-        not_implemented!(distribute_by.is_empty());
-        not_implemented!(sort_by.is_empty());
-        not_implemented!(having.is_none());
-        not_implemented!(qualify.is_none());
+        not_implemented!(*distinct);
+        not_implemented!(top.is_some());
+        not_implemented!(into.is_some());
+        not_implemented!(!lateral_views.is_empty());
+        not_implemented!(selection.is_some());
+        not_implemented!(!group_by.is_empty());
+        not_implemented!(!cluster_by.is_empty());
+        not_implemented!(!distribute_by.is_empty());
+        not_implemented!(!sort_by.is_empty());
+        not_implemented!(having.is_some());
+        not_implemented!(qualify.is_some());
 
         let (scope, source) = match &from[..] {
             [] => (scope.clone(), Box::new(ir::TableExpr::Empty)),
@@ -343,7 +350,7 @@ impl<'a> Binder<'a> {
         scope: &Scope,
         tables: &ast::TableWithJoins,
     ) -> Result<(Scope, Box<ir::TableExpr>)> {
-        not_implemented!(tables.joins.is_empty());
+        not_implemented!(!tables.joins.is_empty());
         let table = &tables.relation;
         self.bind_table_factor(scope, table)
     }
@@ -355,9 +362,9 @@ impl<'a> Binder<'a> {
     ) -> Result<(Scope, Box<ir::TableExpr>)> {
         match table {
             ast::TableFactor::Table { name, alias, args, with_hints } => {
-                not_implemented!(args.is_none());
-                not_implemented!(with_hints.is_empty());
-                not_implemented!(alias.is_none());
+                not_implemented!(args.is_some());
+                not_implemented!(!with_hints.is_empty());
+                not_implemented!(alias.is_some());
 
                 let (scope, table_ref) = self.bind_table(scope, name)?;
                 Ok((scope, Box::new(ir::TableExpr::TableRef(table_ref))))
