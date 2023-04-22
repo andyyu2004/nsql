@@ -510,6 +510,7 @@ impl<D: AsyncDB> Runner<D> {
                 expected_error: _,
                 expected_count: _,
                 loc: _,
+                connection_name,
             } => {
                 let sql = self.replace_keywords(sql);
                 let ret = self.db.run(&sql).await;
@@ -653,6 +654,7 @@ impl<D: AsyncDB> Runner<D> {
                     expected_error,
                     sql,
                     expected_count,
+                    connection_name,
                 },
                 RecordOutput::Statement { count, error },
             ) => match (error, expected_error) {
@@ -1088,6 +1090,7 @@ pub fn update_record_with_output<T: ColumnType>(
                 conditions,
                 expected_error: None,
                 expected_count,
+                connection_name,
             },
             RecordOutput::Query { error: None, .. },
         ) => {
@@ -1104,6 +1107,7 @@ pub fn update_record_with_output<T: ColumnType>(
                 loc,
                 conditions,
                 expected_count,
+                connection_name,
             })
         }
         // query, statement
@@ -1112,6 +1116,7 @@ pub fn update_record_with_output<T: ColumnType>(
                 sql,
                 loc,
                 conditions,
+                connection_name,
                 ..
             },
             RecordOutput::Statement { error: None, .. },
@@ -1121,6 +1126,7 @@ pub fn update_record_with_output<T: ColumnType>(
             loc,
             conditions,
             expected_count: None,
+            connection_name,
         }),
         // statement, statement
         (
@@ -1130,6 +1136,7 @@ pub fn update_record_with_output<T: ColumnType>(
                 expected_error,
                 sql,
                 expected_count,
+                connection_name,
             },
             RecordOutput::Statement { count, error },
         ) => match (error, expected_error) {
@@ -1139,11 +1146,13 @@ pub fn update_record_with_output<T: ColumnType>(
                 expected_error: None,
                 loc,
                 conditions,
+                connection_name,
                 expected_count: expected_count.map(|_| *count),
             }),
             // Error match
             (Some(e), Some(expected_error)) if expected_error.is_match(&e.to_string()) => {
                 Some(Record::Statement {
+                    connection_name,
                     sql,
                     expected_error: Some(expected_error),
                     loc,
@@ -1154,6 +1163,7 @@ pub fn update_record_with_output<T: ColumnType>(
             // Error mismatch, update expected error
             (Some(e), _) => Some(Record::Statement {
                 sql,
+                connection_name,
                 expected_error: Some(Regex::new(&regex::escape(&e.to_string())).unwrap()),
                 loc,
                 conditions,

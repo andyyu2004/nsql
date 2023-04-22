@@ -80,6 +80,8 @@ pub enum Record<T: ColumnType> {
     Statement {
         loc: Location,
         conditions: Vec<Condition>,
+        /// For testing multiple connections
+        connection_name: Option<String>,
         /// The SQL command is expected to fail with an error messages that matches the given
         /// regex. If the regex is an empty string, any error message is accepted.
         #[educe(PartialEq(method = "cmp_regex"))]
@@ -178,13 +180,17 @@ impl<T: ColumnType> std::fmt::Display for Record<T> {
                 expected_error,
                 sql,
                 expected_count,
+                connection_name,
             } => {
                 write!(f, "statement ")?;
-                match (expected_count, expected_error) {
-                    (None, None) => write!(f, "ok")?,
-                    (None, Some(_)) => write!(f, "error")?,
-                    (Some(cnt), None) => write!(f, "count {cnt}")?,
-                    (Some(_), Some(_)) => unreachable!(),
+                match (expected_count, expected_error, connection_name) {
+                    (None, None, None) => write!(f, "ok")?,
+                    (None, None, Some(con)) => write!(f, "ok {con}")?,
+                    (None, Some(_), None) => write!(f, "error")?,
+                    (None, Some(_), Some(con)) => write!(f, "error {con}")?,
+                    (Some(cnt), None, None) => write!(f, "count {cnt}")?,
+                    (Some(_), Some(_), Some(_)) => unreachable!(),
+                    _ => todo!(),
                 }
                 writeln!(f)?;
                 // statement always end with a blank line
@@ -487,18 +493,19 @@ fn parse_inner<T: ColumnType>(loc: &Location, script: &str) -> Result<Vec<Record
             ["statement", res @ ..] => {
                 let mut expected_count = None;
                 let mut expected_error = None;
+                let mut connection_name = None;
                 match res {
                     ["ok"] => {}
+                    ["ok", connection] => {
+                        connection_name = Some(connection.to_string());
+                    }
                     ["error"] => {
                         // default to matching any error mesage
                         expected_error = Some(Regex::new("").unwrap());
                     }
-                    // ["error", err_str @ ..] => {
-                    //     let err_str = err_str.join(" ");
-                    //     expected_error = Some(Regex::new(&err_str).map_err(|_| {
-                    //         ParseErrorKind::InvalidErrorMessage(err_str).at(loc.clone())
-                    //     })?);
-                    // }
+                    ["error", connection] => {
+                        connection_name = Some(connection.to_string());
+                    }
                     ["count", count_str] => {
                         expected_count = Some(count_str.parse::<u64>().map_err(|_| {
                             ParseErrorKind::InvalidNumber((*count_str).into()).at(loc.clone())
@@ -528,6 +535,7 @@ fn parse_inner<T: ColumnType>(loc: &Location, script: &str) -> Result<Vec<Record
 
                 records.push(Record::Statement {
                     loc,
+                    connection_name,
                     conditions: std::mem::take(&mut conditions),
                     expected_error,
                     sql,
