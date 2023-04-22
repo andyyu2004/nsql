@@ -1,16 +1,17 @@
+use std::collections::BTreeMap;
 use std::error::Error;
 use std::path::Path;
 use std::time::Duration;
 
 use async_trait::async_trait;
-use nsql::Nsql;
+use nsql::{Connection, Nsql};
 use nsql_core::schema::LogicalType;
 use sqllogictest::{AsyncDB, ColumnType, DBOutput, Runner};
 
 fn nsql_sqllogictest(path: &Path) -> nsql::Result<(), Box<dyn Error>> {
     nsql_test::start(async {
         // let _ = tracing_subscriber::fmt::fmt().with_env_filter("nsql=DEBUG").try_init();
-        let db = TestDb(Nsql::mem().await.unwrap());
+        let db = TestDb::new(Nsql::mem().await.unwrap());
         let mut tester = Runner::new(db);
         tester.run_file_async(path).await?;
         Ok(())
@@ -22,9 +23,6 @@ datatest_stable::harness!(
     format!("{}/{}", env!("CARGO_MANIFEST_DIR"), "tests/nsql-test/sqllogictest"),
     r"^.*/*.slt"
 );
-
-// FIXME we need to test the single file pager too, but it's currently not `Send` due to `tokio_uring::File` not being send
-pub struct TestDb(Nsql);
 
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub struct TypeWrapper(LogicalType);
@@ -49,6 +47,17 @@ impl ColumnType for TypeWrapper {
     }
 }
 
+pub struct TestDb {
+    db: Nsql,
+    connections: BTreeMap<Option<String>, Connection>,
+}
+
+impl TestDb {
+    pub fn new(db: Nsql) -> Self {
+        Self { db, connections: Default::default() }
+    }
+}
+
 #[async_trait]
 impl AsyncDB for TestDb {
     type Error = nsql::Error;
@@ -60,8 +69,12 @@ impl AsyncDB for TestDb {
         connection_name: Option<&str>,
         sql: &str,
     ) -> Result<DBOutput<Self::ColumnType>, Self::Error> {
-        assert!(connection_name.is_none());
-        let output = self.0.query(sql).await?;
+        let conn = self
+            .connections
+            .entry(connection_name.map(Into::into))
+            .or_insert_with(|| self.db.connect());
+
+        let output = conn.query(sql).await?;
         Ok(DBOutput::Rows {
             types: output.types.into_iter().map(TypeWrapper).collect(),
             rows: output

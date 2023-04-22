@@ -56,11 +56,11 @@ impl Nsql {
         let catalog = Arc::new(Catalog::create(&tx)?);
         tx.commit().await;
 
-        Ok(Self::new(Shared { storage, buffer_pool, txm, catalog, current_tx: Default::default() }))
+        Ok(Self::new(Shared { storage, buffer_pool, txm, catalog }))
     }
 
-    pub async fn query(&self, query: &str) -> Result<MaterializedQueryOutput> {
-        self.shared.query(query).await
+    pub fn connect(&self) -> Connection {
+        Connection { db: self.clone(), current_tx: Default::default() }
     }
 
     fn new(inner: Shared) -> Self {
@@ -72,21 +72,40 @@ struct Shared {
     storage: Storage,
     buffer_pool: Arc<dyn Pool>,
     txm: TransactionManager,
-    current_tx: ArcSwapOption<Transaction>,
     catalog: Arc<Catalog>,
 }
 
-impl Shared {
-    async fn query(&self, query: &str) -> Result<MaterializedQueryOutput> {
+pub struct Connection {
+    db: Nsql,
+    current_tx: ArcSwapOption<Transaction>,
+}
+
+impl Connection {
+    pub async fn query(&self, query: &str) -> Result<MaterializedQueryOutput> {
         let tx = match self.current_tx.load_full() {
             Some(tx) => tx,
             None => {
-                let tx = self.txm.begin().await;
+                let tx = self.db.shared.txm.begin().await;
                 self.current_tx.store(Some(Arc::clone(&tx)));
                 tx
             }
         };
 
+        let output = self.db.shared.query(Arc::clone(&tx), query).await?;
+
+        if tx.auto_commit() {
+            self.current_tx.store(None);
+            tx.commit().await;
+        } else if matches!(tx.state(), TransactionState::Committed | TransactionState::RolledBack) {
+            self.current_tx.store(None);
+        }
+
+        Ok(output)
+    }
+}
+
+impl Shared {
+    async fn query(&self, tx: Arc<Transaction>, query: &str) -> Result<MaterializedQueryOutput> {
         let statements = nsql_parse::parse_statements(query)?;
         if statements.is_empty() {
             return Ok(MaterializedQueryOutput { types: vec![], tuples: vec![] });
@@ -107,13 +126,6 @@ impl Shared {
         let physical_plan = PhysicalPlanner::new().plan(plan);
         let ctx = ExecutionContext::new(Arc::clone(&self.buffer_pool), Arc::clone(&tx), catalog);
         let tuples = nsql_execution::execute(&ctx, physical_plan).await?;
-
-        if tx.auto_commit() {
-            self.current_tx.store(None);
-            tx.commit().await;
-        } else if matches!(tx.state(), TransactionState::Committed | TransactionState::RolledBack) {
-            self.current_tx.store(None);
-        }
 
         Ok(MaterializedQueryOutput { types: vec![], tuples })
     }

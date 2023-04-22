@@ -1,5 +1,7 @@
 statement ok
 CREATE SCHEMA foo;
 
-statement error schema `foo` already exists
+statement error
 CREATE SCHEMA foo;
+----
+schema `foo` already exists

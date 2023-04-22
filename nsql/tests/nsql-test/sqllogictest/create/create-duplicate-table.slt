@@ -1,5 +1,7 @@
 statement ok
 CREATE TABLE foo(id int);
 
-statement error table `foo` already exists
+statement error
 CREATE TABLE foo(id int);
+----
+table `foo` already exists

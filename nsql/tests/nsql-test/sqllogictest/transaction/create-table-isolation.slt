@@ -1,0 +1,5 @@
+statement ok con1
+BEGIN
+
+statement ok con1
+COMMIT
