@@ -55,7 +55,12 @@ impl AsyncDB for TestDb {
 
     type ColumnType = TypeWrapper;
 
-    async fn run(&mut self, sql: &str) -> Result<DBOutput<Self::ColumnType>, Self::Error> {
+    async fn run_on(
+        &mut self,
+        connection_name: Option<&str>,
+        sql: &str,
+    ) -> Result<DBOutput<Self::ColumnType>, Self::Error> {
+        assert!(connection_name.is_none());
         let output = self.0.query(sql).await?;
         Ok(DBOutput::Rows {
             types: output.types.into_iter().map(TypeWrapper).collect(),

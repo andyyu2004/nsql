@@ -55,8 +55,17 @@ pub trait AsyncDB: Send {
     /// The type of result columns
     type ColumnType: ColumnType;
 
+    /// Async run a SQL query on the given connection and return the output.
+    async fn run_on(
+        &mut self,
+        connection_name: Option<&str>,
+        sql: &str,
+    ) -> Result<DBOutput<Self::ColumnType>, Self::Error>;
+
     /// Async run a SQL query and return the output.
-    async fn run(&mut self, sql: &str) -> Result<DBOutput<Self::ColumnType>, Self::Error>;
+    async fn run(&mut self, sql: &str) -> Result<DBOutput<Self::ColumnType>, Self::Error> {
+        self.run_on(None, sql).await
+    }
 
     /// Engine name of current database.
     fn engine_name(&self) -> &str {
@@ -77,11 +86,21 @@ pub trait AsyncDB: Send {
 pub trait DB: Send {
     /// The error type of SQL execution.
     type Error: std::error::Error + Send + Sync + 'static;
+
     /// The type of result columns
     type ColumnType: ColumnType;
 
+    /// Run a SQL query on the given connection and return the output.
+    fn run_on(
+        &mut self,
+        connection_name: Option<&str>,
+        sql: &str,
+    ) -> Result<DBOutput<Self::ColumnType>, Self::Error>;
+
     /// Run a SQL query and return the output.
-    fn run(&mut self, sql: &str) -> Result<DBOutput<Self::ColumnType>, Self::Error>;
+    fn run(&mut self, sql: &str) -> Result<DBOutput<Self::ColumnType>, Self::Error> {
+        self.run_on(None, sql)
+    }
 
     /// Engine name of current database.
     fn engine_name(&self) -> &str {
@@ -97,6 +116,15 @@ where
 {
     type Error = D::Error;
     type ColumnType = D::ColumnType;
+
+    /// Run a SQL query on the given connection and return the output.
+    async fn run_on(
+        &mut self,
+        connection_name: Option<&str>,
+        sql: &str,
+    ) -> Result<DBOutput<Self::ColumnType>, Self::Error> {
+        D::run_on(self, connection_name, sql)
+    }
 
     async fn run(&mut self, sql: &str) -> Result<DBOutput<Self::ColumnType>, Self::Error> {
         D::run(self, sql)
@@ -513,7 +541,7 @@ impl<D: AsyncDB> Runner<D> {
                 connection_name,
             } => {
                 let sql = self.replace_keywords(sql);
-                let ret = self.db.run(&sql).await;
+                let ret = self.db.run_on(connection_name.as_deref(), &sql).await;
                 match ret {
                     Ok(out) => match out {
                         DBOutput::Rows { types, rows } => RecordOutput::Query {
@@ -549,9 +577,9 @@ impl<D: AsyncDB> Runner<D> {
                 label: _,
                 connection_name,
             } => {
-                assert!(connection_name.is_none(), "todo");
                 let sql = self.replace_keywords(sql);
-                let (types, mut rows) = match self.db.run(&sql).await {
+                let (types, mut rows) = match self.db.run_on(connection_name.as_deref(), &sql).await
+                {
                     Ok(out) => match out {
                         DBOutput::Rows { types, rows } => (types, rows),
                         DBOutput::StatementComplete(count) => {
@@ -654,7 +682,7 @@ impl<D: AsyncDB> Runner<D> {
                     expected_error,
                     sql,
                     expected_count,
-                    connection_name,
+                    connection_name: _,
                 },
                 RecordOutput::Statement { count, error },
             ) => match (error, expected_error) {
@@ -707,7 +735,7 @@ impl<D: AsyncDB> Runner<D> {
                     expected_error,
                     sql,
                     expected_results,
-                    connection_name,
+                    connection_name: _,
                 },
                 RecordOutput::Query { types, rows, error },
             ) => {

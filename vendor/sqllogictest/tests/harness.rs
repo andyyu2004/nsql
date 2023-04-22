@@ -25,7 +25,12 @@ impl sqllogictest::DB for FakeDB {
     type Error = FakeDBError;
     type ColumnType = DefaultColumnType;
 
-    fn run(&mut self, _sql: &str) -> Result<DBOutput<Self::ColumnType>, FakeDBError> {
+    fn run_on(
+        &mut self,
+        connection_name: Option<&str>,
+        _sql: &str,
+    ) -> Result<DBOutput<Self::ColumnType>, Self::Error> {
+        assert!(connection_name.is_none());
         Ok(DBOutput::Rows {
             types: vec![DefaultColumnType::Text],
             rows: vec![vec!["I'm fake.".to_string()]],
