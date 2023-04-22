@@ -1,0 +1,9 @@
+query I con1
+SELECT 1
+query I con2
+SELECT 2
+
+statement ok con1
+SELECT 1
+
+

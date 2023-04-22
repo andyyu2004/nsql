@@ -96,6 +96,8 @@ pub enum Record<T: ColumnType> {
         conditions: Vec<Condition>,
         expected_types: Vec<T>,
         sort_mode: Option<SortMode>,
+        /// For testing multiple connections
+        connection_name: Option<String>,
         label: Option<String>,
         /// The SQL command is expected to fail with an error messages that matches the given
         /// regex. If the regex is an empty string, any error message is accepted.
@@ -180,19 +182,21 @@ impl<T: ColumnType> std::fmt::Display for Record<T> {
                 write!(f, "statement ")?;
                 match (expected_count, expected_error) {
                     (None, None) => write!(f, "ok")?,
-                    (None, Some(err)) => {
-                        if err.as_str().is_empty() {
-                            write!(f, "error")?;
-                        } else {
-                            write!(f, "error {err}")?;
-                        }
-                    }
+                    (None, Some(_)) => write!(f, "error")?,
                     (Some(cnt), None) => write!(f, "count {cnt}")?,
                     (Some(_), Some(_)) => unreachable!(),
                 }
                 writeln!(f)?;
                 // statement always end with a blank line
-                writeln!(f, "{sql}")
+                write!(f, "{sql}")?;
+                if let Some(error) = expected_error {
+                    if !format!("{error}").is_empty() {
+                        writeln!(f, "\n----")?;
+                        write!(f, "{error}")?;
+                    }
+                }
+                // query always ends with a blank line
+                writeln!(f)
             }
             Record::Query {
                 loc: _,
@@ -203,11 +207,17 @@ impl<T: ColumnType> std::fmt::Display for Record<T> {
                 expected_error,
                 sql,
                 expected_results,
+                connection_name,
             } => {
                 write!(f, "query")?;
                 if let Some(err) = expected_error {
-                    writeln!(f, " error {err}")?;
-                    return writeln!(f, "{sql}");
+                    writeln!(f, " error")?;
+                    writeln!(f, "{sql}")?;
+                    if !format!("{err}").is_empty() {
+                        writeln!(f, "----")?;
+                        write!(f, "{err}")?;
+                    }
+                    return writeln!(f);
                 }
 
                 write!(
@@ -217,6 +227,9 @@ impl<T: ColumnType> std::fmt::Display for Record<T> {
                 )?;
                 if let Some(sort_mode) = sort_mode {
                     write!(f, " {}", sort_mode.as_str())?;
+                }
+                if let Some(connection_name) = connection_name {
+                    write!(f, " {connection_name}")?;
                 }
                 if let Some(label) = label {
                     write!(f, " {label}")?;
@@ -476,12 +489,16 @@ fn parse_inner<T: ColumnType>(loc: &Location, script: &str) -> Result<Vec<Record
                 let mut expected_error = None;
                 match res {
                     ["ok"] => {}
-                    ["error", err_str @ ..] => {
-                        let err_str = err_str.join(" ");
-                        expected_error = Some(Regex::new(&err_str).map_err(|_| {
-                            ParseErrorKind::InvalidErrorMessage(err_str).at(loc.clone())
-                        })?);
+                    ["error"] => {
+                        // default to matching any error mesage
+                        expected_error = Some(Regex::new("").unwrap());
                     }
+                    // ["error", err_str @ ..] => {
+                    //     let err_str = err_str.join(" ");
+                    //     expected_error = Some(Regex::new(&err_str).map_err(|_| {
+                    //         ParseErrorKind::InvalidErrorMessage(err_str).at(loc.clone())
+                    //     })?);
+                    // }
                     ["count", count_str] => {
                         expected_count = Some(count_str.parse::<u64>().map_err(|_| {
                             ParseErrorKind::InvalidNumber((*count_str).into()).at(loc.clone())
@@ -489,17 +506,26 @@ fn parse_inner<T: ColumnType>(loc: &Location, script: &str) -> Result<Vec<Record
                     }
                     _ => return Err(ParseErrorKind::InvalidLine(line.into()).at(loc)),
                 };
-                let mut sql = match lines.next() {
-                    Some((_, line)) => line.into(),
-                    None => return Err(ParseErrorKind::UnexpectedEOF.at(loc.next_line())),
-                };
-                for (_, line) in &mut lines {
-                    if line.is_empty() {
-                        break;
-                    }
-                    sql += "\n";
-                    sql += line;
+
+                let (sql, mut expected_error_body) = parse_sql_and_body(&mut lines, &loc)?;
+                if expected_error_body.len() > 1 {
+                    return Err(ParseErrorKind::InvalidErrorMessage(
+                        "error messages can only be one line (for now)".into(),
+                    )
+                    .at(loc));
                 }
+
+                if let Some(error) = expected_error_body
+                    .pop()
+                    .map(|error| {
+                        Regex::new(&error)
+                            .map_err(|_| ParseErrorKind::InvalidErrorMessage(error).at(loc.clone()))
+                    })
+                    .transpose()?
+                {
+                    expected_error = Some(error);
+                }
+
                 records.push(Record::Statement {
                     loc,
                     conditions: std::mem::take(&mut conditions),
@@ -511,15 +537,11 @@ fn parse_inner<T: ColumnType>(loc: &Location, script: &str) -> Result<Vec<Record
             ["query", res @ ..] => {
                 let mut expected_types = vec![];
                 let mut sort_mode = None;
+                let mut connection_name = None;
                 let mut label = None;
                 let mut expected_error = None;
                 match res {
-                    ["error", err_str @ ..] => {
-                        let err_str = err_str.join(" ");
-                        expected_error = Some(Regex::new(&err_str).map_err(|_| {
-                            ParseErrorKind::InvalidErrorMessage(err_str).at(loc.clone())
-                        })?);
-                    }
+                    ["error"] => expected_error = Some(Regex::new("").unwrap()),
                     [type_str, res @ ..] => {
                         expected_types = type_str
                             .chars()
@@ -528,46 +550,35 @@ fn parse_inner<T: ColumnType>(loc: &Location, script: &str) -> Result<Vec<Record
                                     .ok_or_else(|| ParseErrorKind::InvalidType(ch).at(loc.clone()))
                             })
                             .try_collect()?;
-                        sort_mode = res
-                            .first()
-                            .map(|&s| SortMode::try_from_str(s))
-                            .transpose()
-                            .map_err(|e| e.at(loc.clone()))?;
+
+                        if let Some(s) = res.first() {
+                            match SortMode::try_from_str(s) {
+                                Ok(mode) => {
+                                    sort_mode = Some(mode);
+                                }
+                                // if we fail to parse the token as a sort mode, we treat it as the
+                                // connection name
+                                Err(_) => connection_name = Some(s.to_string()),
+                            }
+                        }
+
                         label = res.get(1).map(|s| s.to_string());
                     }
                     [] => {}
                 }
 
-                // The SQL for the query is found on second an subsequent lines of the record
-                // up to first line of the form "----" or until the end of the record.
-                let mut sql = match lines.next() {
-                    Some((_, line)) => line.into(),
-                    None => return Err(ParseErrorKind::UnexpectedEOF.at(loc.next_line())),
-                };
-                let mut has_result = false;
-                for (_, line) in &mut lines {
-                    if line.is_empty() {
-                        break;
-                    }
-                    if line == "----" {
-                        has_result = true;
-                        break;
-                    }
-                    sql += "\n";
-                    sql += line;
-                }
-                // Lines following the "----" are expected results of the query, one value per line.
-                let mut expected_results = vec![];
-                if has_result {
-                    for (_, line) in &mut lines {
-                        if line.is_empty() {
-                            break;
-                        }
-                        expected_results.push(line.to_string());
+                let (sql, mut expected_results) = parse_sql_and_body(&mut lines, &loc)?;
+                if expected_error.is_some() {
+                    if let Some(error) = expected_results.pop() {
+                        expected_error = Some(Regex::new(&error).map_err(|_| {
+                            ParseErrorKind::InvalidErrorMessage(error).at(loc.clone())
+                        })?)
                     }
                 }
+
                 records.push(Record::Query {
                     loc,
+                    connection_name,
                     conditions: std::mem::take(&mut conditions),
                     expected_types,
                     sort_mode,
@@ -670,39 +681,55 @@ mod tests {
 
     #[test]
     fn test_basic() {
-        parse_roundtrip::<DefaultColumnType>("../examples/basic/basic.slt")
+        parse_roundtrip::<DefaultColumnType>(include_str!("../../examples/basic/basic.slt"))
+    }
+
+    #[test]
+    fn test_bad() {
+        parse_roundtrip::<DefaultColumnType>(include_str!("../../examples/basic/shit.slt"))
     }
 
     #[test]
     fn test_condition() {
-        parse_roundtrip::<DefaultColumnType>("../examples/condition/condition.slt")
+        parse_roundtrip::<DefaultColumnType>(include_str!("../../examples/condition/condition.slt"))
     }
 
     #[test]
     fn test_file_level_sort_mode() {
-        parse_roundtrip::<DefaultColumnType>(
-            "../examples/file_level_sort_mode/file_level_sort_mode.slt",
-        )
+        parse_roundtrip::<DefaultColumnType>(include_str!(
+            "../../examples/file_level_sort_mode/file_level_sort_mode.slt"
+        ))
     }
 
     #[test]
     fn test_rowsort() {
-        parse_roundtrip::<DefaultColumnType>("../examples/rowsort/rowsort.slt")
+        parse_roundtrip::<DefaultColumnType>(include_str!("../../examples/rowsort/rowsort.slt"))
+    }
+
+    #[test]
+    fn test_query_multiple_connections() {
+        parse_roundtrip::<DefaultColumnType>(include_str!(
+            "../../examples/multiple_connections/multiple_connections.slt"
+        ))
     }
 
     #[test]
     fn test_test_dir_escape() {
-        parse_roundtrip::<DefaultColumnType>("../examples/test_dir_escape/test_dir_escape.slt")
+        parse_roundtrip::<DefaultColumnType>(include_str!(
+            "../../examples/test_dir_escape/test_dir_escape.slt"
+        ))
     }
 
     #[test]
     fn test_validator() {
-        parse_roundtrip::<DefaultColumnType>("../examples/validator/validator.slt")
+        parse_roundtrip::<DefaultColumnType>(include_str!("../../examples/validator/validator.slt"))
     }
 
     #[test]
     fn test_custom_type() {
-        parse_roundtrip::<CustomColumnType>("../examples/custom_type/custom_type.slt")
+        parse_roundtrip::<CustomColumnType>(include_str!(
+            "../../examples/custom_type/custom_type.slt"
+        ))
     }
 
     #[test]
@@ -733,6 +760,7 @@ select * from foo;
                 loc: Location::new("<unknown>", 1),
                 conditions: vec![],
                 expected_types: vec![],
+                connection_name: None,
                 sort_mode: None,
                 label: None,
                 expected_error: None,
@@ -744,9 +772,8 @@ select * from foo;
 
     /// Verifies Display impl is consistent with parsing by ensuring
     /// roundtrip parse(unparse(parse())) is consistent
-    fn parse_roundtrip<T: ColumnType>(filename: impl AsRef<Path>) {
-        let filename = filename.as_ref();
-        let records = parse_file::<T>(filename).expect("parsing to complete");
+    fn parse_roundtrip<T: ColumnType>(src: &str) {
+        let records = parse::<T>(src).expect("parsing to complete");
 
         let unparsed = records
             .iter()
@@ -763,6 +790,7 @@ select * from foo;
         output_file.flush().unwrap();
 
         let output_path = output_file.into_temp_path();
+        dbg!(&output_path);
         let reparsed_records =
             parse_file(&output_path).expect("reparsing to complete successfully");
 
@@ -840,4 +868,40 @@ select * from foo;
             }
         }
     }
+}
+
+fn parse_sql_and_body<'a>(
+    lines: &mut impl Iterator<Item = (usize, &'a str)>,
+    loc: &Location,
+) -> Result<(String, Vec<String>), ParseError> {
+    // The SQL for the query is found on second an subsequent lines of the record
+    // up to first line of the form "----" or until the end of the record.
+    let mut sql = match lines.next() {
+        Some((_, line)) => line.into(),
+        None => return Err(ParseErrorKind::UnexpectedEOF.at(loc.clone().next_line())),
+    };
+    let mut has_result = false;
+    for (_, line) in lines.by_ref() {
+        if line.is_empty() {
+            break;
+        }
+        if line == "----" {
+            has_result = true;
+            break;
+        }
+        sql += "\n";
+        sql += line;
+    }
+    // Lines following the "----" are expected results of the query, one value per line.
+    let mut body = vec![];
+    if has_result {
+        for (_, line) in lines {
+            if line.is_empty() {
+                break;
+            }
+            body.push(line.to_string());
+        }
+    }
+
+    Ok((sql, body))
 }

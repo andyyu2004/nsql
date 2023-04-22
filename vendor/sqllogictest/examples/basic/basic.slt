@@ -20,22 +20,30 @@ drop table t
 statement error
 give me an error
 
-statement error FakeDB
+statement error
 give me an error
+----
+FakeDB
 
-statement error (?i)fakedb
+statement error
 give me an error
+----
+(?i)fakedb
 
-statement error Hey you
+statement error
 give me an error
+----
+Hey you
 
 # statement is expected to fail with error: "Hey we", but got error: "Hey you got FakeDBError!"
 # statement error Hey we
 # give me an error
 
 # query error is actually equivalent to statement error
-query error Hey you
+query error
 give me an error
+----
+Hey you
 
 hash-threshold 3
 
@@ -63,14 +71,22 @@ Bob
 Eve
 
 # error is a regex. Special characters change the meaning of a regex and have to be escaped
-statement error The operation \(describe\) is not supported. Did you mean \[describe\]\?
+statement error
 desc table example_basic;
+----
+The operation \(describe\) is not supported. Did you mean \[describe\]\?
 
-statement error The operation \(describe\) is not supported. Did you mean [describe]?
+statement error
 desc table example_basic;
+----
+The operation \(describe\) is not supported. Did you mean [describe]?
 
-query error The operation \(describe\) is not supported. Did you mean \[describe\]\?
+query error
 desc table example_basic;
+----
+The operation \(describe\) is not supported. Did you mean \[describe\]\?
 
-query error The operation \(describe\) is not supported. Did you mean [describe]?
+query error
 desc table example_basic;
+----
+The operation \(describe\) is not supported. Did you mean [describe]?

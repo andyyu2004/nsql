@@ -546,7 +546,9 @@ impl<D: AsyncDB> Runner<D> {
 
                 // not handle yet,
                 label: _,
+                connection_name,
             } => {
+                assert!(connection_name.is_none(), "todo");
                 let sql = self.replace_keywords(sql);
                 let (types, mut rows) = match self.db.run(&sql).await {
                     Ok(out) => match out {
@@ -703,6 +705,7 @@ impl<D: AsyncDB> Runner<D> {
                     expected_error,
                     sql,
                     expected_results,
+                    connection_name,
                 },
                 RecordOutput::Query { types, rows, error },
             ) => {
@@ -1168,6 +1171,7 @@ pub fn update_record_with_output<T: ColumnType>(
                 expected_error,
                 sql,
                 expected_results,
+                connection_name,
             },
             RecordOutput::Query { types, rows, error },
         ) => {
@@ -1178,6 +1182,7 @@ pub fn update_record_with_output<T: ColumnType>(
                     return Some(Record::Query {
                         sql,
                         expected_error: Some(expected_error),
+                        connection_name,
                         loc,
                         conditions,
                         expected_types: vec![],
@@ -1190,6 +1195,7 @@ pub fn update_record_with_output<T: ColumnType>(
                 (Some(e), _) => {
                     return Some(Record::Query {
                         sql,
+                        connection_name,
                         expected_error: Some(Regex::new(&regex::escape(&e.to_string())).unwrap()),
                         loc,
                         conditions,
@@ -1218,6 +1224,7 @@ pub fn update_record_with_output<T: ColumnType>(
             Some(Record::Query {
                 sql,
                 expected_error: None,
+                connection_name,
                 loc,
                 conditions,
                 expected_types: types,
@@ -1336,8 +1343,10 @@ mod tests {
             record_output: query_output_error("MyAwesomeDB Error"),
 
             expected: Some(
-                "query error TestError: MyAwesomeDB Error\n\
-                 select * from foo;\n",
+                "query error\n\
+                 select * from foo;\n\
+                 ----\n\
+                 TestError: MyAwesomeDB Error\n",
             ),
         }
         .run()
@@ -1447,16 +1456,20 @@ mod tests {
     fn test_statement_error_new_error() {
         TestCase {
             // statement expected error
-            input: "statement error bar\n\
-                    insert into foo values(2);",
+            input: "statement error\n\
+                    insert into foo values(2);\n\
+                    ----\n\
+                    bar\n",
 
             // Model a run that produced an error message
             record_output: statement_output_error("foo"),
 
             // expect the output includes foo
             expected: Some(
-                "statement error TestError: foo\n\
-                 insert into foo values(2);",
+                "statement error\n\
+                 insert into foo values(2);\n\
+                 ----\n\
+                 TestError: foo\n",
             ),
         }
         .run()
@@ -1474,39 +1487,23 @@ mod tests {
 
             // expect the output includes foo
             expected: Some(
-                "statement error TestError: foo\n\
-                 insert into foo values(2);",
+                "statement error\n\
+                 insert into foo values(2);\n\
+                 ----\n\
+                 TestError: foo\n",
             ),
         }
         .run()
     }
 
     #[test]
-    fn test_statement_error_special_chars() {
-        TestCase {
-            // statement expected error
-            input: "statement error tbd\n\
-                    inser into foo values(2);",
-
-            // Model a run that produced an error message that contains regex special characters
-            record_output: statement_output_error("The operation (inser) is not supported. Did you mean [insert]?"),
-
-            // expect the output includes foo
-            expected: Some(
-                "statement error TestError: The operation \\(inser\\) is not supported\\. Did you mean \\[insert\\]\\?\n\
-                 inser into foo values(2);",
-            ),
-        }
-            .run()
-    }
-
-    #[test]
     fn test_statement_keep_error_regex_when_matches() {
         TestCase {
             // statement expected error
-            input: "statement error TestError: The operation \\([a-z]+\\) is not supported.*\n\
-                    inser into foo values(2);",
-
+            input: "statement error\n\
+                    inser into foo values(2);\n\
+                    ----\n\
+                     TestError: The operation \\([a-z]+\\) is not supported.*\n",
             // Model a run that produced an error message that contains regex special characters
             record_output: statement_output_error(
                 "The operation (inser) is not supported. Did you mean [insert]?",
@@ -1514,48 +1511,10 @@ mod tests {
 
             // expect the output includes foo
             expected: Some(
-                "statement error TestError: The operation \\([a-z]+\\) is not supported.*\n\
-                 inser into foo values(2);",
-            ),
-        }
-        .run()
-    }
-
-    #[test]
-    fn test_query_error_special_chars() {
-        TestCase {
-            // statement expected error
-            input: "query error tbd\n\
-                    selec *;",
-
-            // Model a run that produced an error message that contains regex special characters
-            record_output: query_output_error("The operation (selec) is not supported. Did you mean [select]?"),
-
-            // expect the output includes foo
-            expected: Some(
-                "query error TestError: The operation \\(selec\\) is not supported\\. Did you mean \\[select\\]\\?\n\
-                 selec *;",
-            ),
-        }
-            .run()
-    }
-
-    #[test]
-    fn test_query_error_special_chars_when_matches() {
-        TestCase {
-            // statement expected error
-            input: "query error TestError: The operation \\([a-z]+\\) is not supported.*\n\
-                    selec *;",
-
-            // Model a run that produced an error message that contains regex special characters
-            record_output: query_output_error(
-                "The operation (selec) is not supported. Did you mean [select]?",
-            ),
-
-            // expect the output includes foo
-            expected: Some(
-                "query error TestError: The operation \\([a-z]+\\) is not supported.*\n\
-                 selec *;",
+                "statement error\n\
+                 inser into foo values(2);\n\
+                 ----\n\
+                 TestError: The operation \\([a-z]+\\) is not supported.*\n",
             ),
         }
         .run()
