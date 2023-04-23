@@ -9,3 +9,8 @@ SELECT 1
 ----
 1
 
+query I rowsort con1
+SELECT 1
+----
+1
+

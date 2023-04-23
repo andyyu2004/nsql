@@ -573,8 +573,6 @@ impl<D: AsyncDB> Runner<D> {
                 expected_results: _,
                 loc: _,
 
-                // not handle yet,
-                label: _,
                 connection_name,
             } => {
                 let sql = self.replace_keywords(sql);
@@ -731,7 +729,6 @@ impl<D: AsyncDB> Runner<D> {
                     conditions: _,
                     expected_types,
                     sort_mode: _,
-                    label: _,
                     expected_error,
                     sql,
                     expected_results,
@@ -1205,7 +1202,6 @@ pub fn update_record_with_output<T: ColumnType>(
                 conditions,
                 expected_types,
                 sort_mode,
-                label,
                 expected_error,
                 sql,
                 expected_results,
@@ -1225,7 +1221,6 @@ pub fn update_record_with_output<T: ColumnType>(
                         conditions,
                         expected_types: vec![],
                         sort_mode,
-                        label,
                         expected_results: vec![],
                     });
                 }
@@ -1239,7 +1234,6 @@ pub fn update_record_with_output<T: ColumnType>(
                         conditions,
                         expected_types: vec![],
                         sort_mode,
-                        label,
                         expected_results: vec![],
                     });
                 }
@@ -1267,7 +1261,6 @@ pub fn update_record_with_output<T: ColumnType>(
                 conditions,
                 expected_types: types,
                 sort_mode,
-                label,
                 expected_results: results,
             })
         }

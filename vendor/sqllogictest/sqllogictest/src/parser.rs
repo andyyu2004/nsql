@@ -100,7 +100,6 @@ pub enum Record<T: ColumnType> {
         sort_mode: Option<SortMode>,
         /// For testing multiple connections
         connection_name: Option<String>,
-        label: Option<String>,
         /// The SQL command is expected to fail with an error messages that matches the given
         /// regex. If the regex is an empty string, any error message is accepted.
         #[educe(PartialEq(method = "cmp_regex"))]
@@ -209,7 +208,6 @@ impl<T: ColumnType> std::fmt::Display for Record<T> {
                 conditions: _,
                 expected_types,
                 sort_mode,
-                label,
                 expected_error,
                 sql,
                 expected_results,
@@ -234,12 +232,11 @@ impl<T: ColumnType> std::fmt::Display for Record<T> {
                 if let Some(sort_mode) = sort_mode {
                     write!(f, " {}", sort_mode.as_str())?;
                 }
+
                 if let Some(connection_name) = connection_name {
                     write!(f, " {connection_name}")?;
                 }
-                if let Some(label) = label {
-                    write!(f, " {label}")?;
-                }
+
                 writeln!(f)?;
                 writeln!(f, "{sql}")?;
 
@@ -546,7 +543,6 @@ fn parse_inner<T: ColumnType>(loc: &Location, script: &str) -> Result<Vec<Record
                 let mut expected_types = vec![];
                 let mut sort_mode = None;
                 let mut connection_name = None;
-                let mut label = None;
                 let mut expected_error = None;
                 match res {
                     ["error"] => expected_error = Some(Regex::new("").unwrap()),
@@ -570,7 +566,10 @@ fn parse_inner<T: ColumnType>(loc: &Location, script: &str) -> Result<Vec<Record
                             }
                         }
 
-                        label = res.get(1).map(|s| s.to_string());
+                        // if we have a valid sort order, the next token is the connection name
+                        if connection_name.is_none() {
+                            connection_name = res.get(1).map(|s| s.to_string());
+                        }
                     }
                     [] => {}
                 }
@@ -590,7 +589,6 @@ fn parse_inner<T: ColumnType>(loc: &Location, script: &str) -> Result<Vec<Record
                     conditions: std::mem::take(&mut conditions),
                     expected_types,
                     sort_mode,
-                    label,
                     sql,
                     expected_results,
                     expected_error,
@@ -770,7 +768,6 @@ select * from foo;
                 expected_types: vec![],
                 connection_name: None,
                 sort_mode: None,
-                label: None,
                 expected_error: None,
                 sql: "select * from foo;".to_string(),
                 expected_results: vec![],
