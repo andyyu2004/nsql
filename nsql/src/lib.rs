@@ -16,7 +16,7 @@ use nsql_pager::{InMemoryPager, Pager, SingleFilePager};
 use nsql_plan::Planner;
 use nsql_storage::tuple::Tuple;
 use nsql_storage::Storage;
-use nsql_transaction::{TransactionManager, TransactionSnapshot, TransactionState};
+use nsql_transaction::{TransactionManager, TransactionState};
 use thiserror::Error;
 
 pub type Result<T, E = Error> = std::result::Result<T, E>;

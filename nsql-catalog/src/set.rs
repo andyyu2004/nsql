@@ -8,7 +8,7 @@ use nsql_serde::{
     AsyncReadExt, AsyncWriteExt, StreamDeserialize, StreamDeserializeWith, StreamDeserializer,
     StreamSerialize, StreamSerializer,
 };
-use nsql_transaction::{Transaction, Txid};
+use nsql_transaction::{Transaction, Version};
 
 use crate::entry::Oid;
 use crate::private::CatalogEntity;
@@ -97,7 +97,7 @@ impl<T> Default for VersionedEntry<T> {
 
 impl<T> VersionedEntry<T> {
     fn version_for_tx(&self, tx: &Transaction) -> Option<CatalogEntry<T>> {
-        self.versions.iter().rev().find(|version| tx.can_see(version.txid())).cloned()
+        self.versions.iter().rev().find(|version| tx.can_see(version.version())).cloned()
     }
 
     fn push_version(&mut self, version: CatalogEntry<T>) {
@@ -157,24 +157,24 @@ impl<T: CatalogEntity> CatalogSet<T> {
 
 #[derive(Debug)]
 struct CatalogEntry<T> {
-    txid: Txid,
+    version: Version,
     value: Arc<T>,
     deleted: bool,
 }
 
 impl<T> Clone for CatalogEntry<T> {
     fn clone(&self) -> Self {
-        Self { txid: self.txid, value: Arc::clone(&self.value), deleted: self.deleted }
+        Self { version: self.version, value: Arc::clone(&self.value), deleted: self.deleted }
     }
 }
 
 impl<T> CatalogEntry<T> {
     pub(crate) fn new(tx: &Transaction, value: T) -> Self {
-        Self { txid: tx.id(), value: Arc::new(value), deleted: false }
+        Self { version: tx.version(), value: Arc::new(value), deleted: false }
     }
 
-    pub fn txid(&self) -> Txid {
-        self.txid
+    pub fn version(&self) -> Version {
+        self.version
     }
 
     pub fn value(&self) -> Arc<T> {

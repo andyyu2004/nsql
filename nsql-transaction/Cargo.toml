@@ -9,3 +9,7 @@ edition = "2021"
 crossbeam-skiplist = "0.1.1"
 nsql-util = { version = "0.1.0", path = "../nsql-util" }
 thiserror = "1.0.40"
+
+[dev-dependencies]
+nsql-test = { path = "../nsql-test" }
+tokio = { version = "1.27.0", default-features = false, features = ["rt-multi-thread"] }

@@ -1290,8 +1290,10 @@ name = "nsql-transaction"
 version = "0.1.0"
 dependencies = [
  "crossbeam-skiplist",
+ "nsql-test",
  "nsql-util",
  "thiserror",
+ "tokio",
 ]
 
 [[package]]
