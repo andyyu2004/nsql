@@ -17,7 +17,6 @@ impl RootPipeline {
 
 impl MetaPipeline {
     fn graph(&self, idx: Idx<Self>, arena: &PipelineArena) -> dot::Subgraph {
-        dbg!(idx);
         let node_id = format!("metapipeline{}", idx.into_raw());
         let mut stmts = vec![];
         for &child in &self.children {

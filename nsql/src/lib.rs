@@ -16,7 +16,7 @@ use nsql_pager::{InMemoryPager, Pager, SingleFilePager};
 use nsql_plan::Planner;
 use nsql_storage::tuple::Tuple;
 use nsql_storage::Storage;
-use nsql_transaction::{TransactionManager, TransactionState};
+use nsql_transaction::{TransactionManager, TransactionSnapshot, TransactionState};
 use thiserror::Error;
 
 pub type Result<T, E = Error> = std::result::Result<T, E>;
@@ -38,9 +38,9 @@ impl Nsql {
         let storage = Storage::new(Arc::clone(&pager));
         let _buffer_pool = BufferPool::new(pager);
 
-        let tx = txm.begin().await;
+        let tx = txm.begin();
         storage.load(&tx).await?;
-        tx.commit().await;
+        tx.commit();
         todo!()
 
         // Ok(Self::new(Shared { storage, buffer_pool, txm, catalog }))
@@ -52,9 +52,9 @@ impl Nsql {
         let storage = Storage::new(Arc::clone(&pager));
         let buffer_pool = Arc::new(BufferPool::new(pager));
 
-        let tx = txm.begin().await;
+        let tx = txm.begin();
         let catalog = Arc::new(Catalog::create(&tx)?);
-        tx.commit().await;
+        tx.commit();
 
         Ok(Self::new(Shared { storage, buffer_pool, txm, catalog }))
     }
@@ -85,7 +85,7 @@ impl Connection {
         let tx = match self.current_tx.load_full() {
             Some(tx) => tx,
             None => {
-                let tx = self.db.shared.txm.begin().await;
+                let tx = self.db.shared.txm.begin();
                 self.current_tx.store(Some(Arc::clone(&tx)));
                 tx
             }
@@ -95,7 +95,7 @@ impl Connection {
 
         if tx.auto_commit() {
             self.current_tx.store(None);
-            tx.commit().await;
+            tx.commit();
         } else if matches!(tx.state(), TransactionState::Committed | TransactionState::RolledBack) {
             self.current_tx.store(None);
         }

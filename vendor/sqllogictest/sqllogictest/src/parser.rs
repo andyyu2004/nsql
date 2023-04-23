@@ -795,7 +795,6 @@ select * from foo;
         output_file.flush().unwrap();
 
         let output_path = output_file.into_temp_path();
-        dbg!(&output_path);
         let reparsed_records =
             parse_file(&output_path).expect("reparsing to complete successfully");
 

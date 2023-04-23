@@ -48,7 +48,9 @@ impl<T: StreamSerialize> StreamSerialize for CatalogSet<T> {
     async fn serialize<S: StreamSerializer>(&self, ser: &mut S) -> nsql_serde::Result<()> {
         ser.write_u32(self.entries.len() as u32).await?;
         for entry in self.entries.iter() {
-            entry.committed_version().value().serialize(ser).await?;
+            let _ = entry;
+            // let tx = todo!();
+            // entry.version_for_tx(tx).value().serialize(ser).await?;
         }
         Ok(())
     }
@@ -94,10 +96,6 @@ impl<T> Default for VersionedEntry<T> {
 }
 
 impl<T> VersionedEntry<T> {
-    fn committed_version(&self) -> CatalogEntry<T> {
-        todo!()
-    }
-
     fn version_for_tx(&self, tx: &Transaction) -> Option<CatalogEntry<T>> {
         self.versions.iter().rev().find(|version| tx.can_see(version.txid())).cloned()
     }

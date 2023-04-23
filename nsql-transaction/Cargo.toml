@@ -6,5 +6,6 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+crossbeam-skiplist = "0.1.1"
 nsql-util = { version = "0.1.0", path = "../nsql-util" }
 thiserror = "1.0.40"

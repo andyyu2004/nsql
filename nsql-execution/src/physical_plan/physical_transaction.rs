@@ -55,14 +55,14 @@ impl PhysicalSource for PhysicalTransaction {
                 if tx.auto_commit() {
                     return Err(nsql_transaction::Error::CommitWithoutTransaction)?;
                 } else {
-                    tx.commit().await;
+                    tx.commit();
                 }
             }
             ir::TransactionKind::Rollback => {
                 if tx.auto_commit() {
                     return Err(nsql_transaction::Error::RollbackWithoutTransaction)?;
                 } else {
-                    tx.rollback().await;
+                    tx.rollback();
                 }
             }
         }
