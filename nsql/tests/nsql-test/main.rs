@@ -21,7 +21,7 @@ fn nsql_sqllogictest(path: &Path) -> nsql::Result<(), Box<dyn Error>> {
 datatest_stable::harness!(
     nsql_sqllogictest,
     format!("{}/{}", env!("CARGO_MANIFEST_DIR"), "tests/nsql-test/sqllogictest"),
-    r"^.*/*.slt"
+    r"^.*/*.slt",
 );
 
 #[derive(Debug, Eq, PartialEq, Clone)]
@@ -66,6 +66,7 @@ impl AsyncDB for TestDb {
 
     type ColumnType = TypeWrapper;
 
+    #[tracing::instrument(skip(self))]
     async fn run_on(
         &mut self,
         connection_name: Option<&str>,

@@ -1,11 +1,14 @@
-use std::collections::{BTreeSet, HashSet};
+use std::collections::HashSet;
 use std::fmt;
 use std::num::NonZeroU64;
-use std::sync::atomic::{self, AtomicBool, AtomicU64};
+use std::sync::atomic::{AtomicBool, AtomicU64};
 use std::sync::{Arc, Once};
 
+use atomic::Atomic;
 use crossbeam_skiplist::{SkipMap, SkipSet};
+use itertools::Itertools;
 use nsql_util::atomic::AtomicEnum;
+use nsql_util::{static_assert, static_assert_eq};
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -27,10 +30,10 @@ pub struct TransactionManager {
 struct Shared {
     /// The lowest transaction id that is still active. All transactions with a lower id have completed.
     /// This is monotonically increasing.
-    xmin: AtomicU64,
+    min_active: AtomicU64,
     /// The next transaction id to be assigned. This is monotonically increasing.
     /// This can also be interpreted as the (exclusive) upper bound of the transaction id.
-    xmax: AtomicU64,
+    next_txid: AtomicU64,
     active: SkipSet<Txid>,
     // FIXME need to gc these transactions
     transactions: SkipMap<Txid, Arc<Transaction>>,
@@ -40,8 +43,8 @@ impl Default for Shared {
     fn default() -> Self {
         const START_TXID: u64 = 1;
         Self {
-            xmin: AtomicU64::new(START_TXID),
-            xmax: AtomicU64::new(START_TXID),
+            min_active: AtomicU64::new(START_TXID),
+            next_txid: AtomicU64::new(START_TXID),
             active: SkipSet::new(),
             transactions: SkipMap::new(),
         }
@@ -57,6 +60,8 @@ impl TransactionManager {
     #[inline]
     pub fn begin(&self) -> Arc<Transaction> {
         let txid = self.next_txid();
+        debug_assert!(self.shared.active.get(&txid).is_none());
+        debug_assert!(self.shared.transactions.get(&txid).is_none());
         self.shared.active.insert(txid);
         let tx = Arc::new(Transaction::new(self, txid));
         self.shared.transactions.insert(txid, Arc::clone(&tx));
@@ -73,24 +78,27 @@ impl Default for TransactionManager {
 
 impl TransactionManager {
     fn next_txid(&self) -> Txid {
-        Txid::new(self.shared.xmax.fetch_add(1, atomic::Ordering::AcqRel))
+        Txid::new(self.shared.next_txid.fetch_add(1, atomic::Ordering::AcqRel))
     }
 
     #[inline]
     fn snapshot(&self) -> TransactionSnapshot {
         // loading in this particular order to ensure that the assertions in `TransactionSnapshot::new` hold
         // (i.e. that xmin <= txid < xmax)
-        let xmin = Txid::new(self.shared.xmin.load(atomic::Ordering::Acquire));
+        let min_active = Txid::new(self.shared.min_active.load(atomic::Ordering::Acquire));
         let active = self.shared.active.iter().map(|entry| *entry.value());
-        let xmax = Txid::new(self.shared.xmax.load(atomic::Ordering::Acquire));
-        TransactionSnapshot::new(xmin, active, xmax)
+        let next_txid = Txid::new(self.shared.next_txid.load(atomic::Ordering::Acquire));
+        TransactionSnapshot::new(min_active, active, next_txid)
     }
 }
 
 /// Opaque monotonically increasing transaction id
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[repr(transparent)]
 pub struct Txid(NonZeroU64);
+
+// Should be 8 bytes due to niche optimization
+static_assert_eq!(std::mem::size_of::<Option<Txid>>(), 8);
 
 impl Txid {
     #[inline]
@@ -99,36 +107,55 @@ impl Txid {
     }
 }
 
-#[derive(Debug)]
+impl fmt::Debug for Txid {
+    #[inline]
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(self, f)
+    }
+}
+
+impl fmt::Display for Txid {
+    #[inline]
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
 pub struct TransactionSnapshot {
     /// The lowest transaction id that is still active. All transactions with a lower id have completed.
-    xmin: Txid,
+    min_active: Txid,
     /// The next transaction id to be assigned. This is monotonically increasing.
-    xmax: Txid,
+    next_txid: Txid,
     /// The set of active transactions
     active: HashSet<Txid>,
 }
 
+impl fmt::Debug for TransactionSnapshot {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, "{}:{}:{}", self.min_active, self.next_txid, self.active.iter().join(","),)
+    }
+}
+
 impl TransactionSnapshot {
-    fn new(xmin: Txid, active: impl IntoIterator<Item = Txid>, xmax: Txid) -> Self {
+    fn new(min_active: Txid, active: impl IntoIterator<Item = Txid>, next_txid: Txid) -> Self {
         let active = active
             .into_iter()
             .inspect(|&txid| {
-                assert!(xmin <= txid);
-                assert!(txid < xmax, "txid={} !< xmax={}", txid.0, xmax.0);
+                assert!(min_active <= txid);
+                assert!(txid < next_txid, "txid={} !< next_txid={}", txid.0, next_txid.0);
             })
             .collect();
-        Self { xmin, xmax, active }
+        Self { min_active, next_txid, active }
     }
 
     #[inline]
-    pub fn xmin(&self) -> Txid {
-        self.xmin
+    pub fn min_active(&self) -> Txid {
+        self.min_active
     }
 
     #[inline]
-    pub fn xmax(&self) -> Txid {
-        self.xmax
+    pub fn next_txid(&self) -> Txid {
+        self.next_txid
     }
 
     #[inline]
@@ -140,7 +167,7 @@ impl TransactionSnapshot {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 pub enum TransactionState {
-    Started,
+    Active,
     Committed,
     Aborted,
     RolledBack,
@@ -159,12 +186,39 @@ impl From<TransactionState> for u8 {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
 pub struct Version {
     /// The transaction id that created this version
     xmin: Txid,
     /// The transaction id that modified/deleted this version
-    xmax: Option<Txid>,
+    xmax: Atomic<Option<Txid>>,
+}
+
+impl fmt::Debug for Version {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.xmax() {
+            None => write!(f, "{}:∞", self.xmin),
+            Some(xmax) => write!(f, "{}:{}", self.xmin, xmax),
+        }
+    }
+}
+
+static_assert!(Atomic::<Option<Txid>>::is_lock_free());
+
+impl Version {
+    #[inline]
+    pub fn xmin(&self) -> Txid {
+        self.xmin
+    }
+
+    #[inline]
+    pub fn xmax(&self) -> Option<Txid> {
+        self.xmax.load(atomic::Ordering::Acquire)
+    }
+
+    #[inline]
+    pub fn set_xmax(&self, xmax: Txid) {
+        self.xmax.store(Some(xmax), atomic::Ordering::Release);
+    }
 }
 
 pub struct Transaction {
@@ -181,8 +235,8 @@ impl fmt::Debug for Transaction {
         f.debug_struct("Transaction")
             .field("id", &self.id)
             .field("state", &self.state())
-            .field("auto_commit", &self.auto_commit())
-            .finish()
+            .field("snapshot", &self.snapshot)
+            .finish_non_exhaustive()
     }
 }
 
@@ -198,7 +252,7 @@ impl Transaction {
             id,
             once: Once::new(),
             shared: Arc::clone(&txm.shared),
-            state: AtomicEnum::new(TransactionState::Started),
+            state: AtomicEnum::new(TransactionState::Active),
             auto_commit: AtomicBool::new(true),
             snapshot: txm.snapshot(),
         }
@@ -211,36 +265,59 @@ impl Transaction {
 
     #[inline]
     pub fn version(&self) -> Version {
-        Version { xmin: self.id, xmax: None }
+        Version { xmin: self.id, xmax: Atomic::new(None) }
     }
 
-    #[inline]
-    pub fn can_see(&self, version: Version) -> bool {
-        // none of the xmax is not None cases are checked
-        assert!(version.xmax.is_none(), "not implemented");
+    /// Returns whether `version` is visible to this transaction
+    #[tracing::instrument]
+    pub fn can_see(&self, version: &Version) -> bool {
+        debug_assert_eq!(
+            self.shared.transactions.get(&self.id).unwrap().value().state(),
+            TransactionState::Active,
+        );
 
-        if self.id == version.xmin {
-            // We created this version, so we can see it
-            // FIXME handle xmax logic
-            return true;
-        }
+        let xmin_tx = self.shared.transactions.get(&version.xmin).unwrap();
+        let is_visible = match xmin_tx.value().state() {
+            // The transaction that created this version is still active, `version` is not visible
+            // unless we are the one who created it and we have not since deleted it
+            TransactionState::Active => {
+                if let Some(xmax) = version.xmax() {
+                    assert_eq!(
+                        self.id, xmax,
+                        "another transaction deleted a version we created before we have committed it"
+                    );
+                }
 
-        // The transaction that created this version is still active in our snapshot, `version` is not visible
-        if self.snapshot.active.contains(&version.xmin) {
-            return false;
-        }
-
-        let tx = self.shared.transactions.get(&version.xmin).unwrap();
-        match tx.value().state() {
-            TransactionState::Started => {
-                unreachable!("transaction is active but not in snapshot's active set")
+                self.id == version.xmin && version.xmax().is_none()
             }
             // The transaction that created this version committed, `version` is visible
-            TransactionState::Committed => true,
-            // The transaction that created this version was aborted, `version` is not visible
-            TransactionState::Aborted => false,
-            TransactionState::RolledBack => todo!(),
-        }
+            TransactionState::Committed => match version.xmax() {
+                Some(xmax) => {
+                    let xmax_tx = self.shared.transactions.get(&xmax).unwrap();
+                    match xmax_tx.value().state() {
+                        // The transaction that deleted this version is still active, `version` is still visible,
+                        // unless we were the one who deleted it
+                        TransactionState::Active => xmax != self.id,
+                        // The transaction that deleted this version committed, `version` is visible if either
+                        // - The transaction started after the snapshot was taken
+                        // - The transaction was active while we took our snapshot
+                        TransactionState::Committed => {
+                            xmax >= self.snapshot.next_txid()
+                                || self.snapshot.active().contains(&xmax)
+                        }
+                        // The transaction that deleted this version aborted, `version` is still visible
+                        TransactionState::Aborted | TransactionState::RolledBack => true,
+                    }
+                }
+                // The version has not been deleted since it was created, `version` is visible
+                None => true,
+            },
+            // The transaction that created this version aborted, `version` is not visible
+            TransactionState::Aborted | TransactionState::RolledBack => false,
+        };
+
+        tracing::debug!(is_visible);
+        is_visible
     }
 
     #[inline]
@@ -281,9 +358,11 @@ impl Transaction {
                 .front()
                 .map(|entry| *entry.value())
                 // if there are no active transactions, then we set the next xmin to the current xmax
-                .unwrap_or_else(|| Txid::new(self.shared.xmax.load(atomic::Ordering::Acquire)));
+                .unwrap_or_else(|| {
+                    Txid::new(self.shared.next_txid.load(atomic::Ordering::Acquire))
+                });
 
-            let prev = self.shared.xmin.swap(next_xmin.0.get(), atomic::Ordering::Release);
+            let prev = self.shared.min_active.swap(next_xmin.0.get(), atomic::Ordering::Release);
             assert!(prev <= next_xmin.0.get(), "xmin should be monotonically increasing");
 
             self.state.store(final_state, atomic::Ordering::Release)

@@ -8,12 +8,12 @@ use super::*;
 
 #[derive(Debug)]
 pub struct PhysicalShow {
-    show: ir::Show,
+    show: ir::ObjectType,
     finished: AtomicBool,
 }
 
 impl PhysicalShow {
-    pub(crate) fn plan(show: ir::Show) -> Arc<dyn PhysicalNode> {
+    pub(crate) fn plan(show: ir::ObjectType) -> Arc<dyn PhysicalNode> {
         Arc::new(Self { show, finished: Default::default() })
     }
 }
@@ -57,7 +57,7 @@ impl PhysicalSource for PhysicalShow {
         let namespaces = catalog.all::<Namespace>(&tx)?;
         for (_, namespace) in namespaces {
             match self.show {
-                ir::Show::Tables => {
+                ir::ObjectType::Table => {
                     for (_, table) in namespace.all::<Table>(&tx)? {
                         tuples.push(Tuple::new(
                             vec![Value::Literal(Literal::String(table.name().to_string()))]

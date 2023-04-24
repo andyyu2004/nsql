@@ -195,7 +195,35 @@ impl<'a> Binder<'a> {
                 not_implemented!(*full);
                 not_implemented!(db_name.is_some());
                 not_implemented!(filter.is_some());
-                ir::Stmt::Show(ir::Show::Tables)
+                ir::Stmt::Show(ir::ObjectType::Table)
+            }
+            ast::Statement::Drop { object_type, if_exists, names, cascade, restrict, purge } => {
+                not_implemented!(*if_exists);
+                not_implemented!(*cascade);
+                not_implemented!(*restrict);
+                not_implemented!(*purge);
+
+                let names = names
+                    .iter()
+                    .map(|name| self.lower_ident(&name.0))
+                    .collect::<Result<Vec<_>>>()?;
+
+                let refs = names
+                    .iter()
+                    .map(|name| match object_type {
+                        ast::ObjectType::Table => {
+                            let (namespace, table) = self.bind_namespaced_entity::<Table>(name)?;
+                            Ok(ir::EntityRef::Table(ir::TableRef { namespace, table }))
+                        }
+                        ast::ObjectType::View => todo!(),
+                        ast::ObjectType::Index => todo!(),
+                        ast::ObjectType::Schema => todo!(),
+                        ast::ObjectType::Role => not_implemented!("roles"),
+                        ast::ObjectType::Sequence => todo!(),
+                    })
+                    .collect::<Result<Vec<_>, Error>>()?;
+
+                ir::Stmt::Drop(refs)
             }
             _ => return Err(Error::Unimplemented("unimplemented stmt".into())),
         };

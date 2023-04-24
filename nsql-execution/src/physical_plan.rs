@@ -1,5 +1,6 @@
 mod physical_create_namespace;
 mod physical_create_table;
+mod physical_drop;
 mod physical_insert;
 mod physical_projection;
 mod physical_show;
@@ -13,6 +14,7 @@ use nsql_plan::Plan;
 
 use self::physical_create_namespace::PhysicalCreateNamespace;
 use self::physical_create_table::PhysicalCreateTable;
+use self::physical_drop::PhysicalDrop;
 use self::physical_insert::PhysicalInsert;
 use self::physical_projection::PhysicalProjection;
 use self::physical_show::PhysicalShow;
@@ -50,6 +52,7 @@ impl PhysicalPlanner {
             Plan::Transaction(kind) => PhysicalTransaction::plan(kind),
             Plan::CreateTable(info) => PhysicalCreateTable::plan(info),
             Plan::CreateNamespace(info) => PhysicalCreateNamespace::plan(info),
+            Plan::Drop(refs) => PhysicalDrop::plan(refs),
             Plan::Scan { table_ref } => PhysicalTableScan::plan(table_ref),
             Plan::Show(show) => PhysicalShow::plan(show),
             Plan::Insert { table_ref, projection, source, returning } => {

@@ -13,10 +13,10 @@ SHOW TABLES
 a
 b
 
-# query T rowsort con2
-# SHOW TABLES
-# ----
-# a
-#
-# statement ok con1
-# COMMIT
+query T rowsort con2
+SHOW TABLES
+----
+a
+
+statement ok con1
+COMMIT

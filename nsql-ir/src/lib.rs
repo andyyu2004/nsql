@@ -28,13 +28,19 @@ pub enum TransactionKind {
 }
 
 #[derive(Debug, Clone)]
-pub enum Show {
-    Tables,
+pub enum ObjectType {
+    Table,
+}
+
+#[derive(Debug, Clone)]
+pub enum EntityRef {
+    Table(TableRef),
 }
 
 #[derive(Debug, Clone)]
 pub enum Stmt {
-    Show(Show),
+    Show(ObjectType),
+    Drop(Vec<EntityRef>),
     Transaction(TransactionKind),
     CreateNamespace(CreateNamespaceInfo),
     CreateTable(CreateTableInfo),

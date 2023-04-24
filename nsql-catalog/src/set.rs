@@ -100,7 +100,19 @@ impl<T> VersionedEntry<T> {
         self.versions.iter().rev().find(|version| tx.can_see(version.version())).cloned()
     }
 
+    fn delete(&mut self, tx: &Transaction) {
+        let version = self
+            .version_for_tx(tx)
+            .expect("caller must ensure there is a visible version for the given transaction");
+        version.delete(tx);
+    }
+
     fn push_version(&mut self, version: CatalogEntry<T>) {
+        debug_assert!(
+            self.versions.is_empty()
+                || self.versions.last().unwrap().version().xmin() < version.version().xmin(),
+            "versions must be ordered by xmin"
+        );
         self.versions.push(version)
     }
 }
@@ -137,6 +149,10 @@ impl<T: CatalogEntity> CatalogSet<T> {
         Some(*self.name_mapping.get(name.as_ref())?.value())
     }
 
+    pub(crate) fn delete(&self, tx: &Transaction, oid: Oid<T>) {
+        self.entries.get_mut(&oid).unwrap().delete(tx)
+    }
+
     pub(crate) fn insert(&self, tx: &Transaction, value: T) -> Result<Oid<T>, AlreadyExists<T>> {
         let oid = self.next_oid();
         if self.name_mapping.insert(value.name(), oid).is_some() {
@@ -157,27 +173,31 @@ impl<T: CatalogEntity> CatalogSet<T> {
 
 #[derive(Debug)]
 struct CatalogEntry<T> {
-    version: Version,
+    version: Arc<Version>,
     value: Arc<T>,
-    deleted: bool,
 }
 
 impl<T> Clone for CatalogEntry<T> {
     fn clone(&self) -> Self {
-        Self { version: self.version, value: Arc::clone(&self.value), deleted: self.deleted }
+        Self { version: Arc::clone(&self.version), value: Arc::clone(&self.value) }
     }
 }
 
 impl<T> CatalogEntry<T> {
-    pub(crate) fn new(tx: &Transaction, value: T) -> Self {
-        Self { version: tx.version(), value: Arc::new(value), deleted: false }
-    }
-
-    pub fn version(&self) -> Version {
-        self.version
-    }
-
+    #[inline]
     pub fn value(&self) -> Arc<T> {
         Arc::clone(&self.value)
+    }
+
+    pub(crate) fn new(tx: &Transaction, value: T) -> Self {
+        Self { version: Arc::new(tx.version()), value: Arc::new(value) }
+    }
+
+    pub(crate) fn version(&self) -> &Version {
+        &self.version
+    }
+
+    fn delete(&self, tx: &Transaction) {
+        self.version.set_xmax(tx.id())
     }
 }

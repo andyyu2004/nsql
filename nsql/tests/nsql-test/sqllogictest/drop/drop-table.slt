@@ -1,0 +1,14 @@
+statement ok
+CREATE TABLE foo(id INT)
+
+query T rowsort
+SHOW TABLES
+----
+foo
+
+statement ok
+DROP TABLE foo
+
+query T rowsort
+SHOW TABLES
+----

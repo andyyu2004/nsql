@@ -1,0 +1,39 @@
+statement ok con1
+CREATE TABLE t(id INT)
+
+statement ok con1
+BEGIN
+
+statement ok con2
+BEGIN
+
+statement ok con2
+DROP TABLE t;
+
+# we should see our own deletion
+query T rowsort con2
+SHOW TABLES
+----
+
+# con1 should not see the deletion
+query T rowsort con1
+SHOW TABLES
+----
+t
+
+statement ok con2
+COMMIT;
+
+# con1 should still not see the deletion after con2 commits
+query T rowsort con1
+SHOW TABLES
+----
+t
+
+statement ok con1
+COMMIT;
+
+# once con1 commits it should see the deletion due to a fresh transaction
+query T rowsort con1
+SHOW TABLES
+----

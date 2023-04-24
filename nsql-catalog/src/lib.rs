@@ -64,6 +64,12 @@ pub trait Container {
         Ok(T::get(self, tx, oid))
     }
 
+    /// Delete the entity with the given `oid` from the catalog.
+    /// Panics if the `oid` is not visible to `tx`.
+    fn delete<T: CatalogEntity<Container = Self>>(&self, tx: &Transaction, oid: Oid<T>) {
+        T::delete(self, tx, oid);
+    }
+
     fn get_by_name<T: CatalogEntity<Container = Self>>(
         &self,
         tx: &Transaction,
@@ -123,6 +129,11 @@ pub(crate) mod private {
         #[inline]
         fn get(container: &Self::Container, tx: &Transaction, oid: Oid<Self>) -> Option<Arc<Self>> {
             Self::catalog_set(container).get(tx, oid)
+        }
+
+        #[inline]
+        fn delete(container: &Self::Container, tx: &Transaction, oid: Oid<Self>) {
+            Self::catalog_set(container).delete(tx, oid)
         }
 
         #[inline]
