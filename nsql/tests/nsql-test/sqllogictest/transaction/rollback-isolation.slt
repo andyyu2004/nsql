@@ -1,0 +1,23 @@
+statement ok
+CREATE TABLE t(id INT)
+
+statement ok con1
+BEGIN
+
+statement ok con1
+DROP TABLE t
+
+query T con2
+SHOW TABLES
+----
+t
+
+statement ok con1
+ROLLBACK
+
+query T con2
+SHOW TABLES
+----
+t
+
+
