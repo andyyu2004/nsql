@@ -501,6 +501,8 @@ fn parse_inner<T: ColumnType>(loc: &Location, script: &str) -> Result<Vec<Record
                         expected_error = Some(Regex::new("").unwrap());
                     }
                     ["error", connection] => {
+                        // default to matching any error mesage
+                        expected_error = Some(Regex::new("").unwrap());
                         connection_name = Some(connection.to_string());
                     }
                     ["count", count_str] => {
@@ -512,6 +514,13 @@ fn parse_inner<T: ColumnType>(loc: &Location, script: &str) -> Result<Vec<Record
                 };
 
                 let (sql, mut expected_error_body) = parse_sql_and_body(&mut lines, &loc)?;
+                if !expected_error_body.is_empty() && expected_error.is_none() {
+                    return Err(ParseErrorKind::InvalidLine(
+                        "can only provide body for `statement error`".into(),
+                    )
+                    .at(loc));
+                }
+
                 if expected_error_body.len() > 1 {
                     return Err(ParseErrorKind::InvalidErrorMessage(
                         "error messages can only be one line (for now)".into(),

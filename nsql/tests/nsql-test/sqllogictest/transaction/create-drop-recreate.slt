@@ -1,0 +1,11 @@
+statement ok
+BEGIN
+
+statement ok
+CREATE TABLE t(a INT)
+
+statement ok
+DROP TABLE t
+
+statement ok
+CREATE TABLE t(a INT)

@@ -2,6 +2,7 @@ use std::error::Error;
 use std::fmt;
 use std::sync::Arc;
 
+use dashmap::mapref::entry::Entry;
 use dashmap::DashMap;
 use nsql_core::Name;
 use nsql_serde::{
@@ -13,19 +14,46 @@ use nsql_transaction::{Transaction, Version};
 use crate::entry::Oid;
 use crate::private::CatalogEntity;
 
-pub struct AlreadyExists<T>(T);
+pub enum Conflict<T> {
+    AlreadyExists(T),
+    WriteWrite(WriteOperation, T),
+}
 
-impl<T: CatalogEntity> Error for AlreadyExists<T> {}
+#[derive(Debug)]
+pub enum WriteOperation {
+    Create,
+    Update,
+    Delete,
+}
 
-impl<T: CatalogEntity> fmt::Debug for AlreadyExists<T> {
+impl fmt::Display for WriteOperation {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            WriteOperation::Create => write!(f, "create"),
+            WriteOperation::Update => write!(f, "update"),
+            WriteOperation::Delete => write!(f, "delete"),
+        }
+    }
+}
+
+impl<T: CatalogEntity> Error for Conflict<T> {}
+
+impl<T: CatalogEntity> fmt::Debug for Conflict<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{self}")
     }
 }
 
-impl<T: CatalogEntity> fmt::Display for AlreadyExists<T> {
+impl<T: CatalogEntity> fmt::Display for Conflict<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{} `{}` already exists", T::desc(), self.0.name())
+        match self {
+            Conflict::AlreadyExists(entity) => {
+                write!(f, "{} `{}` already exists", T::desc(), entity.name())
+            }
+            Conflict::WriteWrite(op, entity) => {
+                write!(f, "write-write conflict on {op} of {} `{}`", T::desc(), entity.name())
+            }
+        }
     }
 }
 
@@ -89,25 +117,31 @@ struct VersionedEntry<T> {
     versions: Vec<CatalogEntry<T>>,
 }
 
-impl<T> Default for VersionedEntry<T> {
-    fn default() -> Self {
-        Self { versions: Default::default() }
+impl<T> VersionedEntry<T> {
+    pub(crate) fn new(entry: CatalogEntry<T>) -> Self {
+        Self { versions: vec![entry] }
     }
 }
 
 impl<T> VersionedEntry<T> {
-    fn version_for_tx(&self, tx: &Transaction) -> Option<CatalogEntry<T>> {
+    /// Get the latest visible version for the given transaction.
+    pub(crate) fn version_for_tx(&self, tx: &Transaction) -> Option<CatalogEntry<T>> {
         self.versions.iter().rev().find(|version| tx.can_see(version.version())).cloned()
     }
 
-    fn delete(&mut self, tx: &Transaction) {
+    pub(crate) fn latest(&self) -> CatalogEntry<T> {
+        self.versions.last().cloned().expect("must have at least one version")
+    }
+
+    pub(crate) fn delete(&mut self, tx: &Transaction) {
         let version = self
             .version_for_tx(tx)
             .expect("caller must ensure there is a visible version for the given transaction");
         version.delete(tx);
     }
 
-    fn push_version(&mut self, version: CatalogEntry<T>) {
+    pub(crate) fn push_version(&mut self, version: CatalogEntry<T>) {
+        assert!(self.latest().version().xmax().is_some(), "must delete the latest version first?");
         debug_assert!(
             self.versions.is_empty()
                 || self.versions.last().unwrap().version().xmin() < version.version().xmin(),
@@ -119,11 +153,7 @@ impl<T> VersionedEntry<T> {
 
 impl<T: CatalogEntity> CatalogSet<T> {
     #[inline]
-    pub fn create(
-        &self,
-        tx: &Transaction,
-        info: T::CreateInfo,
-    ) -> Result<Oid<T>, AlreadyExists<T>> {
+    pub fn create(&self, tx: &Transaction, info: T::CreateInfo) -> Result<Oid<T>, Conflict<T>> {
         self.insert(tx, T::new(tx, info))
     }
 
@@ -138,7 +168,7 @@ impl<T: CatalogEntity> CatalogSet<T> {
     }
 
     pub(crate) fn get(&self, tx: &Transaction, oid: Oid<T>) -> Option<Arc<T>> {
-        self.entries.get(&oid).and_then(|entry| entry.version_for_tx(tx)).map(|entry| entry.value())
+        self.entries.get(&oid).unwrap().version_for_tx(tx).map(|entry| entry.value())
     }
 
     pub(crate) fn get_by_name(&self, tx: &Transaction, name: &str) -> Option<(Oid<T>, Arc<T>)> {
@@ -149,24 +179,68 @@ impl<T: CatalogEntity> CatalogSet<T> {
         Some(*self.name_mapping.get(name.as_ref())?.value())
     }
 
-    pub(crate) fn delete(&self, tx: &Transaction, oid: Oid<T>) {
-        self.entries.get_mut(&oid).unwrap().delete(tx)
+    pub(crate) fn delete(&self, tx: &Transaction, oid: Oid<T>) -> Result<(), Conflict<T>> {
+        self.entries.get_mut(&oid).expect("passed invalid `oid` somehow").delete(tx);
+        Ok(())
     }
 
-    pub(crate) fn insert(&self, tx: &Transaction, value: T) -> Result<Oid<T>, AlreadyExists<T>> {
-        let oid = self.next_oid();
-        if self.name_mapping.insert(value.name(), oid).is_some() {
-            return Err(AlreadyExists(value));
-        }
+    pub(crate) fn insert(&self, tx: &Transaction, value: T) -> Result<Oid<T>, Conflict<T>> {
+        // NOTE: this function takes &self and not &mut self, so we need to be mindful of correctness under concurrent usage.
 
-        self.entries.entry(oid).or_default().push_version(CatalogEntry::new(tx, value));
-        Ok(oid)
+        match self.name_mapping.entry(value.name()) {
+            Entry::Occupied(mut entry) => {
+                // If there is an existing entry, we need to check for conflicts with our insertion
+                let latest = self.latest(*entry.get());
+                if !tx.can_see(latest.version()) {
+                    // If the existing entry is not visible to our transaction, then either
+                    match latest.version().xmax() {
+                        // 1. It was deleted before our transaction started (or we deleted it ourserlves),
+                        //    in which case we can insert the new entry
+                        Some(xmax) if xmax <= tx.id() => {
+                            let oid = self.next_oid();
+                            entry.insert(oid);
+                            debug_assert!(
+                                self.entries.get(&oid).is_none(),
+                                "next_oid() should return a unique oid"
+                            );
+
+                            self.entries.entry(oid).or_insert_with(|| {
+                                VersionedEntry::new(CatalogEntry::new(tx, value))
+                            });
+
+                            Ok(oid)
+                        }
+                        // 2. It was created after our transaction started, in which case we have a write-write conflict
+                        _ => Err(Conflict::WriteWrite(WriteOperation::Create, value)),
+                    }
+                } else {
+                    // Otherwise, the existing entry is visible to our transaction, so we return an `AlreadyExists` conflict
+                    Err(Conflict::AlreadyExists(value))
+                }
+            }
+            Entry::Vacant(entry) => {
+                let oid = self.next_oid();
+                entry.insert(oid);
+                debug_assert!(
+                    self.entries.get(&oid).is_none(),
+                    "next_oid() should return a unique oid"
+                );
+
+                self.entries
+                    .entry(oid)
+                    .or_insert_with(|| VersionedEntry::new(CatalogEntry::new(tx, value)));
+
+                Ok(oid)
+            }
+        }
+    }
+
+    fn latest(&self, oid: Oid<T>) -> CatalogEntry<T> {
+        self.entries.get(&oid).unwrap().latest()
     }
 
     fn next_oid(&self) -> Oid<T> {
-        // FIXME this won't work under concurrent workloads, we should use an atomic counter instead
-        // We can run into the case where the lengths are not empty if we are halfway through an insert
-        assert_eq!(self.entries.len(), self.name_mapping.len());
+        // don't read from `name_mapping` here as it will deadlock due to it's usage in `insert`
         Oid::new(self.entries.len() as u64)
     }
 }

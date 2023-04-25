@@ -16,7 +16,7 @@ pub use self::entity::namespace::{CreateNamespaceInfo, Namespace, NamespaceEntit
 pub use self::entity::table::{Column, CreateColumnInfo, CreateTableInfo, Table};
 pub use self::entry::Oid;
 use self::private::CatalogEntity;
-use self::set::{AlreadyExists, CatalogSet};
+use self::set::{CatalogSet, Conflict};
 
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 
@@ -51,7 +51,7 @@ pub trait Container {
         &self,
         tx: &Transaction,
         info: T::CreateInfo,
-    ) -> Result<(), AlreadyExists<T>> {
+    ) -> Result<(), Conflict<T>> {
         T::new(tx, info).insert(self, tx)?;
         Ok(())
     }
@@ -66,8 +66,12 @@ pub trait Container {
 
     /// Delete the entity with the given `oid` from the catalog.
     /// Panics if the `oid` is not visible to `tx`.
-    fn delete<T: CatalogEntity<Container = Self>>(&self, tx: &Transaction, oid: Oid<T>) {
-        T::delete(self, tx, oid);
+    fn delete<T: CatalogEntity<Container = Self>>(
+        &self,
+        tx: &Transaction,
+        oid: Oid<T>,
+    ) -> Result<(), Conflict<T>> {
+        T::delete(self, tx, oid)
     }
 
     fn get_by_name<T: CatalogEntity<Container = Self>>(
@@ -94,7 +98,7 @@ pub(crate) mod private {
     use nsql_serde::StreamSerialize;
 
     use super::*;
-    use crate::set::AlreadyExists;
+    use crate::set::Conflict;
 
     /// This trait is sealed and cannot be implemented for types outside of this crate.
     /// These method should also not be visible to users of this crate.
@@ -113,7 +117,7 @@ pub(crate) mod private {
             self,
             container: &Self::Container,
             tx: &Transaction,
-        ) -> Result<Oid<Self>, AlreadyExists<Self>> {
+        ) -> Result<Oid<Self>, Conflict<Self>> {
             Self::catalog_set(container).insert(tx, self)
         }
 
@@ -122,7 +126,7 @@ pub(crate) mod private {
             self,
             container: &Self::Container,
             tx: &Transaction,
-        ) -> Result<Oid<Self>, AlreadyExists<Self>> {
+        ) -> Result<Oid<Self>, Conflict<Self>> {
             Self::catalog_set(container).insert(tx, self)
         }
 
@@ -132,7 +136,11 @@ pub(crate) mod private {
         }
 
         #[inline]
-        fn delete(container: &Self::Container, tx: &Transaction, oid: Oid<Self>) {
+        fn delete(
+            container: &Self::Container,
+            tx: &Transaction,
+            oid: Oid<Self>,
+        ) -> Result<(), Conflict<Self>> {
             Self::catalog_set(container).delete(tx, oid)
         }
 

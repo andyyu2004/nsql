@@ -4,6 +4,10 @@ use std::marker::PhantomData;
 
 use nsql_serde::{StreamDeserialize, StreamDeserializer, StreamSerialize, StreamSerializer};
 
+/// An opaque identifier for an entity in a catalog set.
+/// This is only unique per catalog set. If you have multiple catalog sets containing the same
+/// type, it is currently possible to misuse this type and read from the wrong set.
+// This must only be constructed internally by the catalog.
 pub struct Oid<T: ?Sized> {
     oid: u64,
     marker: PhantomData<fn() -> T>,

@@ -38,7 +38,7 @@ impl TableRef {
 
     pub fn delete(self, catalog: &Catalog, tx: &Transaction) -> nsql_catalog::Result<()> {
         let namespace = catalog.get::<Namespace>(tx, self.namespace)?.unwrap();
-        namespace.delete::<Table>(tx, self.table);
+        namespace.delete::<Table>(tx, self.table)?;
         Ok(())
     }
 }
