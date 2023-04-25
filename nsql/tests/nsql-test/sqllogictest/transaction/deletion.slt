@@ -1,0 +1,19 @@
+statement ok
+BEGIN
+
+statement ok
+CREATE TABLE t
+
+query T
+SHOW TABLES
+----
+t
+
+statement ok
+DROP TABLE t
+
+# we can see our own deletion from within the transaction
+query T
+SHOW TABLES
+----
+
