@@ -1,0 +1,6 @@
+query I
+SELECT t.x FROM (VALUES (1), (2)) AS t(x)
+----
+1
+2
+

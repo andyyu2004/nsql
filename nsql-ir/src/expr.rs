@@ -32,7 +32,7 @@ pub enum Expr {
     ColumnRef(ColumnRef, usize),
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct TableRef {
     pub namespace: Oid<Namespace>,
     pub table: Oid<Table>,
@@ -51,7 +51,7 @@ impl TableRef {
     }
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct ColumnRef {
     pub table_ref: TableRef,
     pub column: Oid<Column>,

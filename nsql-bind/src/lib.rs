@@ -4,10 +4,11 @@ mod scope;
 
 use std::fmt;
 use std::str::FromStr;
+use std::sync::Arc;
 
 use ir::Decimal;
 use nsql_catalog::{
-    Catalog, Column, Container, CreateColumnInfo, Entity, Namespace, NamespaceEntity, Oid, Table,
+    Catalog, Container, CreateColumnInfo, Entity, Namespace, NamespaceEntity, Oid, Table,
     DEFAULT_SCHEMA,
 };
 use nsql_core::schema::LogicalType;
@@ -18,9 +19,9 @@ use thiserror::Error;
 
 use self::scope::Scope;
 
-pub struct Binder<'a> {
-    catalog: &'a Catalog,
-    tx: &'a Transaction,
+pub struct Binder {
+    catalog: Arc<Catalog>,
+    tx: Arc<Transaction>,
 }
 
 #[derive(Debug, Error)]
@@ -34,8 +35,8 @@ pub enum Error {
     #[error(transparent)]
     Catalog(#[from] nsql_catalog::Error),
 
-    #[error("unbound {kind} `{ident}`")]
-    Unbound { kind: &'static str, ident: Ident },
+    #[error("unbound {kind} `{path}`")]
+    Unbound { kind: &'static str, path: Path },
 }
 
 macro_rules! not_implemented {
@@ -59,8 +60,8 @@ macro_rules! ensure {
 
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 
-impl<'a> Binder<'a> {
-    pub fn new(tx: &'a Transaction, catalog: &'a Catalog) -> Self {
+impl Binder {
+    pub fn new(tx: Arc<Transaction>, catalog: Arc<Catalog>) -> Self {
         Self { catalog, tx }
     }
 
@@ -117,20 +118,20 @@ impl<'a> Binder<'a> {
                 not_implemented!(*transient);
                 not_implemented!(order_by.is_some());
 
-                let ident = self.lower_ident(&name.0)?;
-                let namespace = self.bind_namespace(&ident)?;
+                let path = self.lower_path(&name.0)?;
+                let namespace = self.bind_namespace(&path)?;
                 let columns = self.lower_columns(columns)?;
-                let info = ir::CreateTableInfo { name: ident.name(), namespace, columns };
+                let info = ir::CreateTableInfo { name: path.name(), namespace, columns };
                 ir::Stmt::CreateTable(info)
             }
             ast::Statement::CreateSchema { schema_name, if_not_exists } => {
                 not_implemented!(*if_not_exists);
                 let name = match schema_name {
-                    ast::SchemaName::Simple(ident) => match self.lower_ident(&ident.0)? {
-                        Ident::Qualified { .. } => {
+                    ast::SchemaName::Simple(ident) => match self.lower_path(&ident.0)? {
+                        Path::Qualified { .. } => {
                             todo!("what does it mean for a schema to be qualified?")
                         }
-                        Ident::Unqualified { name } => name,
+                        Path::Unqualified(name) => name,
                     },
                     ast::SchemaName::UnnamedAuthorization(_)
                     | ast::SchemaName::NamedAuthorization(_, _) => {
@@ -212,7 +213,7 @@ impl<'a> Binder<'a> {
 
                 let names = names
                     .iter()
-                    .map(|name| self.lower_ident(&name.0))
+                    .map(|name| self.lower_path(&name.0))
                     .collect::<Result<Vec<_>>>()?;
 
                 let refs = names
@@ -260,35 +261,17 @@ impl<'a> Binder<'a> {
         }
     }
 
-    fn bind_namespace(&self, ident: &Ident) -> Result<Oid<Namespace>> {
-        match ident {
-            Ident::Qualified { schema, .. } => self
-                .catalog
-                .find::<Namespace>(schema.as_str())?
-                .ok_or_else(|| Error::Unbound { kind: Namespace::desc(), ident: ident.clone() }),
-            Ident::Unqualified { name } => self.bind_namespace(&Ident::Qualified {
-                schema: DEFAULT_SCHEMA.into(),
-                name: name.clone(),
-            }),
-        }
-    }
-
-    fn bind_ident<T: NamespaceEntity>(&self, ident: &Ident) -> Result<(Oid<Namespace>, Oid<T>)> {
-        match ident {
-            Ident::Qualified { schema, name } => {
-                let (schema_oid, schema) =
-                    self.catalog.get_by_name::<Namespace>(self.tx, schema.as_str())?.ok_or_else(
-                        || Error::Unbound { kind: Namespace::desc(), ident: ident.clone() },
-                    )?;
-
-                let entity_oid = schema
-                    .find(name)?
-                    .ok_or_else(|| Error::Unbound { kind: T::desc(), ident: ident.clone() })?;
-
-                Ok((schema_oid, entity_oid))
-            }
-            Ident::Unqualified { name } => self.bind_ident(&Ident::Qualified {
-                schema: DEFAULT_SCHEMA.into(),
+    fn bind_namespace(&self, path: &Path) -> Result<Oid<Namespace>> {
+        match path {
+            Path::Qualified { prefix, .. } => match prefix.as_ref() {
+                Path::Qualified { .. } => not_implemented!("qualified schemas"),
+                Path::Unqualified(name) => self
+                    .catalog
+                    .find::<Namespace>(name.as_str())?
+                    .ok_or_else(|| Error::Unbound { kind: Namespace::desc(), path: path.clone() }),
+            },
+            Path::Unqualified(name) => self.bind_namespace(&Path::Qualified {
+                prefix: Box::new(Path::Unqualified(DEFAULT_SCHEMA.into())),
                 name: name.clone(),
             }),
         }
@@ -296,21 +279,43 @@ impl<'a> Binder<'a> {
 
     fn bind_namespaced_entity<T: NamespaceEntity>(
         &self,
-        name: &Ident,
+        path: &Path,
     ) -> Result<(Oid<Namespace>, Oid<T>)> {
-        self.bind_ident(name)
+        match path {
+            Path::Unqualified(name) => self.bind_namespaced_entity(&Path::Qualified {
+                prefix: Box::new(Path::Unqualified(DEFAULT_SCHEMA.into())),
+                name: name.clone(),
+            }),
+            Path::Qualified { prefix, name } => match prefix.as_ref() {
+                Path::Qualified { .. } => not_implemented!("qualified schemas"),
+                Path::Unqualified(schema) => {
+                    let (schema_oid, schema) = self
+                        .catalog
+                        .get_by_name::<Namespace>(&self.tx, schema.as_str())?
+                        .ok_or_else(|| Error::Unbound {
+                            kind: Namespace::desc(),
+                            path: path.clone(),
+                        })?;
+
+                    let entity_oid = schema
+                        .find(name)?
+                        .ok_or_else(|| Error::Unbound { kind: T::desc(), path: path.clone() })?;
+
+                    Ok((schema_oid, entity_oid))
+                }
+            },
+        }
     }
 
-    fn lower_ident(&self, name: &[ast::Ident]) -> Result<Ident> {
+    fn lower_path(&self, name: &[ast::Ident]) -> Result<Path> {
         // FIXME naive impl for now
         match name {
             [] => unreachable!("empty name?"),
-            [name] => Ok(Ident::Unqualified { name: name.value.as_str().into() }),
-            [schema, name] => Ok(Ident::Qualified {
-                schema: schema.value.as_str().into(),
+            [name] => Ok(Path::Unqualified(name.value.as_str().into())),
+            [prefix @ .., name] => Ok(Path::Qualified {
+                prefix: Box::new(self.lower_path(prefix)?),
                 name: name.value.as_str().into(),
             }),
-            [_, _, ..] => Err(Error::Unimplemented("x.y.z name".into()))?,
         }
     }
 
@@ -436,7 +441,6 @@ impl<'a> Binder<'a> {
             }
             ast::TableFactor::Derived { lateral, subquery, alias } => {
                 not_implemented!(*lateral);
-                not_implemented!(alias.is_some());
 
                 let (scope, subquery) = self.bind_query(scope, subquery)?;
                 return Ok((scope, Box::new(subquery)));
@@ -455,14 +459,11 @@ impl<'a> Binder<'a> {
         scope: &Scope,
         table_name: &ast::ObjectName,
     ) -> Result<(Scope, ir::TableRef)> {
-        let table_name = self.lower_ident(&table_name.0)?;
+        let table_name = self.lower_path(&table_name.0)?;
         let (namespace, table) = self.bind_namespaced_entity::<Table>(&table_name)?;
         let table_ref = ir::TableRef { namespace, table };
 
-        let namespace = self.catalog.get(self.tx, table_ref.namespace)?.unwrap();
-        let table = namespace.get(self.tx, table_ref.table)?.unwrap();
-        let columns = table.all::<Column>(self.tx)?;
-        Ok((scope.bind_table(table_name, table_ref, columns), table_ref))
+        Ok((scope.bind_table(self, table_name, table_ref)?, table_ref))
     }
 
     fn bind_select_item(&self, scope: &Scope, item: &ast::SelectItem) -> Result<ir::Expr> {
@@ -484,12 +485,12 @@ impl<'a> Binder<'a> {
         let expr = match expr {
             ast::Expr::Value(literal) => ir::Expr::Literal(self.bind_literal(literal)),
             ast::Expr::Identifier(ident) => {
-                let (col, idx) = scope
-                    .lookup_column(&Ident::Unqualified { name: ident.value.clone().into() })?;
+                let (col, idx) =
+                    scope.lookup_column(&Path::Unqualified(ident.value.clone().into()))?;
                 ir::Expr::ColumnRef(col, idx)
             }
             ast::Expr::CompoundIdentifier(ident) => {
-                let ident = self.lower_ident(ident)?;
+                let ident = self.lower_path(ident)?;
                 let (col, idx) = scope.lookup_column(&ident)?;
                 ir::Expr::ColumnRef(col, idx)
             }
@@ -524,38 +525,38 @@ impl<'a> Binder<'a> {
 }
 
 #[derive(Clone, PartialEq, Eq, Hash)]
-pub enum Ident {
-    Qualified { schema: Name, name: Name },
-    Unqualified { name: Name },
+pub enum Path {
+    Qualified { prefix: Box<Path>, name: Name },
+    Unqualified(Name),
 }
 
-impl Ident {
-    pub fn schema(&self) -> Option<Name> {
+impl Path {
+    pub fn prefix(&self) -> Option<&Path> {
         match self {
-            Ident::Qualified { schema, .. } => Some(schema.as_str().into()),
-            Ident::Unqualified { .. } => None,
+            Path::Qualified { prefix, .. } => Some(prefix),
+            Path::Unqualified { .. } => None,
         }
     }
 
     pub fn name(&self) -> Name {
         match self {
-            Ident::Qualified { name, .. } => name.as_str().into(),
-            Ident::Unqualified { name } => name.as_str().into(),
+            Path::Qualified { name, .. } => name.as_str().into(),
+            Path::Unqualified(name) => name.as_str().into(),
         }
     }
 }
 
-impl fmt::Debug for Ident {
+impl fmt::Debug for Path {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{self}")
     }
 }
 
-impl fmt::Display for Ident {
+impl fmt::Display for Path {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Ident::Qualified { schema, name: object } => write!(f, "{schema}.{object}"),
-            Ident::Unqualified { name } => write!(f, "{name}"),
+            Path::Qualified { prefix, name: object } => write!(f, "{prefix}.{object}"),
+            Path::Unqualified(name) => write!(f, "{name}"),
         }
     }
 }

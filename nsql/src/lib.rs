@@ -121,7 +121,7 @@ impl Shared {
 
         let catalog = Arc::clone(&self.catalog);
         let stmt = &statements[0];
-        let stmt = Binder::new(&tx, &self.catalog).bind(stmt)?;
+        let stmt = Binder::new(Arc::clone(&tx), Arc::clone(&catalog)).bind(stmt)?;
 
         let plan = Planner::default().plan(stmt);
 
