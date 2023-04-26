@@ -86,7 +86,7 @@ impl TransactionManager {
         // loading in this particular order to ensure that the assertions in `TransactionSnapshot::new` hold
         // (i.e. that xmin <= txid < xmax)
         let min_active = Txid::new(self.shared.min_active.load(atomic::Ordering::Acquire));
-        let active = self.shared.active.iter().map(|entry| *entry.value());
+        let active = self.shared.active.iter().map(|entry| *entry.value()).collect();
         let next_txid = Txid::new(self.shared.next_txid.load(atomic::Ordering::Acquire));
         TransactionSnapshot::new(min_active, active, next_txid)
     }
@@ -137,14 +137,11 @@ impl fmt::Debug for TransactionSnapshot {
 }
 
 impl TransactionSnapshot {
-    fn new(min_active: Txid, active: impl IntoIterator<Item = Txid>, next_txid: Txid) -> Self {
-        let active = active
-            .into_iter()
-            .inspect(|&txid| {
-                assert!(min_active <= txid);
-                assert!(txid < next_txid, "txid={} !< next_txid={}", txid.0, next_txid.0);
-            })
-            .collect();
+    fn new(min_active: Txid, active: HashSet<Txid>, next_txid: Txid) -> Self {
+        active.iter().for_each(|&txid| {
+            assert!(min_active <= txid);
+            assert!(txid < next_txid, "txid={} !< next_txid={}", txid.0, next_txid.0);
+        });
         Self { min_active, next_txid, active }
     }
 
@@ -228,6 +225,12 @@ pub struct Transaction {
     state: AtomicEnum<TransactionState>,
     auto_commit: AtomicBool,
     snapshot: TransactionSnapshot,
+}
+
+impl Drop for Transaction {
+    fn drop(&mut self) {
+        self.rollback()
+    }
 }
 
 impl fmt::Debug for Transaction {

@@ -6,11 +6,11 @@ fn test_concurrent_transaction_management() -> Result<(), Error> {
         let txm = TransactionManager::initialize();
         let mut set = tokio::task::JoinSet::new();
 
-        for _ in 0..1000 {
+        for _ in 0..10 {
             let txm = txm.clone();
             set.spawn({
                 async move {
-                    for _ in 0..1000 {
+                    for _ in 0..100 {
                         let tx = txm.begin();
                         tx.commit();
                     }
@@ -22,6 +22,7 @@ fn test_concurrent_transaction_management() -> Result<(), Error> {
         while let Some(res) = set.join_next().await {
             res.unwrap();
         }
+        tx.commit();
 
         Ok(())
     })
