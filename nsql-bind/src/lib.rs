@@ -171,7 +171,7 @@ impl<'a> Binder<'a> {
                     .map(|expr| self.bind_expr(&scope, &expr))
                     .collect::<Result<Vec<_>>>()?;
 
-                let source = self.bind_query(&scope, source)?;
+                let (scope, source) = self.bind_query(&scope, source)?;
                 let returning = returning.as_ref().map(|items| {
                     items
                         .iter()
@@ -181,7 +181,10 @@ impl<'a> Binder<'a> {
                 });
                 ir::Stmt::Insert { table_ref, projection, source, returning }
             }
-            ast::Statement::Query(query) => ir::Stmt::Query(self.bind_query(scope, query)?),
+            ast::Statement::Query(query) => {
+                let (_scope, query) = self.bind_query(scope, query)?;
+                ir::Stmt::Query(query)
+            }
             ast::Statement::StartTransaction { modes } => {
                 not_implemented!(!modes.is_empty());
                 ir::Stmt::Transaction(ir::TransactionKind::Begin)
@@ -311,24 +314,52 @@ impl<'a> Binder<'a> {
         }
     }
 
-    fn bind_query(&self, scope: &Scope, query: &ast::Query) -> Result<ir::TableExpr> {
+    fn bind_query(&self, scope: &Scope, query: &ast::Query) -> Result<(Scope, ir::TableExpr)> {
         let ast::Query { with, body, order_by, limit, offset, fetch, locks } = query;
         not_implemented!(with.is_some());
         not_implemented!(!order_by.is_empty());
-        not_implemented!(limit.is_some());
         not_implemented!(offset.is_some());
         not_implemented!(fetch.is_some());
         not_implemented!(!locks.is_empty());
 
-        self.bind_table_expr(scope, body)
+        let (scope, mut table_expr) = self.bind_table_expr(scope, body)?;
+
+        if let Some(limit) = limit {
+            // LIMIT is currently not allowed to reference any columns
+            let limit_expr = self.bind_expr(&Scope::default(), limit)?;
+            // FIXME implement general coercion mechanism between types
+            let limit = match limit_expr {
+                ir::Expr::Literal(lit) => match lit {
+                    ir::Literal::Null => u64::MAX,
+                    ir::Literal::Bool(b) => b as u64,
+                    ir::Literal::Decimal(d) => d.floor().try_into().unwrap(),
+                    ir::Literal::String(_) => todo!("type error"),
+                },
+                ir::Expr::ColumnRef(..) => {
+                    unreachable!("this would have failed binding as we gave it an empty scope")
+                }
+            };
+            table_expr = table_expr.limit(limit);
+        }
+
+        Ok((scope, table_expr))
     }
 
-    fn bind_table_expr(&self, scope: &Scope, body: &ast::SetExpr) -> Result<ir::TableExpr> {
+    fn bind_table_expr(
+        &self,
+        scope: &Scope,
+        body: &ast::SetExpr,
+    ) -> Result<(Scope, ir::TableExpr)> {
         let expr = match body {
-            ast::SetExpr::Select(sel) => ir::TableExpr::Selection(self.bind_select(scope, sel)?),
+            ast::SetExpr::Select(sel) => {
+                let (scope, sel) = self.bind_select(scope, sel)?;
+                (scope, ir::TableExpr::Selection(sel))
+            }
             ast::SetExpr::Query(_) => todo!(),
             ast::SetExpr::SetOperation { .. } => todo!(),
-            ast::SetExpr::Values(values) => ir::TableExpr::Values(self.bind_values(scope, values)?),
+            ast::SetExpr::Values(values) => {
+                (scope.clone(), ir::TableExpr::Values(self.bind_values(scope, values)?))
+            }
             ast::SetExpr::Insert(_) => todo!(),
             ast::SetExpr::Table(_) => todo!(),
             ast::SetExpr::Update(_) => todo!(),
@@ -337,7 +368,7 @@ impl<'a> Binder<'a> {
         Ok(expr)
     }
 
-    fn bind_select(&self, scope: &Scope, select: &ast::Select) -> Result<ir::Selection> {
+    fn bind_select(&self, scope: &Scope, select: &ast::Select) -> Result<(Scope, ir::Selection)> {
         let ast::Select {
             distinct,
             projection,
@@ -376,7 +407,7 @@ impl<'a> Binder<'a> {
             .map(|item| self.bind_select_item(&scope, item))
             .collect::<Result<Vec<_>, _>>()?;
 
-        Ok(ir::Selection { source, projection })
+        Ok((scope, ir::Selection { source, projection }))
     }
 
     fn bind_joint_tables(
@@ -394,21 +425,29 @@ impl<'a> Binder<'a> {
         scope: &Scope,
         table: &ast::TableFactor,
     ) -> Result<(Scope, Box<ir::TableExpr>)> {
-        match table {
+        let (scope, table_expr) = match table {
             ast::TableFactor::Table { name, alias, args, with_hints } => {
                 not_implemented!(args.is_some());
                 not_implemented!(!with_hints.is_empty());
                 not_implemented!(alias.is_some());
 
                 let (scope, table_ref) = self.bind_table(scope, name)?;
-                Ok((scope, Box::new(ir::TableExpr::TableRef(table_ref))))
+                (scope, ir::TableExpr::TableRef(table_ref))
             }
-            ast::TableFactor::Derived { .. } => todo!(),
+            ast::TableFactor::Derived { lateral, subquery, alias } => {
+                not_implemented!(*lateral);
+                not_implemented!(alias.is_some());
+
+                let (scope, subquery) = self.bind_query(scope, subquery)?;
+                return Ok((scope, Box::new(subquery)));
+            }
             ast::TableFactor::TableFunction { .. } => todo!(),
             ast::TableFactor::UNNEST { .. } => todo!(),
             ast::TableFactor::NestedJoin { .. } => todo!(),
             ast::TableFactor::Pivot { .. } => todo!(),
-        }
+        };
+
+        Ok((scope, Box::new(table_expr)))
     }
 
     fn bind_table(

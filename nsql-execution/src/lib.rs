@@ -140,9 +140,21 @@ impl IntoIterator for Chunk {
     }
 }
 
+#[derive(Debug)]
+enum OperatorState<T> {
+    /// The operator is ready to process the next input
+    Continue(T),
+    /// The operator is done processing input tuples and will never produce more output
+    Done,
+}
+
 #[async_trait::async_trait]
 trait PhysicalOperator: PhysicalNode {
-    async fn execute(&self, ctx: &ExecutionContext, input: Tuple) -> ExecutionResult<Tuple>;
+    async fn execute(
+        &self,
+        ctx: &ExecutionContext,
+        input: Tuple,
+    ) -> ExecutionResult<OperatorState<Tuple>>;
 }
 
 #[async_trait::async_trait]

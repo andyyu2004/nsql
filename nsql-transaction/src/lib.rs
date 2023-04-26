@@ -132,7 +132,7 @@ pub struct TransactionSnapshot {
 
 impl fmt::Debug for TransactionSnapshot {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(f, "{}:{}:{}", self.min_active, self.next_txid, self.active.iter().join(","),)
+        write!(f, "{}:{}:{}", self.min_active, self.next_txid, self.active.iter().join(","),)
     }
 }
 

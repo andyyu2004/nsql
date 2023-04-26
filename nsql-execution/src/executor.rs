@@ -7,8 +7,8 @@ use parking_lot::RwLock;
 use crate::physical_plan::PhysicalPlan;
 use crate::pipeline::{MetaPipeline, Pipeline, PipelineArena};
 use crate::{
-    build_pipelines, Chunk, ExecutionContext, ExecutionResult, PhysicalNode, PhysicalOperator,
-    PhysicalSink, PhysicalSource, RootPipeline,
+    build_pipelines, Chunk, ExecutionContext, ExecutionResult, OperatorState, PhysicalNode,
+    PhysicalOperator, PhysicalSink, PhysicalSource, RootPipeline,
 };
 
 pub(crate) struct Executor {
@@ -46,11 +46,15 @@ impl Executor {
                 break;
             }
 
-            for tuple in chunk {
-                let mut tuple = tuple;
+            for mut tuple in chunk {
                 for op in &pipeline.operators {
-                    tuple = op.execute(ctx, tuple).await?;
+                    tuple = match op.execute(ctx, tuple).await? {
+                        OperatorState::Continue(tuple) => tuple,
+                        // Once an operator completes, the entire pipeline is finished
+                        OperatorState::Done => return Ok(()),
+                    };
                 }
+
                 pipeline.sink.sink(ctx, tuple).await?;
             }
         }

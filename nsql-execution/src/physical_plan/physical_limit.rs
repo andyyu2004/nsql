@@ -1,33 +1,38 @@
+use std::sync::atomic::{self, AtomicU64};
+
+use async_trait::async_trait;
+
 use super::*;
 
 #[derive(Debug)]
-pub struct PhysicalProjection {
+pub struct PhysicalLimit {
     children: Vec<Arc<dyn PhysicalNode>>,
-    projections: Vec<ir::Expr>,
-    evaluator: Evaluator,
+    yielded: AtomicU64,
+    limit: u64,
 }
 
-impl PhysicalProjection {
-    pub(crate) fn plan(
-        source: Arc<dyn PhysicalNode>,
-        projections: Vec<ir::Expr>,
-    ) -> Arc<dyn PhysicalNode> {
-        Arc::new(Self { evaluator: Evaluator::new(), children: vec![source], projections })
+impl PhysicalLimit {
+    pub(crate) fn plan(source: Arc<dyn PhysicalNode>, limit: u64) -> Arc<dyn PhysicalNode> {
+        Arc::new(Self { children: vec![source], limit, yielded: AtomicU64::new(0) })
     }
 }
 
-#[async_trait::async_trait]
-impl PhysicalOperator for PhysicalProjection {
+#[async_trait]
+impl PhysicalOperator for PhysicalLimit {
     async fn execute(
         &self,
         _ctx: &ExecutionContext,
         input: Tuple,
     ) -> ExecutionResult<OperatorState<Tuple>> {
-        Ok(OperatorState::Continue(self.evaluator.evaluate(&input, &self.projections)))
+        if self.yielded.fetch_add(1, atomic::Ordering::AcqRel) >= self.limit {
+            return Ok(OperatorState::Done);
+        }
+
+        Ok(OperatorState::Continue(input))
     }
 }
 
-impl PhysicalNode for PhysicalProjection {
+impl PhysicalNode for PhysicalLimit {
     fn desc(&self) -> &'static str {
         "projection"
     }

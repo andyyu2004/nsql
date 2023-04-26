@@ -1,0 +1,37 @@
+# FIXME change these tests once we have wildcard or aliases
+query I
+SELECT 1 FROM (VALUES (1), (2), (3)) LIMIT 2
+----
+1
+1
+
+query I
+SELECT 1 FROM (VALUES (1), (2), (3)) LIMIT TRUE
+----
+1
+
+query I
+SELECT 1 FROM (VALUES (1), (2), (3)) LIMIT FALSE
+----
+
+
+query I
+SELECT 1 FROM (VALUES (1), (2), (3)) LIMIT NULL
+----
+1
+1
+1
+
+
+query I
+SELECT 1 FROM (VALUES (1), (2), (3)) LIMIT 1.7
+----
+1
+
+
+query error
+SELECT x FROM (VALUES (1), (2), (3)) AS t(x) LIMIT x
+----
+todo
+
+

@@ -9,7 +9,15 @@ pub enum TableExpr {
     TableRef(TableRef),
     Selection(Selection),
     Values(Values),
+    Limit(Box<TableExpr>, u64),
     Empty,
+}
+
+impl TableExpr {
+    #[inline]
+    pub fn limit(self, limit: u64) -> TableExpr {
+        TableExpr::Limit(Box::new(self), limit)
+    }
 }
 
 #[derive(Debug, Clone)]

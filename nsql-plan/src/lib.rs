@@ -21,6 +21,10 @@ pub enum Plan {
     Scan {
         table_ref: ir::TableRef,
     },
+    Limit {
+        source: Box<Plan>,
+        limit: u64,
+    },
     Dummy,
 }
 
@@ -51,6 +55,10 @@ impl Planner {
             ir::TableExpr::Selection(sel) => self.plan_select(sel),
             ir::TableExpr::TableRef(table_ref) => Plan::Scan { table_ref },
             ir::TableExpr::Empty => todo!(),
+            ir::TableExpr::Limit(source, limit) => {
+                let source = self.plan_table_expr(*source);
+                Plan::Limit { source, limit }
+            }
         };
 
         Box::new(plan)
