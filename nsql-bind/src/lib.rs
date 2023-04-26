@@ -91,6 +91,8 @@ impl<'a> Binder<'a> {
                 collation,
                 on_commit,
                 on_cluster,
+                transient,
+                order_by,
             } => {
                 not_implemented!(*or_replace);
                 not_implemented!(*temporary);
@@ -112,6 +114,8 @@ impl<'a> Binder<'a> {
                 not_implemented!(collation.is_some());
                 not_implemented!(on_commit.is_some());
                 not_implemented!(on_cluster.is_some());
+                not_implemented!(*transient);
+                not_implemented!(order_by.is_some());
 
                 let ident = self.lower_ident(&name.0)?;
                 let namespace = self.bind_namespace(&ident)?;
@@ -220,6 +224,7 @@ impl<'a> Binder<'a> {
                         ast::ObjectType::Schema => todo!(),
                         ast::ObjectType::Role => not_implemented!("roles"),
                         ast::ObjectType::Sequence => todo!(),
+                        ast::ObjectType::Stage => not_implemented!("stages"),
                     })
                     .collect::<Result<Vec<_>, Error>>()?;
 
@@ -326,6 +331,7 @@ impl<'a> Binder<'a> {
             ast::SetExpr::Values(values) => ir::TableExpr::Values(self.bind_values(scope, values)?),
             ast::SetExpr::Insert(_) => todo!(),
             ast::SetExpr::Table(_) => todo!(),
+            ast::SetExpr::Update(_) => todo!(),
         };
 
         Ok(expr)
@@ -401,6 +407,7 @@ impl<'a> Binder<'a> {
             ast::TableFactor::TableFunction { .. } => todo!(),
             ast::TableFactor::UNNEST { .. } => todo!(),
             ast::TableFactor::NestedJoin { .. } => todo!(),
+            ast::TableFactor::Pivot { .. } => todo!(),
         }
     }
 
@@ -470,6 +477,9 @@ impl<'a> Binder<'a> {
             ast::Value::Null => ir::Literal::Null,
             ast::Value::Placeholder(_) => todo!(),
             ast::Value::UnQuotedString(_) => todo!(),
+            ast::Value::SingleQuotedByteStringLiteral(_) => todo!(),
+            ast::Value::DoubleQuotedByteStringLiteral(_) => todo!(),
+            ast::Value::RawStringLiteral(_) => todo!(),
         }
     }
 }
