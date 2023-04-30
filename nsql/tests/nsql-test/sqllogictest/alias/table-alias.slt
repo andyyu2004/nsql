@@ -1,6 +1,26 @@
-query I
-SELECT t.x FROM (VALUES (1), (2)) AS t(x)
+# query I
+# SELECT t.x FROM (VALUES (1), (2)) AS t(x)
+# ----
+# 1
+# 2
+
+statement ok
+CREATE TABLE t(x INT);
+
+statement ok
+INSERT INTO t VALUES (1), (2);
+
+statement ok
+SELECT u.x FROM t AS u;
+
+statement error
+SELECT u.x FROM t AS u(t);
+
+statement error
+SELECT u.x FROM t AS u(t, u);
 ----
-1
-2
+table `t` has 1 columns, but 2 columns were specified in alias
+
+statement ok
+SELECT u.t FROM t AS u(t);
 

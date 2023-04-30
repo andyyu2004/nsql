@@ -6,6 +6,8 @@ use std::fmt;
 use std::str::FromStr;
 use std::sync::Arc;
 
+pub use anyhow::Error;
+use anyhow::{bail, ensure};
 use ir::Decimal;
 use nsql_catalog::{
     Catalog, Container, CreateColumnInfo, Entity, Namespace, NamespaceEntity, Oid, Table,
@@ -15,7 +17,6 @@ use nsql_core::schema::LogicalType;
 use nsql_core::Name;
 use nsql_parse::ast::{self, HiveDistributionStyle};
 use nsql_transaction::Transaction;
-use thiserror::Error;
 
 use self::scope::Scope;
 
@@ -24,39 +25,24 @@ pub struct Binder {
     tx: Arc<Transaction>,
 }
 
-#[derive(Debug, Error)]
-pub enum Error {
-    #[error("unimplemented: {0}")]
-    Unimplemented(String),
-
-    #[error("{0}")]
-    Generic(String),
-
-    #[error(transparent)]
-    Catalog(#[from] nsql_catalog::Error),
-
-    #[error("unbound {kind} `{path}`")]
-    Unbound { kind: &'static str, path: Path },
-}
-
 macro_rules! not_implemented {
     ($msg:literal) => {
-        return Err($crate::Error::Unimplemented($msg.into()).into())
+        anyhow::bail!("not implemented: {}", $msg)
     };
     ($cond:expr) => {
         if $cond {
-            return Err($crate::Error::Unimplemented(stringify!($cond).into()).into());
+            anyhow::bail!("not implemented: {}", stringify!($cond))
         }
     };
 }
 
-macro_rules! ensure {
-    ($cond:expr, $msg:expr) => {
-        if !$cond {
-            return Err($crate::Error::Generic($msg.into()));
-        }
+macro_rules! unbound {
+    ($ty:ty, $path: expr) => {
+        anyhow::anyhow!("unbound {} `{}`", <$ty>::desc(), $path.clone())
     };
 }
+
+use unbound;
 
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 
@@ -163,7 +149,7 @@ impl Binder {
                 not_implemented!(on.is_some());
 
                 // We bind the columns of the table first, so that we can use them in the following projection
-                let (scope, table_ref) = self.bind_table(scope, table_name)?;
+                let (scope, table_ref) = self.bind_table(scope, table_name, None)?;
 
                 // We model the insertion columns list as a projection over the source
                 let projection = columns
@@ -234,7 +220,7 @@ impl Binder {
 
                 ir::Stmt::Drop(refs)
             }
-            _ => return Err(Error::Unimplemented("unimplemented stmt".into())),
+            _ => unimplemented!("unimplemented statement: {:?}", stmt),
         };
 
         Ok(stmt)
@@ -248,7 +234,7 @@ impl Binder {
         ensure!(idx < u8::MAX as usize, "too many columns (max 256)");
 
         Ok(CreateColumnInfo {
-            name: column.name.value.as_str().into(),
+            name: self.lower_name(&column.name),
             index: idx as u8,
             ty: self.lower_ty(&column.data_type)?,
         })
@@ -257,7 +243,7 @@ impl Binder {
     fn lower_ty(&self, ty: &ast::DataType) -> Result<LogicalType> {
         match ty {
             ast::DataType::Int(width) if width.is_none() => Ok(LogicalType::Int),
-            ty => Err(Error::Unimplemented(format!("type {ty:?}")))?,
+            ty => bail!("type: {:?}", ty),
         }
     }
 
@@ -268,7 +254,8 @@ impl Binder {
                 Path::Unqualified(name) => self
                     .catalog
                     .find::<Namespace>(name.as_str())?
-                    .ok_or_else(|| Error::Unbound { kind: Namespace::desc(), path: path.clone() }),
+                    // .ok_or_else(|| Error::Unbound { kind: Namespace::desc(), path: path.clone() }),
+                    .ok_or_else(|| unbound!(Namespace, path)),
             },
             Path::Unqualified(name) => self.bind_namespace(&Path::Qualified {
                 prefix: Box::new(Path::Unqualified(DEFAULT_SCHEMA.into())),
@@ -292,14 +279,9 @@ impl Binder {
                     let (schema_oid, schema) = self
                         .catalog
                         .get_by_name::<Namespace>(&self.tx, schema.as_str())?
-                        .ok_or_else(|| Error::Unbound {
-                            kind: Namespace::desc(),
-                            path: path.clone(),
-                        })?;
+                        .ok_or_else(|| unbound!(Namespace, path))?;
 
-                    let entity_oid = schema
-                        .find(name)?
-                        .ok_or_else(|| Error::Unbound { kind: T::desc(), path: path.clone() })?;
+                    let entity_oid = schema.find(name)?.ok_or_else(|| unbound!(T, path))?;
 
                     Ok((schema_oid, entity_oid))
                 }
@@ -311,10 +293,10 @@ impl Binder {
         // FIXME naive impl for now
         match name {
             [] => unreachable!("empty name?"),
-            [name] => Ok(Path::Unqualified(name.value.as_str().into())),
+            [name] => Ok(Path::Unqualified(self.lower_name(name))),
             [prefix @ .., name] => Ok(Path::Qualified {
                 prefix: Box::new(self.lower_path(prefix)?),
-                name: name.value.as_str().into(),
+                name: self.lower_name(name),
             }),
         }
     }
@@ -434,17 +416,16 @@ impl Binder {
             ast::TableFactor::Table { name, alias, args, with_hints } => {
                 not_implemented!(args.is_some());
                 not_implemented!(!with_hints.is_empty());
-                not_implemented!(alias.is_some());
 
-                let (scope, table_ref) = self.bind_table(scope, name)?;
+                let (scope, table_ref) = self.bind_table(scope, name, alias.as_ref())?;
                 (scope, ir::TableExpr::TableRef(table_ref))
             }
             ast::TableFactor::Derived { lateral, subquery, alias } => {
                 not_implemented!(*lateral);
 
-                let (mut scope, subquery) = self.bind_query(scope, subquery)?;
+                let (scope, subquery) = self.bind_query(scope, subquery)?;
                 if let Some(alias) = alias {
-                    scope = scope.alias(alias)
+                    todo!()
                 }
 
                 return Ok((scope, Box::new(subquery)));
@@ -462,12 +443,25 @@ impl Binder {
         &self,
         scope: &Scope,
         table_name: &ast::ObjectName,
+        alias: Option<&ast::TableAlias>,
     ) -> Result<(Scope, ir::TableRef)> {
+        let alias = alias.map(|alias| self.lower_table_alias(alias));
         let table_name = self.lower_path(&table_name.0)?;
         let (namespace, table) = self.bind_namespaced_entity::<Table>(&table_name)?;
         let table_ref = ir::TableRef { namespace, table };
 
-        Ok((scope.bind_table(self, table_name, table_ref)?, table_ref))
+        Ok((scope.bind_table(self, table_name, table_ref, alias.as_ref())?, table_ref))
+    }
+
+    fn lower_table_alias(&self, alias: &ast::TableAlias) -> TableAlias {
+        TableAlias {
+            table_name: self.lower_name(&alias.name),
+            columns: alias.columns.iter().map(|col| self.lower_name(col)).collect::<Vec<_>>(),
+        }
+    }
+
+    fn lower_name(&self, name: &ast::Ident) -> Name {
+        name.value.as_str().into()
     }
 
     fn bind_select_item(&self, scope: &Scope, item: &ast::SelectItem) -> Result<ir::Expr> {
@@ -570,4 +564,10 @@ impl fmt::Display for Path {
             Path::Unqualified(name) => write!(f, "{name}"),
         }
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct TableAlias {
+    table_name: Name,
+    columns: Vec<Name>,
 }

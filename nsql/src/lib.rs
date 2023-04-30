@@ -141,8 +141,8 @@ pub enum Error {
     Parse(#[from] nsql_parse::Error),
     #[error(transparent)]
     Storage(#[from] nsql_storage::Error),
-    #[error(transparent)]
-    Bind(#[from] nsql_bind::Error),
+    #[error("binder error: {0}")]
+    Bind(nsql_bind::Error),
     #[error(transparent)]
     Catalog(#[from] nsql_catalog::Error),
     #[error(transparent)]
