@@ -14,14 +14,14 @@ impl Evaluator {
     }
 
     pub fn evaluate_expr(&self, input: &Tuple, expr: &ir::Expr) -> Value {
-        match expr {
-            ir::Expr::Literal(lit) => match lit {
+        match &expr.kind {
+            ir::ExprKind::Literal(lit) => match lit {
                 ir::Literal::Null => Value::Literal(Literal::Null),
                 ir::Literal::Bool(b) => Value::Literal(Literal::Bool(*b)),
                 ir::Literal::Decimal(d) => Value::Literal(Literal::Decimal(*d)),
                 ir::Literal::String(s) => Value::Literal(Literal::String(s.clone())),
             },
-            ir::Expr::ColumnRef(_, idx) => input.values()[*idx].clone(),
+            ir::ExprKind::ColumnRef(idx) => input[*idx].clone(),
         }
     }
 }

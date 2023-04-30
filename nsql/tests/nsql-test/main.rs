@@ -83,7 +83,7 @@ impl AsyncDB for TestDb {
             rows: output
                 .tuples
                 .iter()
-                .map(|t| t.values().iter().map(|v| v.to_string()).collect())
+                .map(|t| t.values().map(|v| v.to_string()).collect())
                 .collect(),
         })
     }

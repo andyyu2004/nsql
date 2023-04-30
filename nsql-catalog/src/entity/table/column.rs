@@ -22,8 +22,8 @@ impl Column {
     }
 
     #[inline]
-    pub fn logical_type(&self) -> &LogicalType {
-        &self.ty
+    pub fn logical_type(&self) -> LogicalType {
+        self.ty.clone()
     }
 }
 

@@ -1,6 +1,8 @@
 use std::sync::atomic::{self, AtomicBool};
 use std::sync::Arc;
 
+use nsql_catalog::EntityRef;
+
 use super::*;
 use crate::Chunk;
 

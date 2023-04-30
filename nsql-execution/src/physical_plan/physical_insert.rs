@@ -1,5 +1,6 @@
 use std::collections::VecDeque;
 
+use nsql_catalog::EntityRef;
 use parking_lot::RwLock;
 
 use super::*;

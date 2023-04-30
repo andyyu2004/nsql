@@ -333,14 +333,14 @@ impl Binder {
             // LIMIT is currently not allowed to reference any columns
             let limit_expr = self.bind_expr(&Scope::default(), limit)?;
             // FIXME implement general coercion mechanism between types
-            let limit = match limit_expr {
-                ir::Expr::Literal(lit) => match lit {
+            let limit = match limit_expr.kind {
+                ir::ExprKind::Literal(lit) => match lit {
                     ir::Literal::Null => u64::MAX,
                     ir::Literal::Bool(b) => b as u64,
                     ir::Literal::Decimal(d) => d.floor().try_into().unwrap(),
                     ir::Literal::String(_) => todo!("type error"),
                 },
-                ir::Expr::ColumnRef(..) => {
+                ir::ExprKind::ColumnRef(..) => {
                     unreachable!("this would have failed binding as we gave it an empty scope")
                 }
             };
@@ -355,7 +355,7 @@ impl Binder {
         scope: &Scope,
         body: &ast::SetExpr,
     ) -> Result<(Scope, ir::TableExpr)> {
-        let expr = match body {
+        let (scope, expr) = match body {
             ast::SetExpr::Select(sel) => {
                 let (scope, sel) = self.bind_select(scope, sel)?;
                 (scope, ir::TableExpr::Selection(sel))
@@ -370,7 +370,7 @@ impl Binder {
             ast::SetExpr::Update(_) => todo!(),
         };
 
-        Ok(expr)
+        Ok((scope, expr))
     }
 
     fn bind_select(&self, scope: &Scope, select: &ast::Select) -> Result<(Scope, ir::Selection)> {
@@ -442,7 +442,11 @@ impl Binder {
             ast::TableFactor::Derived { lateral, subquery, alias } => {
                 not_implemented!(*lateral);
 
-                let (scope, subquery) = self.bind_query(scope, subquery)?;
+                let (mut scope, subquery) = self.bind_query(scope, subquery)?;
+                if let Some(alias) = alias {
+                    scope = scope.alias(alias)
+                }
+
                 return Ok((scope, Box::new(subquery)));
             }
             ast::TableFactor::TableFunction { .. } => todo!(),
@@ -482,30 +486,36 @@ impl Binder {
     }
 
     fn bind_expr(&self, scope: &Scope, expr: &ast::Expr) -> Result<ir::Expr> {
-        let expr = match expr {
-            ast::Expr::Value(literal) => ir::Expr::Literal(self.bind_literal(literal)),
+        let (ty, kind) = match expr {
+            ast::Expr::Value(literal) => self.bind_literal_expr(literal),
             ast::Expr::Identifier(ident) => {
-                let (col, idx) =
-                    scope.lookup_column(&Path::Unqualified(ident.value.clone().into()))?;
-                ir::Expr::ColumnRef(col, idx)
+                let (ty, idx) =
+                    scope.lookup_column(self, &Path::Unqualified(ident.value.clone().into()))?;
+                (ty, ir::ExprKind::ColumnRef(idx))
             }
             ast::Expr::CompoundIdentifier(ident) => {
                 let ident = self.lower_path(ident)?;
-                let (col, idx) = scope.lookup_column(&ident)?;
-                ir::Expr::ColumnRef(col, idx)
+                let (ty, idx) = scope.lookup_column(self, &ident)?;
+                (ty, ir::ExprKind::ColumnRef(idx))
             }
             _ => todo!(),
         };
-        Ok(expr)
+
+        Ok(ir::Expr { ty, kind })
     }
 
-    fn bind_literal(&self, literal: &ast::Value) -> ir::Literal {
+    fn bind_literal_expr(&self, literal: &ast::Value) -> (LogicalType, ir::ExprKind) {
+        let (ty, literal) = self.bind_literal(literal);
+        (ty, ir::ExprKind::Literal(literal))
+    }
+
+    fn bind_literal(&self, literal: &ast::Value) -> (LogicalType, ir::Literal) {
         match literal {
             ast::Value::Number(decimal, b) => {
                 assert!(!b, "what does this bool mean?");
                 let decimal = Decimal::from_str(decimal)
                     .expect("this should be a parse error if the decimal is not valid");
-                ir::Literal::Decimal(decimal)
+                (LogicalType::Decimal, ir::Literal::Decimal(decimal))
             }
             ast::Value::SingleQuotedString(_) => todo!(),
             ast::Value::DollarQuotedString(_) => todo!(),
@@ -513,8 +523,9 @@ impl Binder {
             ast::Value::NationalStringLiteral(_) => todo!(),
             ast::Value::HexStringLiteral(_) => todo!(),
             ast::Value::DoubleQuotedString(_) => todo!(),
-            ast::Value::Boolean(b) => ir::Literal::Bool(*b),
-            ast::Value::Null => ir::Literal::Null,
+            ast::Value::Boolean(b) => (LogicalType::Bool, ir::Literal::Bool(*b)),
+            // FIXME default null to have type int for now
+            ast::Value::Null => (LogicalType::Int, ir::Literal::Null),
             ast::Value::Placeholder(_) => todo!(),
             ast::Value::UnQuotedString(_) => todo!(),
             ast::Value::SingleQuotedByteStringLiteral(_) => todo!(),

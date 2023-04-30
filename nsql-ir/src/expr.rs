@@ -1,7 +1,9 @@
 use std::fmt;
 use std::sync::Arc;
 
-use nsql_catalog::{Catalog, Column, Container, Namespace, Oid, Table, Transaction};
+use nsql_catalog::{Catalog, Column, Container, EntityRef, Namespace, Oid, Table, Transaction};
+use nsql_core::schema::LogicalType;
+use nsql_storage::tuple::TupleIndex;
 use rust_decimal::Decimal;
 
 #[derive(Debug, Clone)]
@@ -27,9 +29,15 @@ pub struct Selection {
 }
 
 #[derive(Debug, Clone)]
-pub enum Expr {
+pub struct Expr {
+    pub ty: LogicalType,
+    pub kind: ExprKind,
+}
+
+#[derive(Debug, Clone)]
+pub enum ExprKind {
     Literal(Literal),
-    ColumnRef(ColumnRef, usize),
+    ColumnRef(TupleIndex),
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -38,16 +46,23 @@ pub struct TableRef {
     pub table: Oid<Table>,
 }
 
-impl TableRef {
-    pub fn get(self, catalog: &Catalog, tx: &Transaction) -> nsql_catalog::Result<Arc<Table>> {
-        let namespace = catalog.get::<Namespace>(tx, self.namespace)?.unwrap();
-        Ok(namespace.get::<Table>(tx, self.table)?.unwrap())
+impl EntityRef for TableRef {
+    type Entity = Table;
+
+    type Container = Namespace;
+
+    #[inline]
+    fn container(
+        self,
+        catalog: &Catalog,
+        tx: &Transaction,
+    ) -> nsql_catalog::Result<Arc<Self::Container>> {
+        Ok(catalog.get(tx, self.namespace)?.expect("namespace should exist for `tx`"))
     }
 
-    pub fn delete(self, catalog: &Catalog, tx: &Transaction) -> nsql_catalog::Result<()> {
-        let namespace = catalog.get::<Namespace>(tx, self.namespace)?.unwrap();
-        namespace.delete::<Table>(tx, self.table)?;
-        Ok(())
+    #[inline]
+    fn entity_oid(self) -> Oid<Self::Entity> {
+        self.table
     }
 }
 
@@ -55,6 +70,26 @@ impl TableRef {
 pub struct ColumnRef {
     pub table_ref: TableRef,
     pub column: Oid<Column>,
+}
+
+impl EntityRef for ColumnRef {
+    type Entity = Column;
+
+    type Container = Table;
+
+    #[inline]
+    fn container(
+        self,
+        catalog: &Catalog,
+        tx: &Transaction,
+    ) -> nsql_catalog::Result<Arc<Self::Container>> {
+        self.table_ref.get(catalog, tx)
+    }
+
+    #[inline]
+    fn entity_oid(self) -> Oid<Self::Entity> {
+        self.column
+    }
 }
 
 #[derive(Debug, Clone)]

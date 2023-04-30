@@ -46,6 +46,28 @@ pub trait Entity {
     fn desc() -> &'static str;
 }
 
+pub trait EntityRef: Copy {
+    type Entity: CatalogEntity<Container = Self::Container>;
+
+    type Container: Container;
+
+    fn container(self, catalog: &Catalog, tx: &Transaction) -> Result<Arc<Self::Container>>;
+
+    fn entity_oid(self) -> Oid<Self::Entity>;
+
+    fn get(self, catalog: &Catalog, tx: &Transaction) -> Result<Arc<Self::Entity>> {
+        Ok(self
+            .container(catalog, tx)?
+            .get(tx, self.entity_oid())?
+            .expect("`oid` should be valid for `tx`"))
+    }
+
+    fn delete(self, catalog: &Catalog, tx: &Transaction) -> Result<()> {
+        self.container(catalog, tx)?.delete(tx, self.entity_oid())?;
+        Ok(())
+    }
+}
+
 pub trait Container {
     fn create<T: CatalogEntity<Container = Self>>(
         &self,
@@ -102,7 +124,7 @@ pub(crate) mod private {
 
     /// This trait is sealed and cannot be implemented for types outside of this crate.
     /// These method should also not be visible to users of this crate.
-    pub trait CatalogEntity: Entity + StreamSerialize + Sized {
+    pub trait CatalogEntity: Entity + StreamSerialize + Send + Sync + Sized + 'static {
         type Container;
 
         type CreateInfo;

@@ -3,6 +3,7 @@
 mod expr;
 use nsql_catalog::{CreateColumnInfo, Namespace, Oid};
 use nsql_core::Name;
+pub use nsql_storage::tuple::TupleIndex;
 pub use rust_decimal::Decimal;
 
 pub use self::expr::*;

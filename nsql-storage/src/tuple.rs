@@ -1,4 +1,5 @@
 use std::fmt;
+use std::ops::Index;
 use std::sync::Arc;
 
 use nsql_core::schema::{PhysicalType, Schema};
@@ -56,8 +57,8 @@ impl Tuple {
     }
 
     #[inline]
-    pub fn values(&self) -> &[Value] {
-        self.0.as_ref()
+    pub fn values(&self) -> impl Iterator<Item = &Value> {
+        self.0.iter()
     }
 }
 
@@ -70,6 +71,24 @@ impl From<Vec<Value>> for Tuple {
 impl FromIterator<Value> for Tuple {
     fn from_iter<I: IntoIterator<Item = Value>>(iter: I) -> Self {
         Self::new(iter.into_iter().collect::<Vec<_>>().into_boxed_slice())
+    }
+}
+
+impl Index<TupleIndex> for Tuple {
+    type Output = Value;
+
+    fn index(&self, index: TupleIndex) -> &Self::Output {
+        &self.0[index.0]
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Copy)]
+pub struct TupleIndex(usize);
+
+impl TupleIndex {
+    #[inline]
+    pub fn new(idx: usize) -> Self {
+        Self(idx)
     }
 }
 
