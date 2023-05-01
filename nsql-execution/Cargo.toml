@@ -3,12 +3,9 @@ name = "nsql-execution"
 version = "0.1.0"
 edition = "2021"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
 async-recursion = "1.0.2"
 async-trait = "0.1.64"
-error-stack = "0.3.1"
 nsql-arena = { version = "0.1.0", path = "../nsql-arena" }
 nsql-buffer = { version = "0.1.0", path = "../nsql-buffer" }
 nsql-catalog = { version = "0.1.0", path = "../nsql-catalog" }
@@ -19,8 +16,8 @@ nsql-plan = { version = "0.1.0", path = "../nsql-plan" }
 nsql-storage = { version = "0.1.0", path = "../nsql-storage" }
 nsql-transaction = { version = "0.1.0", path = "../nsql-transaction" }
 parking_lot = "0.12.1"
-thiserror = "1.0.38"
 futures-util = "0.3.28"
 tokio = { version = "1.27.0", default-features = false, features = ["sync"] }
 dot-structures = "0.1.0"
 smallvec = "1.10.0"
+anyhow = "1.0.71"

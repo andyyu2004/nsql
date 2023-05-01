@@ -33,19 +33,14 @@ impl fmt::Debug for Table {
     }
 }
 
-#[derive(Clone)]
 pub struct CreateTableInfo {
     pub name: Name,
-    pub columns: Vec<CreateColumnInfo>,
     pub storage: Arc<TableStorage>,
 }
 
 impl fmt::Debug for CreateTableInfo {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("CreateTableInfo")
-            .field("name", &self.name)
-            .field("columns", &self.columns)
-            .finish_non_exhaustive()
+        f.debug_struct("CreateTableInfo").field("name", &self.name).finish_non_exhaustive()
     }
 }
 
@@ -70,15 +65,8 @@ impl CatalogEntity for Table {
         &container.tables
     }
 
-    fn new(tx: &Transaction, info: Self::CreateInfo) -> Self {
-        let columns = CatalogSet::default();
-        for column in info.columns {
-            columns
-                .insert(tx, Column::new(tx, column))
-                .expect("todo either validate earlier or make new fallible");
-        }
-
-        Self { name: info.name, storage: info.storage, columns }
+    fn new(_tx: &Transaction, info: Self::CreateInfo) -> Self {
+        Self { name: info.name, storage: info.storage, columns: Default::default() }
     }
 }
 

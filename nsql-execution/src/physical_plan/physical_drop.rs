@@ -1,4 +1,3 @@
-use std::sync::atomic::{self, AtomicBool};
 use std::sync::Arc;
 
 use nsql_catalog::EntityRef;
@@ -9,12 +8,11 @@ use crate::Chunk;
 #[derive(Debug)]
 pub struct PhysicalDrop {
     refs: Vec<ir::EntityRef>,
-    finished: AtomicBool,
 }
 
 impl PhysicalDrop {
     pub(crate) fn plan(refs: Vec<ir::EntityRef>) -> Arc<dyn PhysicalNode> {
-        Arc::new(Self { refs, finished: Default::default() })
+        Arc::new(Self { refs })
     }
 }
 
@@ -47,10 +45,6 @@ impl PhysicalSource for PhysicalDrop {
     }
 
     async fn source(&self, ctx: &ExecutionContext) -> ExecutionResult<Chunk> {
-        if self.finished.swap(true, atomic::Ordering::AcqRel) {
-            return Ok(Chunk::empty());
-        }
-
         let tx = ctx.tx();
         let catalog = ctx.catalog();
         for entity_ref in &self.refs {

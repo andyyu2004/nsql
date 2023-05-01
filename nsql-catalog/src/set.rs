@@ -204,7 +204,7 @@ impl<T: CatalogEntity> CatalogSet<T> {
                                 "next_oid() should return a unique oid"
                             );
 
-                            self.entries.entry(oid).or_insert_with(|| {
+                            let _entry = self.entries.entry(oid).or_insert_with(|| {
                                 VersionedEntry::new(CatalogEntry::new(tx, value))
                             });
 

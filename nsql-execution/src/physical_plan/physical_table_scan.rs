@@ -66,7 +66,7 @@ impl PhysicalSource for PhysicalTableScan {
                 let mut stream = stream.lock().await;
                 match stream.next().await {
                     Some(batch) => {
-                        let batch = batch?;
+                        let batch = batch.map_err(|report| report.into_error())?;
                         *next_batch = batch;
                         self.current_batch_index.store(0, atomic::Ordering::Release);
                     }

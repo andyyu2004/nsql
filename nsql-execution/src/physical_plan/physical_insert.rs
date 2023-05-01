@@ -58,7 +58,7 @@ impl PhysicalSink for PhysicalInsert {
         let tx = ctx.tx();
         let table = self.table_ref.get(&ctx.catalog(), &tx)?;
         let storage = table.storage();
-        storage.append(&tx, &tuple).await?;
+        storage.append(&tx, &tuple).await.map_err(|report| report.into_error())?;
         if self.returning.is_some() {
             self.returning_tuples.write().push_back(tuple);
         }

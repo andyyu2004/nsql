@@ -3,7 +3,7 @@ use std::sync::Arc;
 use nsql_catalog::{Container, CreateNamespaceInfo, Namespace};
 
 use super::*;
-use crate::{Chunk, Error};
+use crate::Chunk;
 
 #[derive(Debug)]
 pub struct PhysicalCreateNamespace {
@@ -50,7 +50,7 @@ impl PhysicalSource for PhysicalCreateNamespace {
 
         if let Err(err) = ctx.catalog.create::<Namespace>(&tx, info) {
             if !self.info.if_not_exists {
-                return Err(Error::Catalog(err.into()))?;
+                return Err(err)?;
             }
         }
 

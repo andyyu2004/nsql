@@ -143,8 +143,8 @@ pub enum Error {
     Storage(#[from] nsql_storage::Error),
     #[error("binder error: {0}")]
     Bind(nsql_bind::Error),
-    #[error(transparent)]
-    Catalog(#[from] nsql_catalog::Error),
+    #[error("catalog error: {0}")]
+    Catalog(nsql_catalog::Error),
     #[error(transparent)]
     Io(#[from] std::io::Error),
     #[error(transparent)]

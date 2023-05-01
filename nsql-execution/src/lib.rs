@@ -8,10 +8,10 @@ mod physical_plan;
 mod pipeline;
 mod vis;
 
+use std::fmt;
 use std::sync::Arc;
-use std::{fmt, io};
 
-use error_stack::Report;
+pub use anyhow::Error;
 use nsql_arena::Idx;
 use nsql_buffer::Pool;
 use nsql_catalog::Catalog;
@@ -19,7 +19,6 @@ use nsql_storage::tuple::Tuple;
 use nsql_transaction::Transaction;
 pub use physical_plan::PhysicalPlanner;
 use smallvec::SmallVec;
-use thiserror::Error;
 
 use self::eval::Evaluator;
 pub use self::executor::execute;
@@ -29,24 +28,6 @@ use self::pipeline::{
 };
 
 pub type ExecutionResult<T, E = Error> = std::result::Result<T, E>;
-
-#[derive(Debug, Error)]
-pub enum Error {
-    #[error(transparent)]
-    Catalog(#[from] nsql_catalog::Error),
-    #[error(transparent)]
-    Storage(#[from] nsql_storage::Error),
-    #[error(transparent)]
-    Transaction(#[from] nsql_transaction::Error),
-    #[error(transparent)]
-    Io(#[from] io::Error),
-}
-
-impl From<Report<io::Error>> for Error {
-    fn from(report: Report<io::Error>) -> Self {
-        Self::Io(io::Error::new(report.current_context().kind(), report))
-    }
-}
 
 fn build_pipelines(sink: Arc<dyn PhysicalSink>, plan: PhysicalPlan) -> RootPipeline {
     let mut arena = PipelineBuilderArena::default();

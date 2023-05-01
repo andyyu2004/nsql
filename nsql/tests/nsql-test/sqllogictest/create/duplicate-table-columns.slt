@@ -1,0 +1,4 @@
+statement error
+CREATE TABLE test (id int, id int);
+----
+column `id` already exists

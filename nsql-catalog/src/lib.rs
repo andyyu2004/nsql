@@ -73,9 +73,8 @@ pub trait Container {
         &self,
         tx: &Transaction,
         info: T::CreateInfo,
-    ) -> Result<(), Conflict<T>> {
-        T::new(tx, info).insert(self, tx)?;
-        Ok(())
+    ) -> Result<Oid<T>, Conflict<T>> {
+        T::new(tx, info).insert(self, tx)
     }
 
     fn get<T: CatalogEntity<Container = Self>>(

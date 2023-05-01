@@ -1,11 +1,11 @@
 use std::sync::Arc;
 
-use nsql_catalog::{Container, CreateTableInfo, Namespace, Table};
+use nsql_catalog::{Column, Container, CreateTableInfo, Namespace, Table};
 use nsql_core::schema::{Attribute, Schema};
 use nsql_storage::{TableStorage, TableStorageInfo};
 
 use super::*;
-use crate::{Chunk, Error};
+use crate::Chunk;
 
 #[derive(Debug)]
 pub struct PhysicalCreateTable {
@@ -57,9 +57,10 @@ impl PhysicalSource for PhysicalCreateTable {
 
         let info = CreateTableInfo {
             name: self.info.name.clone(),
-            columns: self.info.columns.clone(),
             storage: Arc::new(
-                TableStorage::initialize(ctx.pool(), TableStorageInfo::create(schema)).await?,
+                TableStorage::initialize(ctx.pool(), TableStorageInfo::create(schema))
+                    .await
+                    .map_err(|report| report.into_error())?,
             ),
         };
 
@@ -69,7 +70,11 @@ impl PhysicalSource for PhysicalCreateTable {
             .get::<Namespace>(&tx, self.info.namespace)?
             .expect("schema not found during execution");
 
-        schema.create::<Table>(&tx, info).map_err(Into::into).map_err(Error::Catalog)?;
+        let table_oid = schema.create::<Table>(&tx, info)?;
+        let table = schema.get::<Table>(&tx, table_oid)?.unwrap();
+        for info in &self.info.columns {
+            table.create::<Column>(&tx, info.clone())?;
+        }
 
         Ok(Chunk::empty())
     }

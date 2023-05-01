@@ -1195,10 +1195,10 @@ dependencies = [
 name = "nsql-execution"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "async-recursion",
  "async-trait",
  "dot-structures",
- "error-stack",
  "futures-util",
  "nsql-arena",
  "nsql-buffer",
@@ -1211,7 +1211,6 @@ dependencies = [
  "nsql-transaction",
  "parking_lot",
  "smallvec",
- "thiserror",
  "tokio",
 ]
 
