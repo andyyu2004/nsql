@@ -1,8 +1,8 @@
-# query I
-# SELECT t.x FROM (VALUES (1), (2)) AS t(x)
-# ----
-# 1
-# 2
+query I
+SELECT t.x FROM (VALUES (1), (2)) AS t(x)
+----
+1
+2
 
 statement ok
 CREATE TABLE t(x INT);

@@ -1,4 +1,5 @@
 #![deny(rust_2018_idioms)]
+#![feature(iterator_try_collect)]
 
 mod scope;
 
@@ -7,7 +8,7 @@ use std::str::FromStr;
 use std::sync::Arc;
 
 pub use anyhow::Error;
-use anyhow::{bail, ensure};
+use anyhow::{anyhow, bail, ensure};
 use ir::Decimal;
 use nsql_catalog::{
     Catalog, Container, CreateColumnInfo, Entity, Namespace, NamespaceEntity, Oid, Table,
@@ -345,7 +346,8 @@ impl Binder {
             ast::SetExpr::Query(_) => todo!(),
             ast::SetExpr::SetOperation { .. } => todo!(),
             ast::SetExpr::Values(values) => {
-                (scope.clone(), ir::TableExpr::Values(self.bind_values(scope, values)?))
+                let (scope, values) = self.bind_values(scope, values)?;
+                (scope, ir::TableExpr::Values(values))
             }
             ast::SetExpr::Insert(_) => todo!(),
             ast::SetExpr::Table(_) => todo!(),
@@ -423,12 +425,12 @@ impl Binder {
             ast::TableFactor::Derived { lateral, subquery, alias } => {
                 not_implemented!(*lateral);
 
-                let (scope, subquery) = self.bind_query(scope, subquery)?;
+                let (mut scope, subquery) = self.bind_query(scope, subquery)?;
                 if let Some(alias) = alias {
-                    todo!()
+                    scope = scope.alias(self.lower_table_alias(alias))?;
                 }
 
-                return Ok((scope, Box::new(subquery)));
+                (scope, subquery)
             }
             ast::TableFactor::TableFunction { .. } => todo!(),
             ast::TableFactor::UNNEST { .. } => todo!(),
@@ -471,8 +473,26 @@ impl Binder {
         }
     }
 
-    fn bind_values(&self, scope: &Scope, values: &ast::Values) -> Result<ir::Values> {
-        values.rows.iter().map(|row| self.bind_row(scope, row)).collect()
+    fn bind_values(&self, scope: &Scope, values: &ast::Values) -> Result<(Scope, ir::Values)> {
+        assert!(!values.rows.is_empty(), "values can't be empty");
+
+        let expected_cols = values.rows[0].len();
+        for (i, row) in values.rows.iter().enumerate() {
+            if row.len() != expected_cols {
+                return Err(anyhow!(
+                    "expected {} columns in row {} of VALUES clause, got {}",
+                    expected_cols,
+                    i,
+                    row.len()
+                ));
+            }
+        }
+
+        let values = ir::Values::new(
+            values.rows.iter().map(|row| self.bind_row(scope, row)).try_collect::<Vec<_>>()?,
+        );
+
+        Ok((scope.bind_values(&values)?, values))
     }
 
     fn bind_row(&self, scope: &Scope, row: &[ast::Expr]) -> Result<Vec<ir::Expr>> {
@@ -480,22 +500,22 @@ impl Binder {
     }
 
     fn bind_expr(&self, scope: &Scope, expr: &ast::Expr) -> Result<ir::Expr> {
-        let (ty, kind) = match expr {
+        let (logical_type, kind) = match expr {
             ast::Expr::Value(literal) => self.bind_literal_expr(literal),
             ast::Expr::Identifier(ident) => {
                 let (ty, idx) =
-                    scope.lookup_column(self, &Path::Unqualified(ident.value.clone().into()))?;
+                    scope.lookup_column(&Path::Unqualified(ident.value.clone().into()))?;
                 (ty, ir::ExprKind::ColumnRef(idx))
             }
             ast::Expr::CompoundIdentifier(ident) => {
                 let ident = self.lower_path(ident)?;
-                let (ty, idx) = scope.lookup_column(self, &ident)?;
+                let (ty, idx) = scope.lookup_column(&ident)?;
                 (ty, ir::ExprKind::ColumnRef(idx))
             }
             _ => todo!(),
         };
 
-        Ok(ir::Expr { ty, kind })
+        Ok(ir::Expr { logical_type, kind })
     }
 
     fn bind_literal_expr(&self, literal: &ast::Value) -> (LogicalType, ir::ExprKind) {
@@ -536,6 +556,10 @@ pub enum Path {
 }
 
 impl Path {
+    pub fn qualified(prefix: Path, name: Name) -> Path {
+        Path::Qualified { prefix: Box::new(prefix), name }
+    }
+
     pub fn prefix(&self) -> Option<&Path> {
         match self {
             Path::Qualified { prefix, .. } => Some(prefix),

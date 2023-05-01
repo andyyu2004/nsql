@@ -1,0 +1,12 @@
+query error
+SELECT col1, col2 FROM (VALUES(1, 2), (2), (3, 4))
+----
+expected 2 columns in row 1 of VALUES clause, got 1
+
+query II
+SELECT col1, col2 FROM (VALUES(1, 2), (2, 3), (3, 4))
+----
+1	2
+2	3
+3	4
+

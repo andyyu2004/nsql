@@ -1,4 +1,5 @@
 use std::fmt;
+use std::ops::Deref;
 use std::sync::Arc;
 
 use nsql_catalog::{Catalog, Column, Container, EntityRef, Namespace, Oid, Table, Transaction};
@@ -30,7 +31,7 @@ pub struct Selection {
 
 #[derive(Debug, Clone)]
 pub struct Expr {
-    pub ty: LogicalType,
+    pub logical_type: LogicalType,
     pub kind: ExprKind,
 }
 
@@ -111,4 +112,29 @@ impl fmt::Display for Literal {
     }
 }
 
-pub type Values = Vec<Vec<Expr>>;
+#[derive(Debug, Clone)]
+pub struct Values(Vec<Vec<Expr>>);
+
+impl Values {
+    /// Create a new `Values` expression
+    /// The `values` must be a non-empty vector of non-empty vectors of expressions
+    /// The inner vectors must each be the same length
+    ///
+    /// Panics if these conditions are not met
+    #[inline]
+    pub fn new(values: Vec<Vec<Expr>>) -> Self {
+        assert!(!values.is_empty(), "values must be non-empty");
+        let len = values[0].len();
+        assert!(values.iter().all(|v| v.len() == len), "all inner vectors must be the same length");
+        Self(values)
+    }
+}
+
+impl Deref for Values {
+    type Target = Vec<Vec<Expr>>;
+
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
