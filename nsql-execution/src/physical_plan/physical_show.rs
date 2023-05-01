@@ -60,7 +60,7 @@ impl PhysicalSource for PhysicalShow {
                 ir::ObjectType::Table => {
                     for (_, table) in namespace.all::<Table>(&tx)? {
                         tuples.push(Tuple::new(
-                            vec![Value::Literal(Literal::String(table.name().to_string()))]
+                            vec![Value::Literal(Literal::Text(table.name().to_string()))]
                                 .into_boxed_slice(),
                         ));
                     }

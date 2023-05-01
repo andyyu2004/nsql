@@ -1,5 +1,4 @@
 #![deny(rust_2018_idioms)]
-#![feature(iterator_try_collect)]
 
 mod scope;
 
@@ -10,6 +9,7 @@ use std::sync::Arc;
 pub use anyhow::Error;
 use anyhow::{anyhow, bail, ensure};
 use ir::Decimal;
+use itertools::Itertools;
 use nsql_catalog::{
     Catalog, Container, CreateColumnInfo, Entity, Namespace, NamespaceEntity, Oid, Table,
     DEFAULT_SCHEMA,
@@ -164,6 +164,7 @@ impl Binder {
                     items
                         .iter()
                         .map(|selection| self.bind_select_item(&scope, selection))
+                        .flatten_ok()
                         .collect::<Result<Vec<_>>>()
                         .unwrap()
                 });
@@ -321,7 +322,7 @@ impl Binder {
                     ir::Literal::Null => u64::MAX,
                     ir::Literal::Bool(b) => b as u64,
                     ir::Literal::Decimal(d) => d.floor().try_into().unwrap(),
-                    ir::Literal::String(_) => todo!("type error"),
+                    ir::Literal::Text(_) => todo!("type error"),
                 },
                 ir::ExprKind::ColumnRef(..) => {
                     unreachable!("this would have failed binding as we gave it an empty scope")
@@ -394,6 +395,7 @@ impl Binder {
         let projection = projection
             .iter()
             .map(|item| self.bind_select_item(&scope, item))
+            .flatten_ok()
             .collect::<Result<Vec<_>, _>>()?;
 
         Ok((scope, ir::Selection { source, projection }))
@@ -466,11 +468,27 @@ impl Binder {
         name.value.as_str().into()
     }
 
-    fn bind_select_item(&self, scope: &Scope, item: &ast::SelectItem) -> Result<ir::Expr> {
-        match item {
-            ast::SelectItem::UnnamedExpr(expr) => self.bind_expr(scope, expr),
-            _ => todo!(),
-        }
+    fn bind_select_item(&self, scope: &Scope, item: &ast::SelectItem) -> Result<Vec<ir::Expr>> {
+        let expr = match item {
+            ast::SelectItem::UnnamedExpr(expr) => self.bind_expr(scope, expr)?,
+            ast::SelectItem::ExprWithAlias { expr, alias } => todo!(),
+            ast::SelectItem::QualifiedWildcard(_, _) => not_implemented!("qualified wildcard"),
+            ast::SelectItem::Wildcard(ast::WildcardAdditionalOptions {
+                opt_exclude,
+                opt_except,
+                opt_rename,
+                opt_replace,
+            }) => {
+                not_implemented!(opt_exclude.is_some());
+                not_implemented!(opt_except.is_some());
+                not_implemented!(opt_rename.is_some());
+                not_implemented!(opt_replace.is_some());
+
+                return Ok(scope.column_refs().collect());
+            }
+        };
+
+        Ok(vec![expr])
     }
 
     fn bind_values(&self, scope: &Scope, values: &ast::Values) -> Result<(Scope, ir::Values)> {
@@ -489,7 +507,11 @@ impl Binder {
         }
 
         let values = ir::Values::new(
-            values.rows.iter().map(|row| self.bind_row(scope, row)).try_collect::<Vec<_>>()?,
+            values
+                .rows
+                .iter()
+                .map(|row| self.bind_row(scope, row))
+                .collect::<Result<Vec<_>, _>>()?,
         );
 
         Ok((scope.bind_values(&values)?, values))
@@ -531,7 +553,7 @@ impl Binder {
                     .expect("this should be a parse error if the decimal is not valid");
                 (LogicalType::Decimal, ir::Literal::Decimal(decimal))
             }
-            ast::Value::SingleQuotedString(_) => todo!(),
+            ast::Value::SingleQuotedString(s) => (LogicalType::Text, ir::Literal::Text(s.into())),
             ast::Value::DollarQuotedString(_) => todo!(),
             ast::Value::EscapedStringLiteral(_) => todo!(),
             ast::Value::NationalStringLiteral(_) => todo!(),

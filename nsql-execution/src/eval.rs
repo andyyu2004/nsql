@@ -19,7 +19,7 @@ impl Evaluator {
                 ir::Literal::Null => Value::Literal(Literal::Null),
                 ir::Literal::Bool(b) => Value::Literal(Literal::Bool(*b)),
                 ir::Literal::Decimal(d) => Value::Literal(Literal::Decimal(*d)),
-                ir::Literal::String(s) => Value::Literal(Literal::String(s.clone())),
+                ir::Literal::Text(s) => Value::Literal(Literal::Text(s.clone())),
             },
             ir::ExprKind::ColumnRef(idx) => input[*idx].clone(),
         }

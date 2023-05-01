@@ -98,7 +98,7 @@ pub enum Literal {
     Null,
     Bool(bool),
     Decimal(Decimal),
-    String(String),
+    Text(String),
 }
 
 impl fmt::Display for Literal {
@@ -107,7 +107,7 @@ impl fmt::Display for Literal {
             Literal::Null => write!(f, "NULL"),
             Literal::Bool(b) => write!(f, "{b}"),
             Literal::Decimal(n) => write!(f, "{n}"),
-            Literal::String(s) => write!(f, "{s}"),
+            Literal::Text(s) => write!(f, "{s}"),
         }
     }
 }

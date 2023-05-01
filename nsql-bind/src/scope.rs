@@ -117,6 +117,14 @@ impl Scope {
         Ok(Self { tables: self.tables.clone(), columns })
     }
 
+    /// Returns an iterator over the columns in the scope exposed as `Expr`s
+    pub fn column_refs(&self) -> impl Iterator<Item = ir::Expr> + '_ {
+        self.columns.iter().enumerate().map(|(i, (_p, logical_type))| ir::Expr {
+            logical_type: logical_type.clone(),
+            kind: ir::ExprKind::ColumnRef(ir::TupleIndex::new(i)),
+        })
+    }
+
     pub fn alias(&self, alias: TableAlias) -> Result<Self> {
         assert!(self.tables.is_empty(), "not sure when this occurs");
 

@@ -1107,6 +1107,7 @@ name = "nsql-bind"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "itertools",
  "nsql-catalog",
  "nsql-core",
  "nsql-ir",
