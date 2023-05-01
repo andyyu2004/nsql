@@ -3,6 +3,7 @@ SELECT col1, col2 FROM (VALUES(1, 2), (2), (3, 4))
 ----
 expected 2 columns in row 1 of VALUES clause, got 1
 
+# default column names for VALUES clause is "col1", "col2", etc.
 query II
 SELECT col1, col2 FROM (VALUES(1, 2), (2, 3), (3, 4))
 ----

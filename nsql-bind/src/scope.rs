@@ -1,7 +1,7 @@
 // FIXME this file is a logical mess
 
 use anyhow::bail;
-use nsql_catalog::{Column, Container, Entity, EntityRef, Table};
+use nsql_catalog::{Column, Container, Entity, EntityRef};
 use nsql_core::schema::LogicalType;
 use nsql_core::Name;
 
@@ -68,10 +68,7 @@ impl Scope {
 
     pub fn lookup_column(&self, path: &Path) -> Result<(LogicalType, ir::TupleIndex)> {
         match path {
-            Path::Qualified { prefix, name } => {
-                let _fixme = self.tables.get(prefix).ok_or_else(|| unbound!(Table, prefix))?;
-                // FIXME we need to check the column actually belongs to the respective table
-                // let ty = self.columns.get(name).cloned().ok_or_else(|| unbound!(Column, path))?;
+            Path::Qualified { .. } => {
                 let idx = self
                     .columns
                     .iter()
@@ -82,14 +79,27 @@ impl Scope {
                 Ok((ty.clone(), ir::TupleIndex::new(idx)))
             }
             Path::Unqualified(column_name) => {
-                let idx = self
+                match &self
                     .columns
                     .iter()
-                    .position(|(p, _)| &p.name() == column_name)
-                    // FIXME need to detect whether it's ambigious rather than just finding first match
-                    .ok_or_else(|| unbound!(Column, path))?;
-                let (_, ty) = &self.columns[idx];
-                Ok((ty.clone(), ir::TupleIndex::new(idx)))
+                    .enumerate()
+                    .filter(|(_, (p, _))| &p.name() == column_name)
+                    .collect::<Vec<_>>()[..]
+                {
+                    [] => Err(unbound!(Column, path)),
+                    [(idx, (_, ty))] => Ok((ty.clone(), ir::TupleIndex::new(*idx))),
+                    matches => {
+                        bail!(
+                            "column `{}` is ambiguous, it could refer to any one of {}",
+                            column_name,
+                            matches
+                                .iter()
+                                .map(|(_, (p, _))| format!("`{}`", p))
+                                .collect::<Vec<_>>()
+                                .join(", ")
+                        )
+                    }
+                }
             }
         }
     }

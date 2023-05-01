@@ -255,7 +255,7 @@ impl std::fmt::Display for RecordKind {
 pub enum TestErrorKind {
     #[error("parse error: {0}")]
     ParseError(ParseErrorKind),
-    #[error("{kind} is expected to fail, but actually succeed:\n[SQL] {sql}")]
+    #[error("{kind} is expected to fail, but actually succeeded:\n[SQL] {sql}")]
     Ok { sql: String, kind: RecordKind },
     #[error("{kind} failed: {err}\n[SQL] {sql}")]
     Fail {
@@ -654,7 +654,23 @@ impl<D: AsyncDB> Runner<D> {
         match (record.clone(), self.apply_record(record).await) {
             (_, RecordOutput::Nothing) => {}
             // Tolerate the mismatched return type...
-            (Record::Statement { .. }, RecordOutput::Query { error: None, .. }) => {}
+            (
+                Record::Statement {
+                    sql,
+                    loc,
+                    expected_error,
+                    ..
+                },
+                RecordOutput::Query { error: None, .. },
+            ) => {
+                if expected_error.is_some() {
+                    return Err(TestErrorKind::Ok {
+                        sql,
+                        kind: RecordKind::Statement,
+                    }
+                    .at(loc));
+                }
+            }
             (
                 Record::Query {
                     expected_results,

@@ -1,0 +1,4 @@
+query error
+SELECT x FROM (VALUES(1, 2)) AS t(x, x)
+----
+column `x` is ambiguous, it could refer to any one of `t.x`, `t.x`
