@@ -1,0 +1,17 @@
+statement ok
+CREATE TABLE t(x int);
+
+statement ok con1
+BEGIN
+
+statement ok con1
+INSERT INTO t VALUES(1);
+
+query I con1
+SELECT x from t;
+----
+1
+
+query I con2
+SELECT x from t;
+----

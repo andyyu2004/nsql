@@ -15,7 +15,12 @@ fn test_heap_page_append() -> nsql_buffer::Result<()> {
         const N: u32 = 3000;
         for i in 0..N {
             let id = heap.append(&tx, &i).await?;
-            assert_eq!(heap.get(&tx, id).await?, i);
+            assert_eq!(
+                heap.get(&tx, id)
+                    .await?
+                    .expect("should be visible to the transaction as we inserted it"),
+                i
+            );
         }
 
         Ok(())

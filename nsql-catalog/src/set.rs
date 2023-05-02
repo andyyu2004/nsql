@@ -1,6 +1,6 @@
 use std::error::Error;
 use std::fmt;
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 
 use dashmap::mapref::entry::Entry;
 use dashmap::DashMap;
@@ -112,25 +112,27 @@ impl<T> Default for CatalogSet<T> {
     }
 }
 
+// FIXME hack implementation that will get by for now
+// This should eventually maybe share code with the heap tuple versioning
 #[derive(Debug)]
 struct VersionedEntry<T> {
-    versions: Vec<CatalogEntry<T>>,
+    versions: Vec<Arc<CatalogEntry<T>>>,
 }
 
 impl<T> VersionedEntry<T> {
     pub(crate) fn new(entry: CatalogEntry<T>) -> Self {
-        Self { versions: vec![entry] }
+        Self { versions: vec![Arc::new(entry)] }
     }
 }
 
 impl<T> VersionedEntry<T> {
     /// Get the latest visible version for the given transaction.
-    pub(crate) fn version_for_tx(&self, tx: &Transaction) -> Option<CatalogEntry<T>> {
-        self.versions.iter().rev().find(|version| tx.can_see(version.version())).cloned()
+    pub(crate) fn version_for_tx(&self, tx: &Transaction) -> Option<Arc<CatalogEntry<T>>> {
+        self.versions.iter().rev().find(|version| tx.can_see(version.version())).map(Arc::clone)
     }
 
-    pub(crate) fn latest(&self) -> CatalogEntry<T> {
-        self.versions.last().cloned().expect("must have at least one version")
+    pub(crate) fn latest(&self) -> Arc<CatalogEntry<T>> {
+        Arc::clone(self.versions.last().expect("must have at least one version"))
     }
 
     pub(crate) fn delete(&mut self, tx: &Transaction) {
@@ -147,7 +149,7 @@ impl<T> VersionedEntry<T> {
                 || self.versions.last().unwrap().version().xmin() < version.version().xmin(),
             "versions must be ordered by xmin"
         );
-        self.versions.push(version)
+        self.versions.push(Arc::new(version))
     }
 }
 
@@ -235,7 +237,7 @@ impl<T: CatalogEntity> CatalogSet<T> {
         }
     }
 
-    fn latest(&self, oid: Oid<T>) -> CatalogEntry<T> {
+    fn latest(&self, oid: Oid<T>) -> Arc<CatalogEntry<T>> {
         self.entries.get(&oid).unwrap().latest()
     }
 
@@ -247,14 +249,8 @@ impl<T: CatalogEntity> CatalogSet<T> {
 
 #[derive(Debug)]
 struct CatalogEntry<T> {
-    version: Arc<Version>,
+    version: RwLock<Version>,
     value: Arc<T>,
-}
-
-impl<T> Clone for CatalogEntry<T> {
-    fn clone(&self) -> Self {
-        Self { version: Arc::clone(&self.version), value: Arc::clone(&self.value) }
-    }
 }
 
 impl<T> CatalogEntry<T> {
@@ -264,14 +260,15 @@ impl<T> CatalogEntry<T> {
     }
 
     pub(crate) fn new(tx: &Transaction, value: T) -> Self {
-        Self { version: Arc::new(tx.version()), value: Arc::new(value) }
+        Self { version: RwLock::new(tx.version()), value: Arc::new(value) }
     }
 
-    pub(crate) fn version(&self) -> &Version {
-        &self.version
+    pub(crate) fn version(&self) -> Version {
+        *self.version.read().unwrap()
     }
 
     fn delete(&self, tx: &Transaction) {
-        self.version.set_xmax(tx.id())
+        let mut version = self.version.write().unwrap();
+        *version = version.delete_with(tx);
     }
 }

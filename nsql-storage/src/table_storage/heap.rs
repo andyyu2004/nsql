@@ -6,8 +6,9 @@ use futures_util::Stream;
 use nsql_buffer::{BufferHandle, Pool};
 use nsql_pager::PageIndex;
 use nsql_rkyv::{archived_size_of, DefaultSerializer};
-use nsql_transaction::Transaction;
+use nsql_transaction::{Transaction, Txid, Version};
 use rkyv::option::ArchivedOption;
+use rkyv::with::Inline;
 use rkyv::{Archive, Archived, Deserialize, Serialize};
 
 use self::view::{HeapView, HeapViewMut, Slot, SlotIndex};
@@ -86,23 +87,31 @@ pub struct HeapId {
     slot: SlotIndex,
 }
 
+#[derive(Archive, Serialize)]
+pub struct Versioned<'a, T> {
+    version: Version,
+    #[with(Inline)]
+    data: &'a T,
+}
+
 impl<T> Heap<T>
 where
     T: Serialize<DefaultSerializer>,
 {
-    pub async fn get(&self, _tx: &Transaction, id: HeapId) -> nsql_buffer::Result<T>
+    pub async fn get(&self, tx: &Transaction, id: HeapId) -> nsql_buffer::Result<Option<T>>
     where
         T::Archived: Deserialize<T, rkyv::Infallible>,
     {
+        // FIXME respect transaction
         let page = self.pool.load(id.page_idx).await?;
         let guard = page.read().await;
         let view = HeapView::<T>::view(&guard)?;
-        let tuple = view.get(id.slot);
-        Ok(tuple)
+        Ok(view.get(tx, id.slot))
     }
 
     pub async fn append(&self, tx: &Transaction, tuple: &T) -> nsql_buffer::Result<HeapId> {
-        let serialized = nsql_rkyv::to_bytes(tuple);
+        let serialized = nsql_rkyv::to_bytes(&Versioned { version: tx.version(), data: tuple });
+
         self.with_free_space(serialized.len() as u16, |page_idx, view| {
             let slot = unsafe { view.append_raw(tx, &serialized) }
                 .expect("there should be sufficient space as we checked the fsm");
@@ -131,13 +140,11 @@ where
         try_stream! {
             while let Some(idx) = next {
                 let mut tuples = vec![];
-                {
-                    let head = pool.load(idx).await?;
-                    let guard = head.read().await;
-                    let view = HeapView::<T>::view(&guard)?;
-                    view.scan_into(&tx, &mut tuples);
-                    next = view.right_link();
-                }
+                let head = pool.load(idx).await?;
+                let guard = head.read().await;
+                let view = HeapView::<T>::view(&guard)?;
+                view.scan_into(&tx, &mut tuples);
+                next = view.right_link();
                 yield tuples;
             }
         }

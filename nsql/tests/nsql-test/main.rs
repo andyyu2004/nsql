@@ -18,10 +18,12 @@ fn nsql_sqllogictest(path: &Path) -> nsql::Result<(), Box<dyn Error>> {
     })
 }
 
+// if you wish to debug a particular test, you can temporarily change the regex to match only that test
 datatest_stable::harness!(
     nsql_sqllogictest,
     format!("{}/{}", env!("CARGO_MANIFEST_DIR"), "tests/nsql-test/sqllogictest"),
     r"^.*/*.slt",
+    // r"^.*/tuple-isolation.slt",
 );
 
 #[derive(Debug, Eq, PartialEq, Clone)]

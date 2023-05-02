@@ -9,6 +9,7 @@ use crossbeam_skiplist::{SkipMap, SkipSet};
 use itertools::Itertools;
 use nsql_util::atomic::AtomicEnum;
 use nsql_util::{static_assert, static_assert_eq};
+use rkyv::{Archive, Archived, Deserialize, Serialize};
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -93,9 +94,29 @@ impl TransactionManager {
 }
 
 /// Opaque monotonically increasing transaction id
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[archive_attr(derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord))]
+#[archive(compare(PartialOrd, PartialEq))]
 #[repr(transparent)]
 pub struct Txid(NonZeroU64);
+
+impl From<Archived<Txid>> for Txid {
+    #[inline]
+    fn from(txid: Archived<Txid>) -> Self {
+        Self(txid.0.into())
+    }
+}
 
 // Should be 8 bytes due to niche optimization
 static_assert_eq!(std::mem::size_of::<Option<Txid>>(), 8);
@@ -183,11 +204,20 @@ impl From<TransactionState> for u8 {
     }
 }
 
+#[derive(Copy, Clone, Archive, Serialize, Deserialize)]
+#[archive_attr(derive(Copy, Clone, Debug))]
 pub struct Version {
     /// The transaction id that created this version
     xmin: Txid,
     /// The transaction id that modified/deleted this version
-    xmax: Atomic<Option<Txid>>,
+    // FIXME niche optimize this for rkyv
+    xmax: Option<Txid>,
+}
+
+impl From<Archived<Version>> for Version {
+    fn from(value: Archived<Version>) -> Self {
+        Self { xmin: value.xmin.into(), xmax: value.xmax.as_ref().map(|v| (*v).into()) }
+    }
 }
 
 impl fmt::Debug for Version {
@@ -209,12 +239,15 @@ impl Version {
 
     #[inline]
     pub fn xmax(&self) -> Option<Txid> {
-        self.xmax.load(atomic::Ordering::Acquire)
+        self.xmax
     }
 
+    /// Returns a new version that represents a delete operation by the given transaction
     #[inline]
-    pub fn set_xmax(&self, xmax: Txid) {
-        self.xmax.store(Some(xmax), atomic::Ordering::Release);
+    pub fn delete_with(&self, tx: &Transaction) -> Version {
+        assert!(self.xmin <= tx.id());
+        assert!(self.xmax.is_none(), "cannot delete a version twice");
+        Version { xmin: self.xmin, xmax: Some(tx.id()) }
     }
 }
 
@@ -268,12 +301,12 @@ impl Transaction {
 
     #[inline]
     pub fn version(&self) -> Version {
-        Version { xmin: self.id, xmax: Atomic::new(None) }
+        Version { xmin: self.id, xmax: None }
     }
 
     /// Returns whether `version` is visible to this transaction
     #[tracing::instrument]
-    pub fn can_see(&self, version: &Version) -> bool {
+    pub fn can_see(&self, version: Version) -> bool {
         debug_assert_eq!(
             self.shared.transactions.get(&self.id).unwrap().value().state(),
             TransactionState::Active,

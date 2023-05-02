@@ -10,6 +10,8 @@ use rkyv::option::ArchivedOption;
 use rkyv::rend::BigEndian;
 use rkyv::{Archive, Archived, Deserialize, Serialize};
 
+use super::Versioned;
+
 const HEAP_PAGE_HEADER_MAGIC: [u8; 4] = *b"HEAP";
 
 #[repr(C)]
@@ -41,14 +43,6 @@ impl<'a, T: Archive> HeapView<'a, T> {
         Ok(Self { header, slots, data, marker: PhantomData })
     }
 
-    pub fn scan_into(&self, _tx: &Transaction, acc: &mut Vec<T>)
-    where
-        T::Archived: Deserialize<T, rkyv::Infallible>,
-    {
-        acc.reserve(self.slots.len());
-        self.slots.iter().for_each(|&slot| acc.push(nsql_rkyv::deserialize(self.get_raw(slot))))
-    }
-
     #[inline]
     pub fn right_link(&self) -> Option<PageIndex> {
         self.header.right_link.as_ref().map(|&idx| idx.into())
@@ -60,16 +54,19 @@ impl<'a, T: Archive> HeapView<'a, T> {
     }
 
     #[inline]
-    pub fn get_raw(&self, slot: Slot) -> &T::Archived {
-        unsafe { rkyv::archived_root::<T>(&self[slot]) }
+    pub fn get_raw(&self, slot: Slot) -> &Archived<Versioned<'a, T>> {
+        unsafe { rkyv::archived_root::<Versioned<'a, T>>(&self[slot]) }
     }
 
+    /// Returns the value in the slot at the given index.
+    /// Returns `None` if the transaction cannot see the version of the value.
     #[inline]
-    pub fn get(&self, idx: SlotIndex) -> T
+    pub fn get(&self, tx: &Transaction, idx: SlotIndex) -> Option<T>
     where
         T::Archived: Deserialize<T, rkyv::Infallible>,
     {
-        nsql_rkyv::deserialize(self.get_raw(self.slots[idx.0 as usize]))
+        let raw = self.get_raw(self.slots[idx.0 as usize]);
+        tx.can_see(raw.version.into()).then(|| nsql_rkyv::deserialize(&raw.data))
     }
 
     fn adjusted_slot_range(&self, slot: Slot) -> Range<usize> {
@@ -85,6 +82,22 @@ impl<'a, T: Archive> HeapView<'a, T> {
     }
 }
 
+impl<'a, T: Archive> HeapView<'a, T> {
+    #[tracing::instrument(skip(self, acc))]
+    pub fn scan_into(&self, tx: &Transaction, acc: &mut Vec<T>)
+    where
+        T::Archived: Deserialize<T, rkyv::Infallible>,
+    {
+        acc.reserve(self.slots.len());
+        self.slots.iter().for_each(|&slot| {
+            let raw = self.get_raw(slot);
+            if tx.can_see(raw.version.into()) {
+                acc.push(nsql_rkyv::deserialize(&raw.data));
+            }
+        })
+    }
+}
+
 impl<'a, T: Archive> Index<Slot> for HeapView<'a, T> {
     type Output = [u8];
 
@@ -93,11 +106,11 @@ impl<'a, T: Archive> Index<Slot> for HeapView<'a, T> {
     }
 }
 
-impl<'a, T: Archive> Index<SlotIndex> for HeapView<'a, T> {
-    type Output = T::Archived;
+impl<'a, T: Archive + 'a> Index<SlotIndex> for HeapView<'a, T> {
+    type Output = Archived<Versioned<'a, T>>;
 
     fn index(&self, idx: SlotIndex) -> &Self::Output {
-        unsafe { rkyv::archived_root::<T>(&self[self.slots[idx.0 as usize]]) }
+        unsafe { rkyv::archived_root::<Versioned<'a, T>>(&self[self.slots[idx.0 as usize]]) }
     }
 }
 
@@ -134,8 +147,8 @@ impl<'a, T: Archive> IndexMut<Slot> for HeapViewMut<'a, T> {
     }
 }
 
-impl<'a, T: Archive> Index<SlotIndex> for HeapViewMut<'a, T> {
-    type Output = T::Archived;
+impl<'a, T: Archive + 'a> Index<SlotIndex> for HeapViewMut<'a, T> {
+    type Output = Archived<Versioned<'a, T>>;
 
     fn index(&self, index: SlotIndex) -> &Self::Output {
         &(**self)[index]
@@ -194,7 +207,11 @@ impl<'a, T: Archive> HeapViewMut<'a, T> {
         Ok(Self { header, slots, data, marker: PhantomData })
     }
 
-    pub fn append(&mut self, tx: &Transaction, value: &T) -> Result<SlotIndex, HeapPageFull>
+    pub fn append(
+        &mut self,
+        tx: &Transaction,
+        value: &Versioned<'a, T>,
+    ) -> Result<SlotIndex, HeapPageFull>
     where
         T: Serialize<DefaultSerializer>,
     {
@@ -202,7 +219,7 @@ impl<'a, T: Archive> HeapViewMut<'a, T> {
         unsafe { self.append_raw(tx, &serialized_value) }
     }
 
-    // Safety: the caller must ensure that the serialized value is a valid archived `T`
+    // Safety: the caller must ensure that the serialized value is a valid archived `Versioned<'a, T>`
     pub unsafe fn append_raw(
         &mut self,
         _tx: &Transaction,

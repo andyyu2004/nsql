@@ -57,10 +57,5 @@ impl TableStorageInfo {
     }
 }
 
-#[derive(Debug, PartialEq, rkyv::Archive, rkyv::Serialize)]
-struct HeapTuple {
-    tuple: Tuple,
-}
-
 #[cfg(test)]
 mod tests;
