@@ -312,6 +312,9 @@ impl Transaction {
             TransactionState::Active,
         );
 
+        // FIXME these needs a large optimization pass as it will be an extremely hot path
+        // We should avoid reading from `shared` until strictly necessary
+
         let xmin_tx = self.shared.transactions.get(&version.xmin).unwrap();
         let is_visible = match xmin_tx.value().state() {
             // The transaction that created this version is still active, `version` is not visible
@@ -326,8 +329,14 @@ impl Transaction {
 
                 self.id == version.xmin && version.xmax().is_none()
             }
-            // The transaction that created this version committed, `version` is visible
+            // The transaction that created this version committed, `version` may be visible
             TransactionState::Committed => match version.xmax() {
+                // The version has not been deleted since it was created, `version` is visible if both of the following hold:
+                // - The transaction that created it committed before we started
+                // - The transaction was not active while we took our snapshot
+                // We need both conditions as they do not rule out the case where the transaction
+                // started after us (and therefore is not in our snapshot), but committed before us
+                None => version.xmin < self.id && !self.snapshot.active().contains(&version.xmin),
                 Some(xmax) => {
                     let xmax_tx = self.shared.transactions.get(&xmax).unwrap();
                     match xmax_tx.value().state() {
@@ -345,8 +354,6 @@ impl Transaction {
                         TransactionState::Aborted | TransactionState::RolledBack => true,
                     }
                 }
-                // The version has not been deleted since it was created, `version` is visible
-                None => true,
             },
             // The transaction that created this version aborted, `version` is not visible
             TransactionState::Aborted | TransactionState::RolledBack => false,
