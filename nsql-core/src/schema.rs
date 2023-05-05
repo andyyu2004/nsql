@@ -1,3 +1,4 @@
+use std::fmt;
 use std::sync::OnceLock;
 
 use nsql_serde::{StreamDeserialize, StreamDeserializer, StreamSerialize, StreamSerializer};
@@ -44,6 +45,17 @@ pub enum LogicalType {
     Int,
     Decimal,
     Text,
+}
+
+impl fmt::Display for LogicalType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            LogicalType::Bool => write!(f, "boolean"),
+            LogicalType::Int => write!(f, "int"),
+            LogicalType::Decimal => write!(f, "decimal"),
+            LogicalType::Text => write!(f, "text"),
+        }
+    }
 }
 
 impl StreamSerialize for LogicalType {

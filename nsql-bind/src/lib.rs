@@ -317,14 +317,10 @@ impl Binder {
         if let Some(limit) = limit {
             // LIMIT is currently not allowed to reference any columns
             let limit_expr = self.bind_expr(&Scope::default(), limit)?;
-            // FIXME implement general coercion mechanism between types
             let limit = match limit_expr.kind {
-                ir::ExprKind::Literal(lit) => match lit {
-                    ir::Literal::Null => u64::MAX,
-                    ir::Literal::Bool(b) => b as u64,
-                    ir::Literal::Decimal(d) => d.floor().try_into().unwrap(),
-                    ir::Literal::Text(_) => todo!("type error"),
-                },
+                // if the limit is `NULL` we treat is as unlimited (i.e. `u64::MAX`)
+                // FIXME we could also just not apply the limit wrapper in this case
+                ir::ExprKind::Value(val) => val.cast(u64::MAX)?,
                 ir::ExprKind::ColumnRef(..) => {
                     unreachable!("this would have failed binding as we gave it an empty scope")
                 }
@@ -529,7 +525,7 @@ impl Binder {
 
     fn bind_expr(&self, scope: &Scope, expr: &ast::Expr) -> Result<ir::Expr> {
         let (logical_type, kind) = match expr {
-            ast::Expr::Value(literal) => self.bind_literal_expr(literal),
+            ast::Expr::Value(literal) => self.bind_value_expr(literal),
             ast::Expr::Identifier(ident) => {
                 let (ty, idx) =
                     scope.lookup_column(&Path::Unqualified(ident.value.clone().into()))?;
@@ -547,28 +543,27 @@ impl Binder {
         Ok(ir::Expr { logical_type, kind })
     }
 
-    fn bind_literal_expr(&self, literal: &ast::Value) -> (LogicalType, ir::ExprKind) {
-        let (ty, literal) = self.bind_literal(literal);
-        (ty, ir::ExprKind::Literal(literal))
+    fn bind_value_expr(&self, value: &ast::Value) -> (LogicalType, ir::ExprKind) {
+        let lit = self.bind_value(value);
+        (lit.logical_type(), ir::ExprKind::Value(lit))
     }
 
-    fn bind_literal(&self, literal: &ast::Value) -> (LogicalType, ir::Literal) {
-        match literal {
+    fn bind_value(&self, val: &ast::Value) -> ir::Value {
+        match val {
             ast::Value::Number(decimal, b) => {
                 assert!(!b, "what does this bool mean?");
                 let decimal = Decimal::from_str(decimal)
                     .expect("this should be a parse error if the decimal is not valid");
-                (LogicalType::Decimal, ir::Literal::Decimal(decimal))
+                ir::Value::Decimal(decimal)
             }
-            ast::Value::SingleQuotedString(s) => (LogicalType::Text, ir::Literal::Text(s.into())),
+            ast::Value::SingleQuotedString(s) => ir::Value::Text(s.into()),
             ast::Value::DollarQuotedString(_) => todo!(),
             ast::Value::EscapedStringLiteral(_) => todo!(),
             ast::Value::NationalStringLiteral(_) => todo!(),
             ast::Value::HexStringLiteral(_) => todo!(),
             ast::Value::DoubleQuotedString(_) => todo!(),
-            ast::Value::Boolean(b) => (LogicalType::Bool, ir::Literal::Bool(*b)),
-            // FIXME default null to have type int for now
-            ast::Value::Null => (LogicalType::Int, ir::Literal::Null),
+            ast::Value::Boolean(b) => ir::Value::Bool(*b),
+            ast::Value::Null => ir::Value::Null,
             ast::Value::Placeholder(_) => todo!(),
             ast::Value::UnQuotedString(_) => todo!(),
             ast::Value::SingleQuotedByteStringLiteral(_) => todo!(),

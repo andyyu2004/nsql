@@ -3,7 +3,8 @@ use std::sync::Arc;
 
 use nsql_catalog::{Catalog, Column, Container, EntityRef, Namespace, Oid, Table, Transaction};
 use nsql_core::schema::LogicalType;
-use nsql_storage::tuple::{Literal, TupleIndex};
+use nsql_storage::tuple::TupleIndex;
+use nsql_storage::value::Value;
 
 #[derive(Debug, Clone)]
 pub enum QueryPlan {
@@ -40,7 +41,7 @@ pub struct Expr {
 
 #[derive(Debug, Clone)]
 pub enum ExprKind {
-    Literal(Literal),
+    Value(Value),
     ColumnRef(TupleIndex),
 }
 

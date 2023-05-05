@@ -8,3 +8,8 @@ query B
 SELECT * FROM t WHERE x;
 ----
 true
+
+query B
+SELECT * FROM t WHERE NULL;
+----
+

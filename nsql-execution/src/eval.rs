@@ -1,4 +1,5 @@
-use nsql_storage::tuple::{Literal, Tuple, Value};
+use nsql_storage::tuple::Tuple;
+use nsql_storage::value::Value;
 
 #[derive(Debug)]
 pub(crate) struct Evaluator {}
@@ -15,11 +16,11 @@ impl Evaluator {
 
     pub fn evaluate_expr(&self, input: &Tuple, expr: &ir::Expr) -> Value {
         match &expr.kind {
-            ir::ExprKind::Literal(lit) => match lit {
-                ir::Literal::Null => Value::Literal(Literal::Null),
-                ir::Literal::Bool(b) => Value::Literal(Literal::Bool(*b)),
-                ir::Literal::Decimal(d) => Value::Literal(Literal::Decimal(*d)),
-                ir::Literal::Text(s) => Value::Literal(Literal::Text(s.clone())),
+            ir::ExprKind::Value(lit) => match lit {
+                ir::Value::Null => Value::Null,
+                ir::Value::Bool(b) => Value::Bool(*b),
+                ir::Value::Decimal(d) => Value::Decimal(*d),
+                ir::Value::Text(s) => Value::Text(s.clone()),
             },
             ir::ExprKind::ColumnRef(idx) => input[*idx].clone(),
         }

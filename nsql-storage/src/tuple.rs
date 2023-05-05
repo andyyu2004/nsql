@@ -1,10 +1,11 @@
-use std::fmt;
 use std::ops::Index;
 use std::sync::Arc;
 
 use nsql_core::schema::{PhysicalType, Schema};
 use nsql_serde::{StreamDeserialize, StreamDeserializeWith, StreamDeserializer};
 pub use rust_decimal::Decimal;
+
+use crate::value::Value;
 
 pub struct TupleDeserializationContext {
     pub schema: Arc<Schema>,
@@ -28,11 +29,11 @@ impl StreamDeserializeWith for Tuple {
             let value = match attribute.physical_type() {
                 PhysicalType::Bool => {
                     let b = bool::deserialize(de).await?;
-                    Value::Literal(Literal::Bool(b))
+                    Value::Bool(b)
                 }
                 PhysicalType::Decimal => {
                     let d = <Decimal as StreamDeserialize>::deserialize(de).await?;
-                    Value::Literal(Literal::Decimal(d))
+                    Value::Decimal(d)
                 }
                 PhysicalType::Int32 => todo!(),
             };
@@ -89,37 +90,5 @@ impl TupleIndex {
     #[inline]
     pub fn new(idx: usize) -> Self {
         Self(idx)
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
-pub enum Value {
-    Literal(Literal),
-}
-
-#[derive(Debug, Clone, PartialEq, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
-pub enum Literal {
-    Null,
-    Bool(bool),
-    Decimal(Decimal),
-    Text(String),
-}
-
-impl fmt::Display for Value {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Value::Literal(literal) => write!(f, "{literal}"),
-        }
-    }
-}
-
-impl fmt::Display for Literal {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Literal::Null => write!(f, "NULL"),
-            Literal::Bool(b) => write!(f, "{b}"),
-            Literal::Decimal(d) => write!(f, "{d}"),
-            Literal::Text(s) => write!(f, "{s}"),
-        }
     }
 }

@@ -1,4 +1,4 @@
-use nsql_storage::tuple::{Literal, Value};
+use nsql_storage::value::Value;
 
 use super::*;
 
@@ -25,12 +25,11 @@ impl PhysicalOperator for PhysicalSelection {
         _ctx: &ExecutionContext,
         input: Tuple,
     ) -> ExecutionResult<OperatorState<Tuple>> {
-        match self.evaluator.evaluate_expr(&input, &self.predicate) {
-            Value::Literal(Literal::Bool(b)) => match b {
-                false => Ok(OperatorState::Continue),
-                true => Ok(OperatorState::Yield(input)),
-            },
-            _ => unreachable!(),
+        let value = self.evaluator.evaluate_expr(&input, &self.predicate);
+        // A null predicate is treated as false.
+        match value.cast::<bool>(false)? {
+            false => Ok(OperatorState::Continue),
+            true => Ok(OperatorState::Yield(input)),
         }
     }
 }
