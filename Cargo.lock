@@ -1234,7 +1234,6 @@ dependencies = [
  "nsql-catalog",
  "nsql-core",
  "nsql-storage",
- "rust_decimal",
 ]
 
 [[package]]

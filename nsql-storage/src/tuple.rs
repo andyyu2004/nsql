@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use nsql_core::schema::{PhysicalType, Schema};
 use nsql_serde::{StreamDeserialize, StreamDeserializeWith, StreamDeserializer};
-use rust_decimal::Decimal;
+pub use rust_decimal::Decimal;
 
 pub struct TupleDeserializationContext {
     pub schema: Arc<Schema>,

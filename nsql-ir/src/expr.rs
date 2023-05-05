@@ -1,11 +1,9 @@
-use std::fmt;
 use std::ops::Deref;
 use std::sync::Arc;
 
 use nsql_catalog::{Catalog, Column, Container, EntityRef, Namespace, Oid, Table, Transaction};
 use nsql_core::schema::LogicalType;
-use nsql_storage::tuple::TupleIndex;
-use rust_decimal::Decimal;
+use nsql_storage::tuple::{Literal, TupleIndex};
 
 #[derive(Debug, Clone)]
 pub enum QueryPlan {
@@ -95,25 +93,6 @@ impl EntityRef for ColumnRef {
     #[inline]
     fn entity_oid(self) -> Oid<Self::Entity> {
         self.column
-    }
-}
-
-#[derive(Debug, Clone)]
-pub enum Literal {
-    Null,
-    Bool(bool),
-    Decimal(Decimal),
-    Text(String),
-}
-
-impl fmt::Display for Literal {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Literal::Null => write!(f, "NULL"),
-            Literal::Bool(b) => write!(f, "{b}"),
-            Literal::Decimal(n) => write!(f, "{n}"),
-            Literal::Text(s) => write!(f, "{s}"),
-        }
     }
 }
 
