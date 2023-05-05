@@ -245,7 +245,8 @@ impl Binder {
     fn lower_ty(&self, ty: &ast::DataType) -> Result<LogicalType> {
         match ty {
             ast::DataType::Int(width) if width.is_none() => Ok(LogicalType::Int),
-            ty => bail!("type: {:?}", ty),
+            ast::DataType::Boolean => Ok(LogicalType::Bool),
+            ty => bail!("unhandled type: {:?}", ty),
         }
     }
 
@@ -303,7 +304,7 @@ impl Binder {
         }
     }
 
-    fn bind_query(&self, scope: &Scope, query: &ast::Query) -> Result<(Scope, ir::TableExpr)> {
+    fn bind_query(&self, scope: &Scope, query: &ast::Query) -> Result<(Scope, Box<ir::QueryPlan>)> {
         let ast::Query { with, body, order_by, limit, offset, fetch, locks } = query;
         not_implemented!(with.is_some());
         not_implemented!(!order_by.is_empty());
@@ -338,17 +339,14 @@ impl Binder {
         &self,
         scope: &Scope,
         body: &ast::SetExpr,
-    ) -> Result<(Scope, ir::TableExpr)> {
+    ) -> Result<(Scope, Box<ir::QueryPlan>)> {
         let (scope, expr) = match body {
-            ast::SetExpr::Select(sel) => {
-                let (scope, sel) = self.bind_select(scope, sel)?;
-                (scope, ir::TableExpr::Selection(sel))
-            }
+            ast::SetExpr::Select(sel) => self.bind_select(scope, sel)?,
             ast::SetExpr::Query(_) => todo!(),
             ast::SetExpr::SetOperation { .. } => todo!(),
             ast::SetExpr::Values(values) => {
                 let (scope, values) = self.bind_values(scope, values)?;
-                (scope, ir::TableExpr::Values(values))
+                (scope, Box::new(ir::QueryPlan::Values(values)))
             }
             ast::SetExpr::Insert(_) => todo!(),
             ast::SetExpr::Table(_) => todo!(),
@@ -358,7 +356,11 @@ impl Binder {
         Ok((scope, expr))
     }
 
-    fn bind_select(&self, scope: &Scope, select: &ast::Select) -> Result<(Scope, ir::Selection)> {
+    fn bind_select(
+        &self,
+        scope: &Scope,
+        select: &ast::Select,
+    ) -> Result<(Scope, Box<ir::QueryPlan>)> {
         let ast::Select {
             distinct,
             projection,
@@ -378,7 +380,6 @@ impl Binder {
         not_implemented!(top.is_some());
         not_implemented!(into.is_some());
         not_implemented!(!lateral_views.is_empty());
-        not_implemented!(selection.is_some());
         not_implemented!(!group_by.is_empty());
         not_implemented!(!cluster_by.is_empty());
         not_implemented!(!distribute_by.is_empty());
@@ -386,11 +387,16 @@ impl Binder {
         not_implemented!(having.is_some());
         not_implemented!(qualify.is_some());
 
-        let (scope, source) = match &from[..] {
-            [] => (scope.clone(), Box::new(ir::TableExpr::Empty)),
+        let (scope, mut source) = match &from[..] {
+            [] => (scope.clone(), Box::new(ir::QueryPlan::Empty)),
             [table] => self.bind_joint_tables(scope, table)?,
             _ => todo!(),
         };
+
+        if let Some(selection) = selection {
+            let predicate = self.bind_expr(&scope, selection)?;
+            source = source.select(predicate);
+        }
 
         let projection = projection
             .iter()
@@ -398,14 +404,14 @@ impl Binder {
             .flatten_ok()
             .collect::<Result<Vec<_>, _>>()?;
 
-        Ok((scope, ir::Selection { source, projection }))
+        Ok((scope, source.project(projection)))
     }
 
     fn bind_joint_tables(
         &self,
         scope: &Scope,
         tables: &ast::TableWithJoins,
-    ) -> Result<(Scope, Box<ir::TableExpr>)> {
+    ) -> Result<(Scope, Box<ir::QueryPlan>)> {
         not_implemented!(!tables.joins.is_empty());
         let table = &tables.relation;
         self.bind_table_factor(scope, table)
@@ -415,14 +421,14 @@ impl Binder {
         &self,
         scope: &Scope,
         table: &ast::TableFactor,
-    ) -> Result<(Scope, Box<ir::TableExpr>)> {
+    ) -> Result<(Scope, Box<ir::QueryPlan>)> {
         let (scope, table_expr) = match table {
             ast::TableFactor::Table { name, alias, args, with_hints } => {
                 not_implemented!(args.is_some());
                 not_implemented!(!with_hints.is_empty());
 
                 let (scope, table_ref) = self.bind_table(scope, name, alias.as_ref())?;
-                (scope, ir::TableExpr::TableRef(table_ref))
+                (scope, Box::new(ir::QueryPlan::TableRef(table_ref)))
             }
             ast::TableFactor::Derived { lateral, subquery, alias } => {
                 not_implemented!(*lateral);
@@ -440,7 +446,7 @@ impl Binder {
             ast::TableFactor::Pivot { .. } => todo!(),
         };
 
-        Ok((scope, Box::new(table_expr)))
+        Ok((scope, table_expr))
     }
 
     fn bind_table(
@@ -534,7 +540,8 @@ impl Binder {
                 let (ty, idx) = scope.lookup_column(&ident)?;
                 (ty, ir::ExprKind::ColumnRef(idx))
             }
-            _ => todo!(),
+            ast::Expr::BinaryOp { left, op, right } => todo!(),
+            _ => todo!("todo expr: {:?}", expr),
         };
 
         Ok(ir::Expr { logical_type, kind })

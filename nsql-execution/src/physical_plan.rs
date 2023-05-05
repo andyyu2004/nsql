@@ -4,6 +4,7 @@ mod physical_drop;
 mod physical_insert;
 mod physical_limit;
 mod physical_projection;
+mod physical_selection;
 mod physical_show;
 mod physical_table_scan;
 mod physical_transaction;
@@ -19,6 +20,7 @@ use self::physical_drop::PhysicalDrop;
 use self::physical_insert::PhysicalInsert;
 use self::physical_limit::PhysicalLimit;
 use self::physical_projection::PhysicalProjection;
+use self::physical_selection::PhysicalSelection;
 use self::physical_show::PhysicalShow;
 use self::physical_table_scan::PhysicalTableScan;
 use self::physical_transaction::PhysicalTransaction;
@@ -69,8 +71,10 @@ impl PhysicalPlanner {
                 let source = self.plan_node(source);
                 PhysicalProjection::plan(source, projection)
             }
-            Plan::Dummy => todo!(),
             Plan::Limit { source, limit } => PhysicalLimit::plan(self.plan_node(source), limit),
+            Plan::Selection { source, predicate } => {
+                PhysicalSelection::plan(self.plan_node(source), predicate)
+            }
         }
     }
 }

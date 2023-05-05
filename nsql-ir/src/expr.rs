@@ -8,25 +8,30 @@ use nsql_storage::tuple::TupleIndex;
 use rust_decimal::Decimal;
 
 #[derive(Debug, Clone)]
-pub enum TableExpr {
+pub enum QueryPlan {
     TableRef(TableRef),
-    Selection(Selection),
+    Projection { source: Box<QueryPlan>, projection: Vec<Expr> },
+    Selection { source: Box<QueryPlan>, predicate: Expr },
     Values(Values),
-    Limit(Box<TableExpr>, u64),
+    Limit(Box<QueryPlan>, u64),
     Empty,
 }
 
-impl TableExpr {
+impl QueryPlan {
     #[inline]
-    pub fn limit(self, limit: u64) -> TableExpr {
-        TableExpr::Limit(Box::new(self), limit)
+    pub fn limit(self: Box<Self>, limit: u64) -> Box<QueryPlan> {
+        Box::new(QueryPlan::Limit(self, limit))
     }
-}
 
-#[derive(Debug, Clone)]
-pub struct Selection {
-    pub source: Box<TableExpr>,
-    pub projection: Vec<Expr>,
+    #[inline]
+    pub fn select(self: Box<Self>, predicate: Expr) -> Box<QueryPlan> {
+        Box::new(QueryPlan::Selection { source: self, predicate })
+    }
+
+    #[inline]
+    pub fn project(self: Box<Self>, projection: Vec<Expr>) -> Box<QueryPlan> {
+        Box::new(QueryPlan::Projection { source: self, projection })
+    }
 }
 
 #[derive(Debug, Clone)]

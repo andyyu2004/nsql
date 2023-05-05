@@ -46,11 +46,12 @@ impl Executor {
                 break;
             }
 
-            for mut tuple in chunk {
+            'outer: for mut tuple in chunk {
                 for op in &pipeline.operators {
                     tuple = match op.execute(ctx, tuple).await? {
-                        OperatorState::Continue(tuple) => tuple,
-                        // Once an operator completes, the entire pipeline is finished
+                        OperatorState::Yield(tuple) => tuple,
+                        OperatorState::Continue => break 'outer,
+                        // Once an operator completes, the entire pipeline is finishedK
                         OperatorState::Done => return Ok(()),
                     };
                 }
@@ -73,9 +74,9 @@ async fn execute_root_pipeline(
 
 pub async fn execute(ctx: &ExecutionContext, plan: PhysicalPlan) -> ExecutionResult<Vec<Tuple>> {
     let sink = Arc::new(OutputSink::default());
-    let pipeline = build_pipelines(Arc::clone(&sink) as Arc<dyn PhysicalSink>, plan);
+    let root_pipeline = build_pipelines(Arc::clone(&sink) as Arc<dyn PhysicalSink>, plan);
 
-    execute_root_pipeline(ctx, pipeline).await?;
+    execute_root_pipeline(ctx, root_pipeline).await?;
 
     Ok(Arc::try_unwrap(sink).expect("should be last reference").tuples.into_inner())
 }

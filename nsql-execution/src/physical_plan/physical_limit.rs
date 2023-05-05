@@ -28,7 +28,7 @@ impl PhysicalOperator for PhysicalLimit {
             return Ok(OperatorState::Done);
         }
 
-        Ok(OperatorState::Continue(input))
+        Ok(OperatorState::Yield(input))
     }
 }
 

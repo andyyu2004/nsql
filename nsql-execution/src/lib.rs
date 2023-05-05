@@ -123,8 +123,10 @@ impl IntoIterator for Chunk {
 
 #[derive(Debug)]
 enum OperatorState<T> {
-    /// The operator is ready to process the next input
-    Continue(T),
+    /// The operator has an output is ready to process the next input
+    Yield(T),
+    /// The operator produced no output for the given input and is ready to process the next input
+    Continue,
     /// The operator is done processing input tuples and will never produce more output
     Done,
 }

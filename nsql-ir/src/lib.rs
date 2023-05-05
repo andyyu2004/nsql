@@ -48,10 +48,10 @@ pub enum Stmt {
     Insert {
         table_ref: TableRef,
         projection: Vec<Expr>,
-        source: TableExpr,
+        source: Box<QueryPlan>,
         returning: Option<Vec<Expr>>,
     },
-    Query(TableExpr),
+    Query(Box<QueryPlan>),
 }
 
 #[derive(Debug, Clone)]

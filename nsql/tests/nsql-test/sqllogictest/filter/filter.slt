@@ -1,0 +1,10 @@
+statement ok
+CREATE TABLE t (x boolean);
+
+statement ok
+INSERT INTO t VALUES (false), (true), (false);
+
+query B
+SELECT * FROM t WHERE x;
+----
+true
