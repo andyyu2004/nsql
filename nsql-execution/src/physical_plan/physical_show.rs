@@ -2,7 +2,7 @@ use std::sync::atomic::{self, AtomicBool};
 use std::sync::Arc;
 
 use nsql_catalog::{Container, Entity, Namespace, Table};
-use nsql_storage::value::Value;
+use nsql_core::value::Value;
 
 use super::*;
 

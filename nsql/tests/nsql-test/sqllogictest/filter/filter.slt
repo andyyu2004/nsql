@@ -13,3 +13,7 @@ query B
 SELECT * FROM t WHERE NULL;
 ----
 
+query error
+SELECT * FROM t WHERE 1;
+----
+expected predicate type of WHERE to be of type bool, got type int

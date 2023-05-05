@@ -47,6 +47,7 @@ impl ColumnType for TypeWrapper {
             LogicalType::Bool => 'B',
             LogicalType::Decimal => 'D',
             LogicalType::Text => 'T',
+            LogicalType::Null => todo!(),
         }
     }
 }

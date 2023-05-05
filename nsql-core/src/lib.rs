@@ -3,6 +3,7 @@
 #![allow(incomplete_features)]
 
 pub mod schema;
+pub mod value;
 
 use std::borrow::Borrow;
 use std::fmt;

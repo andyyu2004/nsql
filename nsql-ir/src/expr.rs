@@ -3,14 +3,14 @@ use std::sync::Arc;
 
 use nsql_catalog::{Catalog, Column, Container, EntityRef, Namespace, Oid, Table, Transaction};
 use nsql_core::schema::LogicalType;
+use nsql_core::value::Value;
 use nsql_storage::tuple::TupleIndex;
-use nsql_storage::value::Value;
 
 #[derive(Debug, Clone)]
 pub enum QueryPlan {
     TableRef(TableRef),
     Projection { source: Box<QueryPlan>, projection: Vec<Expr> },
-    Selection { source: Box<QueryPlan>, predicate: Expr },
+    Filter { source: Box<QueryPlan>, predicate: Expr },
     Values(Values),
     Limit(Box<QueryPlan>, u64),
     Empty,
@@ -23,8 +23,8 @@ impl QueryPlan {
     }
 
     #[inline]
-    pub fn select(self: Box<Self>, predicate: Expr) -> Box<QueryPlan> {
-        Box::new(QueryPlan::Selection { source: self, predicate })
+    pub fn filter(self: Box<Self>, predicate: Expr) -> Box<QueryPlan> {
+        Box::new(QueryPlan::Filter { source: self, predicate })
     }
 
     #[inline]
@@ -35,7 +35,7 @@ impl QueryPlan {
 
 #[derive(Debug, Clone)]
 pub struct Expr {
-    pub logical_type: LogicalType,
+    pub ty: LogicalType,
     pub kind: ExprKind,
 }
 

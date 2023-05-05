@@ -2,10 +2,8 @@ use std::ops::Index;
 use std::sync::Arc;
 
 use nsql_core::schema::{PhysicalType, Schema};
+use nsql_core::value::{Decimal, Value};
 use nsql_serde::{StreamDeserialize, StreamDeserializeWith, StreamDeserializer};
-pub use rust_decimal::Decimal;
-
-use crate::value::Value;
 
 pub struct TupleDeserializationContext {
     pub schema: Arc<Schema>,

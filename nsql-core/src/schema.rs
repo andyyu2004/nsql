@@ -2,7 +2,9 @@ use std::fmt;
 use std::sync::OnceLock;
 
 use nsql_serde::{StreamDeserialize, StreamDeserializer, StreamSerialize, StreamSerializer};
+use rust_decimal::Decimal;
 
+use crate::value::{Cast, Value};
 use crate::Name;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -41,10 +43,27 @@ impl Attribute {
 
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub enum LogicalType {
+    Null,
     Bool,
     Int,
     Decimal,
     Text,
+}
+
+impl LogicalType {
+    #[inline]
+    pub fn can_cast_to<T: Cast>(&self) -> bool {
+        // We compute castability by attempting to cast a value of the given type to the given type
+        let value = match self {
+            LogicalType::Bool => Value::Bool(false),
+            LogicalType::Int => Value::Int(0),
+            LogicalType::Decimal => Value::Decimal(Decimal::ZERO),
+            LogicalType::Text => Value::Text(String::new()),
+            LogicalType::Null => Value::Null,
+        };
+
+        value.cast_non_null::<T>().is_ok()
+    }
 }
 
 impl fmt::Display for LogicalType {
@@ -54,6 +73,7 @@ impl fmt::Display for LogicalType {
             LogicalType::Int => write!(f, "int"),
             LogicalType::Decimal => write!(f, "decimal"),
             LogicalType::Text => write!(f, "text"),
+            LogicalType::Null => write!(f, "null"),
         }
     }
 }
@@ -87,6 +107,7 @@ impl<'a> From<&'a LogicalType> for PhysicalType {
             LogicalType::Int => PhysicalType::Int32,
             LogicalType::Decimal => PhysicalType::Decimal,
             LogicalType::Text => todo!(),
+            LogicalType::Null => todo!(),
         }
     }
 }

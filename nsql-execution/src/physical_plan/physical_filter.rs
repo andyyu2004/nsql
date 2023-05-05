@@ -1,15 +1,13 @@
-use nsql_storage::value::Value;
-
 use super::*;
 
 #[derive(Debug)]
-pub struct PhysicalSelection {
+pub struct PhysicalFilter {
     children: Vec<Arc<dyn PhysicalNode>>,
     predicate: ir::Expr,
     evaluator: Evaluator,
 }
 
-impl PhysicalSelection {
+impl PhysicalFilter {
     pub(crate) fn plan(
         source: Arc<dyn PhysicalNode>,
         predicate: ir::Expr,
@@ -19,7 +17,7 @@ impl PhysicalSelection {
 }
 
 #[async_trait::async_trait]
-impl PhysicalOperator for PhysicalSelection {
+impl PhysicalOperator for PhysicalFilter {
     async fn execute(
         &self,
         _ctx: &ExecutionContext,
@@ -27,16 +25,16 @@ impl PhysicalOperator for PhysicalSelection {
     ) -> ExecutionResult<OperatorState<Tuple>> {
         let value = self.evaluator.evaluate_expr(&input, &self.predicate);
         // A null predicate is treated as false.
-        match value.cast::<bool>(false)? {
+        match value.cast::<bool>(false).expect("this should have failed during planning") {
             false => Ok(OperatorState::Continue),
             true => Ok(OperatorState::Yield(input)),
         }
     }
 }
 
-impl PhysicalNode for PhysicalSelection {
+impl PhysicalNode for PhysicalFilter {
     fn desc(&self) -> &'static str {
-        "selection"
+        "filter"
     }
 
     fn children(&self) -> &[Arc<dyn PhysicalNode>] {

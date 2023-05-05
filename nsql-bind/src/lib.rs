@@ -391,7 +391,14 @@ impl Binder {
 
         if let Some(selection) = selection {
             let predicate = self.bind_expr(&scope, selection)?;
-            source = source.select(predicate);
+            // We intentionally are being strict here and only allow boolean predicates rather than
+            // anything that can be cast to a boolean.
+            ensure!(
+                matches!(predicate.ty, LogicalType::Bool | LogicalType::Null),
+                "expected predicate type of WHERE to be of type bool, got type {}",
+                predicate.ty
+            );
+            source = source.filter(predicate);
         }
 
         let projection = projection
@@ -524,7 +531,7 @@ impl Binder {
     }
 
     fn bind_expr(&self, scope: &Scope, expr: &ast::Expr) -> Result<ir::Expr> {
-        let (logical_type, kind) = match expr {
+        let (ty, kind) = match expr {
             ast::Expr::Value(literal) => self.bind_value_expr(literal),
             ast::Expr::Identifier(ident) => {
                 let (ty, idx) =
@@ -540,19 +547,23 @@ impl Binder {
             _ => todo!("todo expr: {:?}", expr),
         };
 
-        Ok(ir::Expr { logical_type, kind })
+        Ok(ir::Expr { ty, kind })
     }
 
     fn bind_value_expr(&self, value: &ast::Value) -> (LogicalType, ir::ExprKind) {
         let lit = self.bind_value(value);
-        (lit.logical_type(), ir::ExprKind::Value(lit))
+        (lit.ty(), ir::ExprKind::Value(lit))
     }
 
     fn bind_value(&self, val: &ast::Value) -> ir::Value {
         match val {
-            ast::Value::Number(decimal, b) => {
+            ast::Value::Number(n, b) => {
+                if let Ok(i) = n.parse::<i32>() {
+                    return ir::Value::Int(i);
+                }
+
                 assert!(!b, "what does this bool mean?");
-                let decimal = Decimal::from_str(decimal)
+                let decimal = Decimal::from_str(n)
                     .expect("this should be a parse error if the decimal is not valid");
                 ir::Value::Decimal(decimal)
             }

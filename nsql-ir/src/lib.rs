@@ -2,9 +2,9 @@
 
 mod expr;
 use nsql_catalog::{CreateColumnInfo, Namespace, Oid};
+pub use nsql_core::value::{Decimal, Value};
 use nsql_core::Name;
-pub use nsql_storage::tuple::{Decimal, TupleIndex};
-pub use nsql_storage::value::Value;
+pub use nsql_storage::tuple::TupleIndex;
 
 pub use self::expr::*;
 

@@ -2,9 +2,10 @@ use std::error::Error;
 use std::fmt;
 use std::marker::PhantomData;
 
-use nsql_core::schema::LogicalType;
 use rust_decimal::prelude::ToPrimitive;
-use rust_decimal::Decimal;
+pub use rust_decimal::Decimal;
+
+use crate::schema::LogicalType;
 
 pub struct CastError<T> {
     value: Value,
@@ -29,7 +30,7 @@ impl<T> fmt::Display for CastError<T> {
             f,
             "cannot cast value {:?} of type {} to {}",
             self.value,
-            self.value.logical_type(),
+            self.value.ty(),
             std::any::type_name::<T>()
         )
     }
@@ -42,6 +43,7 @@ impl<T> Error for CastError<T> {}
 #[derive(Debug, Clone, PartialEq, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
 pub enum Value {
     Null,
+    Int(i32),
     Bool(bool),
     Decimal(Decimal),
     Text(String),
@@ -68,10 +70,11 @@ impl Value {
         T::cast(self)
     }
 
-    pub fn logical_type(&self) -> LogicalType {
+    #[inline]
+    pub fn ty(&self) -> LogicalType {
         match self {
-            // FIXME default null to have type int for now
-            Value::Null => LogicalType::Int,
+            Value::Null => LogicalType::Null,
+            Value::Int(_) => LogicalType::Int,
             Value::Bool(_) => LogicalType::Bool,
             Value::Decimal(_) => LogicalType::Decimal,
             Value::Text(_) => LogicalType::Text,
@@ -80,12 +83,14 @@ impl Value {
 }
 
 impl fmt::Display for Value {
+    #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Value::Null => write!(f, "NULL"),
             Value::Bool(b) => write!(f, "{b}"),
             Value::Decimal(d) => write!(f, "{d}"),
             Value::Text(s) => write!(f, "{s}"),
+            Value::Int(i) => write!(f, "{i}"),
         }
     }
 }
@@ -103,6 +108,7 @@ impl Cast for u64 {
     fn cast(value: Value) -> Result<Self, CastError<Self>> {
         match value {
             Value::Bool(b) => Ok(b as u64),
+            Value::Int(i) => Ok(i as u64),
             Value::Decimal(d) => d.to_u64().ok_or_else(|| CastError::new(value)),
             _ => Err(CastError { value, phantom: PhantomData }),
         }

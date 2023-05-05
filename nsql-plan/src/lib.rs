@@ -7,7 +7,7 @@ pub enum Plan {
     CreateNamespace(ir::CreateNamespaceInfo),
     Drop(Vec<ir::EntityRef>),
     Show(ir::ObjectType),
-    Selection {
+    Filter {
         source: Box<Plan>,
         predicate: ir::Expr,
     },
@@ -57,9 +57,9 @@ impl Planner {
     fn plan_query(&self, plan: Box<ir::QueryPlan>) -> Box<Plan> {
         let plan = match *plan {
             ir::QueryPlan::Values(values) => Plan::Values { values },
-            ir::QueryPlan::Selection { source, predicate } => {
+            ir::QueryPlan::Filter { source, predicate } => {
                 let source = self.plan_query(source);
-                Plan::Selection { source, predicate }
+                Plan::Filter { source, predicate }
             }
             ir::QueryPlan::Projection { source, projection } => {
                 let source = self.plan_query(source);

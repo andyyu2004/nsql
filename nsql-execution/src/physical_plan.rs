@@ -1,10 +1,10 @@
 mod physical_create_namespace;
 mod physical_create_table;
 mod physical_drop;
+mod physical_filter;
 mod physical_insert;
 mod physical_limit;
 mod physical_projection;
-mod physical_selection;
 mod physical_show;
 mod physical_table_scan;
 mod physical_transaction;
@@ -17,10 +17,10 @@ use nsql_plan::Plan;
 use self::physical_create_namespace::PhysicalCreateNamespace;
 use self::physical_create_table::PhysicalCreateTable;
 use self::physical_drop::PhysicalDrop;
+use self::physical_filter::PhysicalFilter;
 use self::physical_insert::PhysicalInsert;
 use self::physical_limit::PhysicalLimit;
 use self::physical_projection::PhysicalProjection;
-use self::physical_selection::PhysicalSelection;
 use self::physical_show::PhysicalShow;
 use self::physical_table_scan::PhysicalTableScan;
 use self::physical_transaction::PhysicalTransaction;
@@ -72,8 +72,8 @@ impl PhysicalPlanner {
                 PhysicalProjection::plan(source, projection)
             }
             Plan::Limit { source, limit } => PhysicalLimit::plan(self.plan_node(source), limit),
-            Plan::Selection { source, predicate } => {
-                PhysicalSelection::plan(self.plan_node(source), predicate)
+            Plan::Filter { source, predicate } => {
+                PhysicalFilter::plan(self.plan_node(source), predicate)
             }
         }
     }

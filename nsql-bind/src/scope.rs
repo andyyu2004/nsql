@@ -111,7 +111,7 @@ impl Scope {
         for (i, expr) in values[0].iter().enumerate() {
             // default column names are col1, col2, etc.
             let name = Name::from(format!("col{}", i + 1));
-            columns = columns.push_back((Path::Unqualified(name), expr.logical_type.clone()));
+            columns = columns.push_back((Path::Unqualified(name), expr.ty.clone()));
         }
 
         Ok(Self { tables: self.tables.clone(), columns })
@@ -119,8 +119,8 @@ impl Scope {
 
     /// Returns an iterator over the columns in the scope exposed as `Expr`s
     pub fn column_refs(&self) -> impl Iterator<Item = ir::Expr> + '_ {
-        self.columns.iter().enumerate().map(|(i, (_p, logical_type))| ir::Expr {
-            logical_type: logical_type.clone(),
+        self.columns.iter().enumerate().map(|(i, (_p, ty))| ir::Expr {
+            ty: ty.clone(),
             kind: ir::ExprKind::ColumnRef(ir::TupleIndex::new(i)),
         })
     }

@@ -1189,6 +1189,8 @@ name = "nsql-core"
 version = "0.1.0"
 dependencies = [
  "nsql-serde",
+ "rkyv",
+ "rust_decimal",
  "smol_str",
 ]
 
@@ -1326,7 +1328,6 @@ dependencies = [
  "nsql-util",
  "proptest",
  "rkyv",
- "rust_decimal",
  "test-strategy",
  "thiserror",
  "tracing",
