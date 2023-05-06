@@ -1,0 +1,4 @@
+query I
+SELECT * FROM (SELECT * FROM (VALUES (42)))
+----
+42
