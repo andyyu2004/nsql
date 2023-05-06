@@ -153,6 +153,7 @@ trait PhysicalSink: PhysicalSource {
     async fn sink(&self, ctx: &ExecutionContext, tuple: Tuple) -> ExecutionResult<()>;
 }
 
+#[derive(Clone)]
 pub struct ExecutionContext {
     pool: Arc<dyn Pool>,
     tx: Arc<Transaction>,

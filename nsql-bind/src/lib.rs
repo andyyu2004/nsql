@@ -389,8 +389,8 @@ impl Binder {
             _ => todo!(),
         };
 
-        if let Some(selection) = selection {
-            let predicate = self.bind_expr(&scope, selection)?;
+        if let Some(predicate) = selection {
+            let predicate = self.bind_expr(&scope, predicate)?;
             // We intentionally are being strict here and only allow boolean predicates rather than
             // anything that can be cast to a boolean.
             ensure!(

@@ -129,7 +129,7 @@ impl Shared {
 
         let physical_plan = PhysicalPlanner::new().plan(plan);
         let ctx = ExecutionContext::new(Arc::clone(&self.buffer_pool), Arc::clone(&tx), catalog);
-        let tuples = nsql_execution::execute(&ctx, physical_plan).await?;
+        let tuples = nsql_execution::execute(ctx, physical_plan).await?;
 
         Ok(MaterializedQueryOutput { types: vec![], tuples })
     }

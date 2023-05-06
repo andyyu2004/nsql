@@ -3,6 +3,7 @@ use std::sync::Arc;
 use nsql_arena::Idx;
 use nsql_storage::tuple::Tuple;
 use parking_lot::RwLock;
+use tokio::task::JoinSet;
 
 use crate::physical_plan::PhysicalPlan;
 use crate::pipeline::{MetaPipeline, Pipeline, PipelineArena};
@@ -18,37 +19,49 @@ pub(crate) struct Executor {
 impl Executor {
     #[async_recursion::async_recursion]
     async fn execute(
-        &self,
-        ctx: &ExecutionContext,
+        self: Arc<Self>,
+        ctx: ExecutionContext,
         root: Idx<MetaPipeline>,
     ) -> ExecutionResult<()> {
+        let mut join_set = JoinSet::new();
+
         let root = &self.arena[root];
         for &child in &root.children {
-            self.execute(ctx, child).await?;
+            join_set.spawn(Arc::clone(&self).execute(ctx.clone(), child));
+        }
+
+        while let Some(res) = join_set.join_next().await {
+            res??;
         }
 
         for &pipeline in &root.pipelines {
-            self.execute_pipeline(ctx, pipeline).await?;
+            join_set.spawn(Arc::clone(&self).execute_pipeline(ctx.clone(), pipeline));
         }
+
+        while let Some(res) = join_set.join_next().await {
+            res??;
+        }
+
+        assert!(join_set.is_empty());
 
         Ok(())
     }
 
     async fn execute_pipeline(
-        &self,
-        ctx: &ExecutionContext,
+        self: Arc<Self>,
+        ctx: ExecutionContext,
         pipeline: Idx<Pipeline>,
     ) -> ExecutionResult<()> {
         let pipeline = &self.arena[pipeline];
         loop {
-            let chunk = pipeline.source.source(ctx).await?;
+            let chunk = pipeline.source.source(&ctx).await?;
             if chunk.is_empty() {
                 break;
             }
 
             'outer: for mut tuple in chunk {
                 for op in &pipeline.operators {
-                    tuple = match op.execute(ctx, tuple).await? {
+                    tuple = match op.execute(&ctx, tuple).await? {
                         OperatorState::Yield(tuple) => tuple,
                         OperatorState::Continue => break 'outer,
                         // Once an operator completes, the entire pipeline is finishedK
@@ -56,7 +69,7 @@ impl Executor {
                     };
                 }
 
-                pipeline.sink.sink(ctx, tuple).await?;
+                pipeline.sink.sink(&ctx, tuple).await?;
             }
         }
 
@@ -65,14 +78,14 @@ impl Executor {
 }
 
 async fn execute_root_pipeline(
-    ctx: &ExecutionContext,
+    ctx: ExecutionContext,
     pipeline: RootPipeline,
 ) -> ExecutionResult<()> {
-    let executor = Executor { arena: pipeline.arena };
+    let executor = Arc::new(Executor { arena: pipeline.arena });
     executor.execute(ctx, pipeline.root).await
 }
 
-pub async fn execute(ctx: &ExecutionContext, plan: PhysicalPlan) -> ExecutionResult<Vec<Tuple>> {
+pub async fn execute(ctx: ExecutionContext, plan: PhysicalPlan) -> ExecutionResult<Vec<Tuple>> {
     let sink = Arc::new(OutputSink::default());
     let root_pipeline = build_pipelines(Arc::clone(&sink) as Arc<dyn PhysicalSink>, plan);
 
