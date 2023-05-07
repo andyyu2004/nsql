@@ -7,9 +7,9 @@ use super::*;
 
 #[derive(Debug)]
 pub(crate) struct PhysicalInsert {
-    children: Vec<Arc<dyn PhysicalNode>>,
+    children: [Arc<dyn PhysicalNode>; 1],
     table_ref: ir::TableRef,
-    returning: Option<Vec<ir::Expr>>,
+    returning: Option<Box<[ir::Expr]>>,
     returning_tuples: RwLock<VecDeque<Tuple>>,
     returning_evaluator: Evaluator,
 }
@@ -18,12 +18,12 @@ impl PhysicalInsert {
     pub fn plan(
         table_ref: ir::TableRef,
         source: Arc<dyn PhysicalNode>,
-        returning: Option<Vec<ir::Expr>>,
+        returning: Option<Box<[ir::Expr]>>,
     ) -> Arc<dyn PhysicalNode> {
         Arc::new(Self {
             table_ref,
             returning,
-            children: vec![source],
+            children: [source],
             returning_tuples: Default::default(),
             returning_evaluator: Evaluator::new(),
         })

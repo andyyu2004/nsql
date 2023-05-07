@@ -2,7 +2,7 @@ use super::*;
 
 #[derive(Debug)]
 pub struct PhysicalFilter {
-    children: Vec<Arc<dyn PhysicalNode>>,
+    children: [Arc<dyn PhysicalNode>; 1],
     predicate: ir::Expr,
     evaluator: Evaluator,
 }
@@ -12,7 +12,7 @@ impl PhysicalFilter {
         source: Arc<dyn PhysicalNode>,
         predicate: ir::Expr,
     ) -> Arc<dyn PhysicalNode> {
-        Arc::new(Self { evaluator: Evaluator::new(), children: vec![source], predicate })
+        Arc::new(Self { evaluator: Evaluator::new(), children: [source], predicate })
     }
 }
 

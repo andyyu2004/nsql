@@ -11,8 +11,8 @@ use anyhow::{anyhow, bail, ensure};
 use ir::Decimal;
 use itertools::Itertools;
 use nsql_catalog::{
-    Catalog, Container, CreateColumnInfo, Entity, Namespace, NamespaceEntity, Oid, Table,
-    DEFAULT_SCHEMA,
+    Catalog, Container, CreateColumnInfo, Entity, EntityRef, Namespace, NamespaceEntity, Oid,
+    Table, DEFAULT_SCHEMA,
 };
 use nsql_core::schema::LogicalType;
 use nsql_core::Name;
@@ -157,7 +157,7 @@ impl Binder {
                     .iter()
                     .map(|ident| ast::Expr::Identifier(ident.clone()))
                     .map(|expr| self.bind_expr(&scope, &expr))
-                    .collect::<Result<Vec<_>>>()?;
+                    .collect::<Result<_>>()?;
 
                 let (scope, source) = self.bind_query(&scope, source)?;
                 let returning = returning.as_ref().map(|items| {
@@ -165,7 +165,7 @@ impl Binder {
                         .iter()
                         .map(|selection| self.bind_select_item(&scope, selection))
                         .flatten_ok()
-                        .collect::<Result<Vec<_>>>()
+                        .collect::<Result<_>>()
                         .unwrap()
                 });
                 ir::Stmt::Insert { table_ref, projection, source, returning }
@@ -223,15 +223,45 @@ impl Binder {
                 ir::Stmt::Drop(refs)
             }
             ast::Statement::Update { table, assignments, from, selection, returning } => {
+                // What does it mean to update a table with joins?
+                not_implemented!(!table.joins.is_empty());
                 not_implemented!(from.is_some());
                 not_implemented!(returning.is_some());
-                let (scope, table) = self.bind_joint_tables(scope, table)?;
+                let (scope, table_ref) = match &table.relation {
+                    ast::TableFactor::Table { name, alias, args, with_hints } => {
+                        not_implemented!(alias.is_some());
+                        not_implemented!(args.is_some());
+                        not_implemented!(!with_hints.is_empty());
+                        self.bind_table(scope, name, alias.as_ref())?
+                    }
+                    _ => not_implemented!("update with non-table relation"),
+                };
+
+                let assignments = assignments
+                    .iter()
+                    .map(|assignment| self.bind_assignment(&scope, table_ref, assignment))
+                    .collect::<Result<Vec<_>>>()?;
                 todo!()
             }
             _ => unimplemented!("unimplemented statement: {:?}", stmt),
         };
 
         Ok(stmt)
+    }
+
+    fn bind_assignment(
+        &self,
+        scope: &Scope,
+        table_ref: ir::TableRef,
+        assignment: &ast::Assignment,
+    ) -> Result<ir::Assignment> {
+        if assignment.id.len() > 1 {
+            not_implemented!("compound assignment")
+        }
+
+        todo!();
+        let expr = self.bind_expr(scope, &assignment.value)?;
+        // Ok(ir::Assignment { column, expr })
     }
 
     fn lower_columns(&self, columns: &[ast::ColumnDef]) -> Result<Vec<CreateColumnInfo>> {
@@ -411,7 +441,7 @@ impl Binder {
             .iter()
             .map(|item| self.bind_select_item(&scope, item))
             .flatten_ok()
-            .collect::<Result<Vec<_>, _>>()?;
+            .collect::<Result<Box<_>>>()?;
 
         Ok((scope, source.project(projection)))
     }

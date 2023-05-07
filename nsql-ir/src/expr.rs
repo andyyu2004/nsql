@@ -9,7 +9,7 @@ use nsql_storage::tuple::TupleIndex;
 #[derive(Debug, Clone)]
 pub enum QueryPlan {
     TableRef(TableRef),
-    Projection { source: Box<QueryPlan>, projection: Vec<Expr> },
+    Projection { source: Box<QueryPlan>, projection: Box<[Expr]> },
     Filter { source: Box<QueryPlan>, predicate: Expr },
     Values(Values),
     Limit(Box<QueryPlan>, u64),
@@ -28,8 +28,8 @@ impl QueryPlan {
     }
 
     #[inline]
-    pub fn project(self: Box<Self>, projection: Vec<Expr>) -> Box<QueryPlan> {
-        Box::new(QueryPlan::Projection { source: self, projection })
+    pub fn project(self: Box<Self>, projection: impl Into<Box<[Expr]>>) -> Box<QueryPlan> {
+        Box::new(QueryPlan::Projection { source: self, projection: projection.into() })
     }
 }
 

@@ -47,11 +47,23 @@ pub enum Stmt {
     CreateTable(CreateTableInfo),
     Insert {
         table_ref: TableRef,
-        projection: Vec<Expr>,
+        projection: Box<[Expr]>,
         source: Box<QueryPlan>,
+        returning: Option<Box<[Expr]>>,
+    },
+    Update {
+        table_ref: TableRef,
+        assignments: Box<[Assignment]>,
+        filter: Expr,
         returning: Option<Vec<Expr>>,
     },
     Query(Box<QueryPlan>),
+}
+
+#[derive(Debug, Clone)]
+pub struct Assignment {
+    pub column: ColumnRef,
+    pub expr: Expr,
 }
 
 #[derive(Debug, Clone)]

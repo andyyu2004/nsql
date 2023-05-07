@@ -13,13 +13,13 @@ pub enum Plan {
     },
     Projection {
         source: Box<Plan>,
-        projection: Vec<ir::Expr>,
+        projection: Box<[ir::Expr]>,
     },
     Insert {
         table_ref: ir::TableRef,
-        projection: Vec<ir::Expr>,
+        projection: Box<[ir::Expr]>,
         source: Box<Plan>,
-        returning: Option<Vec<ir::Expr>>,
+        returning: Option<Box<[ir::Expr]>>,
     },
     Values {
         values: ir::Values,
@@ -49,6 +49,7 @@ impl Planner {
             ir::Stmt::Query(query) => return self.plan_query(query),
             ir::Stmt::Show(show) => Plan::Show(show),
             ir::Stmt::Drop(refs) => Plan::Drop(refs),
+            ir::Stmt::Update { table_ref, assignments, filter, returning } => todo!(),
         };
 
         Box::new(plan)

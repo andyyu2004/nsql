@@ -132,18 +132,14 @@ enum OperatorState<T> {
 }
 
 #[async_trait::async_trait]
-trait PhysicalOperator: PhysicalNode {
-    async fn execute(
-        &self,
-        ctx: &ExecutionContext,
-        input: Tuple,
-    ) -> ExecutionResult<OperatorState<Tuple>>;
+trait PhysicalOperator<T = Tuple>: PhysicalNode {
+    async fn execute(&self, ctx: &ExecutionContext, input: T) -> ExecutionResult<OperatorState<T>>;
 }
 
 #[async_trait::async_trait]
-trait PhysicalSource: PhysicalNode {
+trait PhysicalSource<T = Tuple>: PhysicalNode {
     /// Return the next chunk from the source. An empty chunk indicates that the source is exhausted.
-    async fn source(&self, ctx: &ExecutionContext) -> ExecutionResult<Chunk<Tuple>>;
+    async fn source(&self, ctx: &ExecutionContext) -> ExecutionResult<Chunk<T>>;
 
     fn estimated_cardinality(&self) -> usize;
 }

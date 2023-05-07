@@ -1,5 +1,7 @@
 use std::collections::VecDeque;
+use std::pin::pin;
 
+use futures_util::StreamExt;
 use nsql_catalog::EntityRef;
 use parking_lot::RwLock;
 
@@ -55,10 +57,16 @@ impl PhysicalNode for PhysicalUpdate {
 #[async_trait::async_trait]
 impl PhysicalSink for PhysicalUpdate {
     async fn sink(&self, ctx: &ExecutionContext, tuple: Tuple) -> ExecutionResult<()> {
-        todo!();
         let tx = ctx.tx();
         let table = self.table_ref.get(&ctx.catalog(), &tx)?;
         let storage = table.storage();
+
+        let mut stream = pin!(storage.scan(ctx.tx()).await);
+        while let Some(chunk) = stream.next().await {
+            let chunk = chunk.map_err(|report| report.into_error())?;
+            todo!()
+        }
+
         storage.append(&tx, &tuple).await.map_err(|report| report.into_error())?;
         if self.returning.is_some() {
             self.returning_tuples.write().push_back(tuple);

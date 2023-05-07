@@ -6,14 +6,14 @@ use super::*;
 
 #[derive(Debug)]
 pub struct PhysicalLimit {
-    children: Vec<Arc<dyn PhysicalNode>>,
+    children: [Arc<dyn PhysicalNode>; 1],
     yielded: AtomicU64,
     limit: u64,
 }
 
 impl PhysicalLimit {
     pub(crate) fn plan(source: Arc<dyn PhysicalNode>, limit: u64) -> Arc<dyn PhysicalNode> {
-        Arc::new(Self { children: vec![source], limit, yielded: AtomicU64::new(0) })
+        Arc::new(Self { children: [source], limit, yielded: AtomicU64::new(0) })
     }
 }
 

@@ -2,17 +2,17 @@ use super::*;
 
 #[derive(Debug)]
 pub struct PhysicalProjection {
-    children: Vec<Arc<dyn PhysicalNode>>,
-    projections: Vec<ir::Expr>,
+    children: [Arc<dyn PhysicalNode>; 1],
+    projections: Box<[ir::Expr]>,
     evaluator: Evaluator,
 }
 
 impl PhysicalProjection {
     pub(crate) fn plan(
         source: Arc<dyn PhysicalNode>,
-        projections: Vec<ir::Expr>,
+        projections: Box<[ir::Expr]>,
     ) -> Arc<dyn PhysicalNode> {
-        Arc::new(Self { evaluator: Evaluator::new(), children: vec![source], projections })
+        Arc::new(Self { evaluator: Evaluator::new(), children: [source], projections })
     }
 }
 
