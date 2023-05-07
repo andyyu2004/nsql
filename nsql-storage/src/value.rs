@@ -40,6 +40,7 @@ impl<T> fmt::Display for CastError<T> {
 impl<T> Error for CastError<T> {}
 
 /// An nsql value
+// FIXME write a custom archive impl that has a schema in scope to avoid needing to archive a disriminant
 #[derive(Debug, Clone, PartialEq, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
 pub enum Value {
     Null,

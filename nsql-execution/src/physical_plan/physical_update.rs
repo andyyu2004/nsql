@@ -9,9 +9,10 @@ use super::*;
 
 #[derive(Debug)]
 pub(crate) struct PhysicalUpdate {
-    children: Vec<Arc<dyn PhysicalNode>>,
+    children: [Arc<dyn PhysicalNode>; 1],
     table_ref: ir::TableRef,
-    returning: Option<Vec<ir::Expr>>,
+    assignments: Box<[ir::Assignment]>,
+    returning: Option<Box<[ir::Expr]>>,
     returning_tuples: RwLock<VecDeque<Tuple>>,
     returning_evaluator: Evaluator,
 }
@@ -20,12 +21,14 @@ impl PhysicalUpdate {
     pub fn plan(
         table_ref: ir::TableRef,
         source: Arc<dyn PhysicalNode>,
-        returning: Option<Vec<ir::Expr>>,
+        assignments: Box<[ir::Assignment]>,
+        returning: Option<Box<[ir::Expr]>>,
     ) -> Arc<dyn PhysicalNode> {
         Arc::new(Self {
             table_ref,
             returning,
-            children: vec![source],
+            assignments,
+            children: [source],
             returning_tuples: Default::default(),
             returning_evaluator: Evaluator::new(),
         })
@@ -61,13 +64,8 @@ impl PhysicalSink for PhysicalUpdate {
         let table = self.table_ref.get(&ctx.catalog(), &tx)?;
         let storage = table.storage();
 
-        let mut stream = pin!(storage.scan(ctx.tx()).await);
-        while let Some(chunk) = stream.next().await {
-            let chunk = chunk.map_err(|report| report.into_error())?;
-            todo!()
-        }
-
-        storage.append(&tx, &tuple).await.map_err(|report| report.into_error())?;
+        let tid = todo!();
+        storage.update(&tx, tid, &tuple).await.map_err(|report| report.into_error())?;
         if self.returning.is_some() {
             self.returning_tuples.write().push_back(tuple);
         }

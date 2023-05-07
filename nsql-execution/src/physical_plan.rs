@@ -25,6 +25,7 @@ use self::physical_projection::PhysicalProjection;
 use self::physical_show::PhysicalShow;
 use self::physical_table_scan::PhysicalTableScan;
 use self::physical_transaction::PhysicalTransaction;
+use self::physical_update::PhysicalUpdate;
 use self::physical_values::PhysicalValues;
 use crate::{
     Chunk, Evaluator, ExecutionContext, ExecutionResult, OperatorState, PhysicalNode,
@@ -75,6 +76,14 @@ impl PhysicalPlanner {
             Plan::Limit { source, limit } => PhysicalLimit::plan(self.plan_node(source), limit),
             Plan::Filter { source, predicate } => {
                 PhysicalFilter::plan(self.plan_node(source), predicate)
+            }
+            Plan::Update { table_ref, assignments, filter, returning } => {
+                let mut source = PhysicalTableScan::plan(table_ref);
+                if let Some(filter) = filter {
+                    source = PhysicalFilter::plan(source, filter);
+                }
+
+                PhysicalUpdate::plan(table_ref, source, assignments, returning)
             }
         }
     }

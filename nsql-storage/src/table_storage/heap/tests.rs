@@ -49,6 +49,7 @@ fn test_heap_scan() -> nsql_buffer::Result<()> {
                 Ok(acc)
             })
             .await?;
+
         assert_eq!(values.len(), N as usize);
         assert_eq!(values, (0..N).collect::<Vec<_>>());
 

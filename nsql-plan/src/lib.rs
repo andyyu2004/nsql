@@ -7,6 +7,12 @@ pub enum Plan {
     CreateNamespace(ir::CreateNamespaceInfo),
     Drop(Vec<ir::EntityRef>),
     Show(ir::ObjectType),
+    Update {
+        table_ref: ir::TableRef,
+        assignments: Box<[ir::Assignment]>,
+        filter: Option<ir::Expr>,
+        returning: Option<Box<[ir::Expr]>>,
+    },
     Filter {
         source: Box<Plan>,
         predicate: ir::Expr,
@@ -49,7 +55,9 @@ impl Planner {
             ir::Stmt::Query(query) => return self.plan_query(query),
             ir::Stmt::Show(show) => Plan::Show(show),
             ir::Stmt::Drop(refs) => Plan::Drop(refs),
-            ir::Stmt::Update { table_ref, assignments, filter, returning } => todo!(),
+            ir::Stmt::Update { table_ref, assignments, filter, returning } => {
+                Plan::Update { table_ref, assignments, filter, returning }
+            }
         };
 
         Box::new(plan)

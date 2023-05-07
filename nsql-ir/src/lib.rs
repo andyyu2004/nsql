@@ -54,15 +54,15 @@ pub enum Stmt {
     Update {
         table_ref: TableRef,
         assignments: Box<[Assignment]>,
-        filter: Expr,
-        returning: Option<Vec<Expr>>,
+        filter: Option<Expr>,
+        returning: Option<Box<[Expr]>>,
     },
     Query(Box<QueryPlan>),
 }
 
 #[derive(Debug, Clone)]
 pub struct Assignment {
-    pub column: ColumnRef,
+    pub column_ref: ColumnRef,
     pub expr: Expr,
 }
 

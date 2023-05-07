@@ -51,6 +51,7 @@ impl TableStorage {
         &self,
         tx: Arc<Transaction>,
     ) -> impl Stream<Item = nsql_buffer::Result<Vec<Tuple>>> + Send {
+        // Add the tuple id as an additional column to the end of the tuple
         self.heap.scan(tx, |tid, tuple| tuple.append(Value::Tid(tid))).await
     }
 }

@@ -11,8 +11,8 @@ use anyhow::{anyhow, bail, ensure};
 use ir::Decimal;
 use itertools::Itertools;
 use nsql_catalog::{
-    Catalog, Container, CreateColumnInfo, Entity, Namespace, NamespaceEntity, Oid, Table,
-    DEFAULT_SCHEMA,
+    Catalog, Column, Container, CreateColumnInfo, Entity, EntityRef, Namespace, NamespaceEntity,
+    Oid, Table, DEFAULT_SCHEMA,
 };
 use nsql_core::Name;
 use nsql_parse::ast::{self, HiveDistributionStyle};
@@ -160,14 +160,16 @@ impl Binder {
                     .collect::<Result<_>>()?;
 
                 let (scope, source) = self.bind_query(&scope, source)?;
-                let returning = returning.as_ref().map(|items| {
-                    items
-                        .iter()
-                        .map(|selection| self.bind_select_item(&scope, selection))
-                        .flatten_ok()
-                        .collect::<Result<_>>()
-                        .unwrap()
-                });
+                let returning = returning
+                    .as_ref()
+                    .map(|items| {
+                        items
+                            .iter()
+                            .map(|selection| self.bind_select_item(&scope, selection))
+                            .flatten_ok()
+                            .collect::<Result<_>>()
+                    })
+                    .transpose()?;
                 ir::Stmt::Insert { table_ref, projection, source, returning }
             }
             ast::Statement::Query(query) => {
@@ -226,7 +228,7 @@ impl Binder {
                 // What does it mean to update a table with joins?
                 not_implemented!(!table.joins.is_empty());
                 not_implemented!(from.is_some());
-                not_implemented!(returning.is_some());
+
                 let (scope, table_ref) = match &table.relation {
                     ast::TableFactor::Table { name, alias, args, with_hints } => {
                         not_implemented!(alias.is_some());
@@ -237,11 +239,28 @@ impl Binder {
                     _ => not_implemented!("update with non-table relation"),
                 };
 
+                let filter = selection
+                    .as_ref()
+                    .map(|selection| self.bind_expr(&scope, selection))
+                    .transpose()?;
+
+                let returning = returning
+                    .as_ref()
+                    .map(|items| {
+                        items
+                            .iter()
+                            .map(|selection| self.bind_select_item(&scope, selection))
+                            .flatten_ok()
+                            .collect::<Result<_>>()
+                    })
+                    .transpose()?;
+
                 let assignments = assignments
                     .iter()
                     .map(|assignment| self.bind_assignment(&scope, table_ref, assignment))
-                    .collect::<Result<Vec<_>>>()?;
-                todo!()
+                    .collect::<Result<_>>()?;
+
+                ir::Stmt::Update { table_ref, assignments, filter, returning }
             }
             _ => unimplemented!("unimplemented statement: {:?}", stmt),
         };
@@ -255,13 +274,18 @@ impl Binder {
         table_ref: ir::TableRef,
         assignment: &ast::Assignment,
     ) -> Result<ir::Assignment> {
+        assert!(!assignment.id.is_empty());
         if assignment.id.len() > 1 {
             not_implemented!("compound assignment")
         }
 
-        todo!();
         let expr = self.bind_expr(scope, &assignment.value)?;
-        // Ok(ir::Assignment { column, expr })
+
+        let table = table_ref.get(&self.catalog, &self.tx)?;
+        let column_name = &assignment.id[0].value;
+        let column = table.find(column_name)?.ok_or_else(|| unbound!(Column, column_name))?;
+        let column_ref = ir::ColumnRef { table_ref, column };
+        Ok(ir::Assignment { column_ref, expr })
     }
 
     fn lower_columns(&self, columns: &[ast::ColumnDef]) -> Result<Vec<CreateColumnInfo>> {
