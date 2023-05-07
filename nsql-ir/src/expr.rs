@@ -8,7 +8,7 @@ use nsql_storage::value::Value;
 
 #[derive(Debug, Clone)]
 pub enum QueryPlan {
-    TableRef(TableRef),
+    TableRef { table_ref: TableRef },
     Projection { source: Box<QueryPlan>, projection: Box<[Expr]> },
     Filter { source: Box<QueryPlan>, predicate: Expr },
     Values(Values),

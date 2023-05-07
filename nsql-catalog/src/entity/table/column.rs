@@ -2,6 +2,7 @@ use std::fmt;
 
 use nsql_serde::{StreamDeserialize, StreamSerialize};
 use nsql_storage::schema::LogicalType;
+use nsql_storage::tuple::ColumnIndex;
 use nsql_transaction::Transaction;
 
 use crate::private::CatalogEntity;
@@ -11,14 +12,14 @@ use crate::{Entity, Name, Table};
 #[derive(Clone, StreamSerialize)]
 pub struct Column {
     name: Name,
-    index: u8,
+    index: ColumnIndex,
     ty: LogicalType,
 }
 
 impl Column {
     #[inline]
-    pub fn index(&self) -> usize {
-        self.index as usize
+    pub fn index(&self) -> ColumnIndex {
+        self.index
     }
 
     #[inline]
@@ -37,7 +38,7 @@ impl fmt::Debug for Column {
 pub struct CreateColumnInfo {
     pub name: Name,
     /// The index of the column in the table.
-    pub index: u8,
+    pub index: ColumnIndex,
     pub ty: LogicalType,
 }
 

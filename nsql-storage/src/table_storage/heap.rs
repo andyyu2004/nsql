@@ -15,6 +15,7 @@ use rkyv::{Archive, Archived, Deserialize, Serialize};
 use self::view::{HeapView, HeapViewMut, Slot, SlotIndex};
 use super::fsm::FreeSpaceMap;
 use super::TupleId;
+use crate::tuple::ColumnIndex;
 
 mod view;
 
@@ -139,7 +140,7 @@ where
     pub async fn scan(
         &self,
         tx: Arc<Transaction>,
-        mut f: impl FnMut(HeapId<T>, T) -> T + Send + Sync,
+        projections: &[ColumnIndex],
     ) -> impl Stream<Item = nsql_buffer::Result<Vec<T>>> + Send
     where
         T: Send + Sync,

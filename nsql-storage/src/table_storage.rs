@@ -10,7 +10,7 @@ use nsql_transaction::Transaction;
 
 use self::heap::{Heap, HeapId};
 use crate::schema::Schema;
-use crate::tuple::Tuple;
+use crate::tuple::{ColumnIndex, Tuple};
 use crate::value::Value;
 
 pub struct TableStorage {
@@ -50,9 +50,10 @@ impl TableStorage {
     pub async fn scan(
         &self,
         tx: Arc<Transaction>,
+        projections: Option<&[ColumnIndex]>,
     ) -> impl Stream<Item = nsql_buffer::Result<Vec<Tuple>>> + Send {
         // Add the tuple id as an additional column to the end of the tuple
-        self.heap.scan(tx, |tid, tuple| tuple.append(Value::Tid(tid))).await
+        self.heap.scan(tx, projections).await
     }
 }
 

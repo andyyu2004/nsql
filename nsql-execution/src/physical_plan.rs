@@ -13,7 +13,10 @@ mod physical_values;
 
 use std::sync::Arc;
 
+use anyhow::Result;
+use nsql_catalog::{Catalog, Column, Container, EntityRef, Transaction};
 use nsql_plan::Plan;
+use nsql_storage::tuple::ColumnIndex;
 
 use self::physical_create_namespace::PhysicalCreateNamespace;
 use self::physical_create_table::PhysicalCreateTable;
@@ -32,7 +35,10 @@ use crate::{
     PhysicalOperator, PhysicalSink, PhysicalSource, Tuple,
 };
 
-pub struct PhysicalPlanner {}
+pub struct PhysicalPlanner {
+    tx: Arc<Transaction>,
+    catalog: Arc<Catalog>,
+}
 
 /// Opaque physical plan that is ready to be executed
 #[derive(Debug)]
@@ -45,46 +51,57 @@ impl PhysicalPlan {
 }
 
 impl PhysicalPlanner {
-    pub fn new() -> Self {
-        Self {}
+    pub fn new(catalog: Arc<Catalog>, tx: Arc<Transaction>) -> Self {
+        Self { tx, catalog }
     }
 
-    pub fn plan(&self, plan: Box<Plan>) -> PhysicalPlan {
-        PhysicalPlan(self.plan_node(plan))
+    pub fn plan(&self, plan: Box<Plan>) -> Result<PhysicalPlan> {
+        self.plan_node(plan).map(PhysicalPlan)
     }
 
-    fn plan_node(&self, plan: Box<Plan>) -> Arc<dyn PhysicalNode> {
-        match *plan {
+    fn plan_node(&self, plan: Box<Plan>) -> Result<Arc<dyn PhysicalNode>> {
+        let plan = match *plan {
             Plan::Transaction(kind) => PhysicalTransaction::plan(kind),
             Plan::CreateTable(info) => PhysicalCreateTable::plan(info),
             Plan::CreateNamespace(info) => PhysicalCreateNamespace::plan(info),
             Plan::Drop(refs) => PhysicalDrop::plan(refs),
-            Plan::Scan { table_ref } => PhysicalTableScan::plan(table_ref),
+            Plan::Scan { table_ref } => PhysicalTableScan::plan(table_ref, None),
             Plan::Show(show) => PhysicalShow::plan(show),
             Plan::Insert { table_ref, projection, source, returning } => {
-                let mut source = self.plan_node(source);
+                let mut source = self.plan_node(source)?;
                 if !projection.is_empty() {
-                    source = PhysicalProjection::plan(source, projection)
+                    source = PhysicalProjection::plan(source, projection);
                 };
                 PhysicalInsert::plan(table_ref, source, returning)
             }
             Plan::Values { values } => PhysicalValues::plan(values),
             Plan::Projection { source, projection } => {
-                let source = self.plan_node(source);
+                let source = self.plan_node(source)?;
                 PhysicalProjection::plan(source, projection)
             }
-            Plan::Limit { source, limit } => PhysicalLimit::plan(self.plan_node(source), limit),
+            Plan::Limit { source, limit } => PhysicalLimit::plan(self.plan_node(source)?, limit),
             Plan::Filter { source, predicate } => {
-                PhysicalFilter::plan(self.plan_node(source), predicate)
+                PhysicalFilter::plan(self.plan_node(source)?, predicate)
             }
             Plan::Update { table_ref, assignments, filter, returning } => {
-                let mut source = PhysicalTableScan::plan(table_ref);
+                let table = table_ref.get(&self.catalog, &self.tx)?;
+                let columns = table.all::<Column>(&self.tx)?;
+                let column_indices = columns
+                    .iter()
+                    .map(|(_, col)| col.index())
+                    // Add special column index for the tid
+                    .chain(Some(ColumnIndex::new(columns.len() as u8)))
+                    .collect();
+
+                let mut source = PhysicalTableScan::plan(table_ref, Some(column_indices));
                 if let Some(filter) = filter {
                     source = PhysicalFilter::plan(source, filter);
                 }
 
                 PhysicalUpdate::plan(table_ref, source, assignments, returning)
             }
-        }
+        };
+
+        Ok(plan)
     }
 }

@@ -17,6 +17,7 @@ use nsql_catalog::{
 use nsql_core::Name;
 use nsql_parse::ast::{self, HiveDistributionStyle};
 use nsql_storage::schema::LogicalType;
+use nsql_storage::tuple::ColumnIndex;
 use nsql_transaction::Transaction;
 
 use self::scope::Scope;
@@ -48,7 +49,7 @@ use unbound;
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 
 impl Binder {
-    pub fn new(tx: Arc<Transaction>, catalog: Arc<Catalog>) -> Self {
+    pub fn new(catalog: Arc<Catalog>, tx: Arc<Transaction>) -> Self {
         Self { catalog, tx }
     }
 
@@ -297,7 +298,7 @@ impl Binder {
 
         Ok(CreateColumnInfo {
             name: self.lower_name(&column.name),
-            index: idx as u8,
+            index: ColumnIndex::new(idx as u8),
             ty: self.lower_ty(&column.data_type)?,
         })
     }
@@ -491,7 +492,7 @@ impl Binder {
                 not_implemented!(!with_hints.is_empty());
 
                 let (scope, table_ref) = self.bind_table(scope, name, alias.as_ref())?;
-                (scope, Box::new(ir::QueryPlan::TableRef(table_ref)))
+                (scope, Box::new(ir::QueryPlan::TableRef { table_ref }))
             }
             ast::TableFactor::Derived { lateral, subquery, alias } => {
                 not_implemented!(*lateral);

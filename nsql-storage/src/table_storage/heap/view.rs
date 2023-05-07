@@ -11,6 +11,7 @@ use rkyv::rend::BigEndian;
 use rkyv::{Archive, Archived, Deserialize, Serialize};
 
 use super::Versioned;
+use crate::tuple::ColumnIndex;
 
 const HEAP_PAGE_HEADER_MAGIC: [u8; 4] = *b"HEAP";
 
@@ -83,19 +84,17 @@ impl<'a, T: Archive> HeapView<'a, T> {
 }
 
 impl<'a, T: Archive> HeapView<'a, T> {
-    #[tracing::instrument(skip(self, acc, f))]
-    pub fn scan_into<U>(
-        &self,
-        tx: &Transaction,
-        acc: &mut Vec<U>,
-        mut f: impl FnMut(SlotIndex, T) -> U,
-    ) where
+    #[tracing::instrument(skip(self, acc))]
+    pub fn scan_into<U>(&self, tx: &Transaction, acc: &mut Vec<U>, projections: &[ColumnIndex])
+    where
         T::Archived: Deserialize<T, rkyv::Infallible>,
     {
         acc.reserve(self.slots.len());
         self.slots.iter().enumerate().for_each(|(idx, &slot)| {
             let raw = self.get_raw(slot);
             if tx.can_see(raw.version.into()) {
+                // TODO apply projection to raw tuple data, this view needs to know its page idx to construct the TupleId
+                // Treat the column index `n` as the `tid` for now
                 acc.push(f(SlotIndex(idx as u16), nsql_rkyv::deserialize(&raw.data)));
             }
         })

@@ -5,6 +5,7 @@ use std::sync::OnceLock;
 
 use futures_util::{Stream, StreamExt};
 use nsql_catalog::{Container, Table};
+use nsql_storage::tuple::ColumnIndex;
 use tokio::sync::{Mutex, OnceCell};
 
 use super::*;
@@ -12,6 +13,7 @@ use super::*;
 pub struct PhysicalTableScan {
     table_ref: ir::TableRef,
     table: OnceLock<Arc<Table>>,
+    projections: Option<Box<[ColumnIndex]>>,
     current_batch: Mutex<Vec<Tuple>>,
     current_batch_index: AtomicUsize,
 
@@ -28,9 +30,13 @@ impl fmt::Debug for PhysicalTableScan {
 }
 
 impl PhysicalTableScan {
-    pub(crate) fn plan(table_ref: ir::TableRef) -> Arc<dyn PhysicalNode> {
+    pub(crate) fn plan(
+        table_ref: ir::TableRef,
+        projections: Option<Box<[ColumnIndex]>>,
+    ) -> Arc<dyn PhysicalNode> {
         Arc::new(Self {
             table_ref,
+            projections,
             table: Default::default(),
             current_batch: Default::default(),
             current_batch_index: Default::default(),
@@ -60,7 +66,7 @@ impl PhysicalSource for PhysicalTableScan {
                     .stream
                     .get_or_init(|| async move {
                         let storage = table.storage();
-                        Mutex::new(Box::pin(storage.scan(ctx.tx()).await) as _)
+                        Mutex::new(Box::pin(storage.scan(ctx.tx(), self.projections).await) as _)
                     })
                     .await;
                 let mut stream = stream.lock().await;

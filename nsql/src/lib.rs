@@ -121,14 +121,14 @@ impl Shared {
 
         let catalog = Arc::clone(&self.catalog);
         let stmt = &statements[0];
-        let stmt = Binder::new(Arc::clone(&tx), Arc::clone(&catalog)).bind(stmt)?;
+        let stmt = Binder::new(Arc::clone(&catalog), Arc::clone(&tx)).bind(stmt)?;
 
         let plan = Planner::default().plan(stmt);
 
         let plan = optimize(plan);
 
-        let physical_plan = PhysicalPlanner::new().plan(plan);
-        let ctx = ExecutionContext::new(Arc::clone(&self.buffer_pool), Arc::clone(&tx), catalog);
+        let physical_plan = PhysicalPlanner::new(Arc::clone(&catalog), Arc::clone(&tx)).plan(plan);
+        let ctx = ExecutionContext::new(Arc::clone(&self.buffer_pool), catalog, Arc::clone(&tx));
         let tuples = nsql_execution::execute(ctx, physical_plan).await?;
 
         Ok(MaterializedQueryOutput { types: vec![], tuples })

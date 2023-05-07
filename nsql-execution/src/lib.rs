@@ -152,14 +152,14 @@ trait PhysicalSink: PhysicalSource {
 #[derive(Clone)]
 pub struct ExecutionContext {
     pool: Arc<dyn Pool>,
-    tx: Arc<Transaction>,
     catalog: Arc<Catalog>,
+    tx: Arc<Transaction>,
 }
 
 impl ExecutionContext {
     #[inline]
-    pub fn new(pool: Arc<dyn Pool>, tx: Arc<Transaction>, catalog: Arc<Catalog>) -> Self {
-        Self { pool, tx, catalog }
+    pub fn new(pool: Arc<dyn Pool>, catalog: Arc<Catalog>, tx: Arc<Transaction>) -> Self {
+        Self { pool, catalog, tx }
     }
 
     #[inline]

@@ -74,7 +74,7 @@ impl Planner {
                 let source = self.plan_query(source);
                 Plan::Projection { source, projection }
             }
-            ir::QueryPlan::TableRef(table_ref) => Plan::Scan { table_ref },
+            ir::QueryPlan::TableRef { table_ref } => Plan::Scan { table_ref },
             ir::QueryPlan::Empty => todo!(),
             ir::QueryPlan::Limit(source, limit) => {
                 let source = self.plan_query(source);
