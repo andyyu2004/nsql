@@ -1,0 +1,13 @@
+statement ok
+CREATE TABLE t(x int);
+
+statement ok
+INSERT INTO t VALUES (1);
+
+statement ok
+UPDATE t SET x = 2;
+
+query I
+SELECT * FROM t;
+----
+2

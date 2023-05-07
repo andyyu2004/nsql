@@ -9,7 +9,7 @@ use nsql_core::schema::Schema;
 use nsql_pager::PageIndex;
 use nsql_transaction::Transaction;
 
-use self::heap::Heap;
+use self::heap::{Heap, HeapId};
 use crate::tuple::Tuple;
 
 pub struct TableStorage {
@@ -18,6 +18,7 @@ pub struct TableStorage {
 }
 
 impl TableStorage {
+    #[inline]
     pub async fn initialize(
         pool: Arc<dyn Pool>,
         info: TableStorageInfo,
@@ -26,11 +27,23 @@ impl TableStorage {
         Ok(Self { heap, info })
     }
 
-    pub async fn append(&self, tx: &Transaction, tuple: &Tuple) -> nsql_buffer::Result<()> {
-        self.heap.append(tx, tuple).await?;
+    #[inline]
+    pub async fn append(&self, tx: &Transaction, tuple: &Tuple) -> nsql_buffer::Result<HeapId> {
+        self.heap.append(tx, tuple).await
+    }
+
+    #[inline]
+    pub async fn update(
+        &self,
+        tx: &Transaction,
+        id: HeapId,
+        tuple: &Tuple,
+    ) -> nsql_buffer::Result<()> {
+        todo!();
         Ok(())
     }
 
+    #[inline]
     pub async fn scan(
         &self,
         tx: Arc<Transaction>,

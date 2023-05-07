@@ -89,15 +89,15 @@ trait PhysicalNode: Send + Sync + fmt::Debug + 'static {
 }
 
 #[derive(Debug)]
-struct Chunk(SmallVec<[Tuple; 1]>);
+struct Chunk<T = Tuple>(SmallVec<[T; 1]>);
 
-impl From<Vec<Tuple>> for Chunk {
-    fn from(vec: Vec<Tuple>) -> Self {
+impl<T> From<Vec<T>> for Chunk<T> {
+    fn from(vec: Vec<T>) -> Self {
         Self(SmallVec::from_vec(vec))
     }
 }
 
-impl Chunk {
+impl<T> Chunk<T> {
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
     }
@@ -106,13 +106,13 @@ impl Chunk {
         Self(SmallVec::new())
     }
 
-    pub fn singleton(tuple: Tuple) -> Self {
+    pub fn singleton(tuple: T) -> Self {
         Self(SmallVec::from_buf([tuple]))
     }
 }
 
-impl IntoIterator for Chunk {
-    type Item = Tuple;
+impl<T> IntoIterator for Chunk<T> {
+    type Item = T;
 
     type IntoIter = smallvec::IntoIter<[Self::Item; 1]>;
 
@@ -143,7 +143,7 @@ trait PhysicalOperator: PhysicalNode {
 #[async_trait::async_trait]
 trait PhysicalSource: PhysicalNode {
     /// Return the next chunk from the source. An empty chunk indicates that the source is exhausted.
-    async fn source(&self, ctx: &ExecutionContext) -> ExecutionResult<Chunk>;
+    async fn source(&self, ctx: &ExecutionContext) -> ExecutionResult<Chunk<Tuple>>;
 
     fn estimated_cardinality(&self) -> usize;
 }

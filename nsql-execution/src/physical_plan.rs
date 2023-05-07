@@ -8,6 +8,7 @@ mod physical_projection;
 mod physical_show;
 mod physical_table_scan;
 mod physical_transaction;
+mod physical_update;
 mod physical_values;
 
 use std::sync::Arc;

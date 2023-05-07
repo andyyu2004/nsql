@@ -222,6 +222,12 @@ impl Binder {
 
                 ir::Stmt::Drop(refs)
             }
+            ast::Statement::Update { table, assignments, from, selection, returning } => {
+                not_implemented!(from.is_some());
+                not_implemented!(returning.is_some());
+                let (scope, table) = self.bind_joint_tables(scope, table)?;
+                todo!()
+            }
             _ => unimplemented!("unimplemented statement: {:?}", stmt),
         };
 
