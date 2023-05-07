@@ -1,7 +1,7 @@
 use std::fmt;
 
-use nsql_core::schema::LogicalType;
 use nsql_serde::{StreamDeserialize, StreamSerialize};
+use nsql_storage::schema::LogicalType;
 use nsql_transaction::Transaction;
 
 use crate::private::CatalogEntity;

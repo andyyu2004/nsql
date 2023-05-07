@@ -5,17 +5,20 @@ use std::sync::Arc;
 
 use futures_util::Stream;
 use nsql_buffer::Pool;
-use nsql_core::schema::Schema;
 use nsql_pager::PageIndex;
 use nsql_transaction::Transaction;
 
 use self::heap::{Heap, HeapId};
+use crate::schema::Schema;
 use crate::tuple::Tuple;
+use crate::value::Value;
 
 pub struct TableStorage {
     heap: Heap<Tuple>,
     info: TableStorageInfo,
 }
+
+pub type TupleId = HeapId<Tuple>;
 
 impl TableStorage {
     #[inline]
@@ -28,7 +31,7 @@ impl TableStorage {
     }
 
     #[inline]
-    pub async fn append(&self, tx: &Transaction, tuple: &Tuple) -> nsql_buffer::Result<HeapId> {
+    pub async fn append(&self, tx: &Transaction, tuple: &Tuple) -> nsql_buffer::Result<TupleId> {
         self.heap.append(tx, tuple).await
     }
 
@@ -36,7 +39,7 @@ impl TableStorage {
     pub async fn update(
         &self,
         tx: &Transaction,
-        id: HeapId,
+        id: TupleId,
         tuple: &Tuple,
     ) -> nsql_buffer::Result<()> {
         todo!();
@@ -48,7 +51,7 @@ impl TableStorage {
         &self,
         tx: Arc<Transaction>,
     ) -> impl Stream<Item = nsql_buffer::Result<Vec<Tuple>>> + Send {
-        self.heap.scan(tx).await
+        self.heap.scan(tx, |tid, tuple| tuple.append(Value::Tid(tid))).await
     }
 }
 

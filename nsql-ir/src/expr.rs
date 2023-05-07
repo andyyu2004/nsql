@@ -2,9 +2,9 @@ use std::ops::Deref;
 use std::sync::Arc;
 
 use nsql_catalog::{Catalog, Column, Container, EntityRef, Namespace, Oid, Table, Transaction};
-use nsql_core::schema::LogicalType;
-use nsql_core::value::Value;
+use nsql_storage::schema::LogicalType;
 use nsql_storage::tuple::TupleIndex;
+use nsql_storage::value::Value;
 
 #[derive(Debug, Clone)]
 pub enum QueryPlan {

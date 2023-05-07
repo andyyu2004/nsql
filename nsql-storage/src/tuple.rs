@@ -1,9 +1,10 @@
 use std::ops::Index;
 use std::sync::Arc;
 
-use nsql_core::schema::{PhysicalType, Schema};
-use nsql_core::value::{Decimal, Value};
 use nsql_serde::{StreamDeserialize, StreamDeserializeWith, StreamDeserializer};
+
+use crate::schema::{PhysicalType, Schema};
+use crate::value::{Decimal, Value};
 
 pub struct TupleDeserializationContext {
     pub schema: Arc<Schema>,
@@ -11,7 +12,7 @@ pub struct TupleDeserializationContext {
 
 #[derive(Debug, Clone, PartialEq, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
 #[repr(transparent)]
-pub struct Tuple(Box<[Value]>);
+pub struct Tuple(Vec<Value>);
 
 impl StreamDeserializeWith for Tuple {
     type Context<'a> = TupleDeserializationContext;
@@ -44,32 +45,38 @@ impl StreamDeserializeWith for Tuple {
 
 impl Tuple {
     #[inline]
-    pub fn new(values: Box<[Value]>) -> Self {
+    pub fn new(values: Vec<Value>) -> Self {
         assert!(!values.is_empty(), "tuple must have at least one value");
         Self(values)
     }
 
     #[inline]
     pub fn empty() -> Self {
-        // FIXME consider making this a static to avoid allocations
-        Self(Box::new([]))
+        Self(Vec::new())
     }
 
     #[inline]
     pub fn values(&self) -> impl Iterator<Item = &Value> {
         self.0.iter()
     }
+
+    #[inline]
+    pub(crate) fn append(self, value: Value) -> Tuple {
+        let mut values = self.0;
+        values.push(value);
+        Self::new(values)
+    }
 }
 
 impl From<Vec<Value>> for Tuple {
     fn from(values: Vec<Value>) -> Self {
-        Self::new(values.into_boxed_slice())
+        Self::new(values)
     }
 }
 
 impl FromIterator<Value> for Tuple {
     fn from_iter<I: IntoIterator<Item = Value>>(iter: I) -> Self {
-        Self::new(iter.into_iter().collect::<Vec<_>>().into_boxed_slice())
+        Self::new(iter.into_iter().collect::<Vec<_>>())
     }
 }
 

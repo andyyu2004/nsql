@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use nsql::{Connection, Nsql};
-use nsql_core::schema::LogicalType;
+use nsql_storage::schema::LogicalType;
 use sqllogictest::{AsyncDB, ColumnType, DBOutput, Runner};
 
 fn nsql_sqllogictest(path: &Path) -> nsql::Result<(), Box<dyn Error>> {
@@ -48,6 +48,7 @@ impl ColumnType for TypeWrapper {
             LogicalType::Decimal => 'D',
             LogicalType::Text => 'T',
             LogicalType::Null => todo!(),
+            LogicalType::Tid => todo!(),
         }
     }
 }

@@ -2,7 +2,7 @@ use std::sync::atomic::{self, AtomicBool};
 use std::sync::Arc;
 
 use nsql_catalog::{Container, Entity, Namespace, Table};
-use nsql_core::value::Value;
+use nsql_storage::value::Value;
 
 use super::*;
 
@@ -59,9 +59,7 @@ impl PhysicalSource for PhysicalShow {
             match self.show {
                 ir::ObjectType::Table => {
                     for (_, table) in namespace.all::<Table>(&tx)? {
-                        tuples.push(Tuple::new(
-                            vec![Value::Text(table.name().to_string())].into_boxed_slice(),
-                        ));
+                        tuples.push(Tuple::new(vec![Value::Text(table.name().to_string())]));
                     }
                 }
             }

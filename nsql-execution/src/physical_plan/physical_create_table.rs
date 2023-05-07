@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use nsql_catalog::{Column, Container, CreateTableInfo, Namespace, Table};
-use nsql_core::schema::{Attribute, Schema};
+use nsql_storage::schema::{Attribute, Schema};
 use nsql_storage::{TableStorage, TableStorageInfo};
 
 use super::*;

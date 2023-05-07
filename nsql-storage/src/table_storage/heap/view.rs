@@ -1,9 +1,9 @@
 use std::marker::PhantomData;
 use std::ops::{Add, AddAssign, Deref, Index, IndexMut, Range, Sub};
 use std::pin::Pin;
-use std::{io, mem, slice};
+use std::{fmt, io, mem, slice};
 
-use nsql_pager::{PageIndex, PAGE_DATA_SIZE};
+use nsql_pager::{PageIndex, PageReadGuard, PAGE_DATA_SIZE};
 use nsql_rkyv::{align_archived_ptr_offset, archived_size_of, DefaultSerializer};
 use nsql_transaction::Transaction;
 use rkyv::option::ArchivedOption;
@@ -23,7 +23,7 @@ pub(crate) struct HeapView<'a, T: Archive> {
 }
 
 impl<'a, T: Archive> HeapView<'a, T> {
-    pub fn view(buf: &'a [u8; PAGE_DATA_SIZE]) -> nsql_buffer::Result<Self> {
+    pub fn view(buf: &'a PageReadGuard<'a>) -> nsql_buffer::Result<Self> {
         let (header, buf) = buf.split_array_ref();
         let header = unsafe { nsql_rkyv::archived_root::<HeapPageHeader>(header) };
         if header.magic != HEAP_PAGE_HEADER_MAGIC {
@@ -83,16 +83,20 @@ impl<'a, T: Archive> HeapView<'a, T> {
 }
 
 impl<'a, T: Archive> HeapView<'a, T> {
-    #[tracing::instrument(skip(self, acc))]
-    pub fn scan_into(&self, tx: &Transaction, acc: &mut Vec<T>)
-    where
+    #[tracing::instrument(skip(self, acc, f))]
+    pub fn scan_into<U>(
+        &self,
+        tx: &Transaction,
+        acc: &mut Vec<U>,
+        mut f: impl FnMut(SlotIndex, T) -> U,
+    ) where
         T::Archived: Deserialize<T, rkyv::Infallible>,
     {
         acc.reserve(self.slots.len());
-        self.slots.iter().for_each(|&slot| {
+        self.slots.iter().enumerate().for_each(|(idx, &slot)| {
             let raw = self.get_raw(slot);
             if tx.can_see(raw.version.into()) {
-                acc.push(nsql_rkyv::deserialize(&raw.data));
+                acc.push(f(SlotIndex(idx as u16), nsql_rkyv::deserialize(&raw.data)));
             }
         })
     }
@@ -300,13 +304,21 @@ pub(crate) struct Slot {
     length: BigEndian<u16>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Archive, Serialize, Deserialize,
+)]
 #[repr(transparent)]
-pub(crate) struct SlotIndex(u16);
+pub struct SlotIndex(u16);
 
 impl From<u16> for SlotIndex {
     fn from(idx: u16) -> Self {
         Self(idx)
+    }
+}
+
+impl fmt::Display for SlotIndex {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
     }
 }
 

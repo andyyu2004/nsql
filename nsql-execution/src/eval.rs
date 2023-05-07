@@ -1,5 +1,5 @@
-use nsql_core::value::Value;
 use nsql_storage::tuple::Tuple;
+use nsql_storage::value::Value;
 
 #[derive(Debug)]
 pub(crate) struct Evaluator {}

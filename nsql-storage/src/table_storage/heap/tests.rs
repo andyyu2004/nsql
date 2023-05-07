@@ -42,7 +42,7 @@ fn test_heap_scan() -> nsql_buffer::Result<()> {
         }
 
         let values = heap
-            .scan(tx)
+            .scan(tx, |_tid, tuple| tuple)
             .await
             .try_fold(vec![], |mut acc, next| async move {
                 acc.extend(next);

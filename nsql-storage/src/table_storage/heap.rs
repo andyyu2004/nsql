@@ -1,3 +1,4 @@
+use std::fmt;
 use std::marker::PhantomData;
 use std::sync::Arc;
 
@@ -13,6 +14,7 @@ use rkyv::{Archive, Archived, Deserialize, Serialize};
 
 use self::view::{HeapView, HeapViewMut, Slot, SlotIndex};
 use super::fsm::FreeSpaceMap;
+use super::TupleId;
 
 mod view;
 
@@ -81,10 +83,24 @@ impl<T> Heap<T> {
     }
 }
 
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy, Archive, Serialize, Deserialize)]
 /// A stable identifier for an item in the heap
-pub struct HeapId {
-    page_idx: PageIndex,
+pub struct HeapId<T> {
+    page: PageIndex,
     slot: SlotIndex,
+    _phantom: std::marker::PhantomData<T>,
+}
+
+impl<T> HeapId<T> {
+    fn new(page: PageIndex, slot: SlotIndex) -> Self {
+        Self { page, slot, _phantom: PhantomData }
+    }
+}
+
+impl<T> fmt::Display for HeapId<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "({}, {})", self.page, self.slot)
+    }
 }
 
 #[derive(Archive, Serialize)]
@@ -98,24 +114,24 @@ impl<T> Heap<T>
 where
     T: Serialize<DefaultSerializer>,
 {
-    pub async fn get(&self, tx: &Transaction, id: HeapId) -> nsql_buffer::Result<Option<T>>
+    pub async fn get(&self, tx: &Transaction, id: HeapId<T>) -> nsql_buffer::Result<Option<T>>
     where
         T::Archived: Deserialize<T, rkyv::Infallible>,
     {
         // FIXME respect transaction
-        let page = self.pool.load(id.page_idx).await?;
+        let page = self.pool.load(id.page).await?;
         let guard = page.read().await;
         let view = HeapView::<T>::view(&guard)?;
         Ok(view.get(tx, id.slot))
     }
 
-    pub async fn append(&self, tx: &Transaction, tuple: &T) -> nsql_buffer::Result<HeapId> {
+    pub async fn append(&self, tx: &Transaction, tuple: &T) -> nsql_buffer::Result<HeapId<T>> {
         let serialized = nsql_rkyv::to_bytes(&Versioned { version: tx.version(), data: tuple });
 
         self.with_free_space(serialized.len() as u16, |page_idx, view| {
             let slot = unsafe { view.append_raw(tx, &serialized) }
                 .expect("there should be sufficient space as we checked the fsm");
-            Ok(HeapId { page_idx, slot })
+            Ok(HeapId::new(page_idx, slot))
         })
         .await
     }
@@ -123,6 +139,7 @@ where
     pub async fn scan(
         &self,
         tx: Arc<Transaction>,
+        mut f: impl FnMut(HeapId<T>, T) -> T + Send + Sync,
     ) -> impl Stream<Item = nsql_buffer::Result<Vec<T>>> + Send
     where
         T: Send + Sync,
@@ -143,7 +160,9 @@ where
                 let head = pool.load(idx).await?;
                 let guard = head.read().await;
                 let view = HeapView::<T>::view(&guard)?;
-                view.scan_into(&tx, &mut tuples);
+                view.scan_into(&tx, &mut tuples, |slot, tuple| {
+                    f(HeapId::new(idx, slot), tuple)
+                });
                 next = view.right_link();
                 yield tuples;
             }

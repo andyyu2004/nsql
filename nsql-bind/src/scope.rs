@@ -2,8 +2,8 @@
 
 use anyhow::bail;
 use nsql_catalog::{Column, Container, Entity, EntityRef};
-use nsql_core::schema::LogicalType;
 use nsql_core::Name;
+use nsql_storage::schema::LogicalType;
 
 use super::unbound;
 use crate::{Binder, Path, Result, TableAlias};

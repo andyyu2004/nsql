@@ -11,12 +11,12 @@ use anyhow::{anyhow, bail, ensure};
 use ir::Decimal;
 use itertools::Itertools;
 use nsql_catalog::{
-    Catalog, Container, CreateColumnInfo, Entity, EntityRef, Namespace, NamespaceEntity, Oid,
-    Table, DEFAULT_SCHEMA,
+    Catalog, Container, CreateColumnInfo, Entity, Namespace, NamespaceEntity, Oid, Table,
+    DEFAULT_SCHEMA,
 };
-use nsql_core::schema::LogicalType;
 use nsql_core::Name;
 use nsql_parse::ast::{self, HiveDistributionStyle};
+use nsql_storage::schema::LogicalType;
 use nsql_transaction::Transaction;
 
 use self::scope::Scope;
