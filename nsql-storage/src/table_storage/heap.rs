@@ -1,3 +1,4 @@
+use std::borrow::Borrow;
 use std::fmt;
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -119,7 +120,7 @@ pub struct Versioned<'a, T> {
 
 impl<T> Heap<T>
 where
-    T: Serialize<DefaultSerializer>,
+    T: Archive,
 {
     pub async fn get(&self, tx: &Transaction, id: HeapId<T>) -> nsql_buffer::Result<Option<T>>
     where
@@ -132,7 +133,10 @@ where
         Ok(view.get(tx, id.slot))
     }
 
-    pub async fn append(&self, tx: &Transaction, tuple: &T) -> nsql_buffer::Result<HeapId<T>> {
+    pub async fn append(&self, tx: &Transaction, tuple: &T) -> nsql_buffer::Result<HeapId<T>>
+    where
+        T: Serialize<DefaultSerializer>,
+    {
         let serialized = nsql_rkyv::to_bytes(&Versioned { version: tx.version(), data: tuple });
 
         self.with_free_space(serialized.len() as u16, |page_idx, view| {
@@ -148,7 +152,10 @@ where
         tx: &Transaction,
         id: HeapId<T>,
         tuple: &T,
-    ) -> nsql_buffer::Result<()> {
+    ) -> nsql_buffer::Result<()>
+    where
+        T: Serialize<DefaultSerializer>,
+    {
         // FIXME just overwriting in place for now
         let serialized = nsql_rkyv::to_bytes(&Versioned { version: tx.version(), data: tuple });
 

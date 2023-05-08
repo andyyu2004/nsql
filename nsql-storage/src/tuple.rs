@@ -18,13 +18,14 @@ pub struct Tuple(Box<[Value]>);
 impl Tuple {
     #[inline]
     pub fn new(values: Box<[Value]>) -> Self {
-        assert!(!values.is_empty(), "tuple must have at least one value");
         Self(values)
     }
 
     #[inline]
-    pub fn rightmost_index(&self) -> TupleIndex {
-        TupleIndex(self.0.len() - 1)
+    // FIXME find more efficient representation to avoid all this copying
+    pub fn split_last(&self) -> Option<(Tuple, Value)> {
+        let (last, rest) = self.0.split_last()?;
+        Some((Self::from(rest.to_vec()), last.clone()))
     }
 
     #[inline]

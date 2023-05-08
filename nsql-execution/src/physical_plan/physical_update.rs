@@ -62,8 +62,10 @@ impl PhysicalSink for PhysicalUpdate {
         let table = self.table_ref.get(&ctx.catalog(), &tx)?;
         let storage = table.storage();
 
-        // We store the tid in the rightmost column of the tuple.
-        let tid = match tuple[tuple.rightmost_index()] {
+        let (tuple, tid) = tuple.split_last().expect("expected tuple to be non-empty");
+
+        // We expect the tid in the rightmost column of the tuple.
+        let tid = match tid {
             ir::Value::Tid(tid) => tid,
             _ => unreachable!(),
         };
