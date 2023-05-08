@@ -1222,6 +1222,7 @@ dependencies = [
  "parking_lot",
  "smallvec",
  "tokio",
+ "tracing",
 ]
 
 [[package]]

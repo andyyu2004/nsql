@@ -24,6 +24,7 @@ impl QueryPlan {
 
     #[inline]
     pub fn filter(self: Box<Self>, predicate: Expr) -> Box<QueryPlan> {
+        assert!(matches!(predicate.ty, LogicalType::Bool | LogicalType::Null));
         Box::new(QueryPlan::Filter { source: self, predicate })
     }
 

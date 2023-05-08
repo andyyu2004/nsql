@@ -51,6 +51,7 @@ impl PhysicalTableScan {
 
 #[async_trait::async_trait]
 impl PhysicalSource for PhysicalTableScan {
+    #[tracing::instrument(skip(self, ctx))]
     async fn source(&self, ctx: &ExecutionContext) -> ExecutionResult<Chunk> {
         let tx = ctx.tx();
         let table = self.table.get_or_try_init(|| {
@@ -64,6 +65,7 @@ impl PhysicalSource for PhysicalTableScan {
             let idx = self.current_batch_index.fetch_add(1, atomic::Ordering::AcqRel);
             if idx < next_batch.len() {
                 let tuple = next_batch[idx].clone();
+                tracing::debug!(%tuple, "returning tuple");
                 return Ok(Chunk::singleton(tuple));
             } else {
                 let stream = self

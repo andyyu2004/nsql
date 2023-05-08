@@ -18,14 +18,17 @@ impl PhysicalFilter {
 
 #[async_trait::async_trait]
 impl PhysicalOperator for PhysicalFilter {
+    #[tracing::instrument(skip(self, _ctx, input))]
     async fn execute(
         &self,
         _ctx: &ExecutionContext,
         input: Tuple,
     ) -> ExecutionResult<OperatorState<Tuple>> {
         let value = self.evaluator.evaluate_expr(&input, &self.predicate);
+        let keep = value.cast::<bool>(false).expect("this should have failed during planning");
+        tracing::debug!(%keep, %input, "filtering tuple");
         // A null predicate is treated as false.
-        match value.cast::<bool>(false).expect("this should have failed during planning") {
+        match keep {
             false => Ok(OperatorState::Continue),
             true => Ok(OperatorState::Yield(input)),
         }

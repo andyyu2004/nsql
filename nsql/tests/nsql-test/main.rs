@@ -7,10 +7,13 @@ use async_trait::async_trait;
 use nsql::{Connection, Nsql};
 use nsql_storage::schema::LogicalType;
 use sqllogictest::{AsyncDB, ColumnType, DBOutput, Runner};
+use tracing_subscriber::EnvFilter;
 
 fn nsql_sqllogictest(path: &Path) -> nsql::Result<(), Box<dyn Error>> {
     nsql_test::start(async {
-        let _ = tracing_subscriber::fmt::fmt().with_env_filter("nsql=DEBUG").try_init();
+        let filter =
+            EnvFilter::try_from_env("NSQL_LOG").unwrap_or_else(|_| EnvFilter::new("nsql=DEBUG"));
+        let _ = tracing_subscriber::fmt::fmt().with_env_filter(filter).try_init();
         let db = TestDb::new(Nsql::mem().await.unwrap());
         let mut tester = Runner::new(db);
         tester.run_file_async(path).await?;

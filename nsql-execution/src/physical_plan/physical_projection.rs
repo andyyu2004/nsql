@@ -18,12 +18,15 @@ impl PhysicalProjection {
 
 #[async_trait::async_trait]
 impl PhysicalOperator for PhysicalProjection {
+    #[tracing::instrument(skip(self, _ctx, input))]
     async fn execute(
         &self,
         _ctx: &ExecutionContext,
         input: Tuple,
     ) -> ExecutionResult<OperatorState<Tuple>> {
-        Ok(OperatorState::Yield(self.evaluator.evaluate(&input, &self.projection)))
+        let output = self.evaluator.evaluate(&input, &self.projection);
+        tracing::debug!(%input, %output, "evaluating projection");
+        Ok(OperatorState::Yield(output))
     }
 }
 

@@ -254,7 +254,7 @@ impl Binder {
                 let mut source = Box::new(ir::QueryPlan::TableRef { table_ref, projection });
                 if let Some(predicate) = selection
                     .as_ref()
-                    .map(|selection| self.bind_expr(&scope, selection))
+                    .map(|selection| self.bind_predicate(&scope, selection))
                     .transpose()?
                 {
                     source = source.filter(predicate);
@@ -494,14 +494,7 @@ impl Binder {
         };
 
         if let Some(predicate) = selection {
-            let predicate = self.bind_expr(&scope, predicate)?;
-            // We intentionally are being strict here and only allow boolean predicates rather than
-            // anything that can be cast to a boolean.
-            ensure!(
-                matches!(predicate.ty, LogicalType::Bool | LogicalType::Null),
-                "expected predicate type of WHERE to be of type bool, got type {}",
-                predicate.ty
-            );
+            let predicate = self.bind_predicate(&scope, predicate)?;
             source = source.filter(predicate);
         }
 
@@ -632,6 +625,19 @@ impl Binder {
 
     fn bind_row(&self, scope: &Scope, row: &[ast::Expr]) -> Result<Vec<ir::Expr>> {
         row.iter().map(|expr| self.bind_expr(scope, expr)).collect()
+    }
+
+    fn bind_predicate(&self, scope: &Scope, predicate: &ast::Expr) -> Result<ir::Expr> {
+        let predicate = self.bind_expr(scope, predicate)?;
+        // We intentionally are being strict here and only allow boolean predicates rather than
+        // anything that can be cast to a boolean.
+        ensure!(
+            matches!(predicate.ty, LogicalType::Bool | LogicalType::Null),
+            "expected predicate type of WHERE to be of type bool, got type {}",
+            predicate.ty
+        );
+
+        Ok(predicate)
     }
 
     fn bind_expr(&self, scope: &Scope, expr: &ast::Expr) -> Result<ir::Expr> {

@@ -1,3 +1,4 @@
+use std::fmt;
 use std::ops::Index;
 use std::sync::Arc;
 
@@ -41,6 +42,20 @@ impl Tuple {
     #[inline]
     pub fn project(&self, projection: &[TupleIndex]) -> Self {
         projection.iter().map(|&idx| self[idx].clone()).collect()
+    }
+}
+
+impl fmt::Display for Tuple {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "(")?;
+        let mut iter = self.0.iter();
+        if let Some(value) = iter.next() {
+            write!(f, "{value}")?;
+            for value in iter {
+                write!(f, ", {}", value)?;
+            }
+        }
+        write!(f, ")")
     }
 }
 

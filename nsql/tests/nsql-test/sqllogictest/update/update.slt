@@ -1,13 +1,27 @@
 statement ok
-CREATE TABLE t(x int);
+CREATE TABLE t(b boolean);
 
 statement ok
-INSERT INTO t VALUES (1);
+INSERT INTO t VALUES (false);
+
+statement error
+UPDATE t SET b = true WHERE 99;
+----
+expected predicate type of WHERE to be of type bool, got type int
 
 statement ok
-UPDATE t SET x = 2;
+UPDATE t SET b = true WHERE b;
 
 query I
 SELECT * FROM t;
 ----
-2
+false
+
+# statement ok
+# UPDATE t SET b = true;
+#
+# query I
+# SELECT * FROM t;
+# ----
+# true
+#

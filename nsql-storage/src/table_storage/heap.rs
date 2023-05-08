@@ -83,7 +83,7 @@ impl<T> Heap<T> {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Hash, Archive, Serialize, Deserialize)]
+#[derive(PartialEq, Eq, Hash, Archive, Serialize, Deserialize)]
 /// A stable identifier for an item in the heap
 pub struct HeapId<T> {
     page: PageIndex,
@@ -102,6 +102,12 @@ impl<T> Copy for HeapId<T> {}
 impl<T> HeapId<T> {
     fn new(page: PageIndex, slot: SlotIndex) -> Self {
         Self { page, slot, _phantom: PhantomData }
+    }
+}
+
+impl<T> fmt::Debug for HeapId<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{self}")
     }
 }
 
