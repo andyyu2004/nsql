@@ -8,7 +8,7 @@ use std::{fmt, io};
 
 use dashmap::DashMap;
 use nsql_btree::{BTree, Min, Result};
-use nsql_rkyv::DefaultSerializer;
+use nsql_rkyv::{DefaultDeserializer, DefaultSerializer};
 use nsql_test::mk_fast_mem_buffer_pool;
 use rkyv::{Archive, Deserialize, Serialize};
 use tokio::task::JoinSet;
@@ -84,10 +84,15 @@ where
         + Send
         + Sync
         + 'static,
-    K::Archived:
-        Deserialize<K, rkyv::Infallible> + PartialOrd<K> + fmt::Debug + Clone + Ord + Send + Sync,
+    K::Archived: Deserialize<K, DefaultDeserializer>
+        + PartialOrd<K>
+        + fmt::Debug
+        + Clone
+        + Ord
+        + Send
+        + Sync,
     V: Archive + Eq + Clone + Serialize<DefaultSerializer> + fmt::Debug + Send + Sync + 'static,
-    V::Archived: Deserialize<V, rkyv::Infallible> + fmt::Debug + Send + Sync,
+    V::Archived: Deserialize<V, DefaultDeserializer> + fmt::Debug + Send + Sync,
 {
     let pool = mk_fast_mem_buffer_pool!();
     let btree = BTree::<K, V>::initialize(pool).await?;

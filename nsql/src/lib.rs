@@ -127,7 +127,8 @@ impl Shared {
 
         let plan = optimize(plan);
 
-        let physical_plan = PhysicalPlanner::new(Arc::clone(&catalog), Arc::clone(&tx)).plan(plan);
+        let physical_plan =
+            PhysicalPlanner::new(Arc::clone(&catalog), Arc::clone(&tx)).plan(plan)?;
         let ctx = ExecutionContext::new(Arc::clone(&self.buffer_pool), catalog, Arc::clone(&tx));
         let tuples = nsql_execution::execute(ctx, physical_plan).await?;
 

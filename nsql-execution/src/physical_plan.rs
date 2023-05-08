@@ -16,7 +16,7 @@ use std::sync::Arc;
 use anyhow::Result;
 use nsql_catalog::{Catalog, Column, Container, EntityRef, Transaction};
 use nsql_plan::Plan;
-use nsql_storage::tuple::ColumnIndex;
+use nsql_storage::tuple::TupleIndex;
 
 use self::physical_create_namespace::PhysicalCreateNamespace;
 use self::physical_create_table::PhysicalCreateTable;
@@ -86,14 +86,15 @@ impl PhysicalPlanner {
             Plan::Update { table_ref, assignments, filter, returning } => {
                 let table = table_ref.get(&self.catalog, &self.tx)?;
                 let columns = table.all::<Column>(&self.tx)?;
-                let column_indices = columns
+                // FIXME hacky way to build the projection
+                let projection = columns
                     .iter()
-                    .map(|(_, col)| col.index())
+                    .map(|(_, col)| TupleIndex::new(col.index().index()))
                     // Add special column index for the tid
-                    .chain(Some(ColumnIndex::new(columns.len() as u8)))
+                    .chain(Some(TupleIndex::new(columns.len())))
                     .collect();
 
-                let mut source = PhysicalTableScan::plan(table_ref, Some(column_indices));
+                let mut source = PhysicalTableScan::plan(table_ref, Some(projection));
                 if let Some(filter) = filter {
                     source = PhysicalFilter::plan(source, filter);
                 }

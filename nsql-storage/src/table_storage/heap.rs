@@ -6,16 +6,14 @@ use async_stream::try_stream;
 use futures_util::Stream;
 use nsql_buffer::{BufferHandle, Pool};
 use nsql_pager::PageIndex;
-use nsql_rkyv::{archived_size_of, DefaultSerializer};
-use nsql_transaction::{Transaction, Txid, Version};
+use nsql_rkyv::{archived_size_of, DefaultDeserializer, DefaultSerializer};
+use nsql_transaction::{Transaction, Version};
 use rkyv::option::ArchivedOption;
 use rkyv::with::Inline;
 use rkyv::{Archive, Archived, Deserialize, Serialize};
 
 use self::view::{HeapView, HeapViewMut, Slot, SlotIndex};
 use super::fsm::FreeSpaceMap;
-use super::TupleId;
-use crate::tuple::ColumnIndex;
 
 mod view;
 
@@ -84,13 +82,21 @@ impl<T> Heap<T> {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy, Archive, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Eq, Hash, Archive, Serialize, Deserialize)]
 /// A stable identifier for an item in the heap
 pub struct HeapId<T> {
     page: PageIndex,
     slot: SlotIndex,
     _phantom: std::marker::PhantomData<T>,
 }
+
+impl<T> Clone for HeapId<T> {
+    fn clone(&self) -> Self {
+        Self { page: self.page, slot: self.slot, _phantom: PhantomData }
+    }
+}
+
+impl<T> Copy for HeapId<T> {}
 
 impl<T> HeapId<T> {
     fn new(page: PageIndex, slot: SlotIndex) -> Self {
@@ -117,7 +123,7 @@ where
 {
     pub async fn get(&self, tx: &Transaction, id: HeapId<T>) -> nsql_buffer::Result<Option<T>>
     where
-        T::Archived: Deserialize<T, rkyv::Infallible>,
+        T::Archived: Deserialize<T, DefaultDeserializer>,
     {
         // FIXME respect transaction
         let page = self.pool.load(id.page).await?;
@@ -137,14 +143,30 @@ where
         .await
     }
 
-    pub async fn scan(
+    pub async fn update(
+        &self,
+        tx: &Transaction,
+        id: HeapId<T>,
+        tuple: &T,
+    ) -> nsql_buffer::Result<()> {
+        // FIXME just overwriting in place for now
+        let serialized = nsql_rkyv::to_bytes(&Versioned { version: tx.version(), data: tuple });
+
+        let page = self.pool.load(id.page).await?;
+        let mut guard = page.write().await;
+        let mut view = HeapViewMut::<T>::view_mut(&mut guard)?;
+        unsafe { view.update_in_place_raw(id.slot, &serialized) };
+        Ok(())
+    }
+
+    pub async fn scan<U>(
         &self,
         tx: Arc<Transaction>,
-        projections: &[ColumnIndex],
-    ) -> impl Stream<Item = nsql_buffer::Result<Vec<T>>> + Send
+        mut f: impl FnMut(HeapId<T>, &T::Archived) -> U + Send,
+    ) -> impl Stream<Item = nsql_buffer::Result<Vec<U>>> + Send
     where
-        T: Send + Sync,
-        T::Archived: Deserialize<T, rkyv::Infallible> + Send + Sync,
+        T::Archived: Send + Sync + 'static,
+        U: Send + Sync + 'static,
     {
         let pool = Arc::clone(&self.pool);
         let mut next = {
@@ -159,12 +181,15 @@ where
             while let Some(idx) = next {
                 let mut tuples = vec![];
                 let head = pool.load(idx).await?;
-                let guard = head.read().await;
-                let view = HeapView::<T>::view(&guard)?;
-                view.scan_into(&tx, &mut tuples, |slot, tuple| {
-                    f(HeapId::new(idx, slot), tuple)
-                });
-                next = view.right_link();
+                {
+                    let guard = head.read().await;
+                    let view = HeapView::<T>::view(&guard)?;
+                    view.scan_into(&tx, &mut tuples, |slot, tuple| {
+                        let id = HeapId::new(idx, slot);
+                        f(id, tuple)
+                    });
+                    next = view.right_link();
+                }
                 yield tuples;
             }
         }

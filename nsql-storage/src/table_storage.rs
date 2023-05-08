@@ -10,8 +10,7 @@ use nsql_transaction::Transaction;
 
 use self::heap::{Heap, HeapId};
 use crate::schema::Schema;
-use crate::tuple::{ColumnIndex, Tuple};
-use crate::value::Value;
+use crate::tuple::{Tuple, TupleIndex};
 
 pub struct TableStorage {
     heap: Heap<Tuple>,
@@ -42,18 +41,21 @@ impl TableStorage {
         id: TupleId,
         tuple: &Tuple,
     ) -> nsql_buffer::Result<()> {
-        todo!();
-        Ok(())
+        self.heap.update(tx, id, tuple).await
     }
 
     #[inline]
     pub async fn scan(
         &self,
         tx: Arc<Transaction>,
-        projections: Option<&[ColumnIndex]>,
+        projections: Option<Box<[TupleIndex]>>,
     ) -> impl Stream<Item = nsql_buffer::Result<Vec<Tuple>>> + Send {
-        // Add the tuple id as an additional column to the end of the tuple
-        self.heap.scan(tx, projections).await
+        self.heap
+            .scan(tx, move |tid, tuple| match &projections {
+                Some(projections) => tuple.project(tid, projections),
+                None => nsql_rkyv::deserialize(tuple),
+            })
+            .await
     }
 }
 

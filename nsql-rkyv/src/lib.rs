@@ -10,19 +10,19 @@ use rkyv::ser::serializers::{
     AlignedSerializer, AllocScratch, BufferSerializer, CompositeSerializer,
 };
 use rkyv::ser::Serializer as _;
-use rkyv::{
-    AlignedVec, Archive, ArchiveUnsized, Deserialize, Infallible, Serialize, SerializeUnsized,
-};
+use rkyv::{AlignedVec, Archive, ArchiveUnsized, Deserialize, Serialize, SerializeUnsized};
 
 pub type DefaultSerializer =
-    CompositeSerializer<AlignedSerializer<AlignedVec>, AllocScratch, Infallible>;
+    CompositeSerializer<AlignedSerializer<AlignedVec>, AllocScratch, rkyv::Infallible>;
+
+pub type DefaultDeserializer = rkyv::Infallible;
 
 #[inline]
 pub fn deserialize<T: Archive>(archived: &T::Archived) -> T
 where
-    T::Archived: Deserialize<T, Infallible>,
+    T::Archived: Deserialize<T, DefaultDeserializer>,
 {
-    archived.deserialize(&mut Infallible).unwrap()
+    archived.deserialize(&mut rkyv::Infallible).unwrap()
 }
 
 #[inline]

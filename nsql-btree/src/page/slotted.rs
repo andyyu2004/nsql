@@ -5,11 +5,12 @@ use std::{fmt, mem, ptr, slice};
 
 use nsql_pager::PAGE_DATA_SIZE;
 use nsql_rkyv::{
-    align_archived_ptr_offset, archived_align_of, archived_size_of, DefaultSerializer,
+    align_archived_ptr_offset, archived_align_of, archived_size_of, DefaultDeserializer,
+    DefaultSerializer,
 };
 use nsql_util::static_assert_eq;
 use rkyv::rend::BigEndian;
-use rkyv::{Archive, Archived, Deserialize, Infallible, Serialize};
+use rkyv::{Archive, Archived, Deserialize, Serialize};
 
 use super::entry::Entry;
 use super::PageFull;
@@ -335,7 +336,7 @@ where
         serialized_entry: &[u8],
     ) -> Result<Option<V>, PageFull>
     where
-        V::Archived: Deserialize<V, Infallible> + fmt::Debug,
+        V::Archived: Deserialize<V, DefaultDeserializer> + fmt::Debug,
     {
         match self.insert_raw_inner(serialized_entry) {
             Ok(prev) => Ok(prev),
@@ -403,7 +404,7 @@ where
     where
         K::Archived: PartialOrd<Q>,
         Q: ?Sized,
-        V::Archived: Deserialize<V, Infallible> + fmt::Debug,
+        V::Archived: Deserialize<V, DefaultDeserializer> + fmt::Debug,
     {
         let idx = self.slot_index_of_key(key).ok()?;
         let slot = self.slots[idx];
@@ -427,7 +428,7 @@ where
 
     unsafe fn insert_raw_inner(&mut self, serialized_entry: &[u8]) -> Result<Option<V>, PageFull>
     where
-        V::Archived: Deserialize<V, Infallible> + fmt::Debug,
+        V::Archived: Deserialize<V, DefaultDeserializer> + fmt::Debug,
     {
         if serialized_entry.len() > PAGE_DATA_SIZE / 4 {
             // we are dividing by 4 not 3 as we're not considering the size of the metadata etc
@@ -547,7 +548,7 @@ where
     where
         K: Serialize<DefaultSerializer>,
         V: Serialize<DefaultSerializer>,
-        V::Archived: Deserialize<V, Infallible> + fmt::Debug,
+        V::Archived: Deserialize<V, DefaultDeserializer> + fmt::Debug,
     {
         let entry = Entry { key, value };
         let bytes = nsql_rkyv::to_bytes(&entry);

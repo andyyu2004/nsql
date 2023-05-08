@@ -1,7 +1,5 @@
 use std::collections::VecDeque;
-use std::pin::pin;
 
-use futures_util::StreamExt;
 use nsql_catalog::EntityRef;
 use parking_lot::RwLock;
 
@@ -64,8 +62,14 @@ impl PhysicalSink for PhysicalUpdate {
         let table = self.table_ref.get(&ctx.catalog(), &tx)?;
         let storage = table.storage();
 
-        let tid = todo!();
+        // We store the tid in the rightmost column of the tuple.
+        let tid = match tuple[tuple.rightmost_index()] {
+            ir::Value::Tid(tid) => tid,
+            _ => unreachable!(),
+        };
+
         storage.update(&tx, tid, &tuple).await.map_err(|report| report.into_error())?;
+
         if self.returning.is_some() {
             self.returning_tuples.write().push_back(tuple);
         }

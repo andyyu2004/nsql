@@ -7,7 +7,7 @@ use std::sync::Arc;
 use async_recursion::async_recursion;
 use nsql_buffer::Pool;
 use nsql_pager::PageIndex;
-use nsql_rkyv::DefaultSerializer;
+use nsql_rkyv::{DefaultDeserializer, DefaultSerializer};
 use rkyv::{rend, Archive, Deserialize, Serialize};
 use smallvec::SmallVec;
 use tokio::runtime::Handle;
@@ -45,10 +45,15 @@ pub(crate) struct ConcurrentSplit;
 impl<K, V> BTree<K, V>
 where
     K: Min + Archive + Serialize<DefaultSerializer> + fmt::Debug + Send + Sync + 'static,
-    K::Archived:
-        Deserialize<K, rkyv::Infallible> + PartialOrd<K> + fmt::Debug + Clone + Ord + Send + Sync,
+    K::Archived: Deserialize<K, DefaultDeserializer>
+        + PartialOrd<K>
+        + fmt::Debug
+        + Clone
+        + Ord
+        + Send
+        + Sync,
     V: Archive + Serialize<DefaultSerializer> + fmt::Debug + Send + Sync + 'static,
-    V::Archived: Deserialize<V, rkyv::Infallible> + fmt::Debug + Send + Sync,
+    V::Archived: Deserialize<V, DefaultDeserializer> + fmt::Debug + Send + Sync,
 {
     #[inline]
     pub async fn initialize(pool: Arc<dyn Pool>) -> Result<Self> {
@@ -427,7 +432,7 @@ where
     where
         N: NodeMut<K, T>,
         T: Archive + Serialize<DefaultSerializer> + fmt::Debug + 'static,
-        T::Archived: Deserialize<T, rkyv::Infallible> + fmt::Debug,
+        T::Archived: Deserialize<T, DefaultDeserializer> + fmt::Debug,
     {
         let old_node_page_idx = old_guard.page_idx();
         let mut old_node = unsafe { N::view_mut(&mut old_guard) }?;
@@ -481,7 +486,7 @@ where
     where
         N: NodeMut<K, T>,
         T: Archive + Serialize<DefaultSerializer> + fmt::Debug,
-        T::Archived: Deserialize<T, rkyv::Infallible> + fmt::Debug,
+        T::Archived: Deserialize<T, DefaultDeserializer> + fmt::Debug,
     {
         tracing::info!(kind = %std::any::type_name::<N>(), "splitting root");
 

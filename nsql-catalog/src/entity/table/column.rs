@@ -2,7 +2,6 @@ use std::fmt;
 
 use nsql_serde::{StreamDeserialize, StreamSerialize};
 use nsql_storage::schema::LogicalType;
-use nsql_storage::tuple::ColumnIndex;
 use nsql_transaction::Transaction;
 
 use crate::private::CatalogEntity;
@@ -34,11 +33,31 @@ impl fmt::Debug for Column {
     }
 }
 
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, StreamSerialize, StreamDeserialize,
+)]
+pub struct ColumnIndex {
+    index: u8,
+}
+
+impl ColumnIndex {
+    // FIXME ideally this would be private
+    #[inline]
+    pub fn new(index: u8) -> Self {
+        Self { index }
+    }
+
+    #[inline]
+    pub fn index(self) -> usize {
+        self.index as usize
+    }
+}
+
 #[derive(Debug, Clone, StreamDeserialize)]
 pub struct CreateColumnInfo {
     pub name: Name,
     /// The index of the column in the table.
-    pub index: ColumnIndex,
+    pub index: u8,
     pub ty: LogicalType,
 }
 
@@ -64,6 +83,6 @@ impl CatalogEntity for Column {
     }
 
     fn new(_tx: &Transaction, info: Self::CreateInfo) -> Self {
-        Self { name: info.name, index: info.index, ty: info.ty }
+        Self { name: info.name, index: ColumnIndex::new(info.index), ty: info.ty }
     }
 }

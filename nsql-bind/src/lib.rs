@@ -17,7 +17,6 @@ use nsql_catalog::{
 use nsql_core::Name;
 use nsql_parse::ast::{self, HiveDistributionStyle};
 use nsql_storage::schema::LogicalType;
-use nsql_storage::tuple::ColumnIndex;
 use nsql_transaction::Transaction;
 
 use self::scope::Scope;
@@ -298,7 +297,7 @@ impl Binder {
 
         Ok(CreateColumnInfo {
             name: self.lower_name(&column.name),
-            index: ColumnIndex::new(idx as u8),
+            index: idx as u8,
             ty: self.lower_ty(&column.data_type)?,
         })
     }

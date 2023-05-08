@@ -4,14 +4,15 @@ use std::pin::Pin;
 use std::{fmt, io, mem, slice};
 
 use nsql_pager::{PageIndex, PageReadGuard, PAGE_DATA_SIZE};
-use nsql_rkyv::{align_archived_ptr_offset, archived_size_of, DefaultSerializer};
+use nsql_rkyv::{
+    align_archived_ptr_offset, archived_size_of, DefaultDeserializer, DefaultSerializer,
+};
 use nsql_transaction::Transaction;
 use rkyv::option::ArchivedOption;
 use rkyv::rend::BigEndian;
 use rkyv::{Archive, Archived, Deserialize, Serialize};
 
 use super::Versioned;
-use crate::tuple::ColumnIndex;
 
 const HEAP_PAGE_HEADER_MAGIC: [u8; 4] = *b"HEAP";
 
@@ -64,7 +65,7 @@ impl<'a, T: Archive> HeapView<'a, T> {
     #[inline]
     pub fn get(&self, tx: &Transaction, idx: SlotIndex) -> Option<T>
     where
-        T::Archived: Deserialize<T, rkyv::Infallible>,
+        T::Archived: Deserialize<T, DefaultDeserializer>,
     {
         let raw = self.get_raw(self.slots[idx.0 as usize]);
         tx.can_see(raw.version.into()).then(|| nsql_rkyv::deserialize(&raw.data))
@@ -84,18 +85,20 @@ impl<'a, T: Archive> HeapView<'a, T> {
 }
 
 impl<'a, T: Archive> HeapView<'a, T> {
-    #[tracing::instrument(skip(self, acc))]
-    pub fn scan_into<U>(&self, tx: &Transaction, acc: &mut Vec<U>, projections: &[ColumnIndex])
-    where
-        T::Archived: Deserialize<T, rkyv::Infallible>,
-    {
+    #[tracing::instrument(skip(self, acc, f))]
+    pub fn scan_into<U>(
+        &self,
+        tx: &Transaction,
+        acc: &mut Vec<U>,
+        mut f: impl FnMut(SlotIndex, &T::Archived) -> U,
+    ) {
         acc.reserve(self.slots.len());
         self.slots.iter().enumerate().for_each(|(idx, &slot)| {
             let raw = self.get_raw(slot);
             if tx.can_see(raw.version.into()) {
                 // TODO apply projection to raw tuple data, this view needs to know its page idx to construct the TupleId
                 // Treat the column index `n` as the `tid` for now
-                acc.push(f(SlotIndex(idx as u16), nsql_rkyv::deserialize(&raw.data)));
+                acc.push(f(SlotIndex(idx as u16), &raw.data));
             }
         })
     }
@@ -210,19 +213,19 @@ impl<'a, T: Archive> HeapViewMut<'a, T> {
         Ok(Self { header, slots, data, marker: PhantomData })
     }
 
-    pub fn append(
-        &mut self,
-        tx: &Transaction,
-        value: &Versioned<'a, T>,
-    ) -> Result<SlotIndex, HeapPageFull>
-    where
-        T: Serialize<DefaultSerializer>,
-    {
-        let serialized_value = nsql_rkyv::to_bytes(value);
-        unsafe { self.append_raw(tx, &serialized_value) }
+    /// Safety: the caller must ensure that the serialized value is a valid archived `Versioned<'a, T>`
+    #[inline]
+    pub unsafe fn update_in_place_raw(&mut self, idx: SlotIndex, serialized_value: &[u8]) {
+        let size = self.slots[idx.0 as usize].length.value();
+        let new_size = serialized_value.len() as u16;
+        assert!(size >= new_size, "cannot grow a tuple inplace");
+        let slot = &mut self.slots[idx.0 as usize];
+        slot.length = new_size.into();
+        let slot = *slot;
+        self[slot][..new_size as usize].copy_from_slice(serialized_value);
     }
 
-    // Safety: the caller must ensure that the serialized value is a valid archived `Versioned<'a, T>`
+    /// Safety: the caller must ensure that the serialized value is a valid archived `Versioned<'a, T>`
     pub unsafe fn append_raw(
         &mut self,
         _tx: &Transaction,

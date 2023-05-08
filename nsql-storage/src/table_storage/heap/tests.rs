@@ -42,7 +42,7 @@ fn test_heap_scan() -> nsql_buffer::Result<()> {
         }
 
         let values = heap
-            .scan(tx, |_tid, tuple| tuple)
+            .scan(tx, |_tid, x| nsql_rkyv::deserialize::<u32>(x))
             .await
             .try_fold(vec![], |mut acc, next| async move {
                 acc.extend(next);

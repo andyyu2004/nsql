@@ -2,7 +2,7 @@ use std::fmt;
 use std::pin::Pin;
 
 use nsql_pager::{PageIndex, PAGE_DATA_SIZE};
-use nsql_rkyv::DefaultSerializer;
+use nsql_rkyv::{DefaultDeserializer, DefaultSerializer};
 use rkyv::option::ArchivedOption;
 use rkyv::{Archive, Archived, Deserialize, Serialize};
 
@@ -123,7 +123,7 @@ where
         right: &mut Self::ViewMut<'_>,
     ) where
         K::Archived: Clone,
-        V::Archived: Deserialize<V, rkyv::Infallible> + fmt::Debug,
+        V::Archived: Deserialize<V, DefaultDeserializer> + fmt::Debug,
     {
         assert!(root.is_root());
         assert!(root.slotted_page().len() >= 3);
@@ -169,8 +169,8 @@ where
         right_page_idx: PageIndex,
         prev_right_page: Option<&mut Self::ViewMut<'_>>,
     ) where
-        K::Archived: Deserialize<K, rkyv::Infallible> + Clone,
-        V::Archived: Deserialize<V, rkyv::Infallible>,
+        K::Archived: Deserialize<K, DefaultDeserializer> + Clone,
+        V::Archived: Deserialize<V, DefaultDeserializer>,
     {
         assert!(left.slotted_page().len() >= 3);
         assert!(right.slotted_page().is_empty());
@@ -265,7 +265,7 @@ where
         K: Serialize<DefaultSerializer>,
         K::Archived: PartialOrd<K>,
         V: Serialize<DefaultSerializer>,
-        V::Archived: Deserialize<V, rkyv::Infallible>,
+        V::Archived: Deserialize<V, DefaultDeserializer>,
     {
         self.ensure_can_contain(key)?;
         Ok(self.slotted_page_mut().insert(key, value))
@@ -274,7 +274,7 @@ where
     fn remove(&mut self, key: &K) -> Result<Option<V>, ConcurrentSplit>
     where
         K::Archived: PartialOrd<K>,
-        V::Archived: Deserialize<V, rkyv::Infallible>,
+        V::Archived: Deserialize<V, DefaultDeserializer>,
     {
         self.ensure_can_contain(key)?;
         Ok(self.slotted_page_mut().remove(key))

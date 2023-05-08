@@ -59,7 +59,7 @@ impl PhysicalSource for PhysicalShow {
             match self.show {
                 ir::ObjectType::Table => {
                     for (_, table) in namespace.all::<Table>(&tx)? {
-                        tuples.push(Tuple::new(vec![Value::Text(table.name().to_string())]));
+                        tuples.push(Tuple::from(vec![Value::Text(table.name().to_string())]));
                     }
                 }
             }
