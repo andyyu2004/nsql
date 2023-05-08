@@ -53,8 +53,7 @@ pub enum Stmt {
     },
     Update {
         table_ref: TableRef,
-        assignments: Box<[Expr]>,
-        filter: Option<Expr>,
+        source: Box<QueryPlan>,
         returning: Option<Box<[Expr]>>,
     },
     Query(Box<QueryPlan>),

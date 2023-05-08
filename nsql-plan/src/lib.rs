@@ -9,8 +9,7 @@ pub enum Plan {
     Show(ir::ObjectType),
     Update {
         table_ref: ir::TableRef,
-        assignments: Box<[ir::Expr]>,
-        filter: Option<ir::Expr>,
+        source: Box<Plan>,
         returning: Option<Box<[ir::Expr]>>,
     },
     Filter {
@@ -32,6 +31,7 @@ pub enum Plan {
     },
     Scan {
         table_ref: ir::TableRef,
+        projection: Option<Box<[ir::TupleIndex]>>,
     },
     Limit {
         source: Box<Plan>,
@@ -55,8 +55,8 @@ impl Planner {
             ir::Stmt::Query(query) => return self.plan_query(query),
             ir::Stmt::Show(show) => Plan::Show(show),
             ir::Stmt::Drop(refs) => Plan::Drop(refs),
-            ir::Stmt::Update { table_ref, assignments, filter, returning } => {
-                Plan::Update { table_ref, assignments, filter, returning }
+            ir::Stmt::Update { table_ref, source, returning } => {
+                Plan::Update { table_ref, source: self.plan_query(source), returning }
             }
         };
 
@@ -74,7 +74,9 @@ impl Planner {
                 let source = self.plan_query(source);
                 Plan::Projection { source, projection }
             }
-            ir::QueryPlan::TableRef { table_ref } => Plan::Scan { table_ref },
+            ir::QueryPlan::TableRef { table_ref, projection } => {
+                Plan::Scan { table_ref, projection }
+            }
             ir::QueryPlan::Empty => todo!(),
             ir::QueryPlan::Limit(source, limit) => {
                 let source = self.plan_query(source);

@@ -65,7 +65,7 @@ impl PhysicalPlanner {
             Plan::CreateTable(info) => PhysicalCreateTable::plan(info),
             Plan::CreateNamespace(info) => PhysicalCreateNamespace::plan(info),
             Plan::Drop(refs) => PhysicalDrop::plan(refs),
-            Plan::Scan { table_ref } => PhysicalTableScan::plan(table_ref, None),
+            Plan::Scan { table_ref, projection } => PhysicalTableScan::plan(table_ref, projection),
             Plan::Show(show) => PhysicalShow::plan(show),
             Plan::Insert { table_ref, projection, source, returning } => {
                 let mut source = self.plan_node(source)?;
@@ -83,24 +83,8 @@ impl PhysicalPlanner {
             Plan::Filter { source, predicate } => {
                 PhysicalFilter::plan(self.plan_node(source)?, predicate)
             }
-            Plan::Update { table_ref, assignments, filter, returning } => {
-                let table = table_ref.get(&self.catalog, &self.tx)?;
-                let columns = table.all::<Column>(&self.tx)?;
-
-                // FIXME hacky way to build the projection
-                let scan_projection = columns
-                    .iter()
-                    .map(|(_, col)| TupleIndex::new(col.index().index()))
-                    // Add special column index for the tid
-                    .chain(Some(TupleIndex::new(columns.len())))
-                    .collect();
-
-                let mut source = PhysicalTableScan::plan(table_ref, Some(scan_projection));
-                if let Some(filter) = filter {
-                    source = PhysicalFilter::plan(source, filter);
-                }
-
-                let source = PhysicalProjection::plan(source, assignments);
+            Plan::Update { table_ref, source, returning } => {
+                let source = self.plan_node(source)?;
                 PhysicalUpdate::plan(table_ref, source, returning)
             }
         };

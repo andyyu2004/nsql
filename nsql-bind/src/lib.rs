@@ -8,7 +8,7 @@ use std::sync::Arc;
 
 pub use anyhow::Error;
 use anyhow::{anyhow, bail, ensure};
-use ir::Decimal;
+use ir::{Decimal, TupleIndex};
 use itertools::Itertools;
 use nsql_catalog::{
     Catalog, Column, Container, CreateColumnInfo, Entity, EntityRef, Namespace, NamespaceEntity,
@@ -239,10 +239,29 @@ impl Binder {
                     _ => not_implemented!("update with non-table relation"),
                 };
 
-                let filter = selection
+                // FIXME hacky way to build the projection
+                let table = table_ref.get(&self.catalog, &self.tx)?;
+                let columns = table.all::<Column>(&self.tx)?;
+                let projection = Some(
+                    columns
+                        .iter()
+                        .map(|(_, col)| TupleIndex::new(col.index().index()))
+                        // Add special column index for the tid
+                        .chain(Some(TupleIndex::new(columns.len())))
+                        .collect(),
+                );
+
+                let mut source = Box::new(ir::QueryPlan::TableRef { table_ref, projection });
+                if let Some(predicate) = selection
                     .as_ref()
                     .map(|selection| self.bind_expr(&scope, selection))
-                    .transpose()?;
+                    .transpose()?
+                {
+                    source = source.filter(predicate);
+                }
+
+                let assignments = self.bind_assignments(&scope, table_ref, assignments)?;
+                source = source.project(assignments);
 
                 let returning = returning
                     .as_ref()
@@ -255,9 +274,7 @@ impl Binder {
                     })
                     .transpose()?;
 
-                let assignments = self.bind_assignments(&scope, table_ref, assignments)?;
-
-                ir::Stmt::Update { table_ref, assignments, filter, returning }
+                ir::Stmt::Update { table_ref, source, returning }
             }
             _ => unimplemented!("unimplemented statement: {:?}", stmt),
         };
@@ -290,7 +307,7 @@ impl Binder {
         }
 
         // We desugar the update assignments into a projection
-        let mut projections = Vec::with_capacity(columns.len());
+        let mut projections = Vec::with_capacity(1 + columns.len());
         for (_, column) in columns {
             let expr = if let Some(assignment) =
                 assignments.iter().find(|assn| assn.id[0].value == column.name().as_str())
@@ -304,6 +321,13 @@ impl Binder {
 
             projections.push(expr);
         }
+
+        // We need to project the special tid column too
+        // FIXME don't think this hack will work once we have joins and other columns in the update
+        projections.push(ir::Expr {
+            ty: LogicalType::Tid,
+            kind: ir::ExprKind::ColumnRef(TupleIndex::new(projections.len())),
+        });
 
         Ok(projections.into_boxed_slice())
     }
@@ -511,7 +535,7 @@ impl Binder {
                 not_implemented!(!with_hints.is_empty());
 
                 let (scope, table_ref) = self.bind_table(scope, name, alias.as_ref())?;
-                (scope, Box::new(ir::QueryPlan::TableRef { table_ref }))
+                (scope, Box::new(ir::QueryPlan::TableRef { table_ref, projection: None }))
             }
             ast::TableFactor::Derived { lateral, subquery, alias } => {
                 not_implemented!(*lateral);
