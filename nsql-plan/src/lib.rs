@@ -9,7 +9,7 @@ pub enum Plan {
     Show(ir::ObjectType),
     Update {
         table_ref: ir::TableRef,
-        assignments: Box<[ir::Assignment]>,
+        assignments: Box<[ir::Expr]>,
         filter: Option<ir::Expr>,
         returning: Option<Box<[ir::Expr]>>,
     },

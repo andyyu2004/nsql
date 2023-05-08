@@ -39,16 +39,16 @@ impl Tuple {
     }
 
     #[inline]
-    pub fn project(&self, projections: &[TupleIndex]) -> Self {
-        projections.iter().map(|&idx| self[idx].clone()).collect()
+    pub fn project(&self, projection: &[TupleIndex]) -> Self {
+        projection.iter().map(|&idx| self[idx].clone()).collect()
     }
 }
 
 impl ArchivedTuple {
     #[inline]
-    pub fn project(&self, tid: TupleId, projections: &[TupleIndex]) -> Tuple {
+    pub fn project(&self, tid: TupleId, projection: &[TupleIndex]) -> Tuple {
         let n = self.0.len();
-        projections
+        projection
             .iter()
             .map(|col| match col {
                 i if i.0 == n => Value::Tid(tid),

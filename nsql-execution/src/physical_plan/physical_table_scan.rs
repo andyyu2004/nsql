@@ -14,7 +14,7 @@ use super::*;
 pub struct PhysicalTableScan {
     table_ref: ir::TableRef,
     table: OnceLock<Arc<Table>>,
-    projections: Option<AtomicTake<Box<[TupleIndex]>>>,
+    projection: Option<AtomicTake<Box<[TupleIndex]>>>,
     current_batch: Mutex<Vec<Tuple>>,
     current_batch_index: AtomicUsize,
 
@@ -28,7 +28,7 @@ impl fmt::Debug for PhysicalTableScan {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("PhysicalTableScan")
             .field("table_ref", &self.table_ref)
-            .field("projections", &self.projections)
+            .field("projection", &self.projection)
             .finish()
     }
 }
@@ -36,11 +36,11 @@ impl fmt::Debug for PhysicalTableScan {
 impl PhysicalTableScan {
     pub(crate) fn plan(
         table_ref: ir::TableRef,
-        projections: Option<Box<[TupleIndex]>>,
+        projection: Option<Box<[TupleIndex]>>,
     ) -> Arc<dyn PhysicalNode> {
         Arc::new(Self {
             table_ref,
-            projections: projections.map(AtomicTake::new),
+            projection: projection.map(AtomicTake::new),
             table: Default::default(),
             current_batch: Default::default(),
             current_batch_index: Default::default(),
@@ -70,9 +70,9 @@ impl PhysicalSource for PhysicalTableScan {
                     .stream
                     .get_or_init(|| async move {
                         let storage = table.storage();
-                        let projections = self.projections.as_ref()
+                        let projection = self.projection.as_ref()
                             .map(|p| p.take() .expect("this should only happen once as we're inside a oncecell initializer"));
-                        Mutex::new(Box::pin(storage.scan(ctx.tx(), projections).await) as _)
+                        Mutex::new(Box::pin(storage.scan(ctx.tx(), projection).await) as _)
                     })
                     .await;
                 let mut stream = stream.lock().await;

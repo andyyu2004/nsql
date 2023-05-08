@@ -255,10 +255,7 @@ impl Binder {
                     })
                     .transpose()?;
 
-                let assignments = assignments
-                    .iter()
-                    .map(|assignment| self.bind_assignment(&scope, table_ref, assignment))
-                    .collect::<Result<_>>()?;
+                let assignments = self.bind_assignments(&scope, table_ref, assignments)?;
 
                 ir::Stmt::Update { table_ref, assignments, filter, returning }
             }
@@ -268,24 +265,47 @@ impl Binder {
         Ok(stmt)
     }
 
-    fn bind_assignment(
+    fn bind_assignments(
         &self,
         scope: &Scope,
         table_ref: ir::TableRef,
-        assignment: &ast::Assignment,
-    ) -> Result<ir::Assignment> {
-        assert!(!assignment.id.is_empty());
-        if assignment.id.len() > 1 {
-            not_implemented!("compound assignment")
+        assignments: &[ast::Assignment],
+    ) -> Result<Box<[ir::Expr]>> {
+        let table = table_ref.get(&self.catalog, &self.tx)?;
+        let columns = table.all::<Column>(&self.tx)?;
+
+        for assignment in assignments {
+            assert!(!assignment.id.is_empty());
+            if assignment.id.len() > 1 {
+                not_implemented!("compound assignment")
+            }
+
+            if !columns.iter().any(|(_, column)| column.name().as_str() == assignment.id[0].value) {
+                bail!(
+                    "referenced update column `{}` does not exist in table `{}`",
+                    assignment.id[0].value,
+                    table.name(),
+                )
+            }
         }
 
-        let expr = self.bind_expr(scope, &assignment.value)?;
+        // We desugar the update assignments into a projection
+        let mut projections = Vec::with_capacity(columns.len());
+        for (_, column) in columns {
+            let expr = if let Some(assignment) =
+                assignments.iter().find(|assn| assn.id[0].value == column.name().as_str())
+            {
+                // if the column is being updated, we bind the expression in the assignment
+                self.bind_expr(scope, &assignment.value)?
+            } else {
+                // otherwise, we bind the column to itself (effectively an identity projection)
+                self.bind_expr(scope, &ast::Expr::Identifier(ast::Ident::new(column.name())))?
+            };
 
-        let table = table_ref.get(&self.catalog, &self.tx)?;
-        let column_name = &assignment.id[0].value;
-        let column = table.find(column_name)?.ok_or_else(|| unbound!(Column, column_name))?;
-        let column_ref = ir::ColumnRef { table_ref, column };
-        Ok(ir::Assignment { column_ref, expr })
+            projections.push(expr);
+        }
+
+        Ok(projections.into_boxed_slice())
     }
 
     fn lower_columns(&self, columns: &[ast::ColumnDef]) -> Result<Vec<CreateColumnInfo>> {

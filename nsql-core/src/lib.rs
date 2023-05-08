@@ -25,6 +25,12 @@ impl Name {
     }
 }
 
+impl From<Name> for String {
+    fn from(value: Name) -> Self {
+        value.name.into()
+    }
+}
+
 impl fmt::Display for Name {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.name.fmt(f)

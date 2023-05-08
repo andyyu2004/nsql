@@ -9,7 +9,6 @@ use super::*;
 pub(crate) struct PhysicalUpdate {
     children: [Arc<dyn PhysicalNode>; 1],
     table_ref: ir::TableRef,
-    assignments: Box<[ir::Assignment]>,
     returning: Option<Box<[ir::Expr]>>,
     returning_tuples: RwLock<VecDeque<Tuple>>,
     returning_evaluator: Evaluator,
@@ -18,14 +17,14 @@ pub(crate) struct PhysicalUpdate {
 impl PhysicalUpdate {
     pub fn plan(
         table_ref: ir::TableRef,
+        // This is the source of the updates.
+        // The schema should be that of the table being updated + the `tid` in the rightmost column
         source: Arc<dyn PhysicalNode>,
-        assignments: Box<[ir::Assignment]>,
         returning: Option<Box<[ir::Expr]>>,
     ) -> Arc<dyn PhysicalNode> {
         Arc::new(Self {
             table_ref,
             returning,
-            assignments,
             children: [source],
             returning_tuples: Default::default(),
             returning_evaluator: Evaluator::new(),
@@ -67,11 +66,12 @@ impl PhysicalSink for PhysicalUpdate {
         // We expect the tid in the rightmost column of the tuple.
         let tid = match tid {
             ir::Value::Tid(tid) => tid,
-            _ => unreachable!(),
+            val => unreachable!("expected tid to be in the rightmost column, got {}", val.ty()),
         };
 
         storage.update(&tx, tid, &tuple).await.map_err(|report| report.into_error())?;
 
+        // FIXME just do the return evaluation here
         if self.returning.is_some() {
             self.returning_tuples.write().push_back(tuple);
         }
@@ -82,6 +82,7 @@ impl PhysicalSink for PhysicalUpdate {
 
 #[async_trait::async_trait]
 impl PhysicalSource for PhysicalUpdate {
+    #[inline]
     async fn source(&self, _ctx: &ExecutionContext) -> ExecutionResult<Chunk> {
         let returning = match &self.returning {
             Some(returning) => returning,

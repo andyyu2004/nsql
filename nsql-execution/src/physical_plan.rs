@@ -86,20 +86,22 @@ impl PhysicalPlanner {
             Plan::Update { table_ref, assignments, filter, returning } => {
                 let table = table_ref.get(&self.catalog, &self.tx)?;
                 let columns = table.all::<Column>(&self.tx)?;
+
                 // FIXME hacky way to build the projection
-                let projection = columns
+                let scan_projection = columns
                     .iter()
                     .map(|(_, col)| TupleIndex::new(col.index().index()))
                     // Add special column index for the tid
                     .chain(Some(TupleIndex::new(columns.len())))
                     .collect();
 
-                let mut source = PhysicalTableScan::plan(table_ref, Some(projection));
+                let mut source = PhysicalTableScan::plan(table_ref, Some(scan_projection));
                 if let Some(filter) = filter {
                     source = PhysicalFilter::plan(source, filter);
                 }
 
-                PhysicalUpdate::plan(table_ref, source, assignments, returning)
+                let source = PhysicalProjection::plan(source, assignments);
+                PhysicalUpdate::plan(table_ref, source, returning)
             }
         };
 

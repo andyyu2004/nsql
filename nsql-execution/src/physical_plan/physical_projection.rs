@@ -3,16 +3,16 @@ use super::*;
 #[derive(Debug)]
 pub struct PhysicalProjection {
     children: [Arc<dyn PhysicalNode>; 1],
-    projections: Box<[ir::Expr]>,
+    projection: Box<[ir::Expr]>,
     evaluator: Evaluator,
 }
 
 impl PhysicalProjection {
     pub(crate) fn plan(
         source: Arc<dyn PhysicalNode>,
-        projections: Box<[ir::Expr]>,
+        projection: Box<[ir::Expr]>,
     ) -> Arc<dyn PhysicalNode> {
-        Arc::new(Self { evaluator: Evaluator::new(), children: [source], projections })
+        Arc::new(Self { evaluator: Evaluator::new(), children: [source], projection })
     }
 }
 
@@ -23,7 +23,7 @@ impl PhysicalOperator for PhysicalProjection {
         _ctx: &ExecutionContext,
         input: Tuple,
     ) -> ExecutionResult<OperatorState<Tuple>> {
-        Ok(OperatorState::Yield(self.evaluator.evaluate(&input, &self.projections)))
+        Ok(OperatorState::Yield(self.evaluator.evaluate(&input, &self.projection)))
     }
 }
 

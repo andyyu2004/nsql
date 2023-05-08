@@ -59,6 +59,8 @@ impl PhysicalSink for PhysicalInsert {
         let table = self.table_ref.get(&ctx.catalog(), &tx)?;
         let storage = table.storage();
         storage.append(&tx, &tuple).await.map_err(|report| report.into_error())?;
+
+        // FIXME just do the return evaluation here
         if self.returning.is_some() {
             self.returning_tuples.write().push_back(tuple);
         }
@@ -69,6 +71,7 @@ impl PhysicalSink for PhysicalInsert {
 
 #[async_trait::async_trait]
 impl PhysicalSource for PhysicalInsert {
+    #[inline]
     async fn source(&self, _ctx: &ExecutionContext) -> ExecutionResult<Chunk> {
         let returning = match &self.returning {
             Some(returning) => returning,

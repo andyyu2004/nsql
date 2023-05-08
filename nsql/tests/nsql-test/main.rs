@@ -22,8 +22,7 @@ fn nsql_sqllogictest(path: &Path) -> nsql::Result<(), Box<dyn Error>> {
 datatest_stable::harness!(
     nsql_sqllogictest,
     format!("{}/{}", env!("CARGO_MANIFEST_DIR"), "tests/nsql-test/sqllogictest"),
-    // r"^.*/*.slt",
-    r"^.*/*update.slt",
+    r"^.*/*.slt",
 );
 
 #[derive(Debug, Eq, PartialEq, Clone)]

@@ -48,11 +48,11 @@ impl TableStorage {
     pub async fn scan(
         &self,
         tx: Arc<Transaction>,
-        projections: Option<Box<[TupleIndex]>>,
+        projection: Option<Box<[TupleIndex]>>,
     ) -> impl Stream<Item = nsql_buffer::Result<Vec<Tuple>>> + Send {
         self.heap
-            .scan(tx, move |tid, tuple| match &projections {
-                Some(projections) => tuple.project(tid, projections),
+            .scan(tx, move |tid, tuple| match &projection {
+                Some(projection) => tuple.project(tid, projection),
                 None => nsql_rkyv::deserialize(tuple),
             })
             .await
