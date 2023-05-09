@@ -124,7 +124,7 @@ impl PhysicalSink for OutputSink {
 }
 
 impl Explain for OutputSink {
-    fn explain(&self, ctx: &ExecutionContext, f: &mut fmt::Formatter<'_>) -> explain::Result {
+    fn explain(&self, _ctx: &ExecutionContext, _f: &mut fmt::Formatter<'_>) -> explain::Result {
         unreachable!("this should never show up to the user")
     }
 }

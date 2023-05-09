@@ -4,9 +4,7 @@ use std::pin::Pin;
 use std::{fmt, io, mem, slice};
 
 use nsql_pager::{PageIndex, PageReadGuard, PAGE_DATA_SIZE};
-use nsql_rkyv::{
-    align_archived_ptr_offset, archived_size_of, DefaultDeserializer, DefaultSerializer,
-};
+use nsql_rkyv::{align_archived_ptr_offset, archived_size_of, DefaultDeserializer};
 use nsql_transaction::Transaction;
 use rkyv::option::ArchivedOption;
 use rkyv::rend::BigEndian;

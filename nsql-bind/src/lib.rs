@@ -583,7 +583,7 @@ impl Binder {
     fn bind_select_item(&self, scope: &Scope, item: &ast::SelectItem) -> Result<Vec<ir::Expr>> {
         let expr = match item {
             ast::SelectItem::UnnamedExpr(expr) => self.bind_expr(scope, expr)?,
-            ast::SelectItem::ExprWithAlias { expr, alias } => todo!(),
+            ast::SelectItem::ExprWithAlias { expr: _, alias: _ } => todo!(),
             ast::SelectItem::QualifiedWildcard(_, _) => not_implemented!("qualified wildcard"),
             ast::SelectItem::Wildcard(ast::WildcardAdditionalOptions {
                 opt_exclude,
@@ -659,7 +659,7 @@ impl Binder {
                 let (ty, idx) = scope.lookup_column(&ident)?;
                 (ty, ir::ExprKind::ColumnRef(idx))
             }
-            ast::Expr::BinaryOp { left, op, right } => todo!(),
+            ast::Expr::BinaryOp { left: _, op: _, right: _ } => todo!(),
             _ => todo!("todo expr: {:?}", expr),
         };
 

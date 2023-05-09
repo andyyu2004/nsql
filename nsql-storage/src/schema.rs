@@ -3,10 +3,6 @@ use std::sync::OnceLock;
 
 use nsql_core::Name;
 use nsql_serde::{StreamDeserialize, StreamDeserializer, StreamSerialize, StreamSerializer};
-use rust_decimal::Decimal;
-
-use crate::table_storage::TupleId;
-use crate::value::{Cast, Value};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Schema {

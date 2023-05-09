@@ -1,4 +1,3 @@
-use std::borrow::Borrow;
 use std::fmt;
 use std::marker::PhantomData;
 use std::sync::Arc;

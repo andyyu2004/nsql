@@ -51,7 +51,7 @@ impl PhysicalSource for PhysicalCreateNamespace {
 }
 
 impl Explain for PhysicalCreateNamespace {
-    fn explain(&self, ctx: &ExecutionContext, f: &mut fmt::Formatter<'_>) -> explain::Result {
+    fn explain(&self, _ctx: &ExecutionContext, f: &mut fmt::Formatter<'_>) -> explain::Result {
         write!(f, "create namespace {}", self.info.name)?;
         Ok(())
     }
