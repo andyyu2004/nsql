@@ -49,7 +49,12 @@ impl PhysicalNode for PhysicalLimit {
 }
 
 impl Explain for PhysicalLimit {
-    fn explain(&self, _ctx: &ExecutionContext, f: &mut fmt::Formatter<'_>) -> explain::Result {
+    fn explain(
+        &self,
+        catalog: &Catalog,
+        tx: &Transaction,
+        f: &mut fmt::Formatter<'_>,
+    ) -> explain::Result {
         write!(f, "limit ({})", self.limit)?;
         Ok(())
     }

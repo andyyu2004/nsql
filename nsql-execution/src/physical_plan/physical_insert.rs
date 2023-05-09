@@ -84,8 +84,13 @@ impl PhysicalSource for PhysicalInsert {
 }
 
 impl Explain for PhysicalInsert {
-    fn explain(&self, ctx: &ExecutionContext, f: &mut fmt::Formatter<'_>) -> explain::Result {
-        write!(f, "insert into {}", self.table_ref.get(&ctx.catalog, &ctx.tx).name())?;
+    fn explain(
+        &self,
+        catalog: &Catalog,
+        tx: &Transaction,
+        f: &mut fmt::Formatter<'_>,
+    ) -> explain::Result {
+        write!(f, "insert into {}", self.table_ref.get(catalog, tx).name())?;
         Ok(())
     }
 }

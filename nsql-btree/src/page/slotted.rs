@@ -319,7 +319,7 @@ where
         self.slots = slots;
 
         let freed_ptr = freed_data.as_ptr() as *mut u8;
-        let freed_bytes = freed_data.len() * mem::size_of::<Slot>();
+        let freed_bytes = std::mem::size_of_val(freed_data);
         assert_eq!(self.data.as_ptr(), freed_ptr.wrapping_add(freed_bytes) as *mut u8);
         self.data = unsafe {
             slice::from_raw_parts_mut(freed_data.as_ptr() as *mut u8, prev_data_len + freed_bytes)

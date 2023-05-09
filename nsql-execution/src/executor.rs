@@ -86,7 +86,7 @@ pub async fn execute(ctx: ExecutionContext, plan: PhysicalPlan) -> ExecutionResu
 }
 
 #[derive(Debug, Default)]
-struct OutputSink {
+pub(crate) struct OutputSink {
     tuples: RwLock<Vec<Tuple>>,
 }
 
@@ -124,7 +124,12 @@ impl PhysicalSink for OutputSink {
 }
 
 impl Explain for OutputSink {
-    fn explain(&self, _ctx: &ExecutionContext, _f: &mut fmt::Formatter<'_>) -> explain::Result {
+    fn explain(
+        &self,
+        catalog: &Catalog,
+        tx: &Transaction,
+        f: &mut fmt::Formatter<'_>,
+    ) -> explain::Result {
         unreachable!("this should never show up to the user")
     }
 }

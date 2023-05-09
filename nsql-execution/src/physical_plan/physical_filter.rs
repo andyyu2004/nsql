@@ -54,7 +54,12 @@ impl PhysicalNode for PhysicalFilter {
 }
 
 impl Explain for PhysicalFilter {
-    fn explain(&self, _ctx: &ExecutionContext, f: &mut fmt::Formatter<'_>) -> explain::Result {
+    fn explain(
+        &self,
+        catalog: &Catalog,
+        tx: &Transaction,
+        f: &mut fmt::Formatter<'_>,
+    ) -> explain::Result {
         write!(f, "filter")?;
         Ok(())
     }

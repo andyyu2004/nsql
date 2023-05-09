@@ -109,8 +109,13 @@ impl PhysicalNode for PhysicalTableScan {
 }
 
 impl Explain for PhysicalTableScan {
-    fn explain(&self, ctx: &ExecutionContext, f: &mut fmt::Formatter<'_>) -> explain::Result {
-        write!(f, "scan {}", self.table_ref.get(&ctx.catalog, &ctx.tx).name())?;
+    fn explain(
+        &self,
+        catalog: &Catalog,
+        tx: &Transaction,
+        f: &mut fmt::Formatter<'_>,
+    ) -> explain::Result {
+        write!(f, "scan {}", self.table_ref.get(catalog, tx).name())?;
         Ok(())
     }
 }

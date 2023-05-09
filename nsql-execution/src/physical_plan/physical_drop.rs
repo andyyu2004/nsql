@@ -47,7 +47,12 @@ impl PhysicalSource for PhysicalDrop {
 }
 
 impl Explain for PhysicalDrop {
-    fn explain(&self, ctx: &ExecutionContext, f: &mut fmt::Formatter<'_>) -> explain::Result {
+    fn explain(
+        &self,
+        catalog: &Catalog,
+        tx: &Transaction,
+        f: &mut fmt::Formatter<'_>,
+    ) -> explain::Result {
         write!(f, "drop ")?;
         for (i, entity_ref) in self.refs.iter().enumerate() {
             if i > 0 {
@@ -56,7 +61,7 @@ impl Explain for PhysicalDrop {
 
             match entity_ref {
                 ir::EntityRef::Table(table_ref) => {
-                    write!(f, "table {}", table_ref.get(&ctx.catalog, &ctx.tx).name())?
+                    write!(f, "table {}", table_ref.get(&catalog, &tx).name())?
                 }
             }
         }

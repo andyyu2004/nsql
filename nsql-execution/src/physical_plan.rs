@@ -34,6 +34,7 @@ use self::physical_table_scan::PhysicalTableScan;
 use self::physical_transaction::PhysicalTransaction;
 use self::physical_update::PhysicalUpdate;
 use self::physical_values::PhysicalValues;
+use crate::executor::OutputSink;
 use crate::{
     Chunk, Evaluator, ExecutionContext, ExecutionResult, OperatorState, PhysicalNode,
     PhysicalOperator, PhysicalSink, PhysicalSource, Tuple,
@@ -49,8 +50,12 @@ pub struct PhysicalPlanner {
 pub struct PhysicalPlan(Arc<dyn PhysicalNode>);
 
 impl PhysicalPlan {
-    pub(crate) fn root(self) -> Arc<dyn PhysicalNode> {
-        self.0
+    pub(crate) fn root_ref(&self) -> &Arc<dyn PhysicalNode> {
+        &self.0
+    }
+
+    pub(crate) fn root(&self) -> Arc<dyn PhysicalNode> {
+        Arc::clone(&self.0)
     }
 }
 
@@ -71,7 +76,22 @@ impl PhysicalPlanner {
             Plan::Drop(refs) => PhysicalDrop::plan(refs),
             Plan::Scan { table_ref, projection } => PhysicalTableScan::plan(table_ref, projection),
             Plan::Show(show) => PhysicalShow::plan(show),
-            Plan::Explain(plan) => PhysicalExplain::plan(self.plan_node(plan)?),
+            Plan::Explain(kind, plan) => {
+                let plan = self.plan_node(plan)?;
+                let stringified = match kind {
+                    ir::ExplainMode::Physical => {
+                        explain::explain(&self.catalog, &self.tx, plan.as_ref()).to_string()
+                    }
+                    ir::ExplainMode::Pipeline => {
+                        let sink = Arc::new(OutputSink::default());
+                        let pipeline =
+                            crate::build_pipelines(sink, PhysicalPlan(Arc::clone(&plan)));
+                        explain::explain_pipeline(&self.catalog, &self.tx, &pipeline).to_string()
+                    }
+                };
+
+                PhysicalExplain::plan(stringified, plan)
+            }
             Plan::Insert { table_ref, projection, source, returning } => {
                 let mut source = self.plan_node(source)?;
                 if !projection.is_empty() {

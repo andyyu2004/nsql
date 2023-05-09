@@ -1,24 +1,55 @@
 use std::fmt;
 
-use crate::{ExecutionContext, PhysicalNode};
+use nsql_catalog::Catalog;
+use nsql_transaction::Transaction;
+
+use crate::{PhysicalNode, RootPipeline};
 
 pub type Result<T = ()> = std::result::Result<T, fmt::Error>;
 
 pub trait Explain {
-    fn explain(&self, ctx: &ExecutionContext, f: &mut fmt::Formatter<'_>) -> Result;
+    fn explain(&self, catalog: &Catalog, tx: &Transaction, f: &mut fmt::Formatter<'_>) -> Result;
 }
 
-pub(crate) fn explain<'a>(ctx: &'a ExecutionContext, node: &'a dyn PhysicalNode) -> Explained<'a> {
-    Explained { ctx, node }
+pub(crate) fn explain_pipeline<'a>(
+    catalog: &'a Catalog,
+    tx: &'a Transaction,
+    root: &'a RootPipeline,
+) -> Explainer<'a> {
+    todo!()
 }
 
-pub struct Explained<'a> {
-    ctx: &'a ExecutionContext,
+pub(crate) fn explain<'a>(
+    catalog: &'a Catalog,
+    tx: &'a Transaction,
     node: &'a dyn PhysicalNode,
+) -> Explainer<'a> {
+    Explainer { catalog, tx, node, indent: 0 }
 }
 
-impl fmt::Display for Explained<'_> {
-    fn fmt(&self, _f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        todo!()
+pub struct Explainer<'a> {
+    catalog: &'a Catalog,
+    tx: &'a Transaction,
+    node: &'a dyn PhysicalNode,
+    indent: usize,
+}
+
+impl<'a> Explainer<'a> {
+    fn explain_child(&self, node: &'a dyn PhysicalNode) -> Explainer<'_> {
+        Explainer { catalog: self.catalog, tx: self.tx, node, indent: self.indent + 2 }
+    }
+}
+
+impl fmt::Display for Explainer<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:indent$}", "", indent = self.indent)?;
+        self.node.explain(self.catalog, self.tx, f)?;
+        writeln!(f)?;
+
+        for child in self.node.children() {
+            self.explain_child(child.as_ref()).fmt(f)?;
+        }
+
+        Ok(())
     }
 }

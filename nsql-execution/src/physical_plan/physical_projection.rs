@@ -49,7 +49,12 @@ impl PhysicalNode for PhysicalProjection {
 }
 
 impl Explain for PhysicalProjection {
-    fn explain(&self, _ctx: &ExecutionContext, f: &mut fmt::Formatter<'_>) -> explain::Result {
+    fn explain(
+        &self,
+        catalog: &Catalog,
+        tx: &Transaction,
+        f: &mut fmt::Formatter<'_>,
+    ) -> explain::Result {
         write!(f, "projection")?;
         Ok(())
     }

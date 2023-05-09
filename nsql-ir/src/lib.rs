@@ -56,7 +56,7 @@ pub enum Stmt {
     CreateNamespace(CreateNamespaceInfo),
     CreateTable(CreateTableInfo),
     Query(Box<QueryPlan>),
-    Explain(Box<Stmt>),
+    Explain(ExplainMode, Box<Stmt>),
     Insert {
         table_ref: TableRef,
         projection: Box<[Expr]>,
@@ -68,6 +68,14 @@ pub enum Stmt {
         source: Box<QueryPlan>,
         returning: Option<Box<[Expr]>>,
     },
+}
+
+#[derive(Debug, Clone)]
+pub enum ExplainMode {
+    /// Show the physical query plan
+    Physical,
+    /// Show the pipelines
+    Pipeline,
 }
 
 #[derive(Debug, Clone)]

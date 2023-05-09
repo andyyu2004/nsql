@@ -278,10 +278,15 @@ impl Binder {
             }
             ast::Statement::Explain { describe_alias: _, analyze, verbose, statement, format } => {
                 not_implemented!(*analyze);
-                not_implemented!(*verbose);
                 not_implemented!(format.is_some());
-                ir::Stmt::Explain(Box::new(self.bind(statement)?))
+                // FIXME use a session variable to decide how to print the plan rather than verbosity
+                let kind = match verbose {
+                    false => ir::ExplainMode::Physical,
+                    true => ir::ExplainMode::Pipeline,
+                };
+                ir::Stmt::Explain(kind, Box::new(self.bind(statement)?))
             }
+            ast::Statement::SetVariable { local, hivevar, variable, value } => todo!(),
             _ => unimplemented!("unimplemented statement: {:?}", stmt),
         };
 

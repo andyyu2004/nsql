@@ -8,6 +8,7 @@ mod physical_plan;
 mod pipeline;
 mod vis;
 
+use std::any::Any;
 use std::fmt;
 use std::sync::Arc;
 
@@ -38,7 +39,7 @@ fn build_pipelines(sink: Arc<dyn PhysicalSink>, plan: PhysicalPlan) -> RootPipel
     RootPipeline { arena, root: root.cast() }
 }
 
-trait PhysicalNode: Send + Sync + fmt::Debug + Explain + 'static {
+trait PhysicalNode: Send + Sync + fmt::Debug + Explain + Any + 'static {
     fn children(&self) -> &[Arc<dyn PhysicalNode>];
 
     // override the default implementation if the node is a source with `Ok(self)`, otherwise `Err(self)`

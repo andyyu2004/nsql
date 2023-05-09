@@ -1,23 +1,29 @@
 use std::sync::atomic::{self, AtomicBool};
 
+use atomic_take::AtomicTake;
 use nsql_storage::value::Value;
 
 use super::*;
 
 #[derive(Debug)]
 pub struct PhysicalExplain {
-    node: Arc<dyn PhysicalNode>,
-    finished: AtomicBool,
+    stringified_plan: AtomicTake<String>,
+    children: [Arc<dyn PhysicalNode>; 1],
 }
 
 impl PhysicalExplain {
-    pub(crate) fn plan(node: Arc<dyn PhysicalNode>) -> Arc<dyn PhysicalNode> {
-        Arc::new(Self { node, finished: Default::default() })
+    #[inline]
+    pub(crate) fn plan(
+        stringified_plan: String,
+        child: Arc<dyn PhysicalNode>,
+    ) -> Arc<dyn PhysicalNode> {
+        Arc::new(Self { stringified_plan: AtomicTake::new(stringified_plan), children: [child] })
     }
 }
 
 impl PhysicalNode for PhysicalExplain {
     fn children(&self) -> &[Arc<dyn PhysicalNode>] {
+        // no children as we don't actually need to run anything (unless we're doing an analyse which is not implemented)
         &[]
     }
 
@@ -36,18 +42,21 @@ impl PhysicalNode for PhysicalExplain {
 
 #[async_trait::async_trait]
 impl PhysicalSource for PhysicalExplain {
-    async fn source(&self, ctx: &ExecutionContext) -> ExecutionResult<Chunk> {
-        if self.finished.swap(true, atomic::Ordering::AcqRel) {
-            return Ok(Chunk::empty());
+    async fn source(&self, _ctx: &ExecutionContext) -> ExecutionResult<Chunk> {
+        match self.stringified_plan.take() {
+            Some(plan) => Ok(Chunk::singleton(Tuple::from(vec![Value::Text(plan)]))),
+            None => Ok(Chunk::empty()),
         }
-
-        let explained = explain::explain(ctx, self.node.as_ref());
-        Ok(Chunk::singleton(Tuple::from(vec![Value::Text(explained.to_string())])))
     }
 }
 
 impl Explain for PhysicalExplain {
-    fn explain(&self, _ctx: &ExecutionContext, _f: &mut fmt::Formatter<'_>) -> explain::Result {
+    fn explain(
+        &self,
+        catalog: &Catalog,
+        tx: &Transaction,
+        f: &mut fmt::Formatter<'_>,
+    ) -> explain::Result {
         unreachable!("cannot explain an explain node")
     }
 }

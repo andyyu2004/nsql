@@ -62,7 +62,12 @@ impl PhysicalSource for PhysicalTransaction {
 }
 
 impl Explain for PhysicalTransaction {
-    fn explain(&self, _ctx: &ExecutionContext, f: &mut fmt::Formatter<'_>) -> explain::Result {
+    fn explain(
+        &self,
+        catalog: &Catalog,
+        tx: &Transaction,
+        f: &mut fmt::Formatter<'_>,
+    ) -> explain::Result {
         match self.kind {
             ir::TransactionKind::Begin => write!(f, "begin transaction")?,
             ir::TransactionKind::Commit => write!(f, "commit")?,
