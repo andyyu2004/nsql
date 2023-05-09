@@ -28,7 +28,7 @@ impl Scope {
         tracing::debug!("binding table");
         let mut columns = self.columns.clone();
 
-        let table = table_ref.get(&binder.catalog, &binder.tx)?;
+        let table = table_ref.get(&binder.catalog, &binder.tx);
         let mut table_columns = table.all::<Column>(&binder.tx)?;
         table_columns.sort_by_key(|(_, col)| col.index());
 

@@ -240,7 +240,7 @@ impl Binder {
                 };
 
                 // FIXME hacky way to build the projection
-                let table = table_ref.get(&self.catalog, &self.tx)?;
+                let table = table_ref.get(&self.catalog, &self.tx);
                 let columns = table.all::<Column>(&self.tx)?;
                 let projection = Some(
                     columns
@@ -294,7 +294,7 @@ impl Binder {
         table_ref: ir::TableRef,
         assignments: &[ast::Assignment],
     ) -> Result<Box<[ir::Expr]>> {
-        let table = table_ref.get(&self.catalog, &self.tx)?;
+        let table = table_ref.get(&self.catalog, &self.tx);
         let columns = table.all::<Column>(&self.tx)?;
 
         for assignment in assignments {

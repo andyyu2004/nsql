@@ -58,12 +58,8 @@ impl EntityRef for TableRef {
     type Container = Namespace;
 
     #[inline]
-    fn container(
-        self,
-        catalog: &Catalog,
-        tx: &Transaction,
-    ) -> nsql_catalog::Result<Arc<Self::Container>> {
-        Ok(catalog.get(tx, self.namespace)?.expect("namespace should exist for `tx`"))
+    fn container(self, catalog: &Catalog, tx: &Transaction) -> Arc<Self::Container> {
+        catalog.get(tx, self.namespace).expect("namespace should exist for `tx`")
     }
 
     #[inline]
@@ -84,11 +80,7 @@ impl EntityRef for ColumnRef {
     type Container = Table;
 
     #[inline]
-    fn container(
-        self,
-        catalog: &Catalog,
-        tx: &Transaction,
-    ) -> nsql_catalog::Result<Arc<Self::Container>> {
+    fn container(self, catalog: &Catalog, tx: &Transaction) -> Arc<Self::Container> {
         self.table_ref.get(catalog, tx)
     }
 

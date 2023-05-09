@@ -52,7 +52,7 @@ impl PhysicalNode for PhysicalInsert {
 impl PhysicalSink for PhysicalInsert {
     async fn sink(&self, ctx: &ExecutionContext, tuple: Tuple) -> ExecutionResult<()> {
         let tx = ctx.tx();
-        let table = self.table_ref.get(&ctx.catalog(), &tx)?;
+        let table = self.table_ref.get(&ctx.catalog(), &tx);
         let storage = table.storage();
         storage.append(&tx, &tuple).await.map_err(|report| report.into_error())?;
 
@@ -81,12 +81,11 @@ impl PhysicalSource for PhysicalInsert {
 
         Ok(Chunk::singleton(self.returning_evaluator.evaluate(&tuple, returning)))
     }
-
 }
 
 impl Explain for PhysicalInsert {
     fn explain(&self, ctx: &ExecutionContext, f: &mut fmt::Formatter<'_>) -> explain::Result {
-        write!(f, "insert into {}", self.table_ref.get(&ctx.catalog, &ctx.tx)?.name())?;
+        write!(f, "insert into {}", self.table_ref.get(&ctx.catalog, &ctx.tx).name())?;
         Ok(())
     }
 }

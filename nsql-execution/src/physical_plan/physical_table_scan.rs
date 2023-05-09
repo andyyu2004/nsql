@@ -54,8 +54,8 @@ impl PhysicalSource for PhysicalTableScan {
     async fn source(&self, ctx: &ExecutionContext) -> ExecutionResult<Chunk> {
         let tx = ctx.tx();
         let table = self.table.get_or_try_init(|| {
-            let namespace = ctx.catalog.get(&tx, self.table_ref.namespace)?.unwrap();
-            Ok::<_, nsql_catalog::Error>(namespace.get(&tx, self.table_ref.table)?.unwrap())
+            let namespace = ctx.catalog.get(&tx, self.table_ref.namespace).unwrap();
+            Ok::<_, nsql_catalog::Error>(namespace.get(&tx, self.table_ref.table).unwrap())
         })?;
 
         // FIXME we can return an entire chunk at a time instead now
@@ -110,7 +110,7 @@ impl PhysicalNode for PhysicalTableScan {
 
 impl Explain for PhysicalTableScan {
     fn explain(&self, ctx: &ExecutionContext, f: &mut fmt::Formatter<'_>) -> explain::Result {
-        write!(f, "scan {}", self.table_ref.get(&ctx.catalog, &ctx.tx)?.name())?;
+        write!(f, "scan {}", self.table_ref.get(&ctx.catalog, &ctx.tx).name())?;
         Ok(())
     }
 }

@@ -51,19 +51,18 @@ pub trait EntityRef: Copy {
 
     type Container: Container;
 
-    fn container(self, catalog: &Catalog, tx: &Transaction) -> Result<Arc<Self::Container>>;
+    fn container(self, catalog: &Catalog, tx: &Transaction) -> Arc<Self::Container>;
 
     fn entity_oid(self) -> Oid<Self::Entity>;
 
-    fn get(self, catalog: &Catalog, tx: &Transaction) -> Result<Arc<Self::Entity>> {
-        Ok(self
-            .container(catalog, tx)?
-            .get(tx, self.entity_oid())?
-            .expect("`oid` should be valid for `tx`"))
+    fn get(self, catalog: &Catalog, tx: &Transaction) -> Arc<Self::Entity> {
+        self.container(catalog, tx)
+            .get(tx, self.entity_oid())
+            .expect("`oid` should be valid for `tx`")
     }
 
     fn delete(self, catalog: &Catalog, tx: &Transaction) -> Result<()> {
-        self.container(catalog, tx)?.delete(tx, self.entity_oid())?;
+        self.container(catalog, tx).delete(tx, self.entity_oid())?;
         Ok(())
     }
 }
@@ -81,8 +80,8 @@ pub trait Container {
         &self,
         tx: &Transaction,
         oid: Oid<T>,
-    ) -> Result<Option<Arc<T>>> {
-        Ok(T::get(self, tx, oid))
+    ) -> Option<Arc<T>> {
+        T::get(self, tx, oid)
     }
 
     /// Delete the entity with the given `oid` from the catalog.

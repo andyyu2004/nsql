@@ -56,11 +56,11 @@ impl PhysicalSource for PhysicalCreateTable {
         let catalog = ctx.catalog();
         let tx = ctx.tx();
         let schema = catalog
-            .get::<Namespace>(&tx, self.info.namespace)?
+            .get::<Namespace>(&tx, self.info.namespace)
             .expect("schema not found during execution");
 
         let table_oid = schema.create::<Table>(&tx, info)?;
-        let table = schema.get::<Table>(&tx, table_oid)?.unwrap();
+        let table = schema.get::<Table>(&tx, table_oid).expect("table not found during execution");
         for info in &self.info.columns {
             table.create::<Column>(&tx, info.clone())?;
         }

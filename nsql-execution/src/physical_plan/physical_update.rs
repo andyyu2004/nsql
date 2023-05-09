@@ -54,7 +54,7 @@ impl PhysicalNode for PhysicalUpdate {
 impl PhysicalSink for PhysicalUpdate {
     async fn sink(&self, ctx: &ExecutionContext, tuple: Tuple) -> ExecutionResult<()> {
         let tx = ctx.tx();
-        let table = self.table_ref.get(&ctx.catalog(), &tx)?;
+        let table = self.table_ref.get(&ctx.catalog(), &tx);
         let storage = table.storage();
 
         let (tuple, tid) = tuple.split_last().expect("expected tuple to be non-empty");
@@ -96,7 +96,7 @@ impl PhysicalSource for PhysicalUpdate {
 
 impl Explain for PhysicalUpdate {
     fn explain(&self, ctx: &ExecutionContext, f: &mut fmt::Formatter<'_>) -> explain::Result {
-        write!(f, "update {}", self.table_ref.get(&ctx.catalog, &ctx.tx)?.name())?;
+        write!(f, "update {}", self.table_ref.get(&ctx.catalog, &ctx.tx).name())?;
         Ok(())
     }
 }

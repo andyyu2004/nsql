@@ -36,7 +36,7 @@ impl PhysicalNode for PhysicalExplain {
 
 #[async_trait::async_trait]
 impl PhysicalSource for PhysicalExplain {
-    async fn source(&self, ctx: &ExecutionContext) -> ExecutionResult<Chunk> {
+    async fn source(&self, _ctx: &ExecutionContext) -> ExecutionResult<Chunk> {
         if self.finished.swap(true, atomic::Ordering::AcqRel) {
             return Ok(Chunk::empty());
         }
@@ -47,7 +47,7 @@ impl PhysicalSource for PhysicalExplain {
 }
 
 impl Explain for PhysicalExplain {
-    fn explain(&self, ctx: &ExecutionContext, f: &mut fmt::Formatter<'_>) -> explain::Result {
+    fn explain(&self, _ctx: &ExecutionContext, _f: &mut fmt::Formatter<'_>) -> explain::Result {
         unreachable!("cannot explain an explain node")
     }
 }
