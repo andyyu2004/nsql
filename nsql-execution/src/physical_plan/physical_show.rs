@@ -1,5 +1,4 @@
 use std::sync::atomic::{self, AtomicBool};
-use std::sync::Arc;
 
 use nsql_catalog::{Container, Entity, Namespace, Table};
 use nsql_storage::value::Value;
@@ -19,10 +18,6 @@ impl PhysicalShow {
 }
 
 impl PhysicalNode for PhysicalShow {
-    fn desc(&self) -> &'static str {
-        "create table"
-    }
-
     fn children(&self) -> &[Arc<dyn PhysicalNode>] {
         &[]
     }
@@ -42,10 +37,6 @@ impl PhysicalNode for PhysicalShow {
 
 #[async_trait::async_trait]
 impl PhysicalSource for PhysicalShow {
-    fn estimated_cardinality(&self) -> usize {
-        todo!()
-    }
-
     async fn source(&self, ctx: &ExecutionContext) -> ExecutionResult<Chunk> {
         if self.finished.swap(true, atomic::Ordering::AcqRel) {
             return Ok(Chunk::empty());
@@ -66,5 +57,12 @@ impl PhysicalSource for PhysicalShow {
         }
 
         Ok(Chunk::from(tuples))
+    }
+}
+
+impl Explain for PhysicalShow {
+    fn explain(&self, _ctx: &ExecutionContext, f: &mut fmt::Formatter<'_>) -> explain::Result {
+        write!(f, "show {}s", self.show)?;
+        Ok(())
     }
 }

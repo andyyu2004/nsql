@@ -1,6 +1,8 @@
 #![deny(rust_2018_idioms)]
 
 mod expr;
+use std::fmt;
+
 use nsql_catalog::{CreateColumnInfo, Namespace, Oid};
 use nsql_core::Name;
 pub use nsql_storage::tuple::TupleIndex;
@@ -33,6 +35,14 @@ pub enum ObjectType {
     Table,
 }
 
+impl fmt::Display for ObjectType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Table => write!(f, "table"),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum EntityRef {
     Table(TableRef),
@@ -45,6 +55,8 @@ pub enum Stmt {
     Transaction(TransactionKind),
     CreateNamespace(CreateNamespaceInfo),
     CreateTable(CreateTableInfo),
+    Query(Box<QueryPlan>),
+    Explain(Box<Stmt>),
     Insert {
         table_ref: TableRef,
         projection: Box<[Expr]>,
@@ -56,7 +68,6 @@ pub enum Stmt {
         source: Box<QueryPlan>,
         returning: Option<Box<[Expr]>>,
     },
-    Query(Box<QueryPlan>),
 }
 
 #[derive(Debug, Clone)]

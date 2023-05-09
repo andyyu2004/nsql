@@ -1,7 +1,5 @@
 use std::sync::atomic::{self, AtomicU64};
 
-use async_trait::async_trait;
-
 use super::*;
 
 #[derive(Debug)]
@@ -17,7 +15,7 @@ impl PhysicalLimit {
     }
 }
 
-#[async_trait]
+#[async_trait::async_trait]
 impl PhysicalOperator for PhysicalLimit {
     async fn execute(
         &self,
@@ -33,10 +31,6 @@ impl PhysicalOperator for PhysicalLimit {
 }
 
 impl PhysicalNode for PhysicalLimit {
-    fn desc(&self) -> &'static str {
-        "projection"
-    }
-
     fn children(&self) -> &[Arc<dyn PhysicalNode>] {
         &self.children
     }
@@ -51,5 +45,12 @@ impl PhysicalNode for PhysicalLimit {
 
     fn as_operator(self: Arc<Self>) -> Result<Arc<dyn PhysicalOperator>, Arc<dyn PhysicalNode>> {
         Ok(self)
+    }
+}
+
+impl Explain for PhysicalLimit {
+    fn explain(&self, ctx: &ExecutionContext, f: &mut fmt::Formatter<'_>) -> explain::Result {
+        write!(f, "limit ({})", self.limit)?;
+        Ok(())
     }
 }

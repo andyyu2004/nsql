@@ -7,6 +7,7 @@ pub enum Plan {
     CreateNamespace(ir::CreateNamespaceInfo),
     Drop(Vec<ir::EntityRef>),
     Show(ir::ObjectType),
+    Explain(Box<Plan>),
     Update {
         table_ref: ir::TableRef,
         source: Box<Plan>,
@@ -58,6 +59,7 @@ impl Planner {
             ir::Stmt::Update { table_ref, source, returning } => {
                 Plan::Update { table_ref, source: self.plan_query(source), returning }
             }
+            ir::Stmt::Explain(stmt) => Plan::Explain(self.plan(*stmt)),
         };
 
         Box::new(plan)

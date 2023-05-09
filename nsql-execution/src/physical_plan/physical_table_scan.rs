@@ -1,4 +1,3 @@
-use std::fmt;
 use std::pin::Pin;
 use std::sync::atomic::{self, AtomicUsize};
 use std::sync::OnceLock;
@@ -89,17 +88,9 @@ impl PhysicalSource for PhysicalTableScan {
             }
         }
     }
-
-    fn estimated_cardinality(&self) -> usize {
-        todo!()
-    }
 }
 
 impl PhysicalNode for PhysicalTableScan {
-    fn desc(&self) -> &'static str {
-        "scan"
-    }
-
     fn children(&self) -> &[Arc<dyn PhysicalNode>] {
         &[]
     }
@@ -114,5 +105,12 @@ impl PhysicalNode for PhysicalTableScan {
 
     fn as_operator(self: Arc<Self>) -> Result<Arc<dyn PhysicalOperator>, Arc<dyn PhysicalNode>> {
         Err(self)
+    }
+}
+
+impl Explain for PhysicalTableScan {
+    fn explain(&self, ctx: &ExecutionContext, f: &mut fmt::Formatter<'_>) -> explain::Result {
+        write!(f, "scan {}", self.table_ref.get(&ctx.catalog, &ctx.tx)?.name())?;
+        Ok(())
     }
 }

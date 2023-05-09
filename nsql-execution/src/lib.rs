@@ -22,9 +22,10 @@ use smallvec::SmallVec;
 
 use self::eval::Evaluator;
 pub use self::executor::execute;
-use self::physical_plan::PhysicalPlan;
+use self::physical_plan::{explain, Explain, PhysicalPlan};
 use self::pipeline::{
-    MetaPipeline, MetaPipelineBuilder, PipelineArena, PipelineBuilder, PipelineBuilderArena,
+    MetaPipeline, MetaPipelineBuilder, Pipeline, PipelineArena, PipelineBuilder,
+    PipelineBuilderArena,
 };
 
 pub type ExecutionResult<T, E = Error> = std::result::Result<T, E>;
@@ -37,9 +38,7 @@ fn build_pipelines(sink: Arc<dyn PhysicalSink>, plan: PhysicalPlan) -> RootPipel
     RootPipeline { arena, root: root.cast() }
 }
 
-trait PhysicalNode: Send + Sync + fmt::Debug + 'static {
-    fn desc(&self) -> &'static str;
-
+trait PhysicalNode: Send + Sync + fmt::Debug + Explain + 'static {
     fn children(&self) -> &[Arc<dyn PhysicalNode>];
 
     // override the default implementation if the node is a source with `Ok(self)`, otherwise `Err(self)`
@@ -140,8 +139,6 @@ trait PhysicalOperator<T = Tuple>: PhysicalNode {
 trait PhysicalSource<T = Tuple>: PhysicalNode {
     /// Return the next chunk from the source. An empty chunk indicates that the source is exhausted.
     async fn source(&self, ctx: &ExecutionContext) -> ExecutionResult<Chunk<T>>;
-
-    fn estimated_cardinality(&self) -> usize;
 }
 
 #[async_trait::async_trait]

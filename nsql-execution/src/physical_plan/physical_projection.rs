@@ -31,10 +31,6 @@ impl PhysicalOperator for PhysicalProjection {
 }
 
 impl PhysicalNode for PhysicalProjection {
-    fn desc(&self) -> &'static str {
-        "projection"
-    }
-
     fn children(&self) -> &[Arc<dyn PhysicalNode>] {
         &self.children
     }
@@ -49,5 +45,12 @@ impl PhysicalNode for PhysicalProjection {
 
     fn as_operator(self: Arc<Self>) -> Result<Arc<dyn PhysicalOperator>, Arc<dyn PhysicalNode>> {
         Ok(self)
+    }
+}
+
+impl Explain for PhysicalProjection {
+    fn explain(&self, ctx: &ExecutionContext, f: &mut fmt::Formatter<'_>) -> explain::Result {
+        write!(f, "projection")?;
+        Ok(())
     }
 }

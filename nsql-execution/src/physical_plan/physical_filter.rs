@@ -36,10 +36,6 @@ impl PhysicalOperator for PhysicalFilter {
 }
 
 impl PhysicalNode for PhysicalFilter {
-    fn desc(&self) -> &'static str {
-        "filter"
-    }
-
     fn children(&self) -> &[Arc<dyn PhysicalNode>] {
         &self.children
     }
@@ -54,5 +50,12 @@ impl PhysicalNode for PhysicalFilter {
 
     fn as_operator(self: Arc<Self>) -> Result<Arc<dyn PhysicalOperator>, Arc<dyn PhysicalNode>> {
         Ok(self)
+    }
+}
+
+impl Explain for PhysicalFilter {
+    fn explain(&self, ctx: &ExecutionContext, f: &mut fmt::Formatter<'_>) -> explain::Result {
+        write!(f, "filter")?;
+        Ok(())
     }
 }

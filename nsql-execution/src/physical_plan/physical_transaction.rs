@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use super::*;
 
 #[derive(Debug)]
@@ -14,10 +12,6 @@ impl PhysicalTransaction {
 }
 
 impl PhysicalNode for PhysicalTransaction {
-    fn desc(&self) -> &'static str {
-        "transaction"
-    }
-
     fn children(&self) -> &[Arc<dyn PhysicalNode>] {
         &[]
     }
@@ -37,9 +31,6 @@ impl PhysicalNode for PhysicalTransaction {
 
 #[async_trait::async_trait]
 impl PhysicalSource for PhysicalTransaction {
-    fn estimated_cardinality(&self) -> usize {
-        0
-    }
 
     async fn source(&self, ctx: &ExecutionContext) -> ExecutionResult<Chunk> {
         let tx = ctx.tx();
@@ -68,5 +59,16 @@ impl PhysicalSource for PhysicalTransaction {
         }
 
         Ok(Chunk::empty())
+    }
+}
+
+impl Explain for PhysicalTransaction {
+    fn explain(&self, ctx: &ExecutionContext, f: &mut fmt::Formatter<'_>) -> explain::Result {
+        match self.kind {
+            ir::TransactionKind::Begin => write!(f, "begin transaction")?,
+            ir::TransactionKind::Commit => write!(f, "commit")?,
+            ir::TransactionKind::Rollback => write!(f, "rollback")?,
+        }
+        Ok(())
     }
 }

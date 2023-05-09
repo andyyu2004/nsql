@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::fmt;
 
 use nsql_catalog::{Container, CreateNamespaceInfo, Namespace};
 
@@ -17,10 +17,6 @@ impl PhysicalCreateNamespace {
 }
 
 impl PhysicalNode for PhysicalCreateNamespace {
-    fn desc(&self) -> &'static str {
-        "create namespace"
-    }
-
     fn children(&self) -> &[Arc<dyn PhysicalNode>] {
         &[]
     }
@@ -40,10 +36,6 @@ impl PhysicalNode for PhysicalCreateNamespace {
 
 #[async_trait::async_trait]
 impl PhysicalSource for PhysicalCreateNamespace {
-    fn estimated_cardinality(&self) -> usize {
-        0
-    }
-
     async fn source(&self, ctx: &ExecutionContext) -> ExecutionResult<Chunk> {
         let tx = ctx.tx();
         let info = CreateNamespaceInfo { name: self.info.name.clone() };
@@ -55,5 +47,12 @@ impl PhysicalSource for PhysicalCreateNamespace {
         }
 
         Ok(Chunk::empty())
+    }
+}
+
+impl Explain for PhysicalCreateNamespace {
+    fn explain(&self, ctx: &ExecutionContext, f: &mut fmt::Formatter<'_>) -> explain::Result {
+        write!(f, "create namespace {}", self.info.name)?;
+        Ok(())
     }
 }

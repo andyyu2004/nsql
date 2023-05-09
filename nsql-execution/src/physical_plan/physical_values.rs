@@ -28,17 +28,9 @@ impl PhysicalSource for PhysicalValues {
 
         Ok(Chunk::singleton(tuple))
     }
-
-    fn estimated_cardinality(&self) -> usize {
-        self.values.len()
-    }
 }
 
 impl PhysicalNode for PhysicalValues {
-    fn desc(&self) -> &'static str {
-        "values"
-    }
-
     fn children(&self) -> &[Arc<dyn PhysicalNode>] {
         &[]
     }
@@ -53,5 +45,12 @@ impl PhysicalNode for PhysicalValues {
 
     fn as_operator(self: Arc<Self>) -> Result<Arc<dyn PhysicalOperator>, Arc<dyn PhysicalNode>> {
         Err(self)
+    }
+}
+
+impl Explain for PhysicalValues {
+    fn explain(&self, _ctx: &ExecutionContext, f: &mut fmt::Formatter<'_>) -> explain::Result {
+        write!(f, "scan values")?;
+        Ok(())
     }
 }

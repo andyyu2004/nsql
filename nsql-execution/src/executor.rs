@@ -1,16 +1,7 @@
-use std::sync::Arc;
-
-use nsql_arena::Idx;
-use nsql_storage::tuple::Tuple;
 use parking_lot::RwLock;
 use tokio::task::JoinSet;
 
-use crate::physical_plan::PhysicalPlan;
-use crate::pipeline::{MetaPipeline, Pipeline, PipelineArena};
-use crate::{
-    build_pipelines, Chunk, ExecutionContext, ExecutionResult, OperatorState, PhysicalNode,
-    PhysicalOperator, PhysicalSink, PhysicalSource, RootPipeline,
-};
+use super::*;
 
 pub(crate) struct Executor {
     arena: PipelineArena,
@@ -100,10 +91,6 @@ struct OutputSink {
 }
 
 impl PhysicalNode for OutputSink {
-    fn desc(&self) -> &'static str {
-        "output_sink"
-    }
-
     fn children(&self) -> &[Arc<dyn PhysicalNode>] {
         &[]
     }
@@ -123,10 +110,6 @@ impl PhysicalNode for OutputSink {
 
 #[async_trait::async_trait]
 impl PhysicalSource for OutputSink {
-    fn estimated_cardinality(&self) -> usize {
-        self.tuples.read().len()
-    }
-
     async fn source(&self, _ctx: &ExecutionContext) -> ExecutionResult<Chunk> {
         todo!()
     }
@@ -137,5 +120,11 @@ impl PhysicalSink for OutputSink {
     async fn sink(&self, _ctx: &ExecutionContext, tuple: Tuple) -> ExecutionResult<()> {
         self.tuples.write().push(tuple);
         Ok(())
+    }
+}
+
+impl Explain for OutputSink {
+    fn explain(&self, ctx: &ExecutionContext, f: &mut fmt::Formatter<'_>) -> explain::Result {
+        unreachable!("this should never show up to the user")
     }
 }

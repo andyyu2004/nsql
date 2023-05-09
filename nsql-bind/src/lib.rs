@@ -276,6 +276,12 @@ impl Binder {
 
                 ir::Stmt::Update { table_ref, source, returning }
             }
+            ast::Statement::Explain { describe_alias: _, analyze, verbose, statement, format } => {
+                not_implemented!(*analyze);
+                not_implemented!(*verbose);
+                not_implemented!(format.is_some());
+                ir::Stmt::Explain(Box::new(self.bind(statement)?))
+            }
             _ => unimplemented!("unimplemented statement: {:?}", stmt),
         };
 

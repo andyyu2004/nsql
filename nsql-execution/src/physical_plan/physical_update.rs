@@ -33,10 +33,6 @@ impl PhysicalUpdate {
 }
 
 impl PhysicalNode for PhysicalUpdate {
-    fn desc(&self) -> &'static str {
-        "update"
-    }
-
     fn children(&self) -> &[Arc<dyn PhysicalNode>] {
         &self.children
     }
@@ -96,8 +92,11 @@ impl PhysicalSource for PhysicalUpdate {
 
         Ok(Chunk::singleton(self.returning_evaluator.evaluate(&tuple, returning)))
     }
+}
 
-    fn estimated_cardinality(&self) -> usize {
-        if self.returning.is_some() { todo!() } else { 0 }
+impl Explain for PhysicalUpdate {
+    fn explain(&self, ctx: &ExecutionContext, f: &mut fmt::Formatter<'_>) -> explain::Result {
+        write!(f, "update {}", self.table_ref.get(&ctx.catalog, &ctx.tx)?.name())?;
+        Ok(())
     }
 }

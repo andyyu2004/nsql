@@ -1,9 +1,6 @@
-use std::sync::Arc;
-
 use nsql_catalog::EntityRef;
 
 use super::*;
-use crate::Chunk;
 
 #[derive(Debug)]
 pub struct PhysicalDrop {
@@ -17,10 +14,6 @@ impl PhysicalDrop {
 }
 
 impl PhysicalNode for PhysicalDrop {
-    fn desc(&self) -> &'static str {
-        "drop"
-    }
-
     fn children(&self) -> &[Arc<dyn PhysicalNode>] {
         &[]
     }
@@ -40,10 +33,6 @@ impl PhysicalNode for PhysicalDrop {
 
 #[async_trait::async_trait]
 impl PhysicalSource for PhysicalDrop {
-    fn estimated_cardinality(&self) -> usize {
-        0
-    }
-
     async fn source(&self, ctx: &ExecutionContext) -> ExecutionResult<Chunk> {
         let tx = ctx.tx();
         let catalog = ctx.catalog();
@@ -54,5 +43,24 @@ impl PhysicalSource for PhysicalDrop {
         }
 
         Ok(Chunk::empty())
+    }
+}
+
+impl Explain for PhysicalDrop {
+    fn explain(&self, ctx: &ExecutionContext, f: &mut fmt::Formatter<'_>) -> explain::Result {
+        write!(f, "drop ")?;
+        for (i, entity_ref) in self.refs.iter().enumerate() {
+            if i > 0 {
+                write!(f, ", ")?;
+            }
+
+            match entity_ref {
+                ir::EntityRef::Table(table_ref) => {
+                    write!(f, "table {}", table_ref.get(&ctx.catalog, &ctx.tx)?.name())?
+                }
+            }
+        }
+
+        Ok(())
     }
 }

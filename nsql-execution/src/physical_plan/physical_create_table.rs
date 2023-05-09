@@ -1,11 +1,8 @@
-use std::sync::Arc;
-
 use nsql_catalog::{Column, Container, CreateTableInfo, Namespace, Table};
 use nsql_storage::schema::{Attribute, Schema};
 use nsql_storage::{TableStorage, TableStorageInfo};
 
 use super::*;
-use crate::Chunk;
 
 #[derive(Debug)]
 pub struct PhysicalCreateTable {
@@ -19,10 +16,6 @@ impl PhysicalCreateTable {
 }
 
 impl PhysicalNode for PhysicalCreateTable {
-    fn desc(&self) -> &'static str {
-        "create table"
-    }
-
     fn children(&self) -> &[Arc<dyn PhysicalNode>] {
         &[]
     }
@@ -42,10 +35,6 @@ impl PhysicalNode for PhysicalCreateTable {
 
 #[async_trait::async_trait]
 impl PhysicalSource for PhysicalCreateTable {
-    fn estimated_cardinality(&self) -> usize {
-        0
-    }
-
     async fn source(&self, ctx: &ExecutionContext) -> ExecutionResult<Chunk> {
         let attrs = self
             .info
@@ -77,5 +66,12 @@ impl PhysicalSource for PhysicalCreateTable {
         }
 
         Ok(Chunk::empty())
+    }
+}
+
+impl Explain for PhysicalCreateTable {
+    fn explain(&self, ctx: &ExecutionContext, f: &mut fmt::Formatter<'_>) -> explain::Result {
+        write!(f, "create table {}", self.info.name)?;
+        Ok(())
     }
 }

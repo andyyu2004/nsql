@@ -22,6 +22,11 @@ pub struct Table {
 
 impl Table {
     #[inline]
+    pub fn name(&self) -> &Name {
+        &self.name
+    }
+
+    #[inline]
     pub fn storage(&self) -> &Arc<TableStorage> {
         &self.storage
     }

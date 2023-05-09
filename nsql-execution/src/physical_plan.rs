@@ -1,6 +1,8 @@
+pub(crate) mod explain;
 mod physical_create_namespace;
 mod physical_create_table;
 mod physical_drop;
+mod physical_explain;
 mod physical_filter;
 mod physical_insert;
 mod physical_limit;
@@ -11,16 +13,18 @@ mod physical_transaction;
 mod physical_update;
 mod physical_values;
 
+use std::fmt;
 use std::sync::Arc;
 
 use anyhow::Result;
-use nsql_catalog::{Catalog, Column, Container, EntityRef, Transaction};
+use nsql_catalog::{Catalog, EntityRef, Transaction};
 use nsql_plan::Plan;
-use nsql_storage::tuple::TupleIndex;
 
+pub use self::explain::Explain;
 use self::physical_create_namespace::PhysicalCreateNamespace;
 use self::physical_create_table::PhysicalCreateTable;
 use self::physical_drop::PhysicalDrop;
+use self::physical_explain::PhysicalExplain;
 use self::physical_filter::PhysicalFilter;
 use self::physical_insert::PhysicalInsert;
 use self::physical_limit::PhysicalLimit;
@@ -67,6 +71,7 @@ impl PhysicalPlanner {
             Plan::Drop(refs) => PhysicalDrop::plan(refs),
             Plan::Scan { table_ref, projection } => PhysicalTableScan::plan(table_ref, projection),
             Plan::Show(show) => PhysicalShow::plan(show),
+            Plan::Explain(plan) => PhysicalExplain::plan(self.plan_node(plan)?),
             Plan::Insert { table_ref, projection, source, returning } => {
                 let mut source = self.plan_node(source)?;
                 if !projection.is_empty() {
