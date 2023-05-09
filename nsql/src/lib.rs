@@ -13,11 +13,11 @@ use nsql_execution::{ExecutionContext, PhysicalPlanner};
 use nsql_opt::optimize;
 use nsql_pager::{InMemoryPager, Pager, SingleFilePager};
 use nsql_plan::Planner;
-use nsql_storage::schema::LogicalType;
-use nsql_storage::tuple::Tuple;
+pub use nsql_storage::schema::LogicalType;
+pub use nsql_storage::tuple::Tuple;
 use nsql_storage::Storage;
 use nsql_transaction::{TransactionManager, TransactionState};
-use thiserror::Error;
+pub use thiserror::Error;
 
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 
@@ -132,6 +132,7 @@ impl Shared {
         let ctx = ExecutionContext::new(Arc::clone(&self.buffer_pool), catalog, Arc::clone(&tx));
         let tuples = nsql_execution::execute(ctx, physical_plan).await?;
 
+        // FIXME need to get the types
         Ok(MaterializedQueryOutput { types: vec![], tuples })
     }
 }
