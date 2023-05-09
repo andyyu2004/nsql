@@ -36,13 +36,13 @@ impl PhysicalNode for PhysicalExplain {
 
 #[async_trait::async_trait]
 impl PhysicalSource for PhysicalExplain {
-    async fn source(&self, _ctx: &ExecutionContext) -> ExecutionResult<Chunk> {
+    async fn source(&self, ctx: &ExecutionContext) -> ExecutionResult<Chunk> {
         if self.finished.swap(true, atomic::Ordering::AcqRel) {
             return Ok(Chunk::empty());
         }
 
-        let stringified = String::new();
-        Ok(Chunk::singleton(Tuple::from(vec![Value::Text(stringified)])))
+        let explained = explain::explain(ctx, self.node.as_ref());
+        Ok(Chunk::singleton(Tuple::from(vec![Value::Text(explained.to_string())])))
     }
 }
 

@@ -23,6 +23,16 @@ impl Tuple {
     }
 
     #[inline]
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    #[inline]
     // FIXME find more efficient representation to avoid all this copying
     pub fn split_last(&self) -> Option<(Tuple, Value)> {
         let (last, rest) = self.0.split_last()?;
