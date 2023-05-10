@@ -86,7 +86,8 @@ impl PhysicalPlanner {
                         let sink = Arc::new(OutputSink::default());
                         let pipeline =
                             crate::build_pipelines(sink, PhysicalPlan(Arc::clone(&plan)));
-                        explain::explain_pipeline(&self.catalog, &self.tx, &pipeline).to_string()
+                        let disp = explain::explain_pipeline(&self.catalog, &self.tx, &pipeline);
+                        disp.to_string()
                     }
                 };
 

@@ -1,5 +1,6 @@
 use expect_test::{expect, Expect};
 use nsql::Nsql;
+use nsql_storage::tuple::TupleIndex;
 
 async fn check_explain(
     setup: impl IntoIterator<Item = &str>,
@@ -17,7 +18,7 @@ async fn check_explain(
     assert_eq!(result.tuples.len(), 1);
     assert_eq!(result.tuples[0].len(), 1);
 
-    expect.assert_eq(&result.tuples[0].to_string());
+    expect.assert_eq(&result.tuples[0][TupleIndex::new(0)].to_string());
     Ok(())
 }
 
@@ -27,11 +28,11 @@ async fn test_explain() -> nsql::Result<()> {
         vec!["CREATE TABLE t (b boolean)"],
         "EXPLAIN UPDATE t SET b = true WHERE b",
         expect![[r#"
-            (update t
+            update t
               projection
                 filter
                   scan t
-            )"#]],
+        "#]],
     )
     .await?;
 
@@ -39,11 +40,18 @@ async fn test_explain() -> nsql::Result<()> {
         vec!["CREATE TABLE t (b boolean)"],
         "EXPLAIN VERBOSE UPDATE t SET b = true WHERE b",
         expect![[r#"
-            (update t
-              projection
-                filter
-                  scan t
-            )"#]],
+            metapipeline #0
+              pipeline #0
+                output
+                update t
+
+                  metapipeline #1
+                    pipeline #1
+                      update t
+                      projection
+                      filter
+                      scan t
+        "#]],
     )
     .await?;
 

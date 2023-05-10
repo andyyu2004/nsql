@@ -72,8 +72,9 @@ async fn execute_root_pipeline(
     ctx: ExecutionContext,
     pipeline: RootPipeline,
 ) -> ExecutionResult<()> {
+    let root = pipeline.arena.root();
     let executor = Arc::new(Executor { arena: pipeline.arena });
-    executor.execute(ctx, pipeline.root).await
+    executor.execute(ctx, root).await
 }
 
 pub async fn execute(ctx: ExecutionContext, plan: PhysicalPlan) -> ExecutionResult<Vec<Tuple>> {
@@ -126,10 +127,10 @@ impl PhysicalSink for OutputSink {
 impl Explain for OutputSink {
     fn explain(
         &self,
-        catalog: &Catalog,
-        tx: &Transaction,
+        _catalog: &Catalog,
+        _tx: &Transaction,
         f: &mut fmt::Formatter<'_>,
     ) -> explain::Result {
-        unreachable!("this should never show up to the user")
+        write!(f, "output")
     }
 }
