@@ -80,7 +80,7 @@ impl<'a, P: Pager> CheckpointWriter<'a, P> {
     }
 
     async fn write_catalog(&mut self, tx: &Transaction, catalog: &Catalog) -> Result<()> {
-        for (_, schema) in catalog.all::<Namespace>(tx)? {
+        for (_, schema) in catalog.all::<Namespace>(tx) {
             self.write_schema(tx, &schema).await?;
         }
         Ok(())
@@ -88,7 +88,7 @@ impl<'a, P: Pager> CheckpointWriter<'a, P> {
 
     async fn write_schema(&mut self, tx: &Transaction, schema: &Namespace) -> Result<()> {
         schema.serialize(&mut self.meta_writer).await?;
-        for (_, table) in schema.all::<Table>(tx)? {
+        for (_, table) in schema.all::<Table>(tx) {
             self.write_table_data(tx, &table).await?;
         }
         Ok(())

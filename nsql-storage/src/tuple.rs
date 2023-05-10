@@ -146,4 +146,10 @@ impl TupleIndex {
     pub fn new(idx: usize) -> Self {
         Self(idx)
     }
+
+    // FIXME ideally we don't want to expose this as we're unwrapping the abstraction
+    #[inline]
+    pub fn as_usize(&self) -> usize {
+        self.0
+    }
 }

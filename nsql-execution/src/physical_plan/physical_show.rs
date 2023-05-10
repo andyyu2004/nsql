@@ -45,11 +45,11 @@ impl PhysicalSource for PhysicalShow {
         let catalog = ctx.catalog();
         let tx = ctx.tx();
         let mut tuples = vec![];
-        let namespaces = catalog.all::<Namespace>(&tx)?;
+        let namespaces = catalog.all::<Namespace>(&tx);
         for (_, namespace) in namespaces {
             match self.show {
                 ir::ObjectType::Table => {
-                    for (_, table) in namespace.all::<Table>(&tx)? {
+                    for (_, table) in namespace.all::<Table>(&tx) {
                         tuples.push(Tuple::from(vec![Value::Text(table.name().to_string())]));
                     }
                 }

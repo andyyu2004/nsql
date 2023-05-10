@@ -2,9 +2,9 @@ use std::pin::Pin;
 use std::sync::atomic::{self, AtomicUsize};
 use std::sync::OnceLock;
 
-use atomic_take::AtomicTake;
 use futures_util::{Stream, StreamExt};
-use nsql_catalog::{Container, Table};
+use itertools::Itertools;
+use nsql_catalog::{Column, Container, Entity, Table};
 use nsql_storage::tuple::TupleIndex;
 use tokio::sync::{Mutex, OnceCell};
 
@@ -13,7 +13,9 @@ use super::*;
 pub struct PhysicalTableScan {
     table_ref: ir::TableRef,
     table: OnceLock<Arc<Table>>,
-    projection: Option<AtomicTake<Box<[TupleIndex]>>>,
+    // FIXME think it makes more sense for it to be Box<[ColumnIndex]> rather than tuple index as
+    // this projection is specific to tables?
+    projection: Option<Box<[TupleIndex]>>,
     current_batch: Mutex<Vec<Tuple>>,
     current_batch_index: AtomicUsize,
 
@@ -39,7 +41,7 @@ impl PhysicalTableScan {
     ) -> Arc<dyn PhysicalNode> {
         Arc::new(Self {
             table_ref,
-            projection: projection.map(AtomicTake::new),
+            projection,
             table: Default::default(),
             current_batch: Default::default(),
             current_batch_index: Default::default(),
@@ -71,8 +73,7 @@ impl PhysicalSource for PhysicalTableScan {
                     .stream
                     .get_or_init(|| async move {
                         let storage = table.storage();
-                        let projection = self.projection.as_ref()
-                            .map(|p| p.take() .expect("this should only happen once as we're inside a oncecell initializer"));
+                        let projection = self.projection.clone();
                         Mutex::new(Box::pin(storage.scan(ctx.tx(), projection).await) as _)
                     })
                     .await;
@@ -115,7 +116,25 @@ impl Explain for PhysicalTableScan {
         tx: &Transaction,
         f: &mut fmt::Formatter<'_>,
     ) -> explain::Result {
-        write!(f, "scan {}", self.table_ref.get(catalog, tx).name())?;
+        // In this context, we know the projection indices correspond to the column indices of the source table
+        let table = self.table_ref.get(catalog, tx);
+        let columns = table.all::<Column>(tx);
+
+        let column_names = match &self.projection {
+            Some(projection) => projection
+                .iter()
+                .map(|&idx| {
+                    columns
+                        .get(idx.as_usize())
+                        .map(|(_, col)| col.name())
+                        // FIXME centralize this logic
+                        .unwrap_or_else(|| "tid".into())
+                })
+                .collect::<Vec<_>>(),
+            None => columns.iter().map(|(_, c)| c.name()).collect::<Vec<_>>(),
+        };
+
+        write!(f, "scan {} ({})", table.name(), column_names.iter().join(", "))?;
         Ok(())
     }
 }

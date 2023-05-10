@@ -60,7 +60,7 @@ impl Explain for PhysicalFilter {
         _tx: &Transaction,
         f: &mut fmt::Formatter<'_>,
     ) -> explain::Result {
-        write!(f, "filter")?;
+        write!(f, "filter {}", self.predicate)?;
         Ok(())
     }
 }

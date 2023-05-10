@@ -109,8 +109,8 @@ pub trait Container {
     fn all<'a, T: CatalogEntity<Container = Self>>(
         &'a self,
         tx: &'a Transaction,
-    ) -> Result<Vec<(Oid<T>, Arc<T>)>> {
-        Ok(T::all(self, tx))
+    ) -> Vec<(Oid<T>, Arc<T>)> {
+        T::all(self, tx)
     }
 }
 

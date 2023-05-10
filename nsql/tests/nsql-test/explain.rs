@@ -30,8 +30,8 @@ async fn test_explain() -> nsql::Result<()> {
         expect![[r#"
             update t
               projection (true, tid)
-                filter
-                  scan t
+                filter b
+                  scan t (b, tid)
         "#]],
     )
     .await?;
@@ -49,8 +49,8 @@ async fn test_explain() -> nsql::Result<()> {
                     pipeline #1
                       update t
                       projection (true, tid)
-                      filter
-                      scan t
+                      filter b
+                      scan t (b, tid)
         "#]],
     )
     .await?;
