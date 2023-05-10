@@ -17,7 +17,7 @@ impl Evaluator {
     pub fn evaluate_expr(&self, input: &Tuple, expr: &ir::Expr) -> Value {
         match &expr.kind {
             ir::ExprKind::Value(value) => value.clone(),
-            ir::ExprKind::ColumnRef(idx) => input[*idx].clone(),
+            ir::ExprKind::ColumnRef { index, .. } => input[*index].clone(),
         }
     }
 }

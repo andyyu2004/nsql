@@ -1,3 +1,4 @@
+use std::fmt;
 use std::ops::Deref;
 use std::sync::Arc;
 
@@ -5,6 +6,8 @@ use nsql_catalog::{Catalog, Column, Container, EntityRef, Namespace, Oid, Table,
 use nsql_storage::schema::LogicalType;
 use nsql_storage::tuple::TupleIndex;
 use nsql_storage::value::Value;
+
+use crate::Path;
 
 #[derive(Debug, Clone)]
 pub enum QueryPlan {
@@ -40,10 +43,30 @@ pub struct Expr {
     pub kind: ExprKind,
 }
 
+impl fmt::Display for Expr {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.kind)
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum ExprKind {
     Value(Value),
-    ColumnRef(TupleIndex),
+    ColumnRef {
+        /// A display path for the column (for pretty printing etc)
+        path: Path,
+        /// An index into the tuple the expression is evaluated against
+        index: TupleIndex,
+    },
+}
+
+impl fmt::Display for ExprKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match &self {
+            ExprKind::Value(value) => write!(f, "{value}"),
+            ExprKind::ColumnRef { path, .. } => write!(f, "{path}"),
+        }
+    }
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]

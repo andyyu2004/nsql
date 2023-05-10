@@ -119,9 +119,9 @@ impl Scope {
 
     /// Returns an iterator over the columns in the scope exposed as `Expr`s
     pub fn column_refs(&self) -> impl Iterator<Item = ir::Expr> + '_ {
-        self.columns.iter().enumerate().map(|(i, (_p, ty))| ir::Expr {
+        self.columns.iter().enumerate().map(|(i, (path, ty))| ir::Expr {
             ty: ty.clone(),
-            kind: ir::ExprKind::ColumnRef(ir::TupleIndex::new(i)),
+            kind: ir::ExprKind::ColumnRef { path: path.clone(), index: ir::TupleIndex::new(i) },
         })
     }
 

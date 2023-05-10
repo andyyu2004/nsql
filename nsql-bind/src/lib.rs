@@ -2,13 +2,12 @@
 
 mod scope;
 
-use std::fmt;
 use std::str::FromStr;
 use std::sync::Arc;
 
 pub use anyhow::Error;
 use anyhow::{anyhow, bail, ensure};
-use ir::{Decimal, TupleIndex};
+use ir::{Decimal, Path, TupleIndex};
 use itertools::Itertools;
 use nsql_catalog::{
     Catalog, Column, Container, CreateColumnInfo, Entity, EntityRef, Namespace, NamespaceEntity,
@@ -337,7 +336,10 @@ impl Binder {
         // FIXME don't think this hack will work once we have joins and other columns in the update
         projections.push(ir::Expr {
             ty: LogicalType::Tid,
-            kind: ir::ExprKind::ColumnRef(TupleIndex::new(projections.len())),
+            kind: ir::ExprKind::ColumnRef {
+                index: TupleIndex::new(projections.len()),
+                path: Path::unqualified("tid"),
+            },
         });
 
         Ok(projections.into_boxed_slice())
@@ -436,7 +438,7 @@ impl Binder {
                 // if the limit is `NULL` we treat is as unlimited (i.e. `u64::MAX`)
                 // FIXME we could also just not apply the limit wrapper in this case
                 ir::ExprKind::Value(val) => val.cast(u64::MAX)?,
-                ir::ExprKind::ColumnRef(..) => {
+                ir::ExprKind::ColumnRef { .. } => {
                     unreachable!("this would have failed binding as we gave it an empty scope")
                 }
             };
@@ -655,14 +657,14 @@ impl Binder {
         let (ty, kind) = match expr {
             ast::Expr::Value(literal) => self.bind_value_expr(literal),
             ast::Expr::Identifier(ident) => {
-                let (ty, idx) =
+                let (ty, index) =
                     scope.lookup_column(&Path::Unqualified(ident.value.clone().into()))?;
-                (ty, ir::ExprKind::ColumnRef(idx))
+                (ty, ir::ExprKind::ColumnRef { path: Path::unqualified(&ident.value), index })
             }
             ast::Expr::CompoundIdentifier(ident) => {
-                let ident = self.lower_path(ident)?;
-                let (ty, idx) = scope.lookup_column(&ident)?;
-                (ty, ir::ExprKind::ColumnRef(idx))
+                let path = self.lower_path(ident)?;
+                let (ty, index) = scope.lookup_column(&path)?;
+                (ty, ir::ExprKind::ColumnRef { path, index })
             }
             ast::Expr::BinaryOp { left: _, op: _, right: _ } => todo!(),
             _ => todo!("todo expr: {:?}", expr),
@@ -701,47 +703,6 @@ impl Binder {
             ast::Value::SingleQuotedByteStringLiteral(_) => todo!(),
             ast::Value::DoubleQuotedByteStringLiteral(_) => todo!(),
             ast::Value::RawStringLiteral(_) => todo!(),
-        }
-    }
-}
-
-#[derive(Clone, PartialEq, Eq, Hash)]
-pub enum Path {
-    Qualified { prefix: Box<Path>, name: Name },
-    Unqualified(Name),
-}
-
-impl Path {
-    pub fn qualified(prefix: Path, name: Name) -> Path {
-        Path::Qualified { prefix: Box::new(prefix), name }
-    }
-
-    pub fn prefix(&self) -> Option<&Path> {
-        match self {
-            Path::Qualified { prefix, .. } => Some(prefix),
-            Path::Unqualified { .. } => None,
-        }
-    }
-
-    pub fn name(&self) -> Name {
-        match self {
-            Path::Qualified { name, .. } => name.as_str().into(),
-            Path::Unqualified(name) => name.as_str().into(),
-        }
-    }
-}
-
-impl fmt::Debug for Path {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{self}")
-    }
-}
-
-impl fmt::Display for Path {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Path::Qualified { prefix, name: object } => write!(f, "{prefix}.{object}"),
-            Path::Unqualified(name) => write!(f, "{name}"),
         }
     }
 }

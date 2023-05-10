@@ -1405,6 +1405,7 @@ dependencies = [
  "atomic-take",
  "dot-structures",
  "futures-util",
+ "itertools",
  "nsql-arena",
  "nsql-buffer",
  "nsql-catalog",

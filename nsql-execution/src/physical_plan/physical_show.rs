@@ -1,6 +1,6 @@
 use std::sync::atomic::{self, AtomicBool};
 
-use nsql_catalog::{Container, Entity, Namespace, Table};
+use nsql_catalog::{Container, Namespace, Table};
 use nsql_storage::value::Value;
 
 use super::*;

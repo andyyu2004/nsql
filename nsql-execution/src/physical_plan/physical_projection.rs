@@ -1,3 +1,5 @@
+use itertools::Itertools;
+
 use super::*;
 
 #[derive(Debug)]
@@ -55,7 +57,7 @@ impl Explain for PhysicalProjection {
         _tx: &Transaction,
         f: &mut fmt::Formatter<'_>,
     ) -> explain::Result {
-        write!(f, "projection")?;
+        write!(f, "projection ({})", self.projection.iter().join(", "))?;
         Ok(())
     }
 }

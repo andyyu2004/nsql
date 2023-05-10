@@ -80,3 +80,48 @@ pub enum ExplainMode {
 
 #[derive(Debug, Clone)]
 pub enum Query {}
+
+#[derive(Clone, PartialEq, Eq, Hash)]
+pub enum Path {
+    Qualified { prefix: Box<Path>, name: Name },
+    Unqualified(Name),
+}
+
+impl Path {
+    pub fn qualified(prefix: Path, name: Name) -> Path {
+        Path::Qualified { prefix: Box::new(prefix), name }
+    }
+
+    pub fn unqualified(name: impl Into<Name>) -> Path {
+        Path::Unqualified(name.into())
+    }
+
+    pub fn prefix(&self) -> Option<&Path> {
+        match self {
+            Path::Qualified { prefix, .. } => Some(prefix),
+            Path::Unqualified { .. } => None,
+        }
+    }
+
+    pub fn name(&self) -> Name {
+        match self {
+            Path::Qualified { name, .. } => name.as_str().into(),
+            Path::Unqualified(name) => name.as_str().into(),
+        }
+    }
+}
+
+impl fmt::Debug for Path {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{self}")
+    }
+}
+
+impl fmt::Display for Path {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Path::Qualified { prefix, name: object } => write!(f, "{prefix}.{object}"),
+            Path::Unqualified(name) => write!(f, "{name}"),
+        }
+    }
+}
