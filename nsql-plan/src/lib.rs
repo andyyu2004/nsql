@@ -1,5 +1,7 @@
 //! fixme this crate seems a bit useless
 
+use nsql_catalog::ColumnIndex;
+
 #[derive(Debug)]
 pub enum Plan {
     Transaction(ir::TransactionKind),
@@ -32,7 +34,7 @@ pub enum Plan {
     },
     Scan {
         table_ref: ir::TableRef,
-        projection: Option<Box<[ir::TupleIndex]>>,
+        projection: Option<Box<[ColumnIndex]>>,
     },
     Limit {
         source: Box<Plan>,

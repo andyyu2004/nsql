@@ -13,7 +13,7 @@ use nsql_core::Name;
 pub use nsql_transaction::Transaction;
 
 pub use self::entity::namespace::{CreateNamespaceInfo, Namespace, NamespaceEntity};
-pub use self::entity::table::{Column, CreateColumnInfo, CreateTableInfo, Table};
+pub use self::entity::table::{Column, ColumnIndex, CreateColumnInfo, CreateTableInfo, Table};
 pub use self::entry::Oid;
 use self::private::CatalogEntity;
 use self::set::{CatalogSet, Conflict};

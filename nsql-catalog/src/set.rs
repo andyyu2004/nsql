@@ -241,9 +241,13 @@ impl<T: CatalogEntity> CatalogSet<T> {
         self.entries.get(&oid).unwrap().latest()
     }
 
-    fn next_oid(&self) -> Oid<T> {
+    pub fn len(&self) -> usize {
         // don't read from `name_mapping` here as it will deadlock due to it's usage in `insert`
-        Oid::new(self.entries.len() as u64)
+        self.entries.len()
+    }
+
+    fn next_oid(&self) -> Oid<T> {
+        Oid::new(self.len() as u64)
     }
 }
 

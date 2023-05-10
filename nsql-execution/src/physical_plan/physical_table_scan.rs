@@ -4,7 +4,7 @@ use std::sync::OnceLock;
 
 use futures_util::{Stream, StreamExt};
 use itertools::Itertools;
-use nsql_catalog::{Column, Container, Entity, Table};
+use nsql_catalog::{Column, ColumnIndex, Container, Entity, Table};
 use nsql_storage::tuple::TupleIndex;
 use tokio::sync::{Mutex, OnceCell};
 
@@ -13,9 +13,7 @@ use super::*;
 pub struct PhysicalTableScan {
     table_ref: ir::TableRef,
     table: OnceLock<Arc<Table>>,
-    // FIXME think it makes more sense for it to be Box<[ColumnIndex]> rather than tuple index as
-    // this projection is specific to tables?
-    projection: Option<Box<[TupleIndex]>>,
+    projection: Option<Box<[ColumnIndex]>>,
     current_batch: Mutex<Vec<Tuple>>,
     current_batch_index: AtomicUsize,
 
@@ -37,7 +35,7 @@ impl fmt::Debug for PhysicalTableScan {
 impl PhysicalTableScan {
     pub(crate) fn plan(
         table_ref: ir::TableRef,
-        projection: Option<Box<[TupleIndex]>>,
+        projection: Option<Box<[ColumnIndex]>>,
     ) -> Arc<dyn PhysicalNode> {
         Arc::new(Self {
             table_ref,
@@ -73,7 +71,9 @@ impl PhysicalSource for PhysicalTableScan {
                     .stream
                     .get_or_init(|| async move {
                         let storage = table.storage();
-                        let projection = self.projection.clone();
+                        let projection = self.projection.as_ref().map(|p| {
+                            p.iter().map(|&idx| TupleIndex::new(idx.as_usize())).collect()
+                        });
                         Mutex::new(Box::pin(storage.scan(ctx.tx(), projection).await) as _)
                     })
                     .await;
@@ -131,7 +131,7 @@ impl Explain for PhysicalTableScan {
                         .unwrap_or_else(|| "tid".into())
                 })
                 .collect::<Vec<_>>(),
-            None => columns.iter().map(|(_, c)| c.name()).collect::<Vec<_>>(),
+            None => columns.iter().map(|(_, col)| col.name()).collect::<Vec<_>>(),
         };
 
         write!(f, "scan {} ({})", table.name(), column_names.iter().join(", "))?;

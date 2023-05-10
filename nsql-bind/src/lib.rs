@@ -244,9 +244,9 @@ impl Binder {
                 let projection = Some(
                     columns
                         .iter()
-                        .map(|(_, col)| TupleIndex::new(col.index().index()))
+                        .map(|(_, col)| col.index())
                         // Add special column index for the tid
-                        .chain(Some(TupleIndex::new(columns.len())))
+                        .chain(Some(table.tid_column_index()))
                         .collect(),
                 );
 

@@ -48,7 +48,7 @@ impl ColumnIndex {
     }
 
     #[inline]
-    pub fn index(self) -> usize {
+    pub fn as_usize(self) -> usize {
         self.index as usize
     }
 }

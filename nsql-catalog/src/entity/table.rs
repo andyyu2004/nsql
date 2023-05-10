@@ -7,7 +7,7 @@ use nsql_serde::StreamSerialize;
 use nsql_storage::TableStorage;
 use nsql_transaction::Transaction;
 
-pub use self::column::{Column, CreateColumnInfo};
+pub use self::column::{Column, ColumnIndex, CreateColumnInfo};
 use crate::private::CatalogEntity;
 use crate::set::CatalogSet;
 use crate::{Container, Entity, Name, Namespace};
@@ -29,6 +29,12 @@ impl Table {
     #[inline]
     pub fn storage(&self) -> &Arc<TableStorage> {
         &self.storage
+    }
+
+    #[inline]
+    /// Returns the index of the special `tid` column
+    pub fn tid_column_index(&self) -> ColumnIndex {
+        ColumnIndex::new(self.columns.len().try_into().unwrap())
     }
 }
 

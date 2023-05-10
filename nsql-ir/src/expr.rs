@@ -2,7 +2,9 @@ use std::fmt;
 use std::ops::Deref;
 use std::sync::Arc;
 
-use nsql_catalog::{Catalog, Column, Container, EntityRef, Namespace, Oid, Table, Transaction};
+use nsql_catalog::{
+    Catalog, Column, ColumnIndex, Container, EntityRef, Namespace, Oid, Table, Transaction,
+};
 use nsql_storage::schema::LogicalType;
 use nsql_storage::tuple::TupleIndex;
 use nsql_storage::value::Value;
@@ -11,7 +13,7 @@ use crate::Path;
 
 #[derive(Debug, Clone)]
 pub enum QueryPlan {
-    TableRef { table_ref: TableRef, projection: Option<Box<[TupleIndex]>> },
+    TableRef { table_ref: TableRef, projection: Option<Box<[ColumnIndex]>> },
     Projection { source: Box<QueryPlan>, projection: Box<[Expr]> },
     Filter { source: Box<QueryPlan>, predicate: Expr },
     Values(Values),
