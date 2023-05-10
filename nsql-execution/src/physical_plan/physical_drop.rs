@@ -61,7 +61,7 @@ impl Explain for PhysicalDrop {
 
             match entity_ref {
                 ir::EntityRef::Table(table_ref) => {
-                    write!(f, "table {}", table_ref.get(&catalog, &tx).name())?
+                    write!(f, "table {}", table_ref.get(catalog, tx).name())?
                 }
             }
         }

@@ -1,5 +1,3 @@
-use std::sync::atomic::{self, AtomicBool};
-
 use atomic_take::AtomicTake;
 use nsql_storage::value::Value;
 
@@ -53,9 +51,9 @@ impl PhysicalSource for PhysicalExplain {
 impl Explain for PhysicalExplain {
     fn explain(
         &self,
-        catalog: &Catalog,
-        tx: &Transaction,
-        f: &mut fmt::Formatter<'_>,
+        _catalog: &Catalog,
+        _tx: &Transaction,
+        _f: &mut fmt::Formatter<'_>,
     ) -> explain::Result {
         unreachable!("cannot explain an explain node")
     }

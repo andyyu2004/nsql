@@ -51,8 +51,8 @@ impl PhysicalNode for PhysicalLimit {
 impl Explain for PhysicalLimit {
     fn explain(
         &self,
-        catalog: &Catalog,
-        tx: &Transaction,
+        _catalog: &Catalog,
+        _tx: &Transaction,
         f: &mut fmt::Formatter<'_>,
     ) -> explain::Result {
         write!(f, "limit ({})", self.limit)?;

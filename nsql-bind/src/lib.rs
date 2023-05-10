@@ -286,7 +286,7 @@ impl Binder {
                 };
                 ir::Stmt::Explain(kind, Box::new(self.bind(statement)?))
             }
-            ast::Statement::SetVariable { local, hivevar, variable, value } => todo!(),
+            ast::Statement::SetVariable { local: _, hivevar: _, variable: _, value: _ } => todo!(),
             _ => unimplemented!("unimplemented statement: {:?}", stmt),
         };
 

@@ -50,10 +50,6 @@ pub struct PhysicalPlanner {
 pub struct PhysicalPlan(Arc<dyn PhysicalNode>);
 
 impl PhysicalPlan {
-    pub(crate) fn root_ref(&self) -> &Arc<dyn PhysicalNode> {
-        &self.0
-    }
-
     pub(crate) fn root(&self) -> Arc<dyn PhysicalNode> {
         Arc::clone(&self.0)
     }
@@ -68,6 +64,7 @@ impl PhysicalPlanner {
         self.plan_node(plan).map(PhysicalPlan)
     }
 
+    #[allow(clippy::boxed_local)]
     fn plan_node(&self, plan: Box<Plan>) -> Result<Arc<dyn PhysicalNode>> {
         let plan = match *plan {
             Plan::Transaction(kind) => PhysicalTransaction::plan(kind),
