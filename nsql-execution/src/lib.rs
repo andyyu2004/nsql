@@ -72,7 +72,6 @@ trait PhysicalNode: Send + Sync + fmt::Debug + Explain + Any + 'static {
             Err(node) => match node.as_source() {
                 Ok(source) => arena[current].set_source(source),
                 Err(operator) => {
-                    dbg!(&operator);
                     let operator = operator.as_operator().unwrap();
                     let children = operator.children();
                     assert_eq!(
