@@ -40,7 +40,7 @@ impl Nsql {
 
         let tx = txm.begin();
         storage.load(&tx).await?;
-        tx.commit();
+        tx.commit().await?;
         todo!()
 
         // Ok(Self::new(Shared { storage, buffer_pool, txm, catalog }))
@@ -54,7 +54,7 @@ impl Nsql {
 
         let tx = txm.begin();
         let catalog = Arc::new(Catalog::create(&tx)?);
-        tx.commit();
+        tx.commit().await?;
 
         Ok(Self::new(Shared { storage, buffer_pool, txm, catalog }))
     }
@@ -99,7 +99,7 @@ impl Connection {
 
         if tx.auto_commit() {
             self.current_tx.store(None);
-            tx.commit();
+            tx.commit().await?;
         } else if matches!(tx.state(), TransactionState::Committed | TransactionState::RolledBack) {
             self.current_tx.store(None);
         }

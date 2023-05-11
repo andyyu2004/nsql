@@ -1,7 +1,7 @@
-use nsql_transaction::{Error, TransactionManager};
+use nsql_transaction::{TransactionError, TransactionManager};
 
 #[test]
-fn test_concurrent_transaction_management() -> Result<(), Error> {
+fn test_concurrent_transaction_management() -> Result<(), TransactionError> {
     nsql_test::start(async {
         let txm = TransactionManager::initialize();
         let mut set = tokio::task::JoinSet::new();

@@ -38,21 +38,21 @@ impl PhysicalSource for PhysicalTransaction {
                 if tx.auto_commit() {
                     tx.set_auto_commit(false);
                 } else {
-                    return Err(nsql_transaction::Error::TransactionAlreadyStarted)?;
+                    return Err(nsql_transaction::TransactionError::TransactionAlreadyStarted)?;
                 }
             }
             ir::TransactionKind::Commit => {
                 if tx.auto_commit() {
-                    return Err(nsql_transaction::Error::CommitWithoutTransaction)?;
+                    return Err(nsql_transaction::TransactionError::CommitWithoutTransaction)?;
                 } else {
-                    tx.commit();
+                    tx.commit().await?;
                 }
             }
             ir::TransactionKind::Rollback => {
                 if tx.auto_commit() {
-                    return Err(nsql_transaction::Error::RollbackWithoutTransaction)?;
+                    return Err(nsql_transaction::TransactionError::RollbackWithoutTransaction)?;
                 } else {
-                    tx.rollback();
+                    tx.rollback().await?;
                 }
             }
         }

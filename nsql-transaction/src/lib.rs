@@ -1,3 +1,5 @@
+#![deny(rust_2018_idioms)]
+
 use std::collections::HashSet;
 use std::fmt;
 use std::num::NonZeroU64;
@@ -11,9 +13,10 @@ use nsql_util::atomic::AtomicEnum;
 use nsql_util::{static_assert, static_assert_eq};
 use rkyv::{Archive, Archived, Deserialize, Serialize};
 use thiserror::Error;
+use tokio::sync::RwLock;
 
 #[derive(Debug, Error)]
-pub enum Error {
+pub enum TransactionError {
     #[error("cannot start transaction from within a transaction")]
     TransactionAlreadyStarted,
     #[error("cannot commit transaction that has not been started")]
@@ -258,11 +261,12 @@ pub struct Transaction {
     state: AtomicEnum<TransactionState>,
     auto_commit: AtomicBool,
     snapshot: TransactionSnapshot,
+    dependencies: RwLock<Vec<Box<dyn Transactional>>>,
 }
 
 impl Drop for Transaction {
     fn drop(&mut self) {
-        self.rollback()
+        assert!(self.once.is_completed(), "transaction must be completed before dropping");
     }
 }
 
@@ -291,6 +295,7 @@ impl Transaction {
             state: AtomicEnum::new(TransactionState::Active),
             auto_commit: AtomicBool::new(true),
             snapshot: txm.snapshot(),
+            dependencies: Default::default(),
         }
     }
 
@@ -364,6 +369,11 @@ impl Transaction {
     }
 
     #[inline]
+    pub async fn add_dependency<T: Transactional>(&self, dep: T) {
+        self.dependencies.write().await.push(Box::new(dep));
+    }
+
+    #[inline]
     pub fn auto_commit(&self) -> bool {
         self.auto_commit.load(atomic::Ordering::Acquire)
     }
@@ -379,13 +389,21 @@ impl Transaction {
     }
 
     #[inline]
-    pub fn commit(&self) {
+    pub async fn commit(&self) -> anyhow::Result<()> {
         self.complete(TransactionState::Committed);
+        for dep in self.dependencies.read().await.iter() {
+            dep.commit().await?;
+        }
+        Ok(())
     }
 
     #[inline]
-    pub fn rollback(&self) {
+    pub async fn rollback(&self) -> anyhow::Result<()> {
         self.complete(TransactionState::RolledBack);
+        for dep in self.dependencies.read().await.iter() {
+            dep.rollback().await?;
+        }
+        Ok(())
     }
 
     fn complete(&self, final_state: TransactionState) {
@@ -410,5 +428,25 @@ impl Transaction {
 
             self.state.store(final_state, atomic::Ordering::Release)
         })
+    }
+}
+
+#[async_trait::async_trait]
+pub trait Transactional: Send + Sync + 'static {
+    async fn commit(&self) -> anyhow::Result<()>;
+
+    async fn rollback(&self) -> anyhow::Result<()>;
+}
+
+#[async_trait::async_trait]
+impl<T: Transactional> Transactional for Arc<T> {
+    #[inline]
+    async fn commit(&self) -> anyhow::Result<()> {
+        (**self).commit().await
+    }
+
+    #[inline]
+    async fn rollback(&self) -> anyhow::Result<()> {
+        (**self).rollback().await
     }
 }

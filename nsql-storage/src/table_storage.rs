@@ -3,18 +3,44 @@ mod heap;
 
 use std::sync::Arc;
 
+use dashmap::mapref::entry::Entry;
+use dashmap::DashMap;
 use futures_util::Stream;
 use nsql_buffer::Pool;
 use nsql_pager::PageIndex;
-use nsql_transaction::Transaction;
+use nsql_transaction::{Transaction, Transactional, Txid};
 
 use self::heap::{Heap, HeapId};
 use crate::schema::Schema;
 use crate::tuple::{Tuple, TupleIndex};
 
 pub struct TableStorage {
-    heap: Heap<Tuple>,
     info: TableStorageInfo,
+    /// The persisted state of the table stored in the heap
+    heap: Heap<Tuple>,
+    tx_local_storage: DashMap<Txid, Arc<LocalStorage>>,
+}
+
+#[derive(Debug, Default)]
+struct LocalStorage {}
+
+impl LocalStorage {
+    async fn update(&self, id: TupleId, tuple: &Tuple) -> nsql_buffer::Result<()> {
+        todo!()
+    }
+
+    async fn commit(&self) {}
+}
+
+#[async_trait::async_trait]
+impl Transactional for LocalStorage {
+    async fn commit(&self) -> anyhow::Result<()> {
+        todo!()
+    }
+
+    async fn rollback(&self) -> anyhow::Result<()> {
+        todo!()
+    }
 }
 
 pub type TupleId = HeapId<Tuple>;
@@ -26,7 +52,7 @@ impl TableStorage {
         info: TableStorageInfo,
     ) -> nsql_buffer::Result<Self> {
         let heap = Heap::initialize(Arc::clone(&pool)).await?;
-        Ok(Self { heap, info })
+        Ok(Self { info, heap, tx_local_storage: Default::default() })
     }
 
     #[inline]
@@ -41,7 +67,17 @@ impl TableStorage {
         id: TupleId,
         tuple: &Tuple,
     ) -> nsql_buffer::Result<()> {
-        self.heap.update(tx, id, tuple).await
+        let local_storage = match self.tx_local_storage.entry(tx.id()) {
+            Entry::Occupied(entry) => entry.into_ref(),
+            Entry::Vacant(entry) => {
+                let local_storage = Arc::new(LocalStorage::default());
+                tx.add_dependency(Arc::clone(&local_storage)).await;
+                entry.insert(Arc::clone(&local_storage))
+            }
+        };
+
+        local_storage.update(id, tuple).await
+        // self.heap.update(tx, id, tuple).await
     }
 
     #[inline]
