@@ -52,7 +52,7 @@ impl PhysicalSource for PhysicalTransaction {
                 if tx.auto_commit() {
                     return Err(nsql_transaction::TransactionError::RollbackWithoutTransaction)?;
                 } else {
-                    tx.rollback().await?;
+                    tx.rollback().await;
                 }
             }
         }

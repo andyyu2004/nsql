@@ -7,7 +7,7 @@ use futures_util::Stream;
 use nsql_buffer::{BufferHandle, Pool};
 use nsql_pager::PageIndex;
 use nsql_rkyv::{archived_size_of, DefaultDeserializer, DefaultSerializer};
-use nsql_transaction::{Transaction, Version};
+use nsql_transaction::{Transaction, Txid, Version};
 use rkyv::option::ArchivedOption;
 use rkyv::with::Inline;
 use rkyv::{Archive, Archived, Deserialize, Serialize};
@@ -142,7 +142,7 @@ where
     where
         T: Serialize<DefaultSerializer>,
     {
-        let serialized = nsql_rkyv::to_bytes(&Versioned { version: tx.version(), data: tuple });
+        let serialized = self.serialize_tuple(tx, tuple);
 
         self.with_free_space(serialized.len() as u16, |page_idx, view| {
             let slot = unsafe { view.append_raw(tx, &serialized) }
@@ -150,6 +150,13 @@ where
             Ok(HeapId::new(page_idx, slot))
         })
         .await
+    }
+
+    pub fn serialize_tuple(&self, tx: &Transaction, tuple: &T) -> rkyv::AlignedVec
+    where
+        T: Serialize<DefaultSerializer>,
+    {
+        nsql_rkyv::to_bytes(&Versioned { version: tx.version(), data: tuple })
     }
 
     pub async fn update(
@@ -161,13 +168,25 @@ where
     where
         T: Serialize<DefaultSerializer>,
     {
-        // FIXME just overwriting in place for now
-        let serialized = nsql_rkyv::to_bytes(&Versioned { version: tx.version(), data: tuple });
+        let serialized = self.serialize_tuple(tx, tuple);
+        unsafe { self.update_raw(tx, id, &serialized) }.await
+    }
 
+    /// Safety: `tuple` must be an archived `Versioned<'_, T>`
+    pub async unsafe fn update_raw(
+        &self,
+        _tx: &Transaction,
+        id: HeapId<T>,
+        raw: &[u8],
+    ) -> nsql_buffer::Result<()>
+    where
+        T: Serialize<DefaultSerializer>,
+    {
+        // FIXME just overwriting in place for now
         let page = self.pool.load(id.page).await?;
         let mut guard = page.write().await;
         let mut view = HeapViewMut::<T>::view_mut(&mut guard)?;
-        unsafe { view.update_in_place_raw(id.slot, &serialized) };
+        unsafe { view.update_in_place_raw(id.slot, raw) };
         Ok(())
     }
 

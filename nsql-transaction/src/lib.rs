@@ -11,6 +11,7 @@ use crossbeam_skiplist::{SkipMap, SkipSet};
 use itertools::Itertools;
 use nsql_util::atomic::AtomicEnum;
 use nsql_util::{static_assert, static_assert_eq};
+use rkyv::option::ArchivedOption;
 use rkyv::{Archive, Archived, Deserialize, Serialize};
 use thiserror::Error;
 use tokio::sync::RwLock;
@@ -121,6 +122,13 @@ impl From<Archived<Txid>> for Txid {
     }
 }
 
+impl From<Txid> for Archived<Txid> {
+    #[inline]
+    fn from(value: Txid) -> Self {
+        Self(value.0.into())
+    }
+}
+
 // Should be 8 bytes due to niche optimization
 static_assert_eq!(std::mem::size_of::<Option<Txid>>(), 8);
 
@@ -220,6 +228,18 @@ pub struct Version {
 impl From<Archived<Version>> for Version {
     fn from(value: Archived<Version>) -> Self {
         Self { xmin: value.xmin.into(), xmax: value.xmax.as_ref().map(|v| (*v).into()) }
+    }
+}
+
+impl From<Version> for Archived<Version> {
+    fn from(value: Version) -> Self {
+        Self {
+            xmin: value.xmin.into(),
+            xmax: match value.xmax {
+                Some(xmax) => ArchivedOption::Some(xmax.into()),
+                None => ArchivedOption::None,
+            },
+        }
     }
 }
 
@@ -392,18 +412,17 @@ impl Transaction {
     pub async fn commit(&self) -> anyhow::Result<()> {
         self.complete(TransactionState::Committed);
         for dep in self.dependencies.read().await.iter() {
-            dep.commit().await?;
+            dep.commit(self).await?;
         }
         Ok(())
     }
 
     #[inline]
-    pub async fn rollback(&self) -> anyhow::Result<()> {
+    pub async fn rollback(&self) {
         self.complete(TransactionState::RolledBack);
         for dep in self.dependencies.read().await.iter() {
-            dep.rollback().await?;
+            dep.rollback(self).await;
         }
-        Ok(())
     }
 
     fn complete(&self, final_state: TransactionState) {
@@ -433,20 +452,21 @@ impl Transaction {
 
 #[async_trait::async_trait]
 pub trait Transactional: Send + Sync + 'static {
-    async fn commit(&self) -> anyhow::Result<()>;
+    async fn commit(&self, tx: &Transaction) -> anyhow::Result<()>;
 
-    async fn rollback(&self) -> anyhow::Result<()>;
+    /// This intentionally does not return a result as we do not want `rollback` to do anything fallible.
+    async fn rollback(&self, tx: &Transaction);
 }
 
 #[async_trait::async_trait]
 impl<T: Transactional> Transactional for Arc<T> {
     #[inline]
-    async fn commit(&self) -> anyhow::Result<()> {
-        (**self).commit().await
+    async fn commit(&self, tx: &Transaction) -> anyhow::Result<()> {
+        (**self).commit(tx).await
     }
 
     #[inline]
-    async fn rollback(&self) -> anyhow::Result<()> {
-        (**self).rollback().await
+    async fn rollback(&self, tx: &Transaction) {
+        (**self).rollback(tx).await
     }
 }

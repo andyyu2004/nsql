@@ -17,11 +17,11 @@ SELECT * FROM t;
 ----
 false
 
-# statement ok
-# UPDATE t SET b = true;
-#
-# query I
-# SELECT * FROM t;
-# ----
-# true
-#
+statement ok
+UPDATE t SET b = true;
+
+query I
+SELECT * FROM t;
+----
+true
+

@@ -12,7 +12,7 @@ fn test_concurrent_transaction_management() -> Result<(), TransactionError> {
                 async move {
                     for _ in 0..100 {
                         let tx = txm.begin();
-                        tx.commit();
+                        tx.commit().await.unwrap();
                     }
                 }
             });
@@ -22,7 +22,7 @@ fn test_concurrent_transaction_management() -> Result<(), TransactionError> {
         while let Some(res) = set.join_next().await {
             res.unwrap();
         }
-        tx.commit();
+        tx.commit().await.unwrap();
 
         Ok(())
     })
