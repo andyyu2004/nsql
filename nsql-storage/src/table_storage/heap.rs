@@ -7,7 +7,7 @@ use futures_util::Stream;
 use nsql_buffer::{BufferHandle, Pool};
 use nsql_pager::PageIndex;
 use nsql_rkyv::{archived_size_of, DefaultDeserializer, DefaultSerializer};
-use nsql_transaction::{Transaction, Txid, Version};
+use nsql_transaction::{Transaction, Transactional, Txid, Version};
 use rkyv::option::ArchivedOption;
 use rkyv::with::Inline;
 use rkyv::{Archive, Archived, Deserialize, Serialize};
@@ -17,7 +17,34 @@ use super::fsm::FreeSpaceMap;
 
 mod view;
 
+#[derive(Default)]
+struct UndoBuffer {
+    entries: Vec<UndoEntry>,
+}
+
+#[async_trait::async_trait]
+impl Transactional for UndoBuffer {
+    async fn commit(&self, _tx: &Transaction) -> anyhow::Result<()> {
+        Ok(())
+    }
+
+    async fn rollback(&self, _tx: &Transaction) {
+        // clear the undo buffer
+    }
+
+    async fn cleanup(&self, _tx: &Transaction) -> anyhow::Result<()> {
+        Ok(())
+    }
+}
+
+#[derive(Debug)]
+struct UndoEntry {
+    txid: Txid,
+    version: Version,
+}
+
 pub struct Heap<T> {
+    undo_buffer: UndoBuffer,
     meta_page: BufferHandle,
     fsm: FreeSpaceMap,
     pool: Arc<dyn Pool>,
@@ -65,7 +92,7 @@ impl<T> Heap<T> {
         guard[..bytes.len()].copy_from_slice(&bytes);
         drop(guard);
 
-        Ok(Self { meta_page, fsm, pool, _phantom: PhantomData })
+        Ok(Self { meta_page, fsm, pool, undo_buffer: Default::default(), _phantom: PhantomData })
     }
 
     pub async fn load(pool: Arc<dyn Pool>, meta_page_idx: PageIndex) -> nsql_buffer::Result<Self> {
@@ -78,7 +105,7 @@ impl<T> Heap<T> {
 
         let fsm = FreeSpaceMap::load(Arc::clone(&pool), meta.fsm_meta_page_idx).await?;
 
-        Ok(Self { meta_page, fsm, pool, _phantom: PhantomData })
+        Ok(Self { meta_page, fsm, pool, undo_buffer: Default::default(), _phantom: PhantomData })
     }
 }
 
@@ -143,9 +170,16 @@ where
         T: Serialize<DefaultSerializer>,
     {
         let serialized = self.serialize_tuple(tx, tuple);
+        unsafe { self.append_raw(tx, &serialized) }.await
+    }
 
-        self.with_free_space(serialized.len() as u16, |page_idx, view| {
-            let slot = unsafe { view.append_raw(tx, &serialized) }
+    pub async unsafe fn append_raw(
+        &self,
+        tx: &Transaction,
+        raw_tuple: &[u8],
+    ) -> nsql_buffer::Result<HeapId<T>> {
+        self.with_free_space(raw_tuple.len() as u16, |page_idx, view| {
+            let slot = unsafe { view.append_raw(tx, raw_tuple) }
                 .expect("there should be sufficient space as we checked the fsm");
             Ok(HeapId::new(page_idx, slot))
         })
@@ -157,19 +191,6 @@ where
         T: Serialize<DefaultSerializer>,
     {
         nsql_rkyv::to_bytes(&Versioned { version: tx.version(), data: tuple })
-    }
-
-    pub async fn update(
-        &self,
-        tx: &Transaction,
-        id: HeapId<T>,
-        tuple: &T,
-    ) -> nsql_buffer::Result<()>
-    where
-        T: Serialize<DefaultSerializer>,
-    {
-        let serialized = self.serialize_tuple(tx, tuple);
-        unsafe { self.update_raw(tx, id, &serialized) }.await
     }
 
     /// Safety: `tuple` must be an archived `Versioned<'_, T>`
@@ -224,6 +245,11 @@ where
                 yield tuples;
             }
         }
+    }
+
+    fn apply_undo(&self, id: HeapId<T>) -> nsql_buffer::Result<T> {
+        todo!()
+        // self.undo_buffers
     }
 
     async fn with_free_space<R>(

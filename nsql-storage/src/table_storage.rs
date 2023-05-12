@@ -5,6 +5,7 @@ mod local_storage;
 use std::sync::{Arc, Weak};
 
 use dashmap::mapref::entry::Entry;
+use dashmap::mapref::one::RefMut;
 use dashmap::DashMap;
 use futures_util::Stream;
 use nsql_buffer::Pool;
@@ -20,7 +21,7 @@ pub struct TableStorage {
     info: TableStorageInfo,
     /// The persisted state of the table stored in the heap
     heap: Arc<Heap<Tuple>>,
-    tx_local_storage: DashMap<Txid, Weak<LocalStorage>>,
+    local_storages: DashMap<Txid, Weak<LocalStorage>>,
 }
 
 pub type TupleId = HeapId<Tuple>;
@@ -32,12 +33,13 @@ impl TableStorage {
         info: TableStorageInfo,
     ) -> nsql_buffer::Result<Self> {
         let heap = Arc::new(Heap::initialize(Arc::clone(&pool)).await?);
-        Ok(Self { info, heap, tx_local_storage: Default::default() })
+        Ok(Self { info, heap, local_storages: Default::default() })
     }
 
     #[inline]
-    pub async fn append(&self, tx: &Transaction, tuple: &Tuple) -> nsql_buffer::Result<TupleId> {
-        self.heap.append(tx, tuple).await
+    pub async fn append(&self, tx: &Arc<Transaction>, tuple: &Tuple) -> nsql_buffer::Result<()> {
+        self.local_storage(tx).await.upgrade().unwrap().append(tuple).await;
+        Ok(())
     }
 
     #[inline]
@@ -47,21 +49,8 @@ impl TableStorage {
         id: TupleId,
         tuple: &Tuple,
     ) -> nsql_buffer::Result<()> {
-        let local_storage = match self.tx_local_storage.entry(tx.id()) {
-            Entry::Occupied(entry) => entry.into_ref(),
-            Entry::Vacant(entry) => {
-                let local_storage =
-                    Arc::new(LocalStorage::new(Arc::downgrade(tx), Arc::clone(&self.heap)));
-                let r = entry.insert(Arc::downgrade(&local_storage));
-                // The transaction owns its local storage, we only only store weak references to it here
-                // so it gets dropped with the transaction
-                tx.add_dependency(Arc::clone(&local_storage)).await;
-                r
-            }
-        };
-
-        local_storage.upgrade().unwrap().update(id, tuple).await
-        // self.heap.update(tx, id, tuple).await
+        self.local_storage(tx).await.upgrade().unwrap().update(id, tuple).await;
+        Ok(())
     }
 
     #[inline]
@@ -76,6 +65,21 @@ impl TableStorage {
                 None => nsql_rkyv::deserialize(tuple),
             })
             .await
+    }
+
+    async fn local_storage(&self, tx: &Arc<Transaction>) -> RefMut<'_, Txid, Weak<LocalStorage>> {
+        match self.local_storages.entry(tx.id()) {
+            Entry::Occupied(entry) => entry.into_ref(),
+            Entry::Vacant(entry) => {
+                let local_storage =
+                    Arc::new(LocalStorage::new(Arc::downgrade(tx), Arc::clone(&self.heap)));
+                let r = entry.insert(Arc::downgrade(&local_storage));
+                // The transaction owns its local storage, we only only store weak references to it here
+                // so it gets dropped with the transaction
+                tx.add_dependency(Arc::clone(&local_storage)).await;
+                r
+            }
+        }
     }
 }
 

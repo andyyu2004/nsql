@@ -456,6 +456,8 @@ pub trait Transactional: Send + Sync + 'static {
 
     /// This intentionally does not return a result as we do not want `rollback` to do anything fallible.
     async fn rollback(&self, tx: &Transaction);
+
+    async fn cleanup(&self, tx: &Transaction) -> anyhow::Result<()>;
 }
 
 #[async_trait::async_trait]
@@ -468,5 +470,10 @@ impl<T: Transactional> Transactional for Arc<T> {
     #[inline]
     async fn rollback(&self, tx: &Transaction) {
         (**self).rollback(tx).await
+    }
+
+    #[inline]
+    async fn cleanup(&self, tx: &Transaction) -> anyhow::Result<()> {
+        (**self).cleanup(tx).await
     }
 }

@@ -54,7 +54,12 @@ impl<'a, T: Archive> HeapView<'a, T> {
     }
 
     #[inline]
-    pub fn get_raw(&self, slot: Slot) -> &Archived<Versioned<'a, T>> {
+    pub fn get_raw(&self, slot: SlotIndex) -> &[u8] {
+        &self[slot]
+    }
+
+    #[inline]
+    pub fn get_rkyv(&self, slot: SlotIndex) -> &Archived<Versioned<'a, T>> {
         unsafe { rkyv::archived_root::<Versioned<'a, T>>(&self[slot]) }
     }
 
@@ -65,7 +70,7 @@ impl<'a, T: Archive> HeapView<'a, T> {
     where
         T::Archived: Deserialize<T, DefaultDeserializer>,
     {
-        let raw = self.get_raw(self.slots[idx.0 as usize]);
+        let raw = self.get_rkyv(idx);
         tx.can_see(raw.version.into()).then(|| nsql_rkyv::deserialize(&raw.data))
     }
 
@@ -92,7 +97,7 @@ impl<'a, T: Archive> HeapView<'a, T> {
     ) {
         acc.reserve(self.slots.len());
         self.slots.iter().enumerate().for_each(|(idx, &slot)| {
-            let raw = self.get_raw(slot);
+            let raw = unsafe { rkyv::archived_root::<Versioned<'_, T>>(&self[slot]) };
             if tx.can_see(raw.version.into()) {
                 // TODO apply projection to raw tuple data, this view needs to know its page idx to construct the TupleId
                 // Treat the column index `n` as the `tid` for now
@@ -111,10 +116,10 @@ impl<'a, T: Archive> Index<Slot> for HeapView<'a, T> {
 }
 
 impl<'a, T: Archive + 'a> Index<SlotIndex> for HeapView<'a, T> {
-    type Output = Archived<Versioned<'a, T>>;
+    type Output = [u8];
 
     fn index(&self, idx: SlotIndex) -> &Self::Output {
-        unsafe { rkyv::archived_root::<Versioned<'a, T>>(&self[self.slots[idx.0 as usize]]) }
+        &self[self.slots[idx.0 as usize]]
     }
 }
 
@@ -152,7 +157,7 @@ impl<'a, T: Archive> IndexMut<Slot> for HeapViewMut<'a, T> {
 }
 
 impl<'a, T: Archive + 'a> Index<SlotIndex> for HeapViewMut<'a, T> {
-    type Output = Archived<Versioned<'a, T>>;
+    type Output = [u8];
 
     fn index(&self, index: SlotIndex) -> &Self::Output {
         &(**self)[index]
@@ -220,7 +225,7 @@ impl<'a, T: Archive> HeapViewMut<'a, T> {
         let slot = &mut self.slots[idx.0 as usize];
         slot.length = new_size.into();
         let slot = *slot;
-        self[slot][..new_size as usize].copy_from_slice(serialized_value);
+        self[slot].copy_from_slice(serialized_value);
     }
 
     /// Safety: the caller must ensure that the serialized value is a valid archived `Versioned<'a, T>`

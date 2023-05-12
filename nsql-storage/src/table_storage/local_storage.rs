@@ -1,7 +1,7 @@
 use std::sync::atomic::{self, AtomicBool};
 use std::sync::{Arc, Weak};
 
-use nsql_transaction::{Transaction, Transactional, Txid};
+use nsql_transaction::{Transaction, Transactional};
 use rkyv::AlignedVec;
 use tokio::sync::RwLock;
 
@@ -25,12 +25,18 @@ impl LocalStorage {
         Self { tx, heap, finished: AtomicBool::new(false), changes: Default::default() }
     }
 
-    pub async fn update(&self, tid: TupleId, tuple: &Tuple) -> nsql_buffer::Result<()> {
+    pub async fn append(&self, tuple: &Tuple) {
+        assert!(!self.finished.load(atomic::Ordering::Acquire));
+
+        let raw_tuple = self.heap.serialize_tuple(&self.tx(), tuple);
+        self.changes.write().await.push(Change::Insert { raw_tuple });
+    }
+
+    pub async fn update(&self, tid: TupleId, tuple: &Tuple) {
         assert!(!self.finished.load(atomic::Ordering::Acquire));
 
         let raw_tuple = self.heap.serialize_tuple(&self.tx(), tuple);
         self.changes.write().await.push(Change::Update { tid, raw_tuple });
-        Ok(())
     }
 
     fn tx(&self) -> Arc<Transaction> {
@@ -53,6 +59,11 @@ impl Transactional for LocalStorage {
                         .await
                         .map_err(|report| report.into_error())?;
                 }
+                Change::Insert { raw_tuple } => {
+                    unsafe { self.heap.append_raw(tx, &raw_tuple) }
+                        .await
+                        .map_err(|report| report.into_error())?;
+                }
             }
         }
 
@@ -66,9 +77,14 @@ impl Transactional for LocalStorage {
         changes.clear();
         changes.shrink_to_fit();
     }
+
+    async fn cleanup(&self, _tx: &Transaction) -> anyhow::Result<()> {
+        todo!()
+    }
 }
 
 #[derive(Debug)]
 enum Change {
+    Insert { raw_tuple: AlignedVec },
     Update { tid: TupleId, raw_tuple: AlignedVec },
 }
