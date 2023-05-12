@@ -47,15 +47,21 @@ impl LocalStorage {
         self.updates.write().entry(tid).or_default().push(Update { raw_tuple });
     }
 
+    pub fn scan(&self) -> Vec<Tuple> {
+        self.inserts
+            .read()
+            .iter()
+            .map(|insert| unsafe { nsql_rkyv::deserialize_raw::<Tuple>(&insert.raw_tuple) })
+            .collect()
+    }
+
     /// Apply local updates to the committed tuple
-    pub fn patch(&self, xid: Txid, tid: TupleId, tuple: &mut Tuple) {
-        assert_eq!(self.tx().xid(), xid);
+    pub fn patch(&self, tid: TupleId, tuple: &mut Tuple) {
         // since updates are not patches but just full copies currently, we just read the latest
         if let Some(latest_update) =
             self.updates.read().get(&tid).and_then(|updates| updates.last())
         {
-            let rkyv_tuple = unsafe { rkyv::archived_root::<Tuple>(&latest_update.raw_tuple) };
-            *tuple = nsql_rkyv::deserialize(rkyv_tuple);
+            *tuple = unsafe { nsql_rkyv::deserialize_raw::<Tuple>(&latest_update.raw_tuple) };
         }
     }
 

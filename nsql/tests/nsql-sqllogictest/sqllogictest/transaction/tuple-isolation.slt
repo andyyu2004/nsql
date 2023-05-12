@@ -1,6 +1,9 @@
 statement ok
 CREATE TABLE t(x int);
 
+statement ok
+INSERT INTO t VALUES (1);
+
 statement ok con0
 BEGIN
 
@@ -11,26 +14,30 @@ statement ok con2
 BEGIN
 
 statement ok con1
-INSERT INTO t VALUES(1);
+INSERT INTO t VALUES (2);
 
 # con1 can see the row it inserted
 query I con1
 SELECT x from t;
 ----
 1
+2
 
 # but no one else should be able to as it's not committed
 query I con0
 SELECT x from t;
 ----
+1
 
 query I con2
 SELECT x from t;
 ----
+1
 
 query I con3
 SELECT x from t;
 ----
+1
 
 statement ok con1
 COMMIT;
@@ -39,14 +46,17 @@ COMMIT;
 query I con0
 SELECT x from t;
 ----
+1
 
 query I con2
 SELECT x from t;
 ----
+1
 
 # however, a fresh connection should see the row
 query I con4
 SELECT x from t;
 ----
 1
+2
 

@@ -25,6 +25,16 @@ where
     archived.deserialize(&mut rkyv::Infallible).unwrap()
 }
 
+/// # Safety `raw` must be a valid archived value of type `T`
+#[inline]
+pub unsafe fn deserialize_raw<T: Archive>(raw: &[u8]) -> T
+where
+    T::Archived: Deserialize<T, DefaultDeserializer>,
+{
+    let archived = rkyv::archived_root::<T>(raw);
+    archived.deserialize(&mut rkyv::Infallible).unwrap()
+}
+
 #[inline]
 pub fn serialize_into_buf<'a, T>(buf: &'a mut [u8; mem::size_of::<T::Archived>()], value: &T)
 where

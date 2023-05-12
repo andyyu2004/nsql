@@ -7,7 +7,7 @@ use std::sync::{Arc, Weak};
 use dashmap::mapref::entry::Entry;
 use dashmap::mapref::one::RefMut;
 use dashmap::DashMap;
-use futures_util::{Stream, StreamExt};
+use futures_util::{stream, Stream, StreamExt};
 use nsql_buffer::Pool;
 use nsql_pager::PageIndex;
 use nsql_transaction::{Transaction, Txid};
@@ -59,8 +59,9 @@ impl TableStorage {
         tx: Arc<Transaction>,
         projection: Option<Box<[TupleIndex]>>,
     ) -> impl Stream<Item = nsql_buffer::Result<Vec<Tuple>>> + Send {
-        let xid = tx.xid();
         let local_storage = self.local_storage(&tx).await.upgrade().unwrap();
+        let local_tuples = local_storage.scan();
+
         self.heap
             .scan(tx, move |tid, tuple| {
                 let mut tuple = match &projection {
@@ -69,10 +70,11 @@ impl TableStorage {
                 };
 
                 // apply any transaction local updates
-                local_storage.patch(xid, tid, &mut tuple);
+                local_storage.patch(tid, &mut tuple);
                 tuple
             })
             .await
+            .chain(stream::iter(Some(Ok(local_tuples))))
     }
 
     async fn local_storage(&self, tx: &Arc<Transaction>) -> RefMut<'_, Txid, Weak<LocalStorage>> {
