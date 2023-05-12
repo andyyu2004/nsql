@@ -4,6 +4,7 @@ use nsql_catalog::ColumnIndex;
 
 #[derive(Debug)]
 pub enum Plan {
+    Empty,
     Transaction(ir::TransactionKind),
     CreateTable(ir::CreateTableInfo),
     CreateNamespace(ir::CreateNamespaceInfo),
@@ -81,7 +82,7 @@ impl Planner {
             ir::QueryPlan::TableRef { table_ref, projection } => {
                 Plan::Scan { table_ref, projection }
             }
-            ir::QueryPlan::Empty => todo!(),
+            ir::QueryPlan::Empty => Plan::Empty,
             ir::QueryPlan::Limit(source, limit) => {
                 let source = self.plan_query(source);
                 Plan::Limit { source, limit }

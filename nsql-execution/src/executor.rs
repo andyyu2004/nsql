@@ -44,11 +44,17 @@ impl Executor {
         pipeline: Idx<Pipeline>,
     ) -> ExecutionResult<()> {
         let pipeline = &self.arena[pipeline];
-        loop {
-            let chunk = pipeline.source.source(&ctx).await?;
-            if chunk.is_empty() {
-                break;
-            }
+        let mut done = false;
+        while !done {
+            let chunk = match pipeline.source.source(&ctx).await? {
+                SourceState::Yield(chunk) => chunk,
+                SourceState::Final(chunk) => {
+                    // run once more around the loop with the final source chunk
+                    done = true;
+                    chunk
+                }
+                SourceState::Done => break,
+            };
 
             'outer: for mut tuple in chunk {
                 for op in &pipeline.operators {
@@ -111,7 +117,7 @@ impl PhysicalNode for OutputSink {
 
 #[async_trait::async_trait]
 impl PhysicalSource for OutputSink {
-    async fn source(&self, _ctx: &ExecutionContext) -> ExecutionResult<Chunk> {
+    async fn source(&self, _ctx: &ExecutionContext) -> ExecutionResult<SourceState<Chunk>> {
         todo!()
     }
 }

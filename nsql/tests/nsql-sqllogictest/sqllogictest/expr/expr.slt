@@ -1,0 +1,6 @@
+query I
+SELECT 1 = 1
+----
+true
+
+

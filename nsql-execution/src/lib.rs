@@ -41,7 +41,6 @@ fn build_pipelines(sink: Arc<dyn PhysicalSink>, plan: PhysicalPlan) -> RootPipel
 trait PhysicalNode: Send + Sync + fmt::Debug + Explain + Any + 'static {
     fn children(&self) -> &[Arc<dyn PhysicalNode>];
 
-    // override the default implementation if the node is a source with `Ok(self)`, otherwise `Err(self)`
     fn as_source(self: Arc<Self>) -> Result<Arc<dyn PhysicalSource>, Arc<dyn PhysicalNode>>;
 
     fn as_sink(self: Arc<Self>) -> Result<Arc<dyn PhysicalSink>, Arc<dyn PhysicalNode>>;
@@ -131,6 +130,13 @@ enum OperatorState<T> {
     Done,
 }
 
+#[derive(Debug)]
+enum SourceState<T> {
+    Yield(T),
+    Final(T),
+    Done,
+}
+
 #[async_trait::async_trait]
 trait PhysicalOperator<T = Tuple>: PhysicalNode {
     async fn execute(&self, ctx: &ExecutionContext, input: T) -> ExecutionResult<OperatorState<T>>;
@@ -139,7 +145,7 @@ trait PhysicalOperator<T = Tuple>: PhysicalNode {
 #[async_trait::async_trait]
 trait PhysicalSource<T = Tuple>: PhysicalNode {
     /// Return the next chunk from the source. An empty chunk indicates that the source is exhausted.
-    async fn source(&self, ctx: &ExecutionContext) -> ExecutionResult<Chunk<T>>;
+    async fn source(&self, ctx: &ExecutionContext) -> ExecutionResult<SourceState<Chunk<T>>>;
 }
 
 #[async_trait::async_trait]

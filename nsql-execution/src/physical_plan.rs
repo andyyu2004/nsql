@@ -2,6 +2,7 @@ pub(crate) mod explain;
 mod physical_create_namespace;
 mod physical_create_table;
 mod physical_drop;
+mod physical_dummy_scan;
 mod physical_explain;
 mod physical_filter;
 mod physical_insert;
@@ -24,6 +25,7 @@ pub use self::explain::Explain;
 use self::physical_create_namespace::PhysicalCreateNamespace;
 use self::physical_create_table::PhysicalCreateTable;
 use self::physical_drop::PhysicalDrop;
+use self::physical_dummy_scan::PhysicalDummyScan;
 use self::physical_explain::PhysicalExplain;
 use self::physical_filter::PhysicalFilter;
 use self::physical_insert::PhysicalInsert;
@@ -37,7 +39,7 @@ use self::physical_values::PhysicalValues;
 use crate::executor::OutputSink;
 use crate::{
     Chunk, Evaluator, ExecutionContext, ExecutionResult, OperatorState, PhysicalNode,
-    PhysicalOperator, PhysicalSink, PhysicalSource, Tuple,
+    PhysicalOperator, PhysicalSink, PhysicalSource, SourceState, Tuple,
 };
 
 pub struct PhysicalPlanner {
@@ -110,6 +112,7 @@ impl PhysicalPlanner {
                 let source = self.plan_node(source)?;
                 PhysicalUpdate::plan(table_ref, source, returning)
             }
+            Plan::Empty => PhysicalDummyScan::plan(),
         };
 
         Ok(plan)

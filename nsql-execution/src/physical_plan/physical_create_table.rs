@@ -35,7 +35,7 @@ impl PhysicalNode for PhysicalCreateTable {
 
 #[async_trait::async_trait]
 impl PhysicalSource for PhysicalCreateTable {
-    async fn source(&self, ctx: &ExecutionContext) -> ExecutionResult<Chunk> {
+    async fn source(&self, ctx: &ExecutionContext) -> ExecutionResult<SourceState<Chunk>> {
         let attrs = self
             .info
             .columns
@@ -65,7 +65,7 @@ impl PhysicalSource for PhysicalCreateTable {
             table.create::<Column>(&tx, info.clone())?;
         }
 
-        Ok(Chunk::empty())
+        Ok(SourceState::Done)
     }
 }
 

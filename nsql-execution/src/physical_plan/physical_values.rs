@@ -16,17 +16,17 @@ impl PhysicalValues {
 
 #[async_trait::async_trait]
 impl PhysicalSource for PhysicalValues {
-    async fn source(&self, _ctx: &ExecutionContext) -> ExecutionResult<Chunk> {
+    async fn source(&self, _ctx: &ExecutionContext) -> ExecutionResult<SourceState<Chunk>> {
         let index = self.index.fetch_add(1, atomic::Ordering::SeqCst);
         if index >= self.values.len() {
-            return Ok(Chunk::empty());
+            return Ok(SourceState::Done);
         }
 
         let evaluator = Evaluator::new();
         let exprs = &self.values[index];
         let tuple = evaluator.evaluate(&Tuple::empty(), exprs);
 
-        Ok(Chunk::singleton(tuple))
+        Ok(SourceState::Yield(Chunk::singleton(tuple)))
     }
 }
 

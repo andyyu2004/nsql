@@ -79,18 +79,20 @@ impl PhysicalSink for PhysicalUpdate {
 #[async_trait::async_trait]
 impl PhysicalSource for PhysicalUpdate {
     #[inline]
-    async fn source(&self, _ctx: &ExecutionContext) -> ExecutionResult<Chunk> {
+    async fn source(&self, _ctx: &ExecutionContext) -> ExecutionResult<SourceState<Chunk>> {
         let returning = match &self.returning {
             Some(returning) => returning,
-            None => return Ok(Chunk::empty()),
+            None => return Ok(SourceState::Done),
         };
 
         let tuple = match self.returning_tuples.write().pop_front() {
             Some(tuple) => tuple,
-            None => return Ok(Chunk::empty()),
+            None => return Ok(SourceState::Done),
         };
 
-        Ok(Chunk::singleton(self.returning_evaluator.evaluate(&tuple, returning)))
+        Ok(SourceState::Yield(Chunk::singleton(
+            self.returning_evaluator.evaluate(&tuple, returning),
+        )))
     }
 }
 

@@ -40,11 +40,9 @@ impl PhysicalNode for PhysicalExplain {
 
 #[async_trait::async_trait]
 impl PhysicalSource for PhysicalExplain {
-    async fn source(&self, _ctx: &ExecutionContext) -> ExecutionResult<Chunk> {
-        match self.stringified_plan.take() {
-            Some(plan) => Ok(Chunk::singleton(Tuple::from(vec![Value::Text(plan)]))),
-            None => Ok(Chunk::empty()),
-        }
+    async fn source(&self, _ctx: &ExecutionContext) -> ExecutionResult<SourceState<Chunk>> {
+        let plan = self.stringified_plan.take().expect("should not be called again");
+        Ok(SourceState::Final(Chunk::singleton(Tuple::from(vec![Value::Text(plan)]))))
     }
 }
 

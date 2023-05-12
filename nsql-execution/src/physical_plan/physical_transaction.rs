@@ -31,7 +31,7 @@ impl PhysicalNode for PhysicalTransaction {
 
 #[async_trait::async_trait]
 impl PhysicalSource for PhysicalTransaction {
-    async fn source(&self, ctx: &ExecutionContext) -> ExecutionResult<Chunk> {
+    async fn source(&self, ctx: &ExecutionContext) -> ExecutionResult<SourceState<Chunk>> {
         let tx = ctx.tx();
         match self.kind {
             ir::TransactionKind::Begin => {
@@ -57,7 +57,7 @@ impl PhysicalSource for PhysicalTransaction {
             }
         }
 
-        Ok(Chunk::empty())
+        Ok(SourceState::Done)
     }
 }
 

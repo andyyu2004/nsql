@@ -36,7 +36,7 @@ impl PhysicalNode for PhysicalCreateNamespace {
 
 #[async_trait::async_trait]
 impl PhysicalSource for PhysicalCreateNamespace {
-    async fn source(&self, ctx: &ExecutionContext) -> ExecutionResult<Chunk> {
+    async fn source(&self, ctx: &ExecutionContext) -> ExecutionResult<SourceState<Chunk>> {
         let tx = ctx.tx();
         let info = CreateNamespaceInfo { name: self.info.name.clone() };
 
@@ -46,7 +46,7 @@ impl PhysicalSource for PhysicalCreateNamespace {
             }
         }
 
-        Ok(Chunk::empty())
+        Ok(SourceState::Done)
     }
 }
 

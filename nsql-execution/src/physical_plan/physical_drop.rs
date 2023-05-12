@@ -33,7 +33,7 @@ impl PhysicalNode for PhysicalDrop {
 
 #[async_trait::async_trait]
 impl PhysicalSource for PhysicalDrop {
-    async fn source(&self, ctx: &ExecutionContext) -> ExecutionResult<Chunk> {
+    async fn source(&self, ctx: &ExecutionContext) -> ExecutionResult<SourceState<Chunk>> {
         let tx = ctx.tx();
         let catalog = ctx.catalog();
         for entity_ref in &self.refs {
@@ -42,7 +42,7 @@ impl PhysicalSource for PhysicalDrop {
             }
         }
 
-        Ok(Chunk::empty())
+        Ok(SourceState::Done)
     }
 }
 

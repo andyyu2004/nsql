@@ -1,5 +1,3 @@
-use std::sync::atomic::{self, AtomicBool};
-
 use nsql_catalog::{Container, Namespace, Table};
 use nsql_storage::value::Value;
 
@@ -8,12 +6,11 @@ use super::*;
 #[derive(Debug)]
 pub struct PhysicalShow {
     show: ir::ObjectType,
-    finished: AtomicBool,
 }
 
 impl PhysicalShow {
     pub(crate) fn plan(show: ir::ObjectType) -> Arc<dyn PhysicalNode> {
-        Arc::new(Self { show, finished: Default::default() })
+        Arc::new(Self { show })
     }
 }
 
@@ -37,11 +34,7 @@ impl PhysicalNode for PhysicalShow {
 
 #[async_trait::async_trait]
 impl PhysicalSource for PhysicalShow {
-    async fn source(&self, ctx: &ExecutionContext) -> ExecutionResult<Chunk> {
-        if self.finished.swap(true, atomic::Ordering::AcqRel) {
-            return Ok(Chunk::empty());
-        }
-
+    async fn source(&self, ctx: &ExecutionContext) -> ExecutionResult<SourceState<Chunk>> {
         let catalog = ctx.catalog();
         let tx = ctx.tx();
         let mut tuples = vec![];
@@ -56,7 +49,7 @@ impl PhysicalSource for PhysicalShow {
             }
         }
 
-        Ok(Chunk::from(tuples))
+        Ok(SourceState::Final(Chunk::from(tuples)))
     }
 }
 
