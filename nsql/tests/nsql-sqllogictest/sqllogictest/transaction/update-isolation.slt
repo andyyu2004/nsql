@@ -2,7 +2,7 @@ statement ok
 CREATE TABLE t(x int);
 
 statement ok
-INSERT INTO t(x) VALUES(1);
+INSERT INTO t(x) VALUES (1), (2);
 
 statement ok con1
 BEGIN
@@ -11,12 +11,13 @@ statement ok con2
 BEGIN
 
 statement ok con1
-UPDATE t SET x = 42;
+UPDATE t SET x = 42 WHERE x = 2;
 
 # con1 should be able to see the its own update
 query I con1
 SELECT x FROM t;
 ----
+1
 42
 
 # but con2 should still see the prior value
@@ -24,3 +25,15 @@ query I con2
 SELECT x FROM t;
 ----
 1
+2
+
+statement ok con1
+COMMIT
+
+# FIXME this doesn't work currently as we haven't implemented the undo deltas
+# ditto after con1 commits
+# query I con2
+# SELECT x FROM t;
+# ----
+# 1
+# 2
