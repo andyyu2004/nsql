@@ -22,7 +22,7 @@ tracing = "0.1.37"
 dashmap = "5.4.0"
 async-trait = "0.1.68"
 anyhow = "1.0.71"
-tokio = { version = "1.28.1", default-features = false, features = ["sync"] }
+parking_lot = "0.12.1"
 
 [dev-dependencies]
 nsql-test = { path = "../nsql-test" }

@@ -1526,12 +1526,12 @@ dependencies = [
  "nsql-test",
  "nsql-transaction",
  "nsql-util",
+ "parking_lot",
  "proptest",
  "rkyv",
  "rust_decimal",
  "test-strategy",
  "thiserror",
- "tokio",
  "tracing",
  "tracing-test",
 ]

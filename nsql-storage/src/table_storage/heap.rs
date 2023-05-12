@@ -1,4 +1,5 @@
 use std::fmt;
+use std::hash::{Hash, Hasher};
 use std::marker::PhantomData;
 use std::sync::Arc;
 
@@ -109,12 +110,27 @@ impl<T> Heap<T> {
     }
 }
 
-#[derive(PartialEq, Eq, Hash, Archive, Serialize, Deserialize)]
+#[derive(Archive, Serialize, Deserialize)]
 /// A stable identifier for an item in the heap
 pub struct HeapId<T> {
     page: PageIndex,
     slot: SlotIndex,
     _phantom: std::marker::PhantomData<T>,
+}
+
+impl<T> PartialEq for HeapId<T> {
+    fn eq(&self, other: &Self) -> bool {
+        self.page == other.page && self.slot == other.slot
+    }
+}
+
+impl<T> Eq for HeapId<T> {}
+
+impl<T> Hash for HeapId<T> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.page.hash(state);
+        self.slot.hash(state);
+    }
 }
 
 impl<T> Clone for HeapId<T> {

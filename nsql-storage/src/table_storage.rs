@@ -7,7 +7,7 @@ use std::sync::{Arc, Weak};
 use dashmap::mapref::entry::Entry;
 use dashmap::mapref::one::RefMut;
 use dashmap::DashMap;
-use futures_util::Stream;
+use futures_util::{Stream, StreamExt};
 use nsql_buffer::Pool;
 use nsql_pager::PageIndex;
 use nsql_transaction::{Transaction, Txid};
@@ -38,7 +38,7 @@ impl TableStorage {
 
     #[inline]
     pub async fn append(&self, tx: &Arc<Transaction>, tuple: &Tuple) -> nsql_buffer::Result<()> {
-        self.local_storage(tx).await.upgrade().unwrap().append(tuple).await;
+        self.local_storage(tx).await.upgrade().unwrap().append(tuple);
         Ok(())
     }
 
@@ -49,7 +49,7 @@ impl TableStorage {
         id: TupleId,
         tuple: &Tuple,
     ) -> nsql_buffer::Result<()> {
-        self.local_storage(tx).await.upgrade().unwrap().update(id, tuple).await;
+        self.local_storage(tx).await.upgrade().unwrap().update(id, tuple);
         Ok(())
     }
 
@@ -59,16 +59,24 @@ impl TableStorage {
         tx: Arc<Transaction>,
         projection: Option<Box<[TupleIndex]>>,
     ) -> impl Stream<Item = nsql_buffer::Result<Vec<Tuple>>> + Send {
+        let xid = tx.xid();
+        let local_storage = self.local_storage(&tx).await.upgrade().unwrap();
         self.heap
-            .scan(tx, move |tid, tuple| match &projection {
-                Some(projection) => tuple.project(tid, projection),
-                None => nsql_rkyv::deserialize(tuple),
+            .scan(tx, move |tid, tuple| {
+                let mut tuple = match &projection {
+                    Some(projection) => tuple.project(tid, projection),
+                    None => nsql_rkyv::deserialize(tuple),
+                };
+
+                // apply any transaction local updates
+                local_storage.patch(xid, tid, &mut tuple);
+                tuple
             })
             .await
     }
 
     async fn local_storage(&self, tx: &Arc<Transaction>) -> RefMut<'_, Txid, Weak<LocalStorage>> {
-        match self.local_storages.entry(tx.id()) {
+        match self.local_storages.entry(tx.xid()) {
             Entry::Occupied(entry) => entry.into_ref(),
             Entry::Vacant(entry) => {
                 let local_storage =

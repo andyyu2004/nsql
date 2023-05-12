@@ -268,9 +268,9 @@ impl Version {
     /// Returns a new version that represents a delete operation by the given transaction
     #[inline]
     pub fn delete_with(&self, tx: &Transaction) -> Version {
-        assert!(self.xmin <= tx.id());
+        assert!(self.xmin <= tx.xid());
         assert!(self.xmax.is_none(), "cannot delete a version twice");
-        Version { xmin: self.xmin, xmax: Some(tx.id()) }
+        Version { xmin: self.xmin, xmax: Some(tx.xid()) }
     }
 }
 
@@ -320,7 +320,7 @@ impl Transaction {
     }
 
     #[inline]
-    pub fn id(&self) -> Txid {
+    pub fn xid(&self) -> Txid {
         self.id
     }
 

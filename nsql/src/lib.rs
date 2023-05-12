@@ -84,7 +84,7 @@ impl Connection {
     pub async fn query(&self, query: &str) -> Result<MaterializedQueryOutput> {
         let tx = match self.current_tx.load_full() {
             Some(tx) => {
-                tracing::debug!(txid = %tx.id(), "continuing existing tx");
+                tracing::debug!(txid = %tx.xid(), "continuing existing tx");
                 tx
             }
             None => {

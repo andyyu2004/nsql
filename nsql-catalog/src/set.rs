@@ -198,7 +198,7 @@ impl<T: CatalogEntity> CatalogSet<T> {
                     match latest.version().xmax() {
                         // 1. It was deleted before our transaction started (or we deleted it ourserlves),
                         //    in which case we can insert the new entry
-                        Some(xmax) if xmax <= tx.id() => {
+                        Some(xmax) if xmax <= tx.xid() => {
                             let oid = self.next_oid();
                             entry.insert(oid);
                             debug_assert!(
