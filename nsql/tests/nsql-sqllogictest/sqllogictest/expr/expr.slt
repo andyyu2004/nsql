@@ -3,4 +3,9 @@ SELECT 1 = 1
 ----
 true
 
+query error
+SELECT 1 = false
+----
+cannot compare value of type int to boolean
+
 

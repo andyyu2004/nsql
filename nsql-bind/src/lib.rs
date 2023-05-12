@@ -668,7 +668,15 @@ impl Binder {
                 let lhs = self.bind_expr(scope, left)?;
                 let rhs = self.bind_expr(scope, right)?;
                 let (ty, op) = match op {
-                    ast::BinaryOperator::Eq => (LogicalType::Bool, ir::BinOp::Eq),
+                    ast::BinaryOperator::Eq => {
+                        ensure!(
+                            lhs.ty == rhs.ty,
+                            "cannot compare value of type {} to {}",
+                            lhs.ty,
+                            rhs.ty
+                        );
+                        (LogicalType::Bool, ir::BinOp::Eq)
+                    }
                     // ast::BinaryOperator::Plus => ir::BinOp::Add,
                     // ast::BinaryOperator::Minus => ir::BinOp::Sub,
                     // ast::BinaryOperator::Multiply => ir::BinOp::Mul,
