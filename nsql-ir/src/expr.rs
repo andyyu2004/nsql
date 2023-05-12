@@ -1,7 +1,10 @@
+mod eval;
+
 use std::fmt;
 use std::ops::Deref;
 use std::sync::Arc;
 
+pub use eval::EvalNotConst;
 use nsql_catalog::{
     Catalog, Column, ColumnIndex, Container, EntityRef, Namespace, Oid, Table, Transaction,
 };
@@ -54,6 +57,11 @@ impl fmt::Display for Expr {
 #[derive(Debug, Clone)]
 pub enum ExprKind {
     Value(Value),
+    BinOp {
+        op: BinOp,
+        lhs: Box<Expr>,
+        rhs: Box<Expr>,
+    },
     ColumnRef {
         /// A display path for the column (for pretty printing etc)
         path: Path,
@@ -67,6 +75,44 @@ impl fmt::Display for ExprKind {
         match &self {
             ExprKind::Value(value) => write!(f, "{value}"),
             ExprKind::ColumnRef { path, .. } => write!(f, "{path}"),
+            ExprKind::BinOp { op, lhs, rhs } => write!(f, "({lhs} {op} {rhs})"),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum BinOp {
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Mod,
+    Eq,
+    Ne,
+    Lt,
+    Le,
+    Gt,
+    Ge,
+    And,
+    Or,
+}
+
+impl fmt::Display for BinOp {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match &self {
+            BinOp::Add => write!(f, "+"),
+            BinOp::Sub => write!(f, "-"),
+            BinOp::Mul => write!(f, "*"),
+            BinOp::Div => write!(f, "/"),
+            BinOp::Mod => write!(f, "%"),
+            BinOp::Eq => write!(f, "="),
+            BinOp::Ne => write!(f, "!="),
+            BinOp::Lt => write!(f, "<"),
+            BinOp::Le => write!(f, "<="),
+            BinOp::Gt => write!(f, ">"),
+            BinOp::Ge => write!(f, ">="),
+            BinOp::And => write!(f, "AND"),
+            BinOp::Or => write!(f, "OR"),
         }
     }
 }

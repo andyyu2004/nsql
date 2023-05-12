@@ -18,6 +18,7 @@ impl Evaluator {
         match &expr.kind {
             ir::ExprKind::Value(value) => value.clone(),
             ir::ExprKind::ColumnRef { index, .. } => input[*index].clone(),
+            ir::ExprKind::BinOp { op, lhs, rhs } => todo!(),
         }
     }
 }

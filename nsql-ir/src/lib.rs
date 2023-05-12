@@ -1,6 +1,6 @@
 #![deny(rust_2018_idioms)]
 
-mod expr;
+pub mod expr;
 use std::fmt;
 
 use nsql_catalog::{CreateColumnInfo, Namespace, Oid};

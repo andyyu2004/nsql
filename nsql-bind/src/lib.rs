@@ -7,6 +7,7 @@ use std::sync::Arc;
 
 pub use anyhow::Error;
 use anyhow::{anyhow, bail, ensure};
+use ir::expr::EvalNotConst;
 use ir::{Decimal, Path, TupleIndex};
 use itertools::Itertools;
 use nsql_catalog::{
@@ -434,14 +435,11 @@ impl Binder {
         if let Some(limit) = limit {
             // LIMIT is currently not allowed to reference any columns
             let limit_expr = self.bind_expr(&Scope::default(), limit)?;
-            let limit = match limit_expr.kind {
+            let limit = limit_expr
+                .const_eval()
+                .map_err(|EvalNotConst| anyhow!("LIMIT expression must be constant"))?
                 // if the limit is `NULL` we treat is as unlimited (i.e. `u64::MAX`)
-                // FIXME we could also just not apply the limit wrapper in this case
-                ir::ExprKind::Value(val) => val.cast(u64::MAX)?,
-                ir::ExprKind::ColumnRef { .. } => {
-                    unreachable!("this would have failed binding as we gave it an empty scope")
-                }
-            };
+                .cast(u64::MAX)?;
             table_expr = table_expr.limit(limit);
         }
 
@@ -666,7 +664,45 @@ impl Binder {
                 let (ty, index) = scope.lookup_column(&path)?;
                 (ty, ir::ExprKind::ColumnRef { path, index })
             }
-            ast::Expr::BinaryOp { left: _, op: _, right: _ } => todo!(),
+            ast::Expr::BinaryOp { left, op, right } => {
+                let lhs = self.bind_expr(scope, left)?;
+                let rhs = self.bind_expr(scope, right)?;
+                let (ty, op) = match op {
+                    ast::BinaryOperator::Eq => (LogicalType::Bool, ir::BinOp::Eq),
+                    // ast::BinaryOperator::Plus => ir::BinOp::Add,
+                    // ast::BinaryOperator::Minus => ir::BinOp::Sub,
+                    // ast::BinaryOperator::Multiply => ir::BinOp::Mul,
+                    // ast::BinaryOperator::Divide => ir::BinOp::Div,
+                    // ast::BinaryOperator::Modulo => ir::BinOp::Mod,
+                    // ast::BinaryOperator::Gt => ir::BinOp::Gt,
+                    // ast::BinaryOperator::Lt => ir::BinOp::Lt,
+                    // ast::BinaryOperator::GtEq => ir::BinOp::Ge,
+                    // ast::BinaryOperator::LtEq => ir::BinOp::Le,
+                    // ast::BinaryOperator::NotEq => ir::BinOp::Ne,
+                    // ast::BinaryOperator::And => ir::BinOp::And,
+                    // ast::BinaryOperator::Or => ir::BinOp::Or,
+                    ast::BinaryOperator::Xor
+                    | ast::BinaryOperator::StringConcat
+                    | ast::BinaryOperator::Spaceship
+                    | ast::BinaryOperator::BitwiseOr
+                    | ast::BinaryOperator::BitwiseAnd
+                    | ast::BinaryOperator::BitwiseXor
+                    | ast::BinaryOperator::PGBitwiseXor
+                    | ast::BinaryOperator::PGBitwiseShiftLeft
+                    | ast::BinaryOperator::PGBitwiseShiftRight
+                    | ast::BinaryOperator::PGExp
+                    | ast::BinaryOperator::PGRegexMatch
+                    | ast::BinaryOperator::PGRegexIMatch
+                    | ast::BinaryOperator::PGRegexNotMatch
+                    | ast::BinaryOperator::PGRegexNotIMatch
+                    | ast::BinaryOperator::PGCustomBinaryOperator(_) => {
+                        bail!("unsupported binary operator: {:?}", op)
+                    }
+                    _ => bail!("unsupported binary operator: {:?}", op),
+                };
+
+                (ty, ir::ExprKind::BinOp { op, lhs: Box::new(lhs), rhs: Box::new(rhs) })
+            }
             _ => todo!("todo expr: {:?}", expr),
         };
 
