@@ -10,7 +10,7 @@ use std::sync::Arc;
 
 pub use anyhow::Error;
 use nsql_core::Name;
-pub use nsql_transaction::Transaction;
+pub use nsql_storage::Transaction;
 
 pub use self::entity::namespace::{CreateNamespaceInfo, Namespace, NamespaceEntity};
 pub use self::entity::table::{Column, ColumnIndex, CreateColumnInfo, CreateTableInfo, Table};

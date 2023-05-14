@@ -3,13 +3,13 @@ use std::mem;
 use std::sync::atomic::{self, AtomicBool};
 use std::sync::{Arc, Weak};
 
-use nsql_transaction::{Transaction, Transactional, Txid};
 use parking_lot::RwLock;
 use rkyv::AlignedVec;
 
 use super::heap::Heap;
 use crate::table_storage::TupleId;
 use crate::tuple::Tuple;
+use crate::{Transaction, Transactional};
 
 /// Transaction local storage that stores uncommitted changes
 pub(super) struct LocalStorage {

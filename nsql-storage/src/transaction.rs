@@ -1,5 +1,3 @@
-#![deny(rust_2018_idioms)]
-
 use std::collections::HashSet;
 use std::fmt;
 use std::num::NonZeroU64;
@@ -477,3 +475,6 @@ impl<T: Transactional> Transactional for Arc<T> {
         (**self).cleanup(tx).await
     }
 }
+
+#[cfg(test)]
+mod tests;

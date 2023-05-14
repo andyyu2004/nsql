@@ -8,13 +8,13 @@ use futures_util::Stream;
 use nsql_buffer::{BufferHandle, Pool};
 use nsql_pager::PageIndex;
 use nsql_rkyv::{archived_size_of, DefaultDeserializer, DefaultSerializer};
-use nsql_transaction::{Transaction, Transactional, Txid, Version};
 use rkyv::option::ArchivedOption;
 use rkyv::with::Inline;
 use rkyv::{Archive, Archived, Deserialize, Serialize};
 
 use self::view::{HeapView, HeapViewMut, Slot, SlotIndex};
 use super::fsm::FreeSpaceMap;
+use crate::{Transaction, Transactional, Txid, Version};
 
 mod view;
 

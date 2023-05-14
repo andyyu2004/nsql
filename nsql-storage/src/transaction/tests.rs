@@ -1,4 +1,4 @@
-use nsql_transaction::{TransactionError, TransactionManager};
+use super::{TransactionError, TransactionManager};
 
 #[test]
 fn test_concurrent_transaction_management() -> Result<(), TransactionError> {

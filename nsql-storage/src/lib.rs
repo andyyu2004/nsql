@@ -5,6 +5,7 @@
 
 pub mod schema;
 mod table_storage;
+mod transaction;
 pub mod tuple;
 pub mod value;
 mod wal;
@@ -13,9 +14,13 @@ use std::io;
 use std::sync::Arc;
 
 use nsql_pager::Pager;
-use nsql_transaction::Transaction;
 pub use table_storage::{TableStorage, TableStorageInfo};
 use thiserror::Error;
+
+pub use self::transaction::{
+    Transaction, TransactionError, TransactionManager, TransactionState, Transactional, Txid,
+    Version,
+};
 
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 

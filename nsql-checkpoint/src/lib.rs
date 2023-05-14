@@ -3,7 +3,7 @@ use std::io;
 use nsql_catalog::{Catalog, Container, Namespace, Table};
 use nsql_pager::{MetaPageReader, MetaPageWriter, Pager};
 use nsql_serde::StreamSerialize;
-use nsql_transaction::Transaction;
+use nsql_storage::Transaction;
 use thiserror::Error;
 
 pub type Result<T, E = Error> = std::result::Result<T, E>;

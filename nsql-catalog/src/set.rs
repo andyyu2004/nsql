@@ -9,7 +9,7 @@ use nsql_serde::{
     AsyncReadExt, AsyncWriteExt, StreamDeserialize, StreamDeserializeWith, StreamDeserializer,
     StreamSerialize, StreamSerializer,
 };
-use nsql_transaction::{Transaction, Version};
+use nsql_storage::{Transaction, Version};
 
 use crate::entry::Oid;
 use crate::private::CatalogEntity;

@@ -10,12 +10,12 @@ use dashmap::DashMap;
 use futures_util::{stream, Stream, StreamExt};
 use nsql_buffer::Pool;
 use nsql_pager::PageIndex;
-use nsql_transaction::{Transaction, Txid};
 
 use self::heap::{Heap, HeapId};
 use self::local_storage::LocalStorage;
 use crate::schema::Schema;
 use crate::tuple::{Tuple, TupleIndex};
+use crate::{Transaction, Txid};
 
 pub struct TableStorage {
     info: TableStorageInfo,

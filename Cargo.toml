@@ -21,7 +21,6 @@ members = [
     "nsql-shell",
     "nsql-storage",
     "nsql-test",
-    "nsql-transaction",
     "nsql-util",
     "lruk",
     "vendor/tracing-test/tracing-test",

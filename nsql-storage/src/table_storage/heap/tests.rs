@@ -1,7 +1,7 @@
 use futures_util::TryStreamExt;
-use nsql_transaction::TransactionManager;
 
 use super::Heap;
+use crate::transaction::TransactionManager;
 
 #[test]
 fn test_heap_page_append() -> nsql_buffer::Result<()> {

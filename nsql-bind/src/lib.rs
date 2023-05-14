@@ -17,7 +17,7 @@ use nsql_catalog::{
 use nsql_core::Name;
 use nsql_parse::ast::{self, HiveDistributionStyle};
 use nsql_storage::schema::LogicalType;
-use nsql_transaction::Transaction;
+use nsql_storage::Transaction;
 
 use self::scope::Scope;
 

@@ -1273,7 +1273,6 @@ dependencies = [
  "nsql-plan",
  "nsql-storage",
  "nsql-test",
- "nsql-transaction",
  "sqllogictest",
  "thiserror",
  "tokio",
@@ -1296,7 +1295,6 @@ dependencies = [
  "nsql-ir",
  "nsql-parse",
  "nsql-storage",
- "nsql-transaction",
  "rpds",
  "tracing",
 ]
@@ -1350,7 +1348,6 @@ dependencies = [
  "nsql-core",
  "nsql-serde",
  "nsql-storage",
- "nsql-transaction",
  "nsql-util",
  "thiserror",
  "tracing",
@@ -1364,7 +1361,7 @@ dependencies = [
  "nsql-catalog",
  "nsql-pager",
  "nsql-serde",
- "nsql-transaction",
+ "nsql-storage",
  "thiserror",
 ]
 
@@ -1396,7 +1393,6 @@ dependencies = [
  "nsql-pager",
  "nsql-plan",
  "nsql-storage",
- "nsql-transaction",
  "parking_lot",
  "smallvec",
  "tokio",
@@ -1514,8 +1510,11 @@ dependencies = [
  "anyhow",
  "async-stream",
  "async-trait",
+ "atomic",
+ "crossbeam-skiplist",
  "dashmap",
  "futures-util",
+ "itertools",
  "nsql-arena",
  "nsql-btree",
  "nsql-buffer",
@@ -1524,7 +1523,6 @@ dependencies = [
  "nsql-rkyv",
  "nsql-serde",
  "nsql-test",
- "nsql-transaction",
  "nsql-util",
  "parking_lot",
  "proptest",
@@ -1532,6 +1530,7 @@ dependencies = [
  "rust_decimal",
  "test-strategy",
  "thiserror",
+ "tokio",
  "tracing",
  "tracing-test",
 ]
@@ -1542,23 +1541,6 @@ version = "0.1.0"
 dependencies = [
  "tempfile",
  "tokio",
-]
-
-[[package]]
-name = "nsql-transaction"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "atomic",
- "crossbeam-skiplist",
- "itertools",
- "nsql-test",
- "nsql-util",
- "rkyv",
- "thiserror",
- "tokio",
- "tracing",
 ]
 
 [[package]]

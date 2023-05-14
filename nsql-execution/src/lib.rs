@@ -17,7 +17,7 @@ use nsql_arena::Idx;
 use nsql_buffer::Pool;
 use nsql_catalog::Catalog;
 use nsql_storage::tuple::Tuple;
-use nsql_transaction::Transaction;
+use nsql_storage::Transaction;
 pub use physical_plan::PhysicalPlanner;
 use smallvec::SmallVec;
 

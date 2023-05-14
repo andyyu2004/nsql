@@ -4,8 +4,7 @@ use std::fmt;
 use std::sync::Arc;
 
 use nsql_serde::StreamSerialize;
-use nsql_storage::TableStorage;
-use nsql_transaction::Transaction;
+use nsql_storage::{TableStorage, Transaction};
 
 pub use self::column::{Column, ColumnIndex, CreateColumnInfo};
 use crate::private::CatalogEntity;
