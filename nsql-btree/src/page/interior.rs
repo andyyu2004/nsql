@@ -156,8 +156,8 @@ impl<'a, K: Archive + 'static> Deref for InteriorPageViewMut<'a, K> {
 
     fn deref(&self) -> &Self::Target {
         static_assert_eq!(
-            mem::size_of::<InteriorPageView<'a, ()>>(),
-            mem::size_of::<InteriorPageViewMut<'a, ()>>()
+            mem::size_of::<InteriorPageView<'_, ()>>(),
+            mem::size_of::<InteriorPageViewMut<'_, ()>>()
         );
         // SAFETY: the only difference between InteriorPageView and InteriorPageViewMut is the mutability of the pointers
         // the layout is identical

@@ -151,8 +151,8 @@ impl<'a, K: Archive + 'static, V: Archive + 'static> Deref for LeafPageViewMut<'
 
     fn deref(&self) -> &Self::Target {
         static_assert_eq!(
-            std::mem::size_of::<LeafPageViewMut<'a, (), ()>>(),
-            std::mem::size_of::<LeafPageView<'a, (), ()>>()
+            std::mem::size_of::<LeafPageViewMut<'_, (), ()>>(),
+            std::mem::size_of::<LeafPageView<'_, (), ()>>()
         );
         let this = unsafe { &*(self as *const _ as *const Self::Target) };
         debug_assert_eq!(&*self.page_header, this.page_header);

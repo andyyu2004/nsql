@@ -287,8 +287,8 @@ impl<'a, K: Archive + 'static, V: Archive + 'static, X: Archive> Deref
 
     fn deref(&self) -> &Self::Target {
         static_assert_eq!(
-            mem::size_of::<SlottedPageView<'a, u16, u64>>(),
-            mem::size_of::<SlottedPageViewMut<'a, u16, u64>>()
+            mem::size_of::<SlottedPageView<'_, u16, u64>>(),
+            mem::size_of::<SlottedPageViewMut<'_, u16, u64>>()
         );
 
         // SAFETY this is safe because SlottedPageView and SlottedPageViewMut have the same layout
