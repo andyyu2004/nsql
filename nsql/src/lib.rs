@@ -83,12 +83,12 @@ impl Connection {
     pub async fn query(&self, query: &str) -> Result<MaterializedQueryOutput> {
         let tx = match self.current_tx.load_full() {
             Some(tx) => {
-                tracing::debug!(txid = %tx.xid(), "continuing existing tx");
+                tracing::debug!(xid = %tx.xid(), "continuing existing tx");
                 tx
             }
             None => {
                 let tx = self.db.shared.txm.begin();
-                tracing::debug!(txid = ?tx, "beginning new tx");
+                tracing::debug!(xid = ?tx, "beginning new tx");
                 self.current_tx.store(Some(Arc::clone(&tx)));
                 tx
             }

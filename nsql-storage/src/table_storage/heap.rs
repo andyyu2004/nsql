@@ -14,7 +14,7 @@ use rkyv::{Archive, Archived, Deserialize, Serialize};
 
 use self::view::{HeapView, HeapViewMut, Slot, SlotIndex};
 use super::fsm::FreeSpaceMap;
-use crate::{Transaction, Transactional, Txid, Version};
+use crate::{Transaction, Transactional, Version, Xid};
 
 mod view;
 
@@ -40,7 +40,7 @@ impl Transactional for UndoBuffer {
 
 #[derive(Debug)]
 struct UndoEntry {
-    txid: Txid,
+    xid: Xid,
     version: Version,
 }
 

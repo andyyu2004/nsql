@@ -15,13 +15,13 @@ use self::heap::{Heap, HeapId};
 use self::local_storage::LocalStorage;
 use crate::schema::Schema;
 use crate::tuple::{Tuple, TupleIndex};
-use crate::{Transaction, Txid};
+use crate::{Transaction, Xid};
 
 pub struct TableStorage {
     info: TableStorageInfo,
     /// The persisted state of the table stored in the heap
     heap: Arc<Heap<Tuple>>,
-    local_storages: DashMap<Txid, Weak<LocalStorage>>,
+    local_storages: DashMap<Xid, Weak<LocalStorage>>,
 }
 
 pub type TupleId = HeapId<Tuple>;
@@ -77,7 +77,7 @@ impl TableStorage {
             .chain(stream::iter(Some(Ok(local_tuples))))
     }
 
-    async fn local_storage(&self, tx: &Arc<Transaction>) -> RefMut<'_, Txid, Weak<LocalStorage>> {
+    async fn local_storage(&self, tx: &Arc<Transaction>) -> RefMut<'_, Xid, Weak<LocalStorage>> {
         match self.local_storages.entry(tx.xid()) {
             Entry::Occupied(entry) => entry.into_ref(),
             Entry::Vacant(entry) => {

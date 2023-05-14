@@ -18,8 +18,8 @@ pub use table_storage::{TableStorage, TableStorageInfo};
 use thiserror::Error;
 
 pub use self::transaction::{
-    Transaction, TransactionError, TransactionManager, TransactionState, Transactional, Txid,
-    Version,
+    Transaction, TransactionError, TransactionManager, TransactionState, Transactional, Version,
+    Xid,
 };
 
 pub type Result<T, E = Error> = std::result::Result<T, E>;
