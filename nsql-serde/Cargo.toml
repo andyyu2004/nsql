@@ -8,10 +8,8 @@ smol_str = { version = "0.1.24", default-features = false }
 tokio = { version = "1.25.0", default-features = false }
 nsql-serde-derive = { path = "../nsql-serde-derive" }
 rust_decimal = { version = "1.28.1", default-features = false }
-nsql-arena = { version = "0.1.0", path = "../nsql-arena" }
+nsql-arena = { path = "../nsql-arena" }
 arrayvec = "0.7.2"
 pin-project-lite = "0.2.9"
 error-stack = "0.3.1"
 rend = { version = "0.4.0", default-features = false }
-
-

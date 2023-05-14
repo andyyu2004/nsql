@@ -4,5 +4,5 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-nsql-catalog = { version = "0.1.0", path = "../nsql-catalog" }
-ir = { version = "0.1.0", path = "../nsql-ir", package = "nsql-ir" }
+nsql-catalog = { path = "../nsql-catalog" }
+ir = { path = "../nsql-ir", package = "nsql-ir" }

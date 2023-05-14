@@ -4,6 +4,9 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-nsql-serde = { version = "0.1.0", path = "../nsql-serde" }
+nsql-serde = { path = "../nsql-serde" }
 smol_str = { version = "0.1.24", default-features = false }
-rkyv = { version = "0.7.40", default-features = false, features = ["archive_be", "size_32"] }
+rkyv = { version = "0.7.40", default-features = false, features = [
+    "archive_be",
+    "size_32",
+] }

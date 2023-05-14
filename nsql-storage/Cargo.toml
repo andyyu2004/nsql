@@ -6,7 +6,9 @@ edition = "2021"
 [dependencies]
 async-stream = "0.3.5"
 futures-util = "0.3.28"
-rust_decimal = { version = "1.28.1", default-features = false, features = ["rkyv"] }
+rust_decimal = { version = "1.28.1", default-features = false, features = [
+    "rkyv",
+] }
 nsql-arena = { path = "../nsql-arena" }
 nsql-btree = { path = "../nsql-btree" }
 nsql-buffer = { path = "../nsql-buffer" }
@@ -15,8 +17,11 @@ nsql-pager = { path = "../nsql-pager" }
 nsql-rkyv = { path = "../nsql-rkyv" }
 nsql-serde = { path = "../nsql-serde" }
 nsql-transaction = { path = "../nsql-transaction" }
-nsql-util = { version = "0.1.0", path = "../nsql-util" }
-rkyv = { version = "0.7.40", default-features = false, features = ["archive_be", "size_32"] }
+nsql-util = { path = "../nsql-util" }
+rkyv = { version = "0.7.40", default-features = false, features = [
+    "archive_be",
+    "size_32",
+] }
 thiserror = "1.0.38"
 tracing = "0.1.37"
 dashmap = "5.4.0"

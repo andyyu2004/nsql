@@ -9,7 +9,7 @@ async-trait = "0.1.68"
 atomic = { version = "0.5.1", default-features = false }
 crossbeam-skiplist = "0.1.1"
 itertools = "0.10.5"
-nsql-util = { version = "0.1.0", path = "../nsql-util" }
+nsql-util = { path = "../nsql-util" }
 rkyv = { version = "0.7.41", default-features = false }
 thiserror = "1.0.40"
 tokio = { version = "1.27.0", default-features = false, features = ["sync"] }
@@ -17,4 +17,6 @@ tracing = "0.1.37"
 
 [dev-dependencies]
 nsql-test = { path = "../nsql-test" }
-tokio = { version = "1.27.0", default-features = false, features = ["rt-multi-thread"] }
+tokio = { version = "1.27.0", default-features = false, features = [
+    "rt-multi-thread",
+] }

@@ -6,16 +6,16 @@ edition = "2021"
 [dependencies]
 arc-swap = "1.6.0"
 error-stack = "0.3.1"
-nsql-bind = { version = "0.1.0", path = "../nsql-bind" }
+nsql-bind = { path = "../nsql-bind" }
 nsql-buffer = { path = "../nsql-buffer" }
 nsql-catalog = { path = "../nsql-catalog" }
-nsql-core = { version = "0.1.0", path = "../nsql-core" }
-nsql-execution = { version = "0.1.0", path = "../nsql-execution" }
-nsql-opt = { version = "0.1.0", path = "../nsql-opt" }
+nsql-core = { path = "../nsql-core" }
+nsql-execution = { path = "../nsql-execution" }
+nsql-opt = { path = "../nsql-opt" }
 
 nsql-pager = { path = "../nsql-pager" }
-nsql-parse = { version = "0.1.0", path = "../nsql-parse" }
-nsql-plan = { version = "0.1.0", path = "../nsql-plan" }
+nsql-parse = { path = "../nsql-parse" }
+nsql-plan = { path = "../nsql-plan" }
 nsql-storage = { path = "../nsql-storage" }
 nsql-transaction = { path = "../nsql-transaction" }
 thiserror = "1.0.38"
