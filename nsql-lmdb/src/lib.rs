@@ -68,7 +68,7 @@ impl StorageEngine for LmdbStorageEngine {
     }
 
     fn open_tree<'env, 'txn>(
-        &'env self,
+        &self,
         _txn: &'txn Self::Transaction<'env>,
         name: &str,
     ) -> Result<Option<Self::Tree<'env, 'txn>>, Self::Error> {

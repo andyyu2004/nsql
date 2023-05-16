@@ -40,7 +40,7 @@ pub trait StorageEngine: Sized {
         'env: 'txn;
 
     fn open_tree<'env, 'txn>(
-        &'env self,
+        &self,
         txn: &'txn Self::Transaction<'env>,
         name: &str,
     ) -> Result<Option<Self::Tree<'env, 'txn>>, Self::Error>;
