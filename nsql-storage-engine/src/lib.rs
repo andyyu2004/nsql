@@ -15,7 +15,8 @@ pub trait StorageEngine: Sized {
 
     type ReadTree<'env, 'txn>: ReadTree<'env, 'txn, Self>
     where
-        Self: 'env + 'txn;
+        Self: 'env + 'txn,
+        'env: 'txn;
 
     type Tree<'env, 'txn>: Tree<'env, 'txn, Self>
     where
@@ -30,16 +31,18 @@ pub trait StorageEngine: Sized {
 
     fn begin(&self) -> Result<Self::Transaction<'_>, Self::Error>;
 
-    fn open_tree_readonly<'txn>(
+    fn open_tree_readonly<'env, 'txn>(
         &self,
-        txn: &Self::ReadTransaction<'txn>,
-        name: &[u8],
-    ) -> Result<Self::ReadTree<'_, 'txn>, Self::Error>;
+        txn: &'env Self::ReadTransaction<'txn>,
+        name: &str,
+    ) -> Result<Self::ReadTree<'env, 'txn>, Self::Error>
+    where
+        'env: 'txn;
 
     fn open_tree<'env, 'txn>(
         &'env self,
         txn: &'txn Self::Transaction<'env>,
-        name: &[u8],
+        name: &str,
     ) -> Result<Self::Tree<'env, 'txn>, Self::Error>;
 }
 

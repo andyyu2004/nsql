@@ -9,13 +9,9 @@ pub struct RedbStorageEngine {
     db: redb::Database,
 }
 
-pub struct ReadTransaction<'db> {
-    tx: redb::ReadTransaction<'db>,
-}
+pub struct ReadTransaction<'db>(redb::ReadTransaction<'db>);
 
-pub struct Transaction<'db> {
-    tx: redb::WriteTransaction<'db>,
-}
+pub struct Transaction<'db>(redb::WriteTransaction<'db>);
 
 impl<'db> Deref for Transaction<'db> {
     type Target = ReadTransaction<'db>;
@@ -32,7 +28,7 @@ impl nsql_storage_engine::StorageEngine for RedbStorageEngine {
 
     type Transaction<'db> = Transaction<'db>;
 
-    type ReadTree<'env, 'txn> = redb::ReadOnlyTable<'txn, &'static [u8], &'static [u8]>;
+    type ReadTree<'env, 'txn> = redb::ReadOnlyTable<'txn, &'static [u8], &'static [u8]> where 'env: 'txn;
 
     type Tree<'env, 'txn> = redb::Table<'env, 'txn, &'static [u8], &'static [u8]> where 'env: 'txn;
 
@@ -47,29 +43,32 @@ impl nsql_storage_engine::StorageEngine for RedbStorageEngine {
     #[inline]
     fn begin_readonly(&self) -> Result<Self::ReadTransaction<'_>, Self::Error> {
         let tx = self.db.begin_read()?;
-        Ok(ReadTransaction { tx })
+        Ok(ReadTransaction(tx))
     }
 
     #[inline]
     fn begin(&self) -> std::result::Result<Self::Transaction<'_>, Self::Error> {
         let tx = self.db.begin_write()?;
-        Ok(Transaction { tx })
+        Ok(Transaction(tx))
     }
 
-    fn open_tree_readonly<'txn>(
+    fn open_tree_readonly<'env, 'txn>(
         &self,
-        txn: &Self::ReadTransaction<'txn>,
-        name: &[u8],
-    ) -> std::result::Result<Self::ReadTree<'_, 'txn>, Self::Error> {
-        todo!()
+        txn: &'env Self::ReadTransaction<'txn>,
+        name: &str,
+    ) -> Result<Self::ReadTree<'env, 'txn>, Self::Error>
+    where
+        'env: 'txn,
+    {
+        txn.0.open_table(redb::TableDefinition::new(name))
     }
 
     fn open_tree<'env, 'txn>(
         &'env self,
         txn: &'txn Self::Transaction<'env>,
-        name: &[u8],
-    ) -> std::result::Result<Self::Tree<'env, 'txn>, Self::Error> {
-        todo!()
+        name: &str,
+    ) -> Result<Self::Tree<'env, 'txn>, Self::Error> {
+        txn.0.open_table(redb::TableDefinition::new(name))
     }
 }
 

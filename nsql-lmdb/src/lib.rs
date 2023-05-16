@@ -26,7 +26,7 @@ impl StorageEngine for LmdbStorageEngine {
 
     type Transaction<'env> = ReadWriteTx<'env>;
 
-    type ReadTree<'env, 'txn> = UntypedDatabase;
+    type ReadTree<'env, 'txn> = UntypedDatabase where 'env: 'txn;
 
     type Tree<'env, 'txn> = UntypedDatabase where 'env: 'txn;
 
@@ -56,19 +56,22 @@ impl StorageEngine for LmdbStorageEngine {
         Ok(ReadWriteTx { tx: inner })
     }
 
-    fn open_tree_readonly<'txn>(
+    fn open_tree_readonly<'env, 'txn>(
         &self,
-        txn: &Self::ReadTransaction<'txn>,
-        name: &[u8],
-    ) -> std::result::Result<Self::ReadTree<'_, 'txn>, Self::Error> {
+        txn: &'env Self::ReadTransaction<'txn>,
+        name: &str,
+    ) -> Result<Self::ReadTree<'env, 'txn>, Self::Error>
+    where
+        'env: 'txn,
+    {
         todo!()
     }
 
     fn open_tree<'env, 'txn>(
         &'env self,
         txn: &'txn Self::Transaction<'env>,
-        name: &[u8],
-    ) -> std::result::Result<Self::Tree<'env, 'txn>, Self::Error> {
+        name: &str,
+    ) -> Result<Self::Tree<'env, 'txn>, Self::Error> {
         todo!()
     }
 }
