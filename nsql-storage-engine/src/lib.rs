@@ -2,16 +2,25 @@
 
 use std::path::Path;
 
-pub trait StorageEngine {
+pub trait StorageEngine: Sized {
     type Error;
 
-    type ReadTransaction<'a>: ReadTransaction
+    type ReadTransaction<'env>: ReadTransaction
     where
-        Self: 'a;
+        Self: 'env;
 
-    type Transaction<'a>: Transaction
+    type Transaction<'txn>: Transaction
     where
-        Self: 'a;
+        Self: 'txn;
+
+    type ReadTree<'env, 'txn>: ReadTree<'env, 'txn, Self>
+    where
+        Self: 'env + 'txn;
+
+    type Tree<'env, 'txn>: Tree<'env, 'txn, Self>
+    where
+        Self: 'env + 'txn,
+        'env: 'txn;
 
     fn open(path: impl AsRef<Path>) -> Result<Self, Self::Error>
     where
@@ -20,15 +29,29 @@ pub trait StorageEngine {
     fn begin_readonly(&self) -> Result<Self::ReadTransaction<'_>, Self::Error>;
 
     fn begin(&self) -> Result<Self::Transaction<'_>, Self::Error>;
+
+    fn open_tree_readonly<'txn>(
+        &self,
+        txn: &Self::ReadTransaction<'txn>,
+        name: &[u8],
+    ) -> Result<Self::ReadTree<'_, 'txn>, Self::Error>;
+
+    fn open_tree<'env, 'txn>(
+        &'env self,
+        txn: &'txn Self::Transaction<'env>,
+        name: &[u8],
+    ) -> Result<Self::Tree<'env, 'txn>, Self::Error>;
 }
 
-pub trait Database<S: StorageEngine> {
-    fn get<'tx>(
+pub trait ReadTree<'env, 'txn, S: StorageEngine> {
+    fn get(
         &self,
-        txn: &'tx S::ReadTransaction<'_>,
+        txn: &'txn S::ReadTransaction<'_>,
         key: &[u8],
-    ) -> Result<Option<&'tx [u8]>, S::Error>;
+    ) -> Result<Option<&'txn [u8]>, S::Error>;
+}
 
+pub trait Tree<'env, 'txn, S: StorageEngine>: ReadTree<'env, 'txn, S> {
     fn put(&self, txn: &mut S::Transaction<'_>, key: &[u8], value: &[u8]) -> Result<(), S::Error>;
 
     fn delete(&self, txn: &mut S::Transaction<'_>, key: &[u8]) -> Result<(), S::Error>;
@@ -36,12 +59,6 @@ pub trait Database<S: StorageEngine> {
 
 pub trait ReadTransaction {
     type Error;
-
-    fn get(&self, key: &[u8]) -> Result<Option<&[u8]>, Self::Error>;
 }
 
-pub trait Transaction: ReadTransaction {
-    fn put(&mut self, key: &[u8], value: &[u8]) -> Result<(), Self::Error>;
-
-    fn delete(&mut self, key: &[u8]) -> Result<(), Self::Error>;
-}
+pub trait Transaction: ReadTransaction {}

@@ -2,22 +2,20 @@
 use std::path::Path;
 
 use heed::UntypedDatabase;
-use nsql_storage_engine::{Database, ReadTransaction, StorageEngine, Transaction};
+use nsql_storage_engine::{ReadTransaction, ReadTree, StorageEngine, Transaction, Tree};
 
 type Result<T, E = heed::Error> = std::result::Result<T, E>;
 
 pub struct LmdbStorageEngine {
     env: heed::Env,
-    db: UntypedDatabase,
+    main_db: UntypedDatabase,
 }
 
 pub struct ReadonlyTx<'env> {
-    db: UntypedDatabase,
     tx: heed::RoTxn<'env>,
 }
 
 pub struct ReadWriteTx<'env> {
-    db: UntypedDatabase,
     tx: heed::RwTxn<'env, 'env>,
 }
 
@@ -27,6 +25,10 @@ impl StorageEngine for LmdbStorageEngine {
     type ReadTransaction<'env> = ReadonlyTx<'env>;
 
     type Transaction<'env> = ReadWriteTx<'env>;
+
+    type ReadTree<'env, 'txn> = UntypedDatabase;
+
+    type Tree<'env, 'txn> = UntypedDatabase where 'env: 'txn;
 
     #[inline]
     fn open(path: impl AsRef<Path>) -> Result<Self, Self::Error>
@@ -38,36 +40,57 @@ impl StorageEngine for LmdbStorageEngine {
         std::fs::OpenOptions::new().create(true).write(true).truncate(false).open(&path)?;
         let env = unsafe { heed::EnvOpenOptions::new().flag(heed::flags::Flags::MdbNoSubDir) }
             .open(path)?;
-        let db = env.open_database(None)?.expect("main database should exist");
-        Ok(Self { db, env })
+        let main_db = env.open_database(None)?.expect("main database should exist");
+        Ok(Self { main_db, env })
     }
 
     #[inline]
     fn begin_readonly(&self) -> Result<Self::ReadTransaction<'_>, Self::Error> {
         let tx = self.env.read_txn()?;
-        Ok(ReadonlyTx { db: self.db, tx })
+        Ok(ReadonlyTx { tx })
     }
 
     #[inline]
     fn begin(&self) -> std::result::Result<Self::Transaction<'_>, Self::Error> {
         let inner = self.env.write_txn()?;
-        Ok(ReadWriteTx { db: self.db, tx: inner })
+        Ok(ReadWriteTx { tx: inner })
+    }
+
+    fn open_tree_readonly<'txn>(
+        &self,
+        txn: &Self::ReadTransaction<'txn>,
+        name: &[u8],
+    ) -> std::result::Result<Self::ReadTree<'_, 'txn>, Self::Error> {
+        todo!()
+    }
+
+    fn open_tree<'env, 'txn>(
+        &'env self,
+        txn: &'txn Self::Transaction<'env>,
+        name: &[u8],
+    ) -> std::result::Result<Self::Tree<'env, 'txn>, Self::Error> {
+        todo!()
     }
 }
 
-impl Database<LmdbStorageEngine> for heed::UntypedDatabase {
-    fn get<'tx>(
+impl<'txn> ReadTree<'_, 'txn, LmdbStorageEngine> for heed::UntypedDatabase {
+    #[inline]
+    fn get(
         &self,
-        txn: &'tx ReadonlyTx<'_>,
+        txn: &'txn ReadonlyTx<'_>,
         key: &[u8],
-    ) -> Result<Option<&'tx [u8]>, heed::Error> {
+    ) -> Result<Option<&'txn [u8]>, heed::Error> {
         self.get(&txn.tx, key)
     }
+}
 
+impl<'txn> Tree<'_, 'txn, LmdbStorageEngine> for heed::UntypedDatabase {
+    #[inline]
     fn put(&self, txn: &mut ReadWriteTx<'_>, key: &[u8], value: &[u8]) -> Result<(), heed::Error> {
         self.put(&mut txn.tx, key, value)
     }
 
+    #[inline]
     fn delete(&self, txn: &mut ReadWriteTx<'_>, key: &[u8]) -> Result<(), heed::Error> {
         self.delete(&mut txn.tx, key)?;
         Ok(())
@@ -76,34 +99,13 @@ impl Database<LmdbStorageEngine> for heed::UntypedDatabase {
 
 impl<'env> ReadTransaction for ReadonlyTx<'env> {
     type Error = heed::Error;
-
-    #[inline]
-    fn get(&self, key: &[u8]) -> Result<Option<&[u8]>, Self::Error> {
-        self.db.get(&self.tx, key)
-    }
 }
 
 impl<'env> ReadTransaction for ReadWriteTx<'env> {
     type Error = heed::Error;
-
-    #[inline]
-    fn get(&self, key: &[u8]) -> Result<Option<&[u8]>, Self::Error> {
-        self.db.get(&self.tx, key)
-    }
 }
 
-impl<'env> Transaction for ReadWriteTx<'env> {
-    #[inline]
-    fn put(&mut self, key: &[u8], value: &[u8]) -> Result<(), Self::Error> {
-        self.db.put(&mut self.tx, key, value)
-    }
-
-    #[inline]
-    fn delete(&mut self, key: &[u8]) -> Result<(), Self::Error> {
-        self.db.delete(&mut self.tx, key)?;
-        Ok(())
-    }
-}
+impl<'env> Transaction for ReadWriteTx<'env> {}
 
 #[cfg(test)]
 mod tests;
