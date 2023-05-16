@@ -52,23 +52,33 @@ impl nsql_storage_engine::StorageEngine for RedbStorageEngine {
         Ok(Transaction(tx))
     }
 
+    #[inline]
     fn open_tree_readonly<'env, 'txn>(
         &self,
         txn: &'env Self::ReadTransaction<'txn>,
         name: &str,
-    ) -> Result<Self::ReadTree<'env, 'txn>, Self::Error>
+    ) -> Result<Option<Self::ReadTree<'env, 'txn>>, Self::Error>
     where
         'env: 'txn,
     {
-        txn.0.open_table(redb::TableDefinition::new(name))
+        match txn.0.open_table(redb::TableDefinition::new(name)) {
+            Ok(table) => Ok(Some(table)),
+            Err(redb::Error::TableDoesNotExist(_)) => Ok(None),
+            Err(e) => Err(e),
+        }
     }
 
+    #[inline]
     fn open_tree<'env, 'txn>(
         &'env self,
         txn: &'txn Self::Transaction<'env>,
         name: &str,
-    ) -> Result<Self::Tree<'env, 'txn>, Self::Error> {
-        txn.0.open_table(redb::TableDefinition::new(name))
+    ) -> Result<Option<Self::Tree<'env, 'txn>>, Self::Error> {
+        match txn.0.open_table(redb::TableDefinition::new(name)) {
+            Ok(table) => Ok(Some(table)),
+            Err(redb::Error::TableDoesNotExist(_)) => Ok(None),
+            Err(e) => Err(e),
+        }
     }
 }
 

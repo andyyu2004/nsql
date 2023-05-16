@@ -35,7 +35,7 @@ pub trait StorageEngine: Sized {
         &self,
         txn: &'env Self::ReadTransaction<'txn>,
         name: &str,
-    ) -> Result<Self::ReadTree<'env, 'txn>, Self::Error>
+    ) -> Result<Option<Self::ReadTree<'env, 'txn>>, Self::Error>
     where
         'env: 'txn;
 
@@ -43,7 +43,7 @@ pub trait StorageEngine: Sized {
         &'env self,
         txn: &'txn Self::Transaction<'env>,
         name: &str,
-    ) -> Result<Self::Tree<'env, 'txn>, Self::Error>;
+    ) -> Result<Option<Self::Tree<'env, 'txn>>, Self::Error>;
 }
 
 pub trait ReadTree<'env, 'txn, S: StorageEngine> {

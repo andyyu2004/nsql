@@ -58,21 +58,21 @@ impl StorageEngine for LmdbStorageEngine {
 
     fn open_tree_readonly<'env, 'txn>(
         &self,
-        txn: &'env Self::ReadTransaction<'txn>,
+        _txn: &'env Self::ReadTransaction<'txn>,
         name: &str,
-    ) -> Result<Self::ReadTree<'env, 'txn>, Self::Error>
+    ) -> Result<Option<Self::ReadTree<'env, 'txn>>, Self::Error>
     where
         'env: 'txn,
     {
-        todo!()
+        self.env.open_database(Some(name))
     }
 
     fn open_tree<'env, 'txn>(
         &'env self,
-        txn: &'txn Self::Transaction<'env>,
+        _txn: &'txn Self::Transaction<'env>,
         name: &str,
-    ) -> Result<Self::Tree<'env, 'txn>, Self::Error> {
-        todo!()
+    ) -> Result<Option<Self::Tree<'env, 'txn>>, Self::Error> {
+        self.env.open_database(Some(name))
     }
 }
 
