@@ -1,7 +1,7 @@
 use std::path::Path;
 
 use heed::types::ByteSlice;
-use nsql_storage_engine::{ReadWriteTransaction, ReadonlyTransaction, StorageEngine};
+use nsql_storage_engine::{ReadTransaction, StorageEngine, Transaction};
 
 type Db = heed::Database<ByteSlice, ByteSlice>;
 
@@ -25,9 +25,9 @@ pub struct ReadWriteTx<'env> {
 impl StorageEngine for LmdbStorageEngine {
     type Error = heed::Error;
 
-    type ReadonlyTransaction<'env> = ReadonlyTx<'env>;
+    type ReadTransaction<'env> = ReadonlyTx<'env>;
 
-    type ReadWriteTransaction<'env> = ReadWriteTx<'env>;
+    type Transaction<'env> = ReadWriteTx<'env>;
 
     #[inline]
     fn open(path: impl AsRef<Path>) -> Result<Self, Self::Error>
@@ -44,19 +44,19 @@ impl StorageEngine for LmdbStorageEngine {
     }
 
     #[inline]
-    fn begin_readonly(&self) -> Result<Self::ReadonlyTransaction<'_>, Self::Error> {
+    fn begin_readonly(&self) -> Result<Self::ReadTransaction<'_>, Self::Error> {
         let tx = self.env.read_txn()?;
         Ok(ReadonlyTx { db: self.db, tx })
     }
 
     #[inline]
-    fn begin(&self) -> std::result::Result<Self::ReadWriteTransaction<'_>, Self::Error> {
+    fn begin(&self) -> std::result::Result<Self::Transaction<'_>, Self::Error> {
         let inner = self.env.write_txn()?;
         Ok(ReadWriteTx { db: self.db, tx: inner })
     }
 }
 
-impl<'env> ReadonlyTransaction for ReadonlyTx<'env> {
+impl<'env> ReadTransaction for ReadonlyTx<'env> {
     type Error = heed::Error;
 
     #[inline]
@@ -65,7 +65,7 @@ impl<'env> ReadonlyTransaction for ReadonlyTx<'env> {
     }
 }
 
-impl<'env> ReadonlyTransaction for ReadWriteTx<'env> {
+impl<'env> ReadTransaction for ReadWriteTx<'env> {
     type Error = heed::Error;
 
     #[inline]
@@ -74,7 +74,7 @@ impl<'env> ReadonlyTransaction for ReadWriteTx<'env> {
     }
 }
 
-impl<'env> ReadWriteTransaction for ReadWriteTx<'env> {
+impl<'env> Transaction for ReadWriteTx<'env> {
     #[inline]
     fn put(&mut self, key: &[u8], value: &[u8]) -> Result<(), Self::Error> {
         self.db.put(&mut self.tx, key, value)
@@ -86,7 +86,6 @@ impl<'env> ReadWriteTransaction for ReadWriteTx<'env> {
         Ok(())
     }
 }
-
 
 #[cfg(test)]
 mod tests;

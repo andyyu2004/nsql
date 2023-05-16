@@ -1553,6 +1553,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "nsql-redb"
+version = "0.1.0"
+dependencies = [
+ "nsql-storage-engine",
+ "redb",
+]
+
+[[package]]
 name = "nsql-rkyv"
 version = "0.1.0"
 dependencies = [
@@ -1939,6 +1947,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "pyo3-build-config"
+version = "0.18.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9cb946f5ac61bb61a5014924910d936ebd2b23b705f7a4a3c40b05c720b079a3"
+dependencies = [
+ "once_cell",
+ "target-lexicon",
+]
+
+[[package]]
 name = "quick-error"
 version = "1.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2018,6 +2036,16 @@ dependencies = [
  "crossbeam-deque",
  "crossbeam-utils",
  "num_cpus",
+]
+
+[[package]]
+name = "redb"
+version = "0.17.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b7e99e0f3f90de31393b806dbe9bb0e363dd71e1066b558f007daedc276e3ce4"
+dependencies = [
+ "libc",
+ "pyo3-build-config",
 ]
 
 [[package]]
@@ -2493,6 +2521,12 @@ dependencies = [
  "papergrid",
  "unicode-width",
 ]
+
+[[package]]
+name = "target-lexicon"
+version = "0.12.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fd1ba337640d60c3e96bc6f0638a939b9c9a7f2c316a1598c279828b3d1dc8c5"
 
 [[package]]
 name = "tempfile"

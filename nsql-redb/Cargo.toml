@@ -1,0 +1,8 @@
+[package]
+name = "nsql-redb"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+nsql-storage-engine = { path = "../nsql-storage-engine" }
+redb = "0.17.0"

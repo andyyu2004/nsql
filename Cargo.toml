@@ -24,6 +24,7 @@ members = [
     "nsql-test",
     "nsql-util",
     "nsql-lmdb",
+    "nsql-redb",
     "lruk",
     "vendor/tracing-test/tracing-test",
     "vendor/tracing-test/tracing-test-macro",
