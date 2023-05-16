@@ -3,6 +3,8 @@
 use std::ops::Deref;
 use std::path::Path;
 
+use redb::ReadableTable;
+
 type Result<T, E = redb::Error> = std::result::Result<T, E>;
 
 pub struct RedbStorageEngine {
@@ -85,29 +87,25 @@ impl nsql_storage_engine::StorageEngine for RedbStorageEngine {
 impl<'env, 'txn> nsql_storage_engine::ReadTree<'env, 'txn, RedbStorageEngine>
     for redb::ReadOnlyTable<'txn, &[u8], &[u8]>
 {
+    #[inline]
     fn get(
         &self,
-        txn: &'txn <RedbStorageEngine as nsql_storage_engine::StorageEngine>::ReadTransaction<'_>,
+        txn: &'txn ReadTransaction<'_>,
         key: &[u8],
-    ) -> std::result::Result<
-        Option<&'txn [u8]>,
-        <RedbStorageEngine as nsql_storage_engine::StorageEngine>::Error,
-    > {
-        todo!()
+    ) -> Result<Option<&'txn [u8]>, redb::Error> {
+        ReadableTable::get(self, &txn.0, key)
     }
 }
 
 impl<'env, 'txn> nsql_storage_engine::ReadTree<'env, 'txn, RedbStorageEngine>
     for redb::Table<'env, 'txn, &[u8], &[u8]>
 {
+    #[inline]
     fn get(
         &self,
-        txn: &'txn <RedbStorageEngine as nsql_storage_engine::StorageEngine>::ReadTransaction<'_>,
+        txn: &'txn ReadTransaction<'_>,
         key: &[u8],
-    ) -> std::result::Result<
-        Option<&'txn [u8]>,
-        <RedbStorageEngine as nsql_storage_engine::StorageEngine>::Error,
-    > {
+    ) -> Result<Option<&'txn [u8]>, redb::Error> {
         todo!()
     }
 }
@@ -115,23 +113,20 @@ impl<'env, 'txn> nsql_storage_engine::ReadTree<'env, 'txn, RedbStorageEngine>
 impl<'env, 'txn> nsql_storage_engine::Tree<'env, 'txn, RedbStorageEngine>
     for redb::Table<'env, 'txn, &[u8], &[u8]>
 {
+    #[inline]
     fn put(
-        &self,
-        txn: &mut <RedbStorageEngine as nsql_storage_engine::StorageEngine>::Transaction<'_>,
+        &mut self,
+        _txn: &mut Transaction<'_>,
         key: &[u8],
         value: &[u8],
-    ) -> std::result::Result<(), <RedbStorageEngine as nsql_storage_engine::StorageEngine>::Error>
-    {
-        todo!()
+    ) -> Result<(), redb::Error> {
+        self.insert(key, value)?;
+        Ok(())
     }
 
-    fn delete(
-        &self,
-        txn: &mut <RedbStorageEngine as nsql_storage_engine::StorageEngine>::Transaction<'_>,
-        key: &[u8],
-    ) -> std::result::Result<(), <RedbStorageEngine as nsql_storage_engine::StorageEngine>::Error>
-    {
-        todo!()
+    #[inline]
+    fn delete(&mut self, _txn: &mut Transaction<'_>, key: &[u8]) -> Result<bool, redb::Error> {
+        Ok(self.remove(key)?.is_some())
     }
 }
 

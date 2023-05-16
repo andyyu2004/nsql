@@ -87,16 +87,20 @@ impl<'txn> ReadTree<'_, 'txn, LmdbStorageEngine> for heed::UntypedDatabase {
     }
 }
 
-impl<'txn> Tree<'_, 'txn, LmdbStorageEngine> for heed::UntypedDatabase {
+impl Tree<'_, '_, LmdbStorageEngine> for heed::UntypedDatabase {
     #[inline]
-    fn put(&self, txn: &mut ReadWriteTx<'_>, key: &[u8], value: &[u8]) -> Result<(), heed::Error> {
-        self.put(&mut txn.tx, key, value)
+    fn put(
+        &mut self,
+        txn: &mut ReadWriteTx<'_>,
+        key: &[u8],
+        value: &[u8],
+    ) -> Result<(), heed::Error> {
+        (*self).put(&mut txn.tx, key, value)
     }
 
     #[inline]
-    fn delete(&self, txn: &mut ReadWriteTx<'_>, key: &[u8]) -> Result<(), heed::Error> {
-        self.delete(&mut txn.tx, key)?;
-        Ok(())
+    fn delete(&mut self, txn: &mut ReadWriteTx<'_>, key: &[u8]) -> Result<bool, heed::Error> {
+        (*self).delete(&mut txn.tx, key)
     }
 }
 

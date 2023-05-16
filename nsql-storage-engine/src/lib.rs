@@ -55,9 +55,14 @@ pub trait ReadTree<'env, 'txn, S: StorageEngine> {
 }
 
 pub trait Tree<'env, 'txn, S: StorageEngine>: ReadTree<'env, 'txn, S> {
-    fn put(&self, txn: &mut S::Transaction<'_>, key: &[u8], value: &[u8]) -> Result<(), S::Error>;
+    fn put(
+        &mut self,
+        txn: &mut S::Transaction<'_>,
+        key: &[u8],
+        value: &[u8],
+    ) -> Result<(), S::Error>;
 
-    fn delete(&self, txn: &mut S::Transaction<'_>, key: &[u8]) -> Result<(), S::Error>;
+    fn delete(&mut self, txn: &mut S::Transaction<'_>, key: &[u8]) -> Result<bool, S::Error>;
 }
 
 pub trait ReadTransaction {
