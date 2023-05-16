@@ -1,3 +1,5 @@
+#![deny(rust_2018_idioms)]
+
 use std::path::Path;
 
 type Result<T, E = redb::Error> = std::result::Result<T, E>;

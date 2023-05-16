@@ -22,6 +22,18 @@ pub trait StorageEngine {
     fn begin(&self) -> Result<Self::Transaction<'_>, Self::Error>;
 }
 
+pub trait Database<S: StorageEngine> {
+    fn get<'tx>(
+        &self,
+        txn: &'tx S::ReadTransaction<'_>,
+        key: &[u8],
+    ) -> Result<Option<&'tx [u8]>, S::Error>;
+
+    fn put(&self, txn: &mut S::Transaction<'_>, key: &[u8], value: &[u8]) -> Result<(), S::Error>;
+
+    fn delete(&self, txn: &mut S::Transaction<'_>, key: &[u8]) -> Result<(), S::Error>;
+}
+
 pub trait ReadTransaction {
     type Error;
 

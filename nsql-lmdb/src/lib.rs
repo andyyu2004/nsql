@@ -1,24 +1,23 @@
+#![deny(rust_2018_idioms)]
 use std::path::Path;
 
-use heed::types::ByteSlice;
-use nsql_storage_engine::{ReadTransaction, StorageEngine, Transaction};
-
-type Db = heed::Database<ByteSlice, ByteSlice>;
+use heed::UntypedDatabase;
+use nsql_storage_engine::{Database, ReadTransaction, StorageEngine, Transaction};
 
 type Result<T, E = heed::Error> = std::result::Result<T, E>;
 
 pub struct LmdbStorageEngine {
     env: heed::Env,
-    db: Db,
+    db: UntypedDatabase,
 }
 
 pub struct ReadonlyTx<'env> {
-    db: Db,
+    db: UntypedDatabase,
     tx: heed::RoTxn<'env>,
 }
 
 pub struct ReadWriteTx<'env> {
-    db: Db,
+    db: UntypedDatabase,
     tx: heed::RwTxn<'env, 'env>,
 }
 
@@ -53,6 +52,25 @@ impl StorageEngine for LmdbStorageEngine {
     fn begin(&self) -> std::result::Result<Self::Transaction<'_>, Self::Error> {
         let inner = self.env.write_txn()?;
         Ok(ReadWriteTx { db: self.db, tx: inner })
+    }
+}
+
+impl Database<LmdbStorageEngine> for heed::UntypedDatabase {
+    fn get<'tx>(
+        &self,
+        txn: &'tx ReadonlyTx<'_>,
+        key: &[u8],
+    ) -> Result<Option<&'tx [u8]>, heed::Error> {
+        self.get(&txn.tx, key)
+    }
+
+    fn put(&self, txn: &mut ReadWriteTx<'_>, key: &[u8], value: &[u8]) -> Result<(), heed::Error> {
+        self.put(&mut txn.tx, key, value)
+    }
+
+    fn delete(&self, txn: &mut ReadWriteTx<'_>, key: &[u8]) -> Result<(), heed::Error> {
+        self.delete(&mut txn.tx, key)?;
+        Ok(())
     }
 }
 
