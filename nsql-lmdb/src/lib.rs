@@ -77,12 +77,14 @@ impl StorageEngine for LmdbStorageEngine {
 }
 
 impl<'txn> ReadTree<'_, 'txn, LmdbStorageEngine> for heed::UntypedDatabase {
+    type Bytes = &'txn [u8];
+
     #[inline]
     fn get(
         &self,
         txn: &'txn ReadonlyTx<'_>,
         key: &[u8],
-    ) -> Result<Option<&'txn [u8]>, heed::Error> {
+    ) -> Result<Option<Self::Bytes>, heed::Error> {
         self.get(&txn.tx, key)
     }
 }

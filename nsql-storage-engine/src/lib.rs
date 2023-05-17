@@ -1,5 +1,6 @@
 //! This crate defines the storage engine interfaces
 
+use std::ops::Deref;
 use std::path::Path;
 
 pub trait StorageEngine: Sized {
@@ -47,11 +48,13 @@ pub trait StorageEngine: Sized {
 }
 
 pub trait ReadTree<'env, 'txn, S: StorageEngine> {
+    type Bytes: Deref<Target = [u8]>;
+
     fn get(
-        &self,
+        &'txn self,
         txn: &'txn S::ReadTransaction<'_>,
         key: &[u8],
-    ) -> Result<Option<&'txn [u8]>, S::Error>;
+    ) -> Result<Option<Self::Bytes>, S::Error>;
 }
 
 pub trait Tree<'env, 'txn, S: StorageEngine>: ReadTree<'env, 'txn, S> {

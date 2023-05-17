@@ -3,7 +3,7 @@
 use std::ops::Deref;
 use std::path::Path;
 
-use redb::ReadableTable;
+use redb::{AccessGuard, ReadableTable};
 
 type Result<T, E = redb::Error> = std::result::Result<T, E>;
 
@@ -87,26 +87,41 @@ impl nsql_storage_engine::StorageEngine for RedbStorageEngine {
 impl<'env, 'txn> nsql_storage_engine::ReadTree<'env, 'txn, RedbStorageEngine>
     for redb::ReadOnlyTable<'txn, &[u8], &[u8]>
 {
+    type Bytes = AccessGuardDerefWrapper<'txn>;
+
     #[inline]
     fn get(
-        &self,
-        txn: &'txn ReadTransaction<'_>,
+        &'txn self,
+        _txn: &'txn ReadTransaction<'_>,
         key: &[u8],
-    ) -> Result<Option<&'txn [u8]>, redb::Error> {
-        ReadableTable::get(self, &txn.0, key)
+    ) -> Result<Option<Self::Bytes>, redb::Error> {
+        Ok(ReadableTable::get(self, key)?.map(AccessGuardDerefWrapper))
+    }
+}
+
+pub struct AccessGuardDerefWrapper<'a>(AccessGuard<'a, &'a [u8]>);
+
+impl<'a> Deref for AccessGuardDerefWrapper<'a> {
+    type Target = [u8];
+
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        self.0.value()
     }
 }
 
 impl<'env, 'txn> nsql_storage_engine::ReadTree<'env, 'txn, RedbStorageEngine>
     for redb::Table<'env, 'txn, &[u8], &[u8]>
 {
+    type Bytes = AccessGuardDerefWrapper<'txn>;
+
     #[inline]
     fn get(
-        &self,
-        txn: &'txn ReadTransaction<'_>,
+        &'txn self,
+        _txn: &'txn ReadTransaction<'_>,
         key: &[u8],
-    ) -> Result<Option<&'txn [u8]>, redb::Error> {
-        todo!()
+    ) -> Result<Option<Self::Bytes>, redb::Error> {
+        Ok(ReadableTable::get(self, key)?.map(AccessGuardDerefWrapper))
     }
 }
 
