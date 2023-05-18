@@ -1437,18 +1437,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "nsql-checkpoint"
-version = "0.1.0"
-dependencies = [
- "error-stack",
- "nsql-catalog",
- "nsql-pager",
- "nsql-serde",
- "nsql-storage",
- "thiserror",
-]
-
-[[package]]
 name = "nsql-core"
 version = "0.1.0"
 dependencies = [
