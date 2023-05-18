@@ -18,7 +18,7 @@ pub trait Explain<S> {
 pub(crate) fn explain_pipeline<'a, S>(
     catalog: &'a Catalog<S>,
     tx: &'a Transaction,
-    root_pipeline: &'a RootPipeline,
+    root_pipeline: &'a RootPipeline<S>,
 ) -> impl fmt::Display + 'a {
     RootPipelineExplainer { catalog, tx, root_pipeline }
 }
@@ -26,7 +26,7 @@ pub(crate) fn explain_pipeline<'a, S>(
 pub struct RootPipelineExplainer<'a, S> {
     catalog: &'a Catalog<S>,
     tx: &'a Transaction,
-    root_pipeline: &'a RootPipeline,
+    root_pipeline: &'a RootPipeline<S>,
 }
 
 impl<S: StorageEngine> RootPipelineExplainer<'_, S> {}
@@ -40,7 +40,7 @@ impl<'a, S> MetaPipelineExplainer<'a, S> {
     fn explain_meta_pipeline(
         &self,
         f: &mut fmt::Formatter<'_>,
-        meta_pipeline: Idx<MetaPipeline>,
+        meta_pipeline: Idx<MetaPipeline<S>>,
     ) -> fmt::Result {
         let arena = &self.root.root_pipeline.arena;
         writeln!(

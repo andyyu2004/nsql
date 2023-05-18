@@ -64,13 +64,8 @@ impl<S: StorageEngine> PhysicalSink<S> for PhysicalUpdate<S> {
 
         let (tuple, tid) = tuple.split_last().expect("expected tuple to be non-empty");
 
-        // We expect the tid in the rightmost column of the tuple.
-        let tid = match tid {
-            ir::Value::Tid(tid) => tid,
-            val => unreachable!("expected tid to be in the rightmost column, got {}", val.ty()),
-        };
-
-        storage.update(&tx, tid, &tuple).await.map_err(|report| report.into_error())?;
+        todo!();
+        // storage.update(&tx, tid, &tuple).await.map_err(|report| report.into_error())?;
 
         // FIXME just do the return evaluation here
         if self.returning.is_some() {

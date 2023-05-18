@@ -5,7 +5,7 @@ use tokio::task::JoinSet;
 use super::*;
 
 pub(crate) struct Executor<S> {
-    arena: PipelineArena,
+    arena: PipelineArena<S>,
     _marker: std::marker::PhantomData<S>,
 }
 
@@ -14,7 +14,7 @@ impl<S: StorageEngine> Executor<S> {
     async fn execute(
         self: Arc<Self>,
         ctx: ExecutionContext<S>,
-        root: Idx<MetaPipeline>,
+        root: Idx<MetaPipeline<S>>,
     ) -> ExecutionResult<()> {
         let mut join_set = JoinSet::new();
 
@@ -43,7 +43,7 @@ impl<S: StorageEngine> Executor<S> {
     async fn execute_pipeline(
         self: Arc<Self>,
         ctx: ExecutionContext<S>,
-        pipeline: Idx<Pipeline>,
+        pipeline: Idx<Pipeline<S>>,
     ) -> ExecutionResult<()> {
         let pipeline = &self.arena[pipeline];
         let mut done = false;
@@ -78,7 +78,7 @@ impl<S: StorageEngine> Executor<S> {
 
 async fn execute_root_pipeline<S: StorageEngine>(
     ctx: ExecutionContext<S>,
-    pipeline: RootPipeline,
+    pipeline: RootPipeline<S>,
 ) -> ExecutionResult<()> {
     let root = pipeline.arena.root();
     let executor = Arc::new(Executor { arena: pipeline.arena, _marker: std::marker::PhantomData });

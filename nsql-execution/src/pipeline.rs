@@ -5,26 +5,26 @@ pub(crate) use nsql_arena::{Arena, Idx};
 
 use crate::{PhysicalNode, PhysicalOperator, PhysicalSink, PhysicalSource};
 
-pub(crate) struct MetaPipeline {
+pub(crate) struct MetaPipeline<S> {
     pub(crate) sink: Arc<dyn PhysicalSink<S>>,
-    pub(crate) pipelines: Vec<Idx<Pipeline>>,
-    pub(crate) children: Vec<Idx<MetaPipeline>>,
+    pub(crate) pipelines: Vec<Idx<Pipeline<S>>>,
+    pub(crate) children: Vec<Idx<MetaPipeline<S>>>,
 }
 
-pub(crate) struct MetaPipelineBuilder {
+pub(crate) struct MetaPipelineBuilder<S> {
     sink: Arc<dyn PhysicalSink<S>>,
-    pipelines: Vec<Idx<PipelineBuilder>>,
-    children: Vec<Idx<MetaPipelineBuilder>>,
+    pipelines: Vec<Idx<PipelineBuilder<S>>>,
+    children: Vec<Idx<MetaPipelineBuilder<S>>>,
 }
 
-pub(crate) struct PipelineBuilderArena {
-    root: Option<Idx<MetaPipelineBuilder>>,
-    pipelines: Arena<PipelineBuilder>,
-    meta_pipelines: Arena<MetaPipelineBuilder>,
+pub(crate) struct PipelineBuilderArena<S> {
+    root: Option<Idx<MetaPipelineBuilder<S>>>,
+    pipelines: Arena<PipelineBuilder<S>>,
+    meta_pipelines: Arena<MetaPipelineBuilder<S>>,
 }
 
-impl PipelineBuilderArena {
-    pub(crate) fn new(sink: Arc<dyn PhysicalSink<S>>) -> (Self, Idx<MetaPipelineBuilder>) {
+impl<S> PipelineBuilderArena<S> {
+    pub(crate) fn new(sink: Arc<dyn PhysicalSink<S>>) -> (Self, Idx<MetaPipelineBuilder<S>>) {
         let mut builder =
             Self { pipelines: Default::default(), meta_pipelines: Default::default(), root: None };
         let root = MetaPipelineBuilder::new(&mut builder, sink);
@@ -32,7 +32,7 @@ impl PipelineBuilderArena {
         (builder, root)
     }
 
-    pub(crate) fn finish(self) -> PipelineArena {
+    pub(crate) fn finish(self) -> PipelineArena<S> {
         let pipelines = self.pipelines.into_inner().into_iter().map(|p| p.finish()).collect();
         let meta_pipelines =
             self.meta_pipelines.into_inner().into_iter().map(|p| p.finish()).collect();
@@ -43,16 +43,18 @@ impl PipelineBuilderArena {
 
 macro_rules! impl_index {
     ($name:ident . $field:ident: $idx:ident) => {
-        impl std::ops::Index<Idx<$idx>> for $name {
-            type Output = $idx;
+        impl<S> std::ops::Index<Idx<$idx<S>>> for $name<S> {
+            type Output = $idx<S>;
 
-            fn index(&self, index: Idx<$idx>) -> &Self::Output {
+            #[inline]
+            fn index(&self, index: Idx<$idx<S>>) -> &Self::Output {
                 &self.$field[index]
             }
         }
 
-        impl std::ops::IndexMut<Idx<$idx>> for $name {
-            fn index_mut(&mut self, index: Idx<$idx>) -> &mut Self::Output {
+        impl<S> std::ops::IndexMut<Idx<$idx<S>>> for $name<S> {
+            #[inline]
+            fn index_mut(&mut self, index: Idx<$idx<S>>) -> &mut Self::Output {
                 &mut self.$field[index]
             }
         }
@@ -62,24 +64,24 @@ macro_rules! impl_index {
 impl_index!(PipelineBuilderArena.pipelines: PipelineBuilder);
 impl_index!(PipelineBuilderArena.meta_pipelines: MetaPipelineBuilder);
 
-pub(crate) struct PipelineArena {
-    root: Idx<MetaPipeline>,
-    pipelines: Arena<Pipeline>,
-    meta_pipelines: Arena<MetaPipeline>,
+pub(crate) struct PipelineArena<S> {
+    root: Idx<MetaPipeline<S>>,
+    pipelines: Arena<Pipeline<S>>,
+    meta_pipelines: Arena<MetaPipeline<S>>,
 }
 
-impl PipelineArena {
+impl<S> PipelineArena<S> {
     pub(crate) fn new(
-        root: Idx<MetaPipeline>,
-        pipelines: Arena<Pipeline>,
-        meta_pipelines: Arena<MetaPipeline>,
+        root: Idx<MetaPipeline<S>>,
+        pipelines: Arena<Pipeline<S>>,
+        meta_pipelines: Arena<MetaPipeline<S>>,
     ) -> Self {
         let arena = Self { root, pipelines, meta_pipelines };
         arena.verify();
         arena
     }
 
-    pub(crate) fn root(&self) -> Idx<MetaPipeline> {
+    pub(crate) fn root(&self) -> Idx<MetaPipeline<S>> {
         self.root
     }
 
@@ -87,7 +89,7 @@ impl PipelineArena {
         self.verify_meta_pipeline(self.root);
     }
 
-    fn verify_meta_pipeline(&self, idx: Idx<MetaPipeline>) {
+    fn verify_meta_pipeline(&self, idx: Idx<MetaPipeline<S>>) {
         let meta_pipeline = &self.meta_pipelines[idx];
 
         // check that all child_meta_pipeline sinks are the source of some pipeline
@@ -114,9 +116,9 @@ impl PipelineArena {
 impl_index!(PipelineArena.pipelines: Pipeline);
 impl_index!(PipelineArena.meta_pipelines: MetaPipeline);
 
-impl MetaPipelineBuilder {
+impl<S> MetaPipelineBuilder<S> {
     pub(crate) fn new(
-        arena: &mut PipelineBuilderArena,
+        arena: &mut PipelineBuilderArena<S>,
         sink: Arc<dyn PhysicalSink<S>>,
     ) -> Idx<Self> {
         arena.meta_pipelines.alloc(Self {
@@ -126,19 +128,19 @@ impl MetaPipelineBuilder {
         })
     }
 
-    pub fn finish(self) -> MetaPipeline {
+    pub fn finish(self) -> MetaPipeline<S> {
         let pipelines = self.pipelines.iter().map(|idx| idx.cast()).collect();
         let children = self.children.iter().map(|idx| idx.cast()).collect();
         MetaPipeline { sink: self.sink, pipelines, children }
     }
 }
 
-impl PipelineBuilderArena {
+impl<S> PipelineBuilderArena<S> {
     pub(crate) fn new_child_meta_pipeline(
         &mut self,
-        parent: Idx<MetaPipelineBuilder>,
+        parent: Idx<MetaPipelineBuilder<S>>,
         sink: Arc<dyn PhysicalSink<S>>,
-    ) -> Idx<MetaPipelineBuilder> {
+    ) -> Idx<MetaPipelineBuilder<S>> {
         let child = MetaPipelineBuilder::new(self, sink);
 
         debug_assert!(
@@ -150,21 +152,25 @@ impl PipelineBuilderArena {
         child
     }
 
-    pub(crate) fn build(&mut self, idx: Idx<MetaPipelineBuilder>, node: Arc<dyn PhysicalNode<S>>) {
+    pub(crate) fn build(
+        &mut self,
+        idx: Idx<MetaPipelineBuilder<S>>,
+        node: Arc<dyn PhysicalNode<S>>,
+    ) {
         assert_eq!(self[idx].pipelines.len(), 1);
         assert!(self[idx].children.is_empty());
         node.build_pipelines(self, idx, self[idx].pipelines[0])
     }
 }
 
-pub struct Pipeline {
+pub struct Pipeline<S> {
     pub(crate) source: Arc<dyn PhysicalSource<S>>,
     /// The operators in the pipeline, ordered from source to sink.
     pub(crate) operators: Vec<Arc<dyn PhysicalOperator<S>>>,
     pub(crate) sink: Arc<dyn PhysicalSink<S>>,
 }
 
-impl Pipeline {
+impl<S> Pipeline<S> {
     /// Returns an iterator over all nodes in the pipeline starting from the source and ending at the sink.
     pub(crate) fn nodes(&self) -> impl DoubleEndedIterator<Item = &dyn PhysicalNode<S>> + '_ {
         std::iter::once(self.source.as_ref() as _)
@@ -173,13 +179,13 @@ impl Pipeline {
     }
 }
 
-pub(crate) struct PipelineBuilder {
+pub(crate) struct PipelineBuilder<S> {
     source: Option<Arc<dyn PhysicalSource<S>>>,
     operators: Vec<Arc<dyn PhysicalOperator<S>>>,
     sink: Arc<dyn PhysicalSink<S>>,
 }
 
-impl PipelineBuilder {
+impl<S> PipelineBuilder<S> {
     pub(crate) fn new(sink: Arc<dyn PhysicalSink<S>>) -> Self {
         Self { source: None, operators: vec![], sink }
     }
@@ -193,7 +199,7 @@ impl PipelineBuilder {
         self.operators.push(operator);
     }
 
-    pub(crate) fn finish(mut self) -> Pipeline {
+    pub(crate) fn finish(mut self) -> Pipeline<S> {
         // The order in which operators are added to the pipeline builder is the reverse of the execution order.
         // We add operators top down (relative to the physical plan tree) due to the pipeline building algorithm, but we need to execute the operators bottom up.
         self.operators.reverse();

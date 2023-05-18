@@ -32,7 +32,7 @@ use self::pipeline::{
 
 pub type ExecutionResult<T, E = Error> = std::result::Result<T, E>;
 
-fn build_pipelines<S>(sink: Arc<dyn PhysicalSink<S>>, plan: PhysicalPlan<S>) -> RootPipeline {
+fn build_pipelines<S>(sink: Arc<dyn PhysicalSink<S>>, plan: PhysicalPlan<S>) -> RootPipeline<S> {
     let (mut builder, root_meta_pipeline) = PipelineBuilderArena::new(sink);
     builder.build(root_meta_pipeline, plan.root());
     let arena = builder.finish();
@@ -52,9 +52,9 @@ trait PhysicalNode<S>: Send + Sync + Explain<S> + Any + 'static {
 
     fn build_pipelines(
         self: Arc<Self>,
-        arena: &mut PipelineBuilderArena,
-        meta_builder: Idx<MetaPipelineBuilder>,
-        current: Idx<PipelineBuilder>,
+        arena: &mut PipelineBuilderArena<S>,
+        meta_builder: Idx<MetaPipelineBuilder<S>>,
+        current: Idx<PipelineBuilder<S>>,
     ) {
         match self.as_sink() {
             Ok(sink) => {
@@ -200,6 +200,6 @@ impl<S: StorageEngine> ExecutionContext<S> {
     }
 }
 
-struct RootPipeline {
-    arena: PipelineArena,
+struct RootPipeline<S> {
+    arena: PipelineArena<S>,
 }
