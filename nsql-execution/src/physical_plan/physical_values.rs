@@ -9,14 +9,14 @@ pub struct PhysicalValues {
 }
 
 impl PhysicalValues {
-    pub(crate) fn plan(values: ir::Values) -> Arc<dyn PhysicalNode<S>> {
+    pub(crate) fn plan<S>(values: ir::Values) -> Arc<dyn PhysicalNode<S>> {
         Arc::new(PhysicalValues { values, index: AtomicUsize::new(0) })
     }
 }
 
 #[async_trait::async_trait]
-impl PhysicalSource for PhysicalValues {
-    async fn source(&self, _ctx: &ExecutionContext) -> ExecutionResult<SourceState<Chunk>> {
+impl<S> PhysicalSource<S> for PhysicalValues {
+    async fn source(&self, _ctx: &ExecutionContext<S>) -> ExecutionResult<SourceState<Chunk>> {
         let index = self.index.fetch_add(1, atomic::Ordering::SeqCst);
         if index >= self.values.len() {
             return Ok(SourceState::Done);
@@ -30,19 +30,23 @@ impl PhysicalSource for PhysicalValues {
     }
 }
 
-impl PhysicalNode<S> for PhysicalValues {
+impl<S> PhysicalNode<S> for PhysicalValues<S> {
+    #[inline]
     fn children(&self) -> &[Arc<dyn PhysicalNode<S>>] {
         &[]
     }
 
+    #[inline]
     fn as_source(self: Arc<Self>) -> Result<Arc<dyn PhysicalSource<S>>, Arc<dyn PhysicalNode<S>>> {
         Ok(self)
     }
 
+    #[inline]
     fn as_sink(self: Arc<Self>) -> Result<Arc<dyn PhysicalSink<S>>, Arc<dyn PhysicalNode<S>>> {
         Err(self)
     }
 
+    #[inline]
     fn as_operator(
         self: Arc<Self>,
     ) -> Result<Arc<dyn PhysicalOperator<S>>, Arc<dyn PhysicalNode<S>>> {
@@ -50,10 +54,10 @@ impl PhysicalNode<S> for PhysicalValues {
     }
 }
 
-impl Explain for PhysicalValues {
+impl<S> Explain<S> for PhysicalValues {
     fn explain(
         &self,
-        _catalog: &Catalog,
+        _catalog: &Catalog<S>,
         _tx: &Transaction,
         f: &mut fmt::Formatter<'_>,
     ) -> explain::Result {

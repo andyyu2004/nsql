@@ -3,20 +3,20 @@ use super::*;
 #[derive(Debug)]
 pub struct PhysicalDummyScan;
 
-impl PhysicalDummyScan {
+impl<S> PhysicalDummyScan {
     pub(crate) fn plan() -> Arc<dyn PhysicalNode<S>> {
         Arc::new(Self)
     }
 }
 
 #[async_trait::async_trait]
-impl PhysicalSource for PhysicalDummyScan {
-    async fn source(&self, _ctx: &ExecutionContext) -> ExecutionResult<SourceState<Chunk>> {
+impl<S> PhysicalSource<S> for PhysicalDummyScan {
+    async fn source(&self, _ctx: &ExecutionContext<S>) -> ExecutionResult<SourceState<Chunk>> {
         Ok(SourceState::Final(Chunk::singleton(Tuple::empty())))
     }
 }
 
-impl PhysicalNode<S> for PhysicalDummyScan {
+impl<S> PhysicalNode<S> for PhysicalDummyScan {
     fn children(&self) -> &[Arc<dyn PhysicalNode<S>>] {
         &[]
     }
@@ -36,10 +36,10 @@ impl PhysicalNode<S> for PhysicalDummyScan {
     }
 }
 
-impl Explain for PhysicalDummyScan {
+impl<S> Explain<S> for PhysicalDummyScan {
     fn explain(
         &self,
-        _catalog: &Catalog,
+        _catalog: &Catalog<S>,
         _tx: &Transaction,
         f: &mut fmt::Formatter<'_>,
     ) -> explain::Result {

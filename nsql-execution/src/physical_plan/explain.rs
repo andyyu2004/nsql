@@ -9,32 +9,33 @@ use crate::{PhysicalNode, RootPipeline};
 
 pub type Result<T = ()> = std::result::Result<T, fmt::Error>;
 
-pub trait Explain {
-    fn explain(&self, catalog: &Catalog, tx: &Transaction, f: &mut fmt::Formatter<'_>) -> Result;
+pub trait Explain<S> {
+    fn explain(&self, catalog: &Catalog<S>, tx: &Transaction, f: &mut fmt::Formatter<'_>)
+    -> Result;
 }
 
-pub(crate) fn explain_pipeline<'a>(
-    catalog: &'a Catalog,
+pub(crate) fn explain_pipeline<'a, S>(
+    catalog: &'a Catalog<S>,
     tx: &'a Transaction,
     root_pipeline: &'a RootPipeline,
 ) -> impl fmt::Display + 'a {
     RootPipelineExplainer { catalog, tx, root_pipeline }
 }
 
-pub struct RootPipelineExplainer<'a> {
-    catalog: &'a Catalog,
+pub struct RootPipelineExplainer<'a, S> {
+    catalog: &'a Catalog<S>,
     tx: &'a Transaction,
     root_pipeline: &'a RootPipeline,
 }
 
-impl RootPipelineExplainer<'_> {}
+impl<S> RootPipelineExplainer<'_, S> {}
 
-pub struct MetaPipelineExplainer<'a> {
-    root: &'a RootPipelineExplainer<'a>,
+pub struct MetaPipelineExplainer<'a, S> {
+    root: &'a RootPipelineExplainer<'a, S>,
     indent: usize,
 }
 
-impl<'a> MetaPipelineExplainer<'a> {
+impl<'a, S> MetaPipelineExplainer<'a, S> {
     fn explain_meta_pipeline(
         &self,
         f: &mut fmt::Formatter<'_>,
@@ -76,35 +77,35 @@ impl<'a> MetaPipelineExplainer<'a> {
     }
 }
 
-impl fmt::Display for RootPipelineExplainer<'_> {
+impl<S> fmt::Display for RootPipelineExplainer<'_, S> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         MetaPipelineExplainer { root: self, indent: 0 }
             .explain_meta_pipeline(f, self.root_pipeline.arena.root())
     }
 }
 
-pub(crate) fn explain<'a>(
-    catalog: &'a Catalog,
+pub(crate) fn explain<'a, S>(
+    catalog: &'a Catalog<S>,
     tx: &'a Transaction,
     node: &'a dyn PhysicalNode<S>,
 ) -> impl fmt::Display + 'a {
     PhysicalNodeExplainer { catalog, tx, node, indent: 0 }
 }
 
-pub struct PhysicalNodeExplainer<'a> {
-    catalog: &'a Catalog,
+pub struct PhysicalNodeExplainer<'a, S> {
+    catalog: &'a Catalog<S>,
     tx: &'a Transaction,
     node: &'a dyn PhysicalNode<S>,
     indent: usize,
 }
 
-impl<'a> PhysicalNodeExplainer<'a> {
-    fn explain_child(&self, node: &'a dyn PhysicalNode<S>) -> PhysicalNodeExplainer<'_> {
+impl<'a, S> PhysicalNodeExplainer<'a, S> {
+    fn explain_child(&self, node: &'a dyn PhysicalNode<S>) -> PhysicalNodeExplainer<'_, S> {
         PhysicalNodeExplainer { catalog: self.catalog, tx: self.tx, node, indent: self.indent + 2 }
     }
 }
 
-impl fmt::Display for PhysicalNodeExplainer<'_> {
+impl<S> fmt::Display for PhysicalNodeExplainer<'_, S> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{:indent$}", "", indent = self.indent)?;
         self.node.explain(self.catalog, self.tx, f)?;

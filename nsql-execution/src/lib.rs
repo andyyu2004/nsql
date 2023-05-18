@@ -31,14 +31,14 @@ use self::pipeline::{
 
 pub type ExecutionResult<T, E = Error> = std::result::Result<T, E>;
 
-fn build_pipelines<S>(sink: Arc<dyn PhysicalSink<S>>, plan: PhysicalPlan) -> RootPipeline {
+fn build_pipelines<S>(sink: Arc<dyn PhysicalSink<S>>, plan: PhysicalPlan<S>) -> RootPipeline {
     let (mut builder, root_meta_pipeline) = PipelineBuilderArena::new(sink);
     builder.build(root_meta_pipeline, plan.root());
     let arena = builder.finish();
     RootPipeline { arena }
 }
 
-trait PhysicalNode<S>: Send + Sync + fmt::Debug + Explain + Any + 'static {
+trait PhysicalNode<S>: Send + Sync + fmt::Debug + Explain<S> + Any + 'static {
     fn children(&self) -> &[Arc<dyn PhysicalNode<S>>];
 
     fn as_source(self: Arc<Self>) -> Result<Arc<dyn PhysicalSource<S>>, Arc<dyn PhysicalNode<S>>>;
@@ -166,9 +166,9 @@ pub struct ExecutionContext<S> {
     tx: Arc<Transaction>,
 }
 
-impl ExecutionContext {
+impl<S> ExecutionContext<S> {
     #[inline]
-    pub fn new(pool: Arc<dyn Pool>, catalog: Arc<Catalog>, tx: Arc<Transaction>) -> Self {
+    pub fn new(pool: Arc<dyn Pool>, catalog: Arc<Catalog<S>>, tx: Arc<Transaction>) -> Self {
         Self { pool, catalog, tx }
     }
 
@@ -183,7 +183,7 @@ impl ExecutionContext {
     }
 
     #[inline]
-    pub fn catalog(&self) -> Arc<Catalog> {
+    pub fn catalog(&self) -> Arc<Catalog<S>> {
         Arc::clone(&self.catalog)
     }
 }

@@ -9,12 +9,12 @@ pub struct PhysicalShow {
 }
 
 impl PhysicalShow {
-    pub(crate) fn plan(show: ir::ObjectType) -> Arc<dyn PhysicalNode<S>> {
+    pub(crate) fn plan<S>(show: ir::ObjectType) -> Arc<dyn PhysicalNode<S>> {
         Arc::new(Self { show })
     }
 }
 
-impl PhysicalNode<S> for PhysicalShow {
+impl<S> PhysicalNode<S> for PhysicalShow {
     fn children(&self) -> &[Arc<dyn PhysicalNode<S>>] {
         &[]
     }
@@ -35,8 +35,8 @@ impl PhysicalNode<S> for PhysicalShow {
 }
 
 #[async_trait::async_trait]
-impl PhysicalSource for PhysicalShow {
-    async fn source(&self, ctx: &ExecutionContext) -> ExecutionResult<SourceState<Chunk>> {
+impl<S> PhysicalSource<S> for PhysicalShow {
+    async fn source(&self, ctx: &ExecutionContext<S>) -> ExecutionResult<SourceState<Chunk>> {
         let catalog = ctx.catalog();
         let tx = ctx.tx();
         let mut tuples = vec![];
@@ -55,10 +55,10 @@ impl PhysicalSource for PhysicalShow {
     }
 }
 
-impl Explain for PhysicalShow {
+impl<S> Explain<S> for PhysicalShow {
     fn explain(
         &self,
-        _catalog: &Catalog,
+        _catalog: &Catalog<S>,
         _tx: &Transaction,
         f: &mut fmt::Formatter<'_>,
     ) -> explain::Result {

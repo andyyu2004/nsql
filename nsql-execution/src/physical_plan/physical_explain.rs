@@ -4,12 +4,12 @@ use nsql_storage::value::Value;
 use super::*;
 
 #[derive(Debug)]
-pub struct PhysicalExplain {
+pub struct PhysicalExplain<S> {
     stringified_plan: AtomicTake<String>,
     children: [Arc<dyn PhysicalNode<S>>; 1],
 }
 
-impl PhysicalExplain {
+impl<S> PhysicalExplain<S> {
     #[inline]
     pub(crate) fn plan(
         stringified_plan: String,
@@ -19,7 +19,7 @@ impl PhysicalExplain {
     }
 }
 
-impl PhysicalNode<S> for PhysicalExplain {
+impl<S> PhysicalNode<S> for PhysicalExplain<S> {
     fn children(&self) -> &[Arc<dyn PhysicalNode<S>>] {
         // no children as we don't actually need to run anything (unless we're doing an analyse which is not implemented)
         &[]
@@ -41,17 +41,17 @@ impl PhysicalNode<S> for PhysicalExplain {
 }
 
 #[async_trait::async_trait]
-impl PhysicalSource for PhysicalExplain {
-    async fn source(&self, _ctx: &ExecutionContext) -> ExecutionResult<SourceState<Chunk>> {
+impl<S> PhysicalSource<S> for PhysicalExplain<S> {
+    async fn source(&self, _ctx: &ExecutionContext<S>) -> ExecutionResult<SourceState<Chunk>> {
         let plan = self.stringified_plan.take().expect("should not be called again");
         Ok(SourceState::Final(Chunk::singleton(Tuple::from(vec![Value::Text(plan)]))))
     }
 }
 
-impl Explain for PhysicalExplain {
+impl<S> Explain<S> for PhysicalExplain<S> {
     fn explain(
         &self,
-        _catalog: &Catalog,
+        _catalog: &Catalog<S>,
         _tx: &Transaction,
         _f: &mut fmt::Formatter<'_>,
     ) -> explain::Result {

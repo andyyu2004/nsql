@@ -3,17 +3,17 @@ use nsql_catalog::EntityRef;
 use super::*;
 
 #[derive(Debug)]
-pub struct PhysicalDrop {
-    refs: Vec<ir::EntityRef>,
+pub struct PhysicalDrop<S> {
+    refs: Vec<ir::EntityRef<S>>,
 }
 
-impl PhysicalDrop {
-    pub(crate) fn plan(refs: Vec<ir::EntityRef>) -> Arc<dyn PhysicalNode<S>> {
+impl<S> PhysicalDrop<S> {
+    pub(crate) fn plan(refs: Vec<ir::EntityRef<S>>) -> Arc<dyn PhysicalNode<S>> {
         Arc::new(Self { refs })
     }
 }
 
-impl PhysicalNode<S> for PhysicalDrop {
+impl<S> PhysicalNode<S> for PhysicalDrop<S> {
     fn children(&self) -> &[Arc<dyn PhysicalNode<S>>] {
         &[]
     }
@@ -34,8 +34,8 @@ impl PhysicalNode<S> for PhysicalDrop {
 }
 
 #[async_trait::async_trait]
-impl PhysicalSource for PhysicalDrop {
-    async fn source(&self, ctx: &ExecutionContext) -> ExecutionResult<SourceState<Chunk>> {
+impl<S> PhysicalSource<S> for PhysicalDrop<S> {
+    async fn source(&self, ctx: &ExecutionContext<S>) -> ExecutionResult<SourceState<Chunk>> {
         let tx = ctx.tx();
         let catalog = ctx.catalog();
         for entity_ref in &self.refs {
@@ -48,10 +48,10 @@ impl PhysicalSource for PhysicalDrop {
     }
 }
 
-impl Explain for PhysicalDrop {
+impl<S> Explain<S> for PhysicalDrop<S> {
     fn explain(
         &self,
-        catalog: &Catalog,
+        catalog: &Catalog<S>,
         tx: &Transaction,
         f: &mut fmt::Formatter<'_>,
     ) -> explain::Result {

@@ -6,12 +6,12 @@ pub struct PhysicalTransaction {
 }
 
 impl PhysicalTransaction {
-    pub(crate) fn plan(kind: ir::TransactionKind) -> Arc<dyn PhysicalNode<S>> {
+    pub(crate) fn plan<S>(kind: ir::TransactionKind) -> Arc<dyn PhysicalNode<S>> {
         Arc::new(Self { kind })
     }
 }
 
-impl PhysicalNode<S> for PhysicalTransaction {
+impl<S> PhysicalNode<S> for PhysicalTransaction {
     fn children(&self) -> &[Arc<dyn PhysicalNode<S>>] {
         &[]
     }
@@ -32,8 +32,8 @@ impl PhysicalNode<S> for PhysicalTransaction {
 }
 
 #[async_trait::async_trait]
-impl PhysicalSource for PhysicalTransaction {
-    async fn source(&self, ctx: &ExecutionContext) -> ExecutionResult<SourceState<Chunk>> {
+impl<S> PhysicalSource<S> for PhysicalTransaction {
+    async fn source(&self, ctx: &ExecutionContext<S>) -> ExecutionResult<SourceState<Chunk>> {
         let tx = ctx.tx();
         match self.kind {
             ir::TransactionKind::Begin => {
@@ -63,10 +63,10 @@ impl PhysicalSource for PhysicalTransaction {
     }
 }
 
-impl Explain for PhysicalTransaction {
+impl<S> Explain<S> for PhysicalTransaction {
     fn explain(
         &self,
-        _catalog: &Catalog,
+        _catalog: &Catalog<S>,
         _tx: &Transaction,
         f: &mut fmt::Formatter<'_>,
     ) -> explain::Result {

@@ -6,17 +6,17 @@ use parking_lot::RwLock;
 use super::*;
 
 #[derive(Debug)]
-pub(crate) struct PhysicalInsert {
+pub(crate) struct PhysicalInsert<S> {
     children: [Arc<dyn PhysicalNode<S>>; 1],
-    table_ref: ir::TableRef,
+    table_ref: ir::TableRef<S>,
     returning: Option<Box<[ir::Expr]>>,
     returning_tuples: RwLock<VecDeque<Tuple>>,
     returning_evaluator: Evaluator,
 }
 
-impl PhysicalInsert {
+impl<S> PhysicalInsert<S> {
     pub fn plan(
-        table_ref: ir::TableRef,
+        table_ref: ir::TableRef<S>,
         source: Arc<dyn PhysicalNode<S>>,
         returning: Option<Box<[ir::Expr]>>,
     ) -> Arc<dyn PhysicalNode<S>> {
@@ -30,7 +30,7 @@ impl PhysicalInsert {
     }
 }
 
-impl PhysicalNode<S> for PhysicalInsert {
+impl<S> PhysicalNode<S> for PhysicalInsert<S> {
     fn children(&self) -> &[Arc<dyn PhysicalNode<S>>] {
         &self.children
     }
@@ -51,8 +51,8 @@ impl PhysicalNode<S> for PhysicalInsert {
 }
 
 #[async_trait::async_trait]
-impl PhysicalSink for PhysicalInsert {
-    async fn sink(&self, ctx: &ExecutionContext, tuple: Tuple) -> ExecutionResult<()> {
+impl<S> PhysicalSink<S> for PhysicalInsert<S> {
+    async fn sink(&self, ctx: &ExecutionContext<S>, tuple: Tuple) -> ExecutionResult<()> {
         let tx = ctx.tx();
         let table = self.table_ref.get(&ctx.catalog(), &tx);
         let storage = table.storage();
@@ -68,9 +68,9 @@ impl PhysicalSink for PhysicalInsert {
 }
 
 #[async_trait::async_trait]
-impl PhysicalSource for PhysicalInsert {
+impl<S> PhysicalSource<S> for PhysicalInsert<S> {
     #[inline]
-    async fn source(&self, _ctx: &ExecutionContext) -> ExecutionResult<SourceState<Chunk>> {
+    async fn source(&self, _ctx: &ExecutionContext<S>) -> ExecutionResult<SourceState<Chunk>> {
         let returning = match &self.returning {
             Some(returning) => returning,
             None => return Ok(SourceState::Done),
@@ -87,10 +87,10 @@ impl PhysicalSource for PhysicalInsert {
     }
 }
 
-impl Explain for PhysicalInsert {
+impl<S> Explain<S> for PhysicalInsert<S> {
     fn explain(
         &self,
-        catalog: &Catalog,
+        catalog: &Catalog<S>,
         tx: &Transaction,
         f: &mut fmt::Formatter<'_>,
     ) -> explain::Result {

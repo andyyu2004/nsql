@@ -3,13 +3,13 @@ use itertools::Itertools;
 use super::*;
 
 #[derive(Debug)]
-pub struct PhysicalProjection {
+pub struct PhysicalProjection<S> {
     children: [Arc<dyn PhysicalNode<S>>; 1],
     projection: Box<[ir::Expr]>,
     evaluator: Evaluator,
 }
 
-impl PhysicalProjection {
+impl<S> PhysicalProjection<S> {
     pub(crate) fn plan(
         source: Arc<dyn PhysicalNode<S>>,
         projection: Box<[ir::Expr]>,
@@ -19,11 +19,11 @@ impl PhysicalProjection {
 }
 
 #[async_trait::async_trait]
-impl PhysicalOperator for PhysicalProjection {
+impl<S> PhysicalOperator<S> for PhysicalProjection<S> {
     #[tracing::instrument(skip(self, _ctx, input))]
     async fn execute(
         &self,
-        _ctx: &ExecutionContext,
+        _ctx: &ExecutionContext<S>,
         input: Tuple,
     ) -> ExecutionResult<OperatorState<Tuple>> {
         let output = self.evaluator.evaluate(&input, &self.projection);
@@ -32,7 +32,7 @@ impl PhysicalOperator for PhysicalProjection {
     }
 }
 
-impl PhysicalNode<S> for PhysicalProjection {
+impl<S> PhysicalNode<S> for PhysicalProjection<S> {
     fn children(&self) -> &[Arc<dyn PhysicalNode<S>>] {
         &self.children
     }
@@ -52,10 +52,10 @@ impl PhysicalNode<S> for PhysicalProjection {
     }
 }
 
-impl Explain for PhysicalProjection {
+impl<S> Explain<S> for PhysicalProjection<S> {
     fn explain(
         &self,
-        _catalog: &Catalog,
+        _catalog: &Catalog<S>,
         _tx: &Transaction,
         f: &mut fmt::Formatter<'_>,
     ) -> explain::Result {

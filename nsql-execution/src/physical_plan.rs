@@ -42,32 +42,32 @@ use crate::{
     PhysicalOperator, PhysicalSink, PhysicalSource, SourceState, Tuple,
 };
 
-pub struct PhysicalPlanner {
+pub struct PhysicalPlanner<S> {
     tx: Arc<Transaction>,
-    catalog: Arc<Catalog>,
+    catalog: Arc<Catalog<S>>,
 }
 
 /// Opaque physical plan that is ready to be executed
 #[derive(Debug)]
-pub struct PhysicalPlan(Arc<dyn PhysicalNode<S>>);
+pub struct PhysicalPlan<S>(Arc<dyn PhysicalNode<S>>);
 
-impl PhysicalPlan {
+impl<S> PhysicalPlan<S> {
     pub(crate) fn root(&self) -> Arc<dyn PhysicalNode<S>> {
         Arc::clone(&self.0)
     }
 }
 
-impl PhysicalPlanner {
-    pub fn new(catalog: Arc<Catalog>, tx: Arc<Transaction>) -> Self {
+impl<S> PhysicalPlanner<S> {
+    pub fn new(catalog: Arc<Catalog<S>>, tx: Arc<Transaction>) -> Self {
         Self { tx, catalog }
     }
 
-    pub fn plan(&self, plan: Box<Plan>) -> Result<PhysicalPlan> {
+    pub fn plan(&self, plan: Box<Plan<S>>) -> Result<PhysicalPlan<S>> {
         self.plan_node(plan).map(PhysicalPlan)
     }
 
     #[allow(clippy::boxed_local)]
-    fn plan_node(&self, plan: Box<Plan>) -> Result<Arc<dyn PhysicalNode<S>>> {
+    fn plan_node(&self, plan: Box<Plan<S>>) -> Result<Arc<dyn PhysicalNode<S>>> {
         let plan = match *plan {
             Plan::Transaction(kind) => PhysicalTransaction::plan(kind),
             Plan::CreateTable(info) => PhysicalCreateTable::plan(info),

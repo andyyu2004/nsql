@@ -3,23 +3,23 @@ use std::sync::atomic::{self, AtomicU64};
 use super::*;
 
 #[derive(Debug)]
-pub struct PhysicalLimit {
+pub struct PhysicalLimit<S> {
     children: [Arc<dyn PhysicalNode<S>>; 1],
     yielded: AtomicU64,
     limit: u64,
 }
 
-impl PhysicalLimit {
+impl<S> PhysicalLimit<S> {
     pub(crate) fn plan(source: Arc<dyn PhysicalNode<S>>, limit: u64) -> Arc<dyn PhysicalNode<S>> {
         Arc::new(Self { children: [source], limit, yielded: AtomicU64::new(0) })
     }
 }
 
 #[async_trait::async_trait]
-impl PhysicalOperator for PhysicalLimit {
+impl<S> PhysicalOperator<S> for PhysicalLimit<S> {
     async fn execute(
         &self,
-        _ctx: &ExecutionContext,
+        _ctx: &ExecutionContext<S>,
         input: Tuple,
     ) -> ExecutionResult<OperatorState<Tuple>> {
         if self.yielded.fetch_add(1, atomic::Ordering::AcqRel) >= self.limit {
@@ -30,7 +30,7 @@ impl PhysicalOperator for PhysicalLimit {
     }
 }
 
-impl PhysicalNode<S> for PhysicalLimit {
+impl<S> PhysicalNode<S> for PhysicalLimit<S> {
     fn children(&self) -> &[Arc<dyn PhysicalNode<S>>] {
         &self.children
     }
@@ -50,10 +50,10 @@ impl PhysicalNode<S> for PhysicalLimit {
     }
 }
 
-impl Explain for PhysicalLimit {
+impl<S> Explain<S> for PhysicalLimit<S> {
     fn explain(
         &self,
-        _catalog: &Catalog,
+        _catalog: &Catalog<S>,
         _tx: &Transaction,
         f: &mut fmt::Formatter<'_>,
     ) -> explain::Result {

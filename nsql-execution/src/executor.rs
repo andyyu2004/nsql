@@ -87,7 +87,7 @@ async fn execute_root_pipeline<S>(
 
 pub async fn execute<S>(
     ctx: ExecutionContext<S>,
-    plan: PhysicalPlan,
+    plan: PhysicalPlan<S>,
 ) -> ExecutionResult<Vec<Tuple>> {
     let sink = Arc::new(OutputSink::default());
     let root_pipeline = build_pipelines(Arc::clone(&sink) as Arc<dyn PhysicalSink<S>>, plan);
@@ -137,7 +137,7 @@ impl<S> PhysicalSink<S> for OutputSink {
     }
 }
 
-impl<S: StorageEngine> Explain for OutputSink {
+impl<S: StorageEngine> Explain<S> for OutputSink {
     fn explain(
         &self,
         _catalog: &Catalog<S>,

@@ -5,17 +5,17 @@ use nsql_storage::{TableStorage, TableStorageInfo};
 use super::*;
 
 #[derive(Debug)]
-pub struct PhysicalCreateTable {
-    info: ir::CreateTableInfo,
+pub struct PhysicalCreateTable<S> {
+    info: ir::CreateTableInfo<S>,
 }
 
-impl PhysicalCreateTable {
-    pub(crate) fn plan(info: ir::CreateTableInfo) -> Arc<dyn PhysicalNode<S>> {
+impl<S> PhysicalCreateTable<S> {
+    pub(crate) fn plan(info: ir::CreateTableInfo<S>) -> Arc<dyn PhysicalNode<S>> {
         Arc::new(Self { info })
     }
 }
 
-impl PhysicalNode<S> for PhysicalCreateTable {
+impl<S> PhysicalNode<S> for PhysicalCreateTable<S> {
     fn children(&self) -> &[Arc<dyn PhysicalNode<S>>] {
         &[]
     }
@@ -36,8 +36,8 @@ impl PhysicalNode<S> for PhysicalCreateTable {
 }
 
 #[async_trait::async_trait]
-impl PhysicalSource for PhysicalCreateTable {
-    async fn source(&self, ctx: &ExecutionContext) -> ExecutionResult<SourceState<Chunk>> {
+impl<S> PhysicalSource<S> for PhysicalCreateTable<S> {
+    async fn source(&self, ctx: &ExecutionContext<S>) -> ExecutionResult<SourceState<Chunk>> {
         let attrs = self
             .info
             .columns
@@ -71,10 +71,10 @@ impl PhysicalSource for PhysicalCreateTable {
     }
 }
 
-impl Explain for PhysicalCreateTable {
+impl<S> Explain<S> for PhysicalCreateTable<S> {
     fn explain(
         &self,
-        _catalog: &Catalog,
+        _catalog: &Catalog<S>,
         _tx: &Transaction,
         f: &mut fmt::Formatter<'_>,
     ) -> explain::Result {

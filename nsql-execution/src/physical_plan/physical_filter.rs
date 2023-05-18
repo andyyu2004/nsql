@@ -1,13 +1,13 @@
 use super::*;
 
 #[derive(Debug)]
-pub struct PhysicalFilter {
+pub struct PhysicalFilter<S> {
     children: [Arc<dyn PhysicalNode<S>>; 1],
     predicate: ir::Expr,
     evaluator: Evaluator,
 }
 
-impl PhysicalFilter {
+impl<S> PhysicalFilter<S> {
     pub(crate) fn plan(
         source: Arc<dyn PhysicalNode<S>>,
         predicate: ir::Expr,
@@ -17,11 +17,11 @@ impl PhysicalFilter {
 }
 
 #[async_trait::async_trait]
-impl PhysicalOperator for PhysicalFilter {
+impl<S> PhysicalOperator<S> for PhysicalFilter<S> {
     #[tracing::instrument(skip(self, _ctx, input))]
     async fn execute(
         &self,
-        _ctx: &ExecutionContext,
+        _ctx: &ExecutionContext<S>,
         input: Tuple,
     ) -> ExecutionResult<OperatorState<Tuple>> {
         let value = self.evaluator.evaluate_expr(&input, &self.predicate);
@@ -35,7 +35,7 @@ impl PhysicalOperator for PhysicalFilter {
     }
 }
 
-impl PhysicalNode<S> for PhysicalFilter {
+impl<S> PhysicalNode<S> for PhysicalFilter<S> {
     fn children(&self) -> &[Arc<dyn PhysicalNode<S>>] {
         &self.children
     }
@@ -55,10 +55,10 @@ impl PhysicalNode<S> for PhysicalFilter {
     }
 }
 
-impl Explain for PhysicalFilter {
+impl<S> Explain<S> for PhysicalFilter<S> {
     fn explain(
         &self,
-        _catalog: &Catalog,
+        _catalog: &Catalog<S>,
         _tx: &Transaction,
         f: &mut fmt::Formatter<'_>,
     ) -> explain::Result {

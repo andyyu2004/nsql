@@ -10,9 +10,9 @@ use tokio::sync::{Mutex, OnceCell};
 
 use super::*;
 
-pub struct PhysicalTableScan {
-    table_ref: ir::TableRef,
-    table: OnceLock<Arc<Table>>,
+pub struct PhysicalTableScan<S> {
+    table_ref: ir::TableRef<S>,
+    table: OnceLock<Arc<Table<S>>>,
     projection: Option<Box<[ColumnIndex]>>,
     current_batch: Mutex<Vec<Tuple>>,
     current_batch_index: AtomicUsize,
@@ -23,7 +23,7 @@ pub struct PhysicalTableScan {
 
 type TupleStream = Pin<Box<dyn Stream<Item = nsql_buffer::Result<Vec<Tuple>>> + Send>>;
 
-impl fmt::Debug for PhysicalTableScan {
+impl<S> fmt::Debug for PhysicalTableScan<S> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("PhysicalTableScan")
             .field("table_ref", &self.table_ref)
@@ -32,9 +32,9 @@ impl fmt::Debug for PhysicalTableScan {
     }
 }
 
-impl PhysicalTableScan {
+impl<S> PhysicalTableScan<S> {
     pub(crate) fn plan(
-        table_ref: ir::TableRef,
+        table_ref: ir::TableRef<S>,
         projection: Option<Box<[ColumnIndex]>>,
     ) -> Arc<dyn PhysicalNode<S>> {
         Arc::new(Self {
@@ -49,9 +49,9 @@ impl PhysicalTableScan {
 }
 
 #[async_trait::async_trait]
-impl PhysicalSource for PhysicalTableScan {
+impl<S> PhysicalSource<S> for PhysicalTableScan<S> {
     #[tracing::instrument(skip(self, ctx))]
-    async fn source(&self, ctx: &ExecutionContext) -> ExecutionResult<SourceState<Chunk>> {
+    async fn source(&self, ctx: &ExecutionContext<S>) -> ExecutionResult<SourceState<Chunk>> {
         let tx = ctx.tx();
         let table = self.table.get_or_try_init(|| {
             let namespace = ctx.catalog.get(&tx, self.table_ref.namespace).unwrap();
@@ -91,7 +91,7 @@ impl PhysicalSource for PhysicalTableScan {
     }
 }
 
-impl PhysicalNode<S> for PhysicalTableScan {
+impl<S> PhysicalNode<S> for PhysicalTableScan<S> {
     fn children(&self) -> &[Arc<dyn PhysicalNode<S>>] {
         &[]
     }
@@ -111,10 +111,10 @@ impl PhysicalNode<S> for PhysicalTableScan {
     }
 }
 
-impl Explain for PhysicalTableScan {
+impl<S> Explain<S> for PhysicalTableScan<S> {
     fn explain(
         &self,
-        catalog: &Catalog,
+        catalog: &Catalog<S>,
         tx: &Transaction,
         f: &mut fmt::Formatter<'_>,
     ) -> explain::Result {

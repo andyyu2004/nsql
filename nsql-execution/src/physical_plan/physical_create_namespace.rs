@@ -11,12 +11,12 @@ pub struct PhysicalCreateNamespace {
 }
 
 impl PhysicalCreateNamespace {
-    pub(crate) fn plan(info: ir::CreateNamespaceInfo) -> Arc<dyn PhysicalNode<S>> {
+    pub(crate) fn plan<S>(info: ir::CreateNamespaceInfo) -> Arc<dyn PhysicalNode<S>> {
         Arc::new(Self { info })
     }
 }
 
-impl PhysicalNode<S> for PhysicalCreateNamespace {
+impl<S> PhysicalNode<S> for PhysicalCreateNamespace {
     fn children(&self) -> &[Arc<dyn PhysicalNode<S>>] {
         &[]
     }
@@ -37,8 +37,8 @@ impl PhysicalNode<S> for PhysicalCreateNamespace {
 }
 
 #[async_trait::async_trait]
-impl PhysicalSource for PhysicalCreateNamespace {
-    async fn source(&self, ctx: &ExecutionContext) -> ExecutionResult<SourceState<Chunk>> {
+impl<S> PhysicalSource<S> for PhysicalCreateNamespace {
+    async fn source(&self, ctx: &ExecutionContext<S>) -> ExecutionResult<SourceState<Chunk>> {
         let tx = ctx.tx();
         let info = CreateNamespaceInfo { name: self.info.name.clone() };
 
@@ -52,10 +52,10 @@ impl PhysicalSource for PhysicalCreateNamespace {
     }
 }
 
-impl Explain for PhysicalCreateNamespace {
+impl<S> Explain<S> for PhysicalCreateNamespace {
     fn explain(
         &self,
-        _catalog: &Catalog,
+        _catalog: &Catalog<S>,
         _tx: &Transaction,
         f: &mut fmt::Formatter<'_>,
     ) -> explain::Result {
