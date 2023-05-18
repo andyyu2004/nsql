@@ -31,21 +31,23 @@ use self::pipeline::{
 
 pub type ExecutionResult<T, E = Error> = std::result::Result<T, E>;
 
-fn build_pipelines(sink: Arc<dyn PhysicalSink>, plan: PhysicalPlan) -> RootPipeline {
+fn build_pipelines<S>(sink: Arc<dyn PhysicalSink<S>>, plan: PhysicalPlan) -> RootPipeline {
     let (mut builder, root_meta_pipeline) = PipelineBuilderArena::new(sink);
     builder.build(root_meta_pipeline, plan.root());
     let arena = builder.finish();
     RootPipeline { arena }
 }
 
-trait PhysicalNode: Send + Sync + fmt::Debug + Explain + Any + 'static {
-    fn children(&self) -> &[Arc<dyn PhysicalNode>];
+trait PhysicalNode<S>: Send + Sync + fmt::Debug + Explain + Any + 'static {
+    fn children(&self) -> &[Arc<dyn PhysicalNode<S>>];
 
-    fn as_source(self: Arc<Self>) -> Result<Arc<dyn PhysicalSource>, Arc<dyn PhysicalNode>>;
+    fn as_source(self: Arc<Self>) -> Result<Arc<dyn PhysicalSource<S>>, Arc<dyn PhysicalNode<S>>>;
 
-    fn as_sink(self: Arc<Self>) -> Result<Arc<dyn PhysicalSink>, Arc<dyn PhysicalNode>>;
+    fn as_sink(self: Arc<Self>) -> Result<Arc<dyn PhysicalSink<S>>, Arc<dyn PhysicalNode<S>>>;
 
-    fn as_operator(self: Arc<Self>) -> Result<Arc<dyn PhysicalOperator>, Arc<dyn PhysicalNode>>;
+    fn as_operator(
+        self: Arc<Self>,
+    ) -> Result<Arc<dyn PhysicalOperator<S>>, Arc<dyn PhysicalNode<S>>>;
 
     fn build_pipelines(
         self: Arc<Self>,
@@ -64,7 +66,7 @@ trait PhysicalNode: Send + Sync + fmt::Debug + Explain + Any + 'static {
                 // If we have a sink node (which is also a source),
                 // - set it to be the source of the current pipeline,
                 // - recursively build the pipeline for its child with `sink` as the sink of the new metapipeline
-                arena[current].set_source(Arc::clone(&sink) as Arc<dyn PhysicalSource>);
+                arena[current].set_source(Arc::clone(&sink) as Arc<dyn PhysicalSource<S>>);
                 let child_meta_builder = arena.new_child_meta_pipeline(meta_builder, sink);
                 arena.build(child_meta_builder, child);
             }
@@ -138,25 +140,29 @@ enum SourceState<T> {
 }
 
 #[async_trait::async_trait]
-trait PhysicalOperator<T = Tuple>: PhysicalNode {
-    async fn execute(&self, ctx: &ExecutionContext, input: T) -> ExecutionResult<OperatorState<T>>;
+trait PhysicalOperator<S, T = Tuple>: PhysicalNode<S> {
+    async fn execute(
+        &self,
+        ctx: &ExecutionContext<S>,
+        input: T,
+    ) -> ExecutionResult<OperatorState<T>>;
 }
 
 #[async_trait::async_trait]
-trait PhysicalSource<T = Tuple>: PhysicalNode {
+trait PhysicalSource<S, T = Tuple>: PhysicalNode<S> {
     /// Return the next chunk from the source. An empty chunk indicates that the source is exhausted.
-    async fn source(&self, ctx: &ExecutionContext) -> ExecutionResult<SourceState<Chunk<T>>>;
+    async fn source(&self, ctx: &ExecutionContext<S>) -> ExecutionResult<SourceState<Chunk<T>>>;
 }
 
 #[async_trait::async_trait]
-trait PhysicalSink: PhysicalSource {
-    async fn sink(&self, ctx: &ExecutionContext, tuple: Tuple) -> ExecutionResult<()>;
+trait PhysicalSink<S>: PhysicalSource<S> {
+    async fn sink(&self, ctx: &ExecutionContext<S>, tuple: Tuple) -> ExecutionResult<()>;
 }
 
 #[derive(Clone)]
-pub struct ExecutionContext {
+pub struct ExecutionContext<S> {
     pool: Arc<dyn Pool>,
-    catalog: Arc<Catalog>,
+    catalog: Arc<Catalog<S>>,
     tx: Arc<Transaction>,
 }
 

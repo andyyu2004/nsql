@@ -40,7 +40,7 @@ impl<'a> MetaPipelineExplainer<'a> {
         f: &mut fmt::Formatter<'_>,
         meta_pipeline: Idx<MetaPipeline>,
     ) -> fmt::Result {
-        let arena = &self.root.root_pipeline.arena;
+        let arena = &self.root_pipeline.arena;
         writeln!(
             f,
             "{:indent$}metapipeline #{}",
@@ -86,7 +86,7 @@ impl fmt::Display for RootPipelineExplainer<'_> {
 pub(crate) fn explain<'a>(
     catalog: &'a Catalog,
     tx: &'a Transaction,
-    node: &'a dyn PhysicalNode,
+    node: &'a dyn PhysicalNode<S>,
 ) -> impl fmt::Display + 'a {
     PhysicalNodeExplainer { catalog, tx, node, indent: 0 }
 }
@@ -94,12 +94,12 @@ pub(crate) fn explain<'a>(
 pub struct PhysicalNodeExplainer<'a> {
     catalog: &'a Catalog,
     tx: &'a Transaction,
-    node: &'a dyn PhysicalNode,
+    node: &'a dyn PhysicalNode<S>,
     indent: usize,
 }
 
 impl<'a> PhysicalNodeExplainer<'a> {
-    fn explain_child(&self, node: &'a dyn PhysicalNode) -> PhysicalNodeExplainer<'_> {
+    fn explain_child(&self, node: &'a dyn PhysicalNode<S>) -> PhysicalNodeExplainer<'_> {
         PhysicalNodeExplainer { catalog: self.catalog, tx: self.tx, node, indent: self.indent + 2 }
     }
 }

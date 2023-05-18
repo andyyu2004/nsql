@@ -1,17 +1,19 @@
+use nsql_storage_engine::StorageEngine;
 use parking_lot::RwLock;
 use tokio::task::JoinSet;
 
 use super::*;
 
-pub(crate) struct Executor {
+pub(crate) struct Executor<S> {
     arena: PipelineArena,
+    _marker: std::marker::PhantomData<S>,
 }
 
-impl Executor {
+impl<S> Executor<S> {
     #[async_recursion::async_recursion]
     async fn execute(
         self: Arc<Self>,
-        ctx: ExecutionContext,
+        ctx: ExecutionContext<S>,
         root: Idx<MetaPipeline>,
     ) -> ExecutionResult<()> {
         let mut join_set = JoinSet::new();
@@ -40,7 +42,7 @@ impl Executor {
 
     async fn execute_pipeline(
         self: Arc<Self>,
-        ctx: ExecutionContext,
+        ctx: ExecutionContext<S>,
         pipeline: Idx<Pipeline>,
     ) -> ExecutionResult<()> {
         let pipeline = &self.arena[pipeline];
@@ -74,18 +76,21 @@ impl Executor {
     }
 }
 
-async fn execute_root_pipeline(
-    ctx: ExecutionContext,
+async fn execute_root_pipeline<S>(
+    ctx: ExecutionContext<S>,
     pipeline: RootPipeline,
 ) -> ExecutionResult<()> {
     let root = pipeline.arena.root();
-    let executor = Arc::new(Executor { arena: pipeline.arena });
+    let executor = Arc::new(Executor { arena: pipeline.arena, _marker: std::marker::PhantomData });
     executor.execute(ctx, root).await
 }
 
-pub async fn execute(ctx: ExecutionContext, plan: PhysicalPlan) -> ExecutionResult<Vec<Tuple>> {
+pub async fn execute<S>(
+    ctx: ExecutionContext<S>,
+    plan: PhysicalPlan,
+) -> ExecutionResult<Vec<Tuple>> {
     let sink = Arc::new(OutputSink::default());
-    let root_pipeline = build_pipelines(Arc::clone(&sink) as Arc<dyn PhysicalSink>, plan);
+    let root_pipeline = build_pipelines(Arc::clone(&sink) as Arc<dyn PhysicalSink<S>>, plan);
 
     execute_root_pipeline(ctx, root_pipeline).await?;
 
@@ -97,43 +102,45 @@ pub(crate) struct OutputSink {
     tuples: RwLock<Vec<Tuple>>,
 }
 
-impl PhysicalNode for OutputSink {
-    fn children(&self) -> &[Arc<dyn PhysicalNode>] {
+impl<S> PhysicalNode<S> for OutputSink {
+    fn children(&self) -> &[Arc<dyn PhysicalNode<S>>] {
         &[]
     }
 
-    fn as_source(self: Arc<Self>) -> Result<Arc<dyn PhysicalSource>, Arc<dyn PhysicalNode>> {
+    fn as_source(self: Arc<Self>) -> Result<Arc<dyn PhysicalSource<S>>, Arc<dyn PhysicalNode<S>>> {
         Err(self)
     }
 
-    fn as_sink(self: Arc<Self>) -> Result<Arc<dyn PhysicalSink>, Arc<dyn PhysicalNode>> {
+    fn as_sink(self: Arc<Self>) -> Result<Arc<dyn PhysicalSink<S>>, Arc<dyn PhysicalNode<S>>> {
         Ok(self)
     }
 
-    fn as_operator(self: Arc<Self>) -> Result<Arc<dyn PhysicalOperator>, Arc<dyn PhysicalNode>> {
+    fn as_operator(
+        self: Arc<Self>,
+    ) -> Result<Arc<dyn PhysicalOperator<S>>, Arc<dyn PhysicalNode<S>>> {
         Err(self)
     }
 }
 
 #[async_trait::async_trait]
-impl PhysicalSource for OutputSink {
-    async fn source(&self, _ctx: &ExecutionContext) -> ExecutionResult<SourceState<Chunk>> {
+impl<S> PhysicalSource<S> for OutputSink {
+    async fn source(&self, _ctx: &ExecutionContext<S>) -> ExecutionResult<SourceState<Chunk>> {
         todo!()
     }
 }
 
 #[async_trait::async_trait]
-impl PhysicalSink for OutputSink {
-    async fn sink(&self, _ctx: &ExecutionContext, tuple: Tuple) -> ExecutionResult<()> {
+impl<S> PhysicalSink<S> for OutputSink {
+    async fn sink(&self, _ctx: &ExecutionContext<S>, tuple: Tuple) -> ExecutionResult<()> {
         self.tuples.write().push(tuple);
         Ok(())
     }
 }
 
-impl Explain for OutputSink {
+impl<S: StorageEngine> Explain for OutputSink {
     fn explain(
         &self,
-        _catalog: &Catalog,
+        _catalog: &Catalog<S>,
         _tx: &Transaction,
         f: &mut fmt::Formatter<'_>,
     ) -> explain::Result {

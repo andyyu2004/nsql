@@ -1466,6 +1466,7 @@ dependencies = [
  "nsql-pager",
  "nsql-plan",
  "nsql-storage",
+ "nsql-storage-engine",
  "parking_lot",
  "smallvec",
  "tokio",
@@ -1541,6 +1542,7 @@ version = "0.1.0"
 dependencies = [
  "nsql-catalog",
  "nsql-ir",
+ "nsql-storage-engine",
 ]
 
 [[package]]

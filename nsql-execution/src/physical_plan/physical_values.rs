@@ -9,7 +9,7 @@ pub struct PhysicalValues {
 }
 
 impl PhysicalValues {
-    pub(crate) fn plan(values: ir::Values) -> Arc<dyn PhysicalNode> {
+    pub(crate) fn plan(values: ir::Values) -> Arc<dyn PhysicalNode<S>> {
         Arc::new(PhysicalValues { values, index: AtomicUsize::new(0) })
     }
 }
@@ -30,20 +30,22 @@ impl PhysicalSource for PhysicalValues {
     }
 }
 
-impl PhysicalNode for PhysicalValues {
-    fn children(&self) -> &[Arc<dyn PhysicalNode>] {
+impl PhysicalNode<S> for PhysicalValues {
+    fn children(&self) -> &[Arc<dyn PhysicalNode<S>>] {
         &[]
     }
 
-    fn as_source(self: Arc<Self>) -> Result<Arc<dyn PhysicalSource>, Arc<dyn PhysicalNode>> {
+    fn as_source(self: Arc<Self>) -> Result<Arc<dyn PhysicalSource<S>>, Arc<dyn PhysicalNode<S>>> {
         Ok(self)
     }
 
-    fn as_sink(self: Arc<Self>) -> Result<Arc<dyn PhysicalSink>, Arc<dyn PhysicalNode>> {
+    fn as_sink(self: Arc<Self>) -> Result<Arc<dyn PhysicalSink<S>>, Arc<dyn PhysicalNode<S>>> {
         Err(self)
     }
 
-    fn as_operator(self: Arc<Self>) -> Result<Arc<dyn PhysicalOperator>, Arc<dyn PhysicalNode>> {
+    fn as_operator(
+        self: Arc<Self>,
+    ) -> Result<Arc<dyn PhysicalOperator<S>>, Arc<dyn PhysicalNode<S>>> {
         Err(self)
     }
 }

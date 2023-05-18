@@ -18,6 +18,7 @@ use nsql_core::Name;
 use nsql_parse::ast::{self, HiveDistributionStyle};
 use nsql_storage::schema::LogicalType;
 use nsql_storage::Transaction;
+use nsql_storage_engine::StorageEngine;
 
 use self::scope::Scope;
 
@@ -47,7 +48,7 @@ use unbound;
 
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 
-impl<S> Binder<S> {
+impl<S: StorageEngine> Binder<S> {
     pub fn new(catalog: Arc<Catalog<S>>, tx: Arc<Transaction>) -> Self {
         Self { catalog, tx }
     }
@@ -210,7 +211,8 @@ impl<S> Binder<S> {
                     .iter()
                     .map(|name| match object_type {
                         ast::ObjectType::Table => {
-                            let (namespace, table) = self.bind_namespaced_entity::<Table>(name)?;
+                            let (namespace, table) =
+                                self.bind_namespaced_entity::<Table<S>>(name)?;
                             Ok(ir::EntityRef::Table(ir::TableRef { namespace, table }))
                         }
                         ast::ObjectType::View => todo!(),
@@ -374,9 +376,9 @@ impl<S> Binder<S> {
                 Path::Qualified { .. } => not_implemented!("qualified schemas"),
                 Path::Unqualified(name) => self
                     .catalog
-                    .find::<Namespace>(name.as_str())?
+                    .find::<Namespace<S>>(name.as_str())?
                     // .ok_or_else(|| Error::Unbound { kind: Namespace::desc(), path: path.clone() }),
-                    .ok_or_else(|| unbound!(Namespace, path)),
+                    .ok_or_else(|| unbound!(Namespace<S>, path)),
             },
             Path::Unqualified(name) => self.bind_namespace(&Path::Qualified {
                 prefix: Box::new(Path::Unqualified(DEFAULT_SCHEMA.into())),
@@ -399,8 +401,8 @@ impl<S> Binder<S> {
                 Path::Unqualified(schema) => {
                     let (schema_oid, schema) = self
                         .catalog
-                        .get_by_name::<Namespace>(&self.tx, schema.as_str())?
-                        .ok_or_else(|| unbound!(Namespace, path))?;
+                        .get_by_name::<Namespace<S>>(&self.tx, schema.as_str())?
+                        .ok_or_else(|| unbound!(Namespace<S>, path))?;
 
                     let entity_oid = schema.find(name)?.ok_or_else(|| unbound!(T, path))?;
 
@@ -572,7 +574,7 @@ impl<S> Binder<S> {
     ) -> Result<(Scope, ir::TableRef<S>)> {
         let alias = alias.map(|alias| self.lower_table_alias(alias));
         let table_name = self.lower_path(&table_name.0)?;
-        let (namespace, table) = self.bind_namespaced_entity::<Table>(&table_name)?;
+        let (namespace, table) = self.bind_namespaced_entity::<Table<S>>(&table_name)?;
         let table_ref = ir::TableRef { namespace, table };
 
         Ok((scope.bind_table(self, table_name, table_ref, alias.as_ref())?, table_ref))

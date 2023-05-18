@@ -49,10 +49,10 @@ pub struct PhysicalPlanner {
 
 /// Opaque physical plan that is ready to be executed
 #[derive(Debug)]
-pub struct PhysicalPlan(Arc<dyn PhysicalNode>);
+pub struct PhysicalPlan(Arc<dyn PhysicalNode<S>>);
 
 impl PhysicalPlan {
-    pub(crate) fn root(&self) -> Arc<dyn PhysicalNode> {
+    pub(crate) fn root(&self) -> Arc<dyn PhysicalNode<S>> {
         Arc::clone(&self.0)
     }
 }
@@ -67,7 +67,7 @@ impl PhysicalPlanner {
     }
 
     #[allow(clippy::boxed_local)]
-    fn plan_node(&self, plan: Box<Plan>) -> Result<Arc<dyn PhysicalNode>> {
+    fn plan_node(&self, plan: Box<Plan>) -> Result<Arc<dyn PhysicalNode<S>>> {
         let plan = match *plan {
             Plan::Transaction(kind) => PhysicalTransaction::plan(kind),
             Plan::CreateTable(info) => PhysicalCreateTable::plan(info),

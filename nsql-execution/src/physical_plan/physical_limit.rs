@@ -4,13 +4,13 @@ use super::*;
 
 #[derive(Debug)]
 pub struct PhysicalLimit {
-    children: [Arc<dyn PhysicalNode>; 1],
+    children: [Arc<dyn PhysicalNode<S>>; 1],
     yielded: AtomicU64,
     limit: u64,
 }
 
 impl PhysicalLimit {
-    pub(crate) fn plan(source: Arc<dyn PhysicalNode>, limit: u64) -> Arc<dyn PhysicalNode> {
+    pub(crate) fn plan(source: Arc<dyn PhysicalNode<S>>, limit: u64) -> Arc<dyn PhysicalNode<S>> {
         Arc::new(Self { children: [source], limit, yielded: AtomicU64::new(0) })
     }
 }
@@ -30,20 +30,22 @@ impl PhysicalOperator for PhysicalLimit {
     }
 }
 
-impl PhysicalNode for PhysicalLimit {
-    fn children(&self) -> &[Arc<dyn PhysicalNode>] {
+impl PhysicalNode<S> for PhysicalLimit {
+    fn children(&self) -> &[Arc<dyn PhysicalNode<S>>] {
         &self.children
     }
 
-    fn as_source(self: Arc<Self>) -> Result<Arc<dyn PhysicalSource>, Arc<dyn PhysicalNode>> {
+    fn as_source(self: Arc<Self>) -> Result<Arc<dyn PhysicalSource<S>>, Arc<dyn PhysicalNode<S>>> {
         Err(self)
     }
 
-    fn as_sink(self: Arc<Self>) -> Result<Arc<dyn PhysicalSink>, Arc<dyn PhysicalNode>> {
+    fn as_sink(self: Arc<Self>) -> Result<Arc<dyn PhysicalSink<S>>, Arc<dyn PhysicalNode<S>>> {
         Err(self)
     }
 
-    fn as_operator(self: Arc<Self>) -> Result<Arc<dyn PhysicalOperator>, Arc<dyn PhysicalNode>> {
+    fn as_operator(
+        self: Arc<Self>,
+    ) -> Result<Arc<dyn PhysicalOperator<S>>, Arc<dyn PhysicalNode<S>>> {
         Ok(self)
     }
 }

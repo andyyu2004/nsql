@@ -2,16 +2,16 @@ use super::*;
 
 #[derive(Debug)]
 pub struct PhysicalFilter {
-    children: [Arc<dyn PhysicalNode>; 1],
+    children: [Arc<dyn PhysicalNode<S>>; 1],
     predicate: ir::Expr,
     evaluator: Evaluator,
 }
 
 impl PhysicalFilter {
     pub(crate) fn plan(
-        source: Arc<dyn PhysicalNode>,
+        source: Arc<dyn PhysicalNode<S>>,
         predicate: ir::Expr,
-    ) -> Arc<dyn PhysicalNode> {
+    ) -> Arc<dyn PhysicalNode<S>> {
         Arc::new(Self { evaluator: Evaluator::new(), children: [source], predicate })
     }
 }
@@ -35,20 +35,22 @@ impl PhysicalOperator for PhysicalFilter {
     }
 }
 
-impl PhysicalNode for PhysicalFilter {
-    fn children(&self) -> &[Arc<dyn PhysicalNode>] {
+impl PhysicalNode<S> for PhysicalFilter {
+    fn children(&self) -> &[Arc<dyn PhysicalNode<S>>] {
         &self.children
     }
 
-    fn as_source(self: Arc<Self>) -> Result<Arc<dyn PhysicalSource>, Arc<dyn PhysicalNode>> {
+    fn as_source(self: Arc<Self>) -> Result<Arc<dyn PhysicalSource<S>>, Arc<dyn PhysicalNode<S>>> {
         Err(self)
     }
 
-    fn as_sink(self: Arc<Self>) -> Result<Arc<dyn PhysicalSink>, Arc<dyn PhysicalNode>> {
+    fn as_sink(self: Arc<Self>) -> Result<Arc<dyn PhysicalSink<S>>, Arc<dyn PhysicalNode<S>>> {
         Err(self)
     }
 
-    fn as_operator(self: Arc<Self>) -> Result<Arc<dyn PhysicalOperator>, Arc<dyn PhysicalNode>> {
+    fn as_operator(
+        self: Arc<Self>,
+    ) -> Result<Arc<dyn PhysicalOperator<S>>, Arc<dyn PhysicalNode<S>>> {
         Ok(self)
     }
 }

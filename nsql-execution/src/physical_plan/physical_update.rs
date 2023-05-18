@@ -7,7 +7,7 @@ use super::*;
 
 #[derive(Debug)]
 pub(crate) struct PhysicalUpdate {
-    children: [Arc<dyn PhysicalNode>; 1],
+    children: [Arc<dyn PhysicalNode<S>>; 1],
     table_ref: ir::TableRef,
     returning: Option<Box<[ir::Expr]>>,
     returning_tuples: RwLock<VecDeque<Tuple>>,
@@ -19,9 +19,9 @@ impl PhysicalUpdate {
         table_ref: ir::TableRef,
         // This is the source of the updates.
         // The schema should be that of the table being updated + the `tid` in the rightmost column
-        source: Arc<dyn PhysicalNode>,
+        source: Arc<dyn PhysicalNode<S>>,
         returning: Option<Box<[ir::Expr]>>,
-    ) -> Arc<dyn PhysicalNode> {
+    ) -> Arc<dyn PhysicalNode<S>> {
         Arc::new(Self {
             table_ref,
             returning,
@@ -32,20 +32,22 @@ impl PhysicalUpdate {
     }
 }
 
-impl PhysicalNode for PhysicalUpdate {
-    fn children(&self) -> &[Arc<dyn PhysicalNode>] {
+impl PhysicalNode<S> for PhysicalUpdate {
+    fn children(&self) -> &[Arc<dyn PhysicalNode<S>>] {
         &self.children
     }
 
-    fn as_source(self: Arc<Self>) -> Result<Arc<dyn PhysicalSource>, Arc<dyn PhysicalNode>> {
+    fn as_source(self: Arc<Self>) -> Result<Arc<dyn PhysicalSource<S>>, Arc<dyn PhysicalNode<S>>> {
         Ok(self)
     }
 
-    fn as_sink(self: Arc<Self>) -> Result<Arc<dyn PhysicalSink>, Arc<dyn PhysicalNode>> {
+    fn as_sink(self: Arc<Self>) -> Result<Arc<dyn PhysicalSink<S>>, Arc<dyn PhysicalNode<S>>> {
         Ok(self)
     }
 
-    fn as_operator(self: Arc<Self>) -> Result<Arc<dyn PhysicalOperator>, Arc<dyn PhysicalNode>> {
+    fn as_operator(
+        self: Arc<Self>,
+    ) -> Result<Arc<dyn PhysicalOperator<S>>, Arc<dyn PhysicalNode<S>>> {
         Err(self)
     }
 }
