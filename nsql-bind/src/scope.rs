@@ -4,6 +4,7 @@ use anyhow::bail;
 use nsql_catalog::{Column, Container, Entity, EntityRef};
 use nsql_core::Name;
 use nsql_storage::schema::LogicalType;
+use nsql_storage_engine::StorageEngine;
 
 use super::unbound;
 use crate::{Binder, Path, Result, TableAlias};
@@ -18,11 +19,11 @@ pub(crate) struct Scope {
 impl Scope {
     /// Insert a table and its columns to the scope
     #[tracing::instrument(skip(self, binder, table_ref))]
-    pub fn bind_table(
+    pub fn bind_table<S: StorageEngine>(
         &self,
-        binder: &Binder,
+        binder: &Binder<S>,
         table_path: Path,
-        table_ref: ir::TableRef,
+        table_ref: ir::TableRef<S>,
         alias: Option<&TableAlias>,
     ) -> Result<Scope> {
         tracing::debug!("binding table");

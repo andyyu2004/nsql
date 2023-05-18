@@ -4,6 +4,7 @@ use std::fmt;
 use std::sync::Arc;
 
 use nsql_storage::{TableStorage, Transaction};
+use nsql_storage_engine::StorageEngine;
 
 pub use self::column::{Column, ColumnIndex, CreateColumnInfo};
 use crate::private::CatalogEntity;
@@ -16,7 +17,7 @@ pub struct Table<S> {
     storage: Arc<TableStorage<S>>,
 }
 
-impl<S> Table<S> {
+impl<S: StorageEngine> Table<S> {
     #[inline]
     pub fn name(&self) -> &Name {
         &self.name
@@ -45,13 +46,13 @@ pub struct CreateTableInfo<S> {
     pub storage: Arc<TableStorage<S>>,
 }
 
-impl<S> fmt::Debug for CreateTableInfo<S> {
+impl<S: StorageEngine> fmt::Debug for CreateTableInfo<S> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("CreateTableInfo").field("name", &self.name).finish_non_exhaustive()
     }
 }
 
-impl<S> Entity for Table<S> {
+impl<S: StorageEngine> Entity for Table<S> {
     #[inline]
     fn name(&self) -> Name {
         Name::clone(&self.name)
@@ -63,7 +64,7 @@ impl<S> Entity for Table<S> {
     }
 }
 
-impl<S> CatalogEntity<S> for Table<S> {
+impl<S: StorageEngine> CatalogEntity<S> for Table<S> {
     type Container = Namespace<S>;
 
     type CreateInfo = CreateTableInfo<S>;
@@ -77,4 +78,4 @@ impl<S> CatalogEntity<S> for Table<S> {
     }
 }
 
-impl<S> Container<S> for Table<S> {}
+impl<S: StorageEngine> Container<S> for Table<S> {}

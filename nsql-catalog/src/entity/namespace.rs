@@ -1,5 +1,6 @@
 use nsql_serde::{StreamDeserialize, StreamSerialize};
 use nsql_storage::Transaction;
+use nsql_storage_engine::StorageEngine;
 
 use crate::private::CatalogEntity;
 use crate::set::CatalogSet;
@@ -15,14 +16,14 @@ pub trait NamespaceEntity<S>: CatalogEntity<S, Container = Namespace<S>> {}
 
 impl<S, T: CatalogEntity<S, Container = Namespace<S>>> NamespaceEntity<S> for T {}
 
-impl<S> Container<S> for Namespace<S> {}
+impl<S: StorageEngine> Container<S> for Namespace<S> {}
 
 #[derive(Debug, StreamSerialize, StreamDeserialize)]
 pub struct CreateNamespaceInfo {
     pub name: Name,
 }
 
-impl<S> CatalogEntity<S> for Namespace<S> {
+impl<S: StorageEngine> CatalogEntity<S> for Namespace<S> {
     type Container = Catalog<S>;
 
     type CreateInfo = CreateNamespaceInfo;
@@ -38,7 +39,7 @@ impl<S> CatalogEntity<S> for Namespace<S> {
     }
 }
 
-impl<S> Entity for Namespace<S> {
+impl<S: StorageEngine> Entity for Namespace<S> {
     #[inline]
     fn name(&self) -> Name {
         Name::clone(&self.name)

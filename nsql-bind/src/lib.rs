@@ -21,8 +21,8 @@ use nsql_storage::Transaction;
 
 use self::scope::Scope;
 
-pub struct Binder {
-    catalog: Arc<Catalog>,
+pub struct Binder<S> {
+    catalog: Arc<Catalog<S>>,
     tx: Arc<Transaction>,
 }
 
@@ -47,12 +47,12 @@ use unbound;
 
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 
-impl Binder {
-    pub fn new(catalog: Arc<Catalog>, tx: Arc<Transaction>) -> Self {
+impl<S> Binder<S> {
+    pub fn new(catalog: Arc<Catalog<S>>, tx: Arc<Transaction>) -> Self {
         Self { catalog, tx }
     }
 
-    pub fn bind(&self, stmt: &ast::Statement) -> Result<ir::Stmt> {
+    pub fn bind(&self, stmt: &ast::Statement) -> Result<ir::Stmt<S>> {
         let scope = &Scope::default();
         let stmt = match stmt {
             ast::Statement::CreateTable {
@@ -296,7 +296,7 @@ impl Binder {
     fn bind_assignments(
         &self,
         scope: &Scope,
-        table_ref: ir::TableRef,
+        table_ref: ir::TableRef<S>,
         assignments: &[ast::Assignment],
     ) -> Result<Box<[ir::Expr]>> {
         let table = table_ref.get(&self.catalog, &self.tx);
@@ -368,7 +368,7 @@ impl Binder {
         }
     }
 
-    fn bind_namespace(&self, path: &Path) -> Result<Oid<Namespace>> {
+    fn bind_namespace(&self, path: &Path) -> Result<Oid<Namespace<S>>> {
         match path {
             Path::Qualified { prefix, .. } => match prefix.as_ref() {
                 Path::Qualified { .. } => not_implemented!("qualified schemas"),
@@ -385,10 +385,10 @@ impl Binder {
         }
     }
 
-    fn bind_namespaced_entity<T: NamespaceEntity>(
+    fn bind_namespaced_entity<T: NamespaceEntity<S>>(
         &self,
         path: &Path,
-    ) -> Result<(Oid<Namespace>, Oid<T>)> {
+    ) -> Result<(Oid<Namespace<S>>, Oid<T>)> {
         match path {
             Path::Unqualified(name) => self.bind_namespaced_entity(&Path::Qualified {
                 prefix: Box::new(Path::Unqualified(DEFAULT_SCHEMA.into())),
@@ -422,7 +422,11 @@ impl Binder {
         }
     }
 
-    fn bind_query(&self, scope: &Scope, query: &ast::Query) -> Result<(Scope, Box<ir::QueryPlan>)> {
+    fn bind_query(
+        &self,
+        scope: &Scope,
+        query: &ast::Query,
+    ) -> Result<(Scope, Box<ir::QueryPlan<S>>)> {
         let ast::Query { with, body, order_by, limit, offset, fetch, locks } = query;
         not_implemented!(with.is_some());
         not_implemented!(!order_by.is_empty());
@@ -450,7 +454,7 @@ impl Binder {
         &self,
         scope: &Scope,
         body: &ast::SetExpr,
-    ) -> Result<(Scope, Box<ir::QueryPlan>)> {
+    ) -> Result<(Scope, Box<ir::QueryPlan<S>>)> {
         let (scope, expr) = match body {
             ast::SetExpr::Select(sel) => self.bind_select(scope, sel)?,
             ast::SetExpr::Query(_) => todo!(),
@@ -471,7 +475,7 @@ impl Binder {
         &self,
         scope: &Scope,
         select: &ast::Select,
-    ) -> Result<(Scope, Box<ir::QueryPlan>)> {
+    ) -> Result<(Scope, Box<ir::QueryPlan<S>>)> {
         let ast::Select {
             distinct,
             projection,
@@ -522,7 +526,7 @@ impl Binder {
         &self,
         scope: &Scope,
         tables: &ast::TableWithJoins,
-    ) -> Result<(Scope, Box<ir::QueryPlan>)> {
+    ) -> Result<(Scope, Box<ir::QueryPlan<S>>)> {
         not_implemented!(!tables.joins.is_empty());
         let table = &tables.relation;
         self.bind_table_factor(scope, table)
@@ -532,7 +536,7 @@ impl Binder {
         &self,
         scope: &Scope,
         table: &ast::TableFactor,
-    ) -> Result<(Scope, Box<ir::QueryPlan>)> {
+    ) -> Result<(Scope, Box<ir::QueryPlan<S>>)> {
         let (scope, table_expr) = match table {
             ast::TableFactor::Table { name, alias, args, with_hints } => {
                 not_implemented!(args.is_some());
@@ -565,7 +569,7 @@ impl Binder {
         scope: &Scope,
         table_name: &ast::ObjectName,
         alias: Option<&ast::TableAlias>,
-    ) -> Result<(Scope, ir::TableRef)> {
+    ) -> Result<(Scope, ir::TableRef<S>)> {
         let alias = alias.map(|alias| self.lower_table_alias(alias));
         let table_name = self.lower_path(&table_name.0)?;
         let (namespace, table) = self.bind_namespaced_entity::<Table>(&table_name)?;

@@ -1378,6 +1378,7 @@ dependencies = [
  "nsql-ir",
  "nsql-parse",
  "nsql-storage",
+ "nsql-storage-engine",
  "rpds",
  "tracing",
 ]
@@ -1431,6 +1432,7 @@ dependencies = [
  "nsql-core",
  "nsql-serde",
  "nsql-storage",
+ "nsql-storage-engine",
  "nsql-util",
  "thiserror",
  "tracing",
@@ -1489,6 +1491,7 @@ dependencies = [
  "nsql-catalog",
  "nsql-core",
  "nsql-storage",
+ "nsql-storage-engine",
 ]
 
 [[package]]

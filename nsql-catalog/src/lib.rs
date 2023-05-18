@@ -11,6 +11,7 @@ use std::sync::Arc;
 pub use anyhow::Error;
 use nsql_core::Name;
 pub use nsql_storage::Transaction;
+use nsql_storage_engine::StorageEngine;
 
 pub use self::entity::namespace::{CreateNamespaceInfo, Namespace, NamespaceEntity};
 pub use self::entity::table::{Column, ColumnIndex, CreateColumnInfo, CreateTableInfo, Table};
@@ -27,18 +28,18 @@ pub struct Catalog<S> {
 
 pub const DEFAULT_SCHEMA: &str = "main";
 
-impl<S> Catalog<S> {
+impl<S: StorageEngine> Catalog<S> {
     /// Create a blank catalog with the default schema
     pub fn create(tx: &Transaction) -> Result<Self> {
         let catalog = Self { schemas: Default::default() };
         catalog
-            .create::<Namespace>(tx, CreateNamespaceInfo { name: DEFAULT_SCHEMA.into() })
+            .create::<Namespace<S>>(tx, CreateNamespaceInfo { name: DEFAULT_SCHEMA.into() })
             .expect("default schema should not already exist");
         Ok(catalog)
     }
 }
 
-impl<S> Container<S> for Catalog<S> {}
+impl<S: StorageEngine> Container<S> for Catalog<S> {}
 
 pub trait Entity {
     fn name(&self) -> Name;
@@ -46,7 +47,7 @@ pub trait Entity {
     fn desc() -> &'static str;
 }
 
-pub trait EntityRef<S>: Copy {
+pub trait EntityRef<S: StorageEngine>: Copy {
     type Entity: CatalogEntity<S, Container = Self::Container>;
 
     type Container: Container<S>;
@@ -115,14 +116,13 @@ pub trait Container<S> {
 }
 
 pub(crate) mod private {
-    use nsql_serde::StreamSerialize;
 
     use super::*;
     use crate::set::Conflict;
 
     /// This trait is sealed and cannot be implemented for types outside of this crate.
     /// These method should also not be visible to users of this crate.
-    pub trait CatalogEntity<S>: Entity + StreamSerialize + Send + Sync + Sized + 'static {
+    pub trait CatalogEntity<S>: Entity + Send + Sync + Sized + 'static {
         type Container;
 
         type CreateInfo;

@@ -212,7 +212,7 @@ impl<S, T: CatalogEntity<S>> CatalogSet<S, T> {
                     }
                 } else {
                     // Otherwise, the existing entry is visible to our transaction, so we return an `AlreadyExists` conflict
-                    Err(Conflict::AlreadyExists(value))
+                    Err(Conflict::AlreadyExists(PhantomData, value))
                 }
             }
             Entry::Vacant(entry) => {

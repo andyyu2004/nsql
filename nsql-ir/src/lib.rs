@@ -11,9 +11,9 @@ pub use nsql_storage::value::{Decimal, Value};
 pub use self::expr::*;
 
 #[derive(Debug, Clone)]
-pub struct CreateTableInfo {
+pub struct CreateTableInfo<S> {
     pub name: Name,
-    pub namespace: Oid<Namespace>,
+    pub namespace: Oid<Namespace<S>>,
     pub columns: Vec<CreateColumnInfo>,
 }
 
@@ -44,28 +44,28 @@ impl fmt::Display for ObjectType {
 }
 
 #[derive(Debug, Clone)]
-pub enum EntityRef {
-    Table(TableRef),
+pub enum EntityRef<S> {
+    Table(TableRef<S>),
 }
 
 #[derive(Debug, Clone)]
-pub enum Stmt {
+pub enum Stmt<S> {
     Show(ObjectType),
-    Drop(Vec<EntityRef>),
+    Drop(Vec<EntityRef<S>>),
     Transaction(TransactionKind),
     CreateNamespace(CreateNamespaceInfo),
-    CreateTable(CreateTableInfo),
-    Query(Box<QueryPlan>),
-    Explain(ExplainMode, Box<Stmt>),
+    CreateTable(CreateTableInfo<S>),
+    Query(Box<QueryPlan<S>>),
+    Explain(ExplainMode, Box<Stmt<S>>),
     Insert {
-        table_ref: TableRef,
+        table_ref: TableRef<S>,
         projection: Box<[Expr]>,
-        source: Box<QueryPlan>,
+        source: Box<QueryPlan<S>>,
         returning: Option<Box<[Expr]>>,
     },
     Update {
-        table_ref: TableRef,
-        source: Box<QueryPlan>,
+        table_ref: TableRef<S>,
+        source: Box<QueryPlan<S>>,
         returning: Option<Box<[Expr]>>,
     },
 }
