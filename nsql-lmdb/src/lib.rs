@@ -5,7 +5,6 @@
 use std::ops::RangeBounds;
 use std::path::Path;
 
-use heed::types::ByteSlice;
 use heed::UntypedDatabase;
 use nsql_storage_engine::{ReadTransaction, ReadTree, StorageEngine, Transaction, Tree};
 
@@ -93,12 +92,23 @@ impl<'txn> ReadTree<'_, 'txn, LmdbStorageEngine> for heed::UntypedDatabase {
         self.get(&txn.tx, key)
     }
 
+    #[inline]
     fn range(
         &'txn self,
         txn: &'txn ReadonlyTx<'_>,
         range: impl RangeBounds<[u8]>,
     ) -> Result<impl Iterator<Item = Result<(Self::Bytes, Self::Bytes), heed::Error>>> {
         self.range(&txn.tx, &range)
+    }
+
+    #[inline]
+    fn rev_range(
+        &'txn self,
+        txn: &'txn ReadonlyTx<'_>,
+        range: impl RangeBounds<[u8]>,
+    ) -> Result<impl Iterator<Item = Result<(Self::Bytes, Self::Bytes), heed::Error>>, heed::Error>
+    {
+        self.rev_range(&txn.tx, &range)
     }
 }
 

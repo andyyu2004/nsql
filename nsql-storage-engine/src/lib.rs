@@ -64,6 +64,12 @@ pub trait ReadTree<'env, 'txn, S: StorageEngine> {
         txn: &'txn S::ReadTransaction<'_>,
         range: impl RangeBounds<[u8]>,
     ) -> Result<impl Iterator<Item = Result<(Self::Bytes, Self::Bytes), S::Error>>, S::Error>;
+
+    fn rev_range(
+        &'txn self,
+        txn: &'txn S::ReadTransaction<'_>,
+        range: impl RangeBounds<[u8]>,
+    ) -> Result<impl Iterator<Item = Result<(Self::Bytes, Self::Bytes), S::Error>>, S::Error>;
 }
 
 pub trait Tree<'env, 'txn, S: StorageEngine>: ReadTree<'env, 'txn, S> {

@@ -102,6 +102,7 @@ impl<'env, 'txn> nsql_storage_engine::ReadTree<'env, 'txn, RedbStorageEngine>
         Ok(ReadableTable::get(self, key)?.map(AccessGuardDerefWrapper))
     }
 
+    #[inline]
     fn range(
         &'txn self,
         _txn: &'txn ReadTransaction<'_>,
@@ -109,6 +110,18 @@ impl<'env, 'txn> nsql_storage_engine::ReadTree<'env, 'txn, RedbStorageEngine>
     ) -> Result<impl Iterator<Item = Result<(Self::Bytes, Self::Bytes), redb::Error>>> {
         Ok(ReadableTable::range::<&[u8]>(self, (range.start_bound(), range.end_bound()))?
             .map(|kv| kv.map(|(k, v)| (AccessGuardDerefWrapper(k), AccessGuardDerefWrapper(v)))))
+    }
+
+    #[inline]
+    fn rev_range(
+        &'txn self,
+        _txn: &'txn <RedbStorageEngine as nsql_storage_engine::StorageEngine>::ReadTransaction<'_>,
+        range: impl RangeBounds<[u8]>,
+    ) -> Result<impl Iterator<Item = Result<(Self::Bytes, Self::Bytes), redb::Error>>, redb::Error>
+    {
+        Ok(ReadableTable::range::<&[u8]>(self, (range.start_bound(), range.end_bound()))?
+            .map(|kv| kv.map(|(k, v)| (AccessGuardDerefWrapper(k), AccessGuardDerefWrapper(v))))
+            .rev())
     }
 }
 
@@ -137,6 +150,7 @@ impl<'env, 'txn> nsql_storage_engine::ReadTree<'env, 'txn, RedbStorageEngine>
         Ok(ReadableTable::get(self, key)?.map(AccessGuardDerefWrapper))
     }
 
+    #[inline]
     fn range(
         &'txn self,
         _txn: &'txn ReadTransaction<'_>,
@@ -145,6 +159,18 @@ impl<'env, 'txn> nsql_storage_engine::ReadTree<'env, 'txn, RedbStorageEngine>
     {
         Ok(ReadableTable::range::<&[u8]>(self, (range.start_bound(), range.end_bound()))?
             .map(|kv| kv.map(|(k, v)| (AccessGuardDerefWrapper(k), AccessGuardDerefWrapper(v)))))
+    }
+
+    #[inline]
+    fn rev_range(
+        &'txn self,
+        _txn: &'txn <RedbStorageEngine as nsql_storage_engine::StorageEngine>::ReadTransaction<'_>,
+        range: impl RangeBounds<[u8]>,
+    ) -> Result<impl Iterator<Item = Result<(Self::Bytes, Self::Bytes), redb::Error>>, redb::Error>
+    {
+        Ok(ReadableTable::range::<&[u8]>(self, (range.start_bound(), range.end_bound()))?
+            .map(|kv| kv.map(|(k, v)| (AccessGuardDerefWrapper(k), AccessGuardDerefWrapper(v))))
+            .rev())
     }
 }
 
