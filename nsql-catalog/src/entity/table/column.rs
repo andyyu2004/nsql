@@ -73,16 +73,16 @@ impl Entity for Column {
     }
 }
 
-impl CatalogEntity for Column {
-    type Container = Table;
+impl<S> CatalogEntity<S> for Column {
+    type Container = Table<S>;
 
     type CreateInfo = CreateColumnInfo;
 
-    fn catalog_set(table: &Self::Container) -> &CatalogSet<Self> {
+    fn catalog_set(table: &Self::Container) -> &CatalogSet<S, Self> {
         &table.columns
     }
 
-    fn new(_tx: &Transaction, info: Self::CreateInfo) -> Self {
+    fn create(_tx: &Transaction, info: Self::CreateInfo) -> Self {
         Self { name: info.name, index: ColumnIndex::new(info.index), ty: info.ty }
     }
 }

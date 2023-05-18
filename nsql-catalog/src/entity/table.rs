@@ -3,7 +3,6 @@ mod column;
 use std::fmt;
 use std::sync::Arc;
 
-use nsql_serde::StreamSerialize;
 use nsql_storage::{TableStorage, Transaction};
 
 pub use self::column::{Column, ColumnIndex, CreateColumnInfo};
@@ -11,22 +10,20 @@ use crate::private::CatalogEntity;
 use crate::set::CatalogSet;
 use crate::{Container, Entity, Name, Namespace};
 
-#[derive(StreamSerialize)]
-pub struct Table {
+pub struct Table<S> {
     name: Name,
-    columns: CatalogSet<Column>,
-    #[serde(skip)]
-    storage: Arc<TableStorage>,
+    columns: CatalogSet<S, Column>,
+    storage: Arc<TableStorage<S>>,
 }
 
-impl Table {
+impl<S> Table<S> {
     #[inline]
     pub fn name(&self) -> &Name {
         &self.name
     }
 
     #[inline]
-    pub fn storage(&self) -> &Arc<TableStorage> {
+    pub fn storage(&self) -> &Arc<TableStorage<S>> {
         &self.storage
     }
 
@@ -37,24 +34,24 @@ impl Table {
     }
 }
 
-impl fmt::Debug for Table {
+impl<S> fmt::Debug for Table<S> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Table").field("name", &self.name).finish_non_exhaustive()
     }
 }
 
-pub struct CreateTableInfo {
+pub struct CreateTableInfo<S> {
     pub name: Name,
-    pub storage: Arc<TableStorage>,
+    pub storage: Arc<TableStorage<S>>,
 }
 
-impl fmt::Debug for CreateTableInfo {
+impl<S> fmt::Debug for CreateTableInfo<S> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("CreateTableInfo").field("name", &self.name).finish_non_exhaustive()
     }
 }
 
-impl Entity for Table {
+impl<S> Entity for Table<S> {
     #[inline]
     fn name(&self) -> Name {
         Name::clone(&self.name)
@@ -66,18 +63,18 @@ impl Entity for Table {
     }
 }
 
-impl CatalogEntity for Table {
-    type Container = Namespace;
+impl<S> CatalogEntity<S> for Table<S> {
+    type Container = Namespace<S>;
 
-    type CreateInfo = CreateTableInfo;
+    type CreateInfo = CreateTableInfo<S>;
 
-    fn catalog_set(container: &Self::Container) -> &CatalogSet<Self> {
+    fn catalog_set(container: &Self::Container) -> &CatalogSet<S, Self> {
         &container.tables
     }
 
-    fn new(_tx: &Transaction, info: Self::CreateInfo) -> Self {
+    fn create(_tx: &Transaction, info: Self::CreateInfo) -> Self {
         Self { name: info.name, storage: info.storage, columns: Default::default() }
     }
 }
 
-impl Container for Table {}
+impl<S> Container<S> for Table<S> {}

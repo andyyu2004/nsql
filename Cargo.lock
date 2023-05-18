@@ -1609,6 +1609,7 @@ dependencies = [
  "nsql-pager",
  "nsql-rkyv",
  "nsql-serde",
+ "nsql-storage-engine",
  "nsql-test",
  "nsql-util",
  "parking_lot",

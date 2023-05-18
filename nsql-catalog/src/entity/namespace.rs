@@ -5,40 +5,40 @@ use crate::private::CatalogEntity;
 use crate::set::CatalogSet;
 use crate::{Catalog, Container, Entity, Name, Table};
 
-#[derive(Debug, StreamSerialize)]
-pub struct Namespace {
+#[derive(Debug)]
+pub struct Namespace<S> {
     name: Name,
-    pub(crate) tables: CatalogSet<Table>,
+    pub(crate) tables: CatalogSet<S, Table<S>>,
 }
 
-pub trait NamespaceEntity: CatalogEntity<Container = Namespace> {}
+pub trait NamespaceEntity<S>: CatalogEntity<S, Container = Namespace<S>> {}
 
-impl<T: CatalogEntity<Container = Namespace>> NamespaceEntity for T {}
+impl<S, T: CatalogEntity<S, Container = Namespace<S>>> NamespaceEntity<S> for T {}
 
-impl Container for Namespace {}
+impl<S> Container<S> for Namespace<S> {}
 
 #[derive(Debug, StreamSerialize, StreamDeserialize)]
 pub struct CreateNamespaceInfo {
     pub name: Name,
 }
 
-impl CatalogEntity for Namespace {
-    type Container = Catalog;
+impl<S> CatalogEntity<S> for Namespace<S> {
+    type Container = Catalog<S>;
 
     type CreateInfo = CreateNamespaceInfo;
 
     #[inline]
-    fn catalog_set(catalog: &Catalog) -> &CatalogSet<Self> {
+    fn catalog_set(catalog: &Catalog<S>) -> &CatalogSet<S, Self> {
         &catalog.schemas
     }
 
     #[inline]
-    fn new(_tx: &Transaction, info: Self::CreateInfo) -> Self {
+    fn create(_tx: &Transaction, info: Self::CreateInfo) -> Self {
         Self { name: info.name, tables: Default::default() }
     }
 }
 
-impl Entity for Namespace {
+impl<S> Entity for Namespace<S> {
     #[inline]
     fn name(&self) -> Name {
         Name::clone(&self.name)

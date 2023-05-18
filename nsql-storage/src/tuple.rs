@@ -5,7 +5,6 @@ use std::sync::Arc;
 use nsql_serde::{StreamDeserialize, StreamDeserializeWith, StreamDeserializer};
 
 use crate::schema::{PhysicalType, Schema};
-use crate::table_storage::TupleId;
 use crate::value::{Decimal, Value};
 
 pub struct TupleDeserializationContext {
@@ -66,20 +65,6 @@ impl fmt::Display for Tuple {
             }
         }
         write!(f, ")")
-    }
-}
-
-impl ArchivedTuple {
-    #[inline]
-    pub fn project(&self, tid: TupleId, projection: &[TupleIndex]) -> Tuple {
-        let n = self.0.len();
-        projection
-            .iter()
-            .map(|col| match col {
-                i if i.0 == n => Value::Tid(tid),
-                i => nsql_rkyv::deserialize(&self.0[i.0]),
-            })
-            .collect()
     }
 }
 

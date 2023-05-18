@@ -1,5 +1,6 @@
 use std::error::Error;
 use std::fmt;
+use std::marker::PhantomData;
 use std::sync::{Arc, RwLock};
 
 use dashmap::mapref::entry::Entry;
@@ -7,15 +8,15 @@ use dashmap::DashMap;
 use nsql_core::Name;
 use nsql_serde::{
     AsyncReadExt, AsyncWriteExt, StreamDeserialize, StreamDeserializeWith, StreamDeserializer,
-    StreamSerialize, StreamSerializer,
+    StreamSerializer,
 };
 use nsql_storage::{Transaction, Version};
 
 use crate::entry::Oid;
 use crate::private::CatalogEntity;
 
-pub enum Conflict<T> {
-    AlreadyExists(T),
+pub enum Conflict<S, T> {
+    AlreadyExists(PhantomData<S>, T),
     WriteWrite(WriteOperation, T),
 }
 
@@ -36,18 +37,18 @@ impl fmt::Display for WriteOperation {
     }
 }
 
-impl<T: CatalogEntity> Error for Conflict<T> {}
+impl<S, T: CatalogEntity<S>> Error for Conflict<S, T> {}
 
-impl<T: CatalogEntity> fmt::Debug for Conflict<T> {
+impl<S, T: CatalogEntity<S>> fmt::Debug for Conflict<S, T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{self}")
     }
 }
 
-impl<T: CatalogEntity> fmt::Display for Conflict<T> {
+impl<S, T: CatalogEntity<S>> fmt::Display for Conflict<S, T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Conflict::AlreadyExists(entity) => {
+            Conflict::AlreadyExists(_, entity) => {
                 write!(f, "{} `{}` already exists", T::desc(), entity.name())
             }
             Conflict::WriteWrite(op, entity) => {
@@ -58,35 +59,25 @@ impl<T: CatalogEntity> fmt::Display for Conflict<T> {
 }
 
 #[derive(Debug)]
-pub struct CatalogSet<T> {
+pub struct CatalogSet<S, T> {
     entries: DashMap<Oid<T>, VersionedEntry<T>>,
     name_mapping: DashMap<Name, Oid<T>>,
+    _marker: std::marker::PhantomData<S>,
 }
 
-impl<T> CatalogSet<T> {
+impl<S, T> CatalogSet<S, T> {
     fn with_capacity(capacity: usize) -> Self {
         Self {
             entries: DashMap::with_capacity(capacity),
             name_mapping: DashMap::with_capacity(capacity),
+            _marker: std::marker::PhantomData,
         }
     }
 }
 
-impl<T: StreamSerialize> StreamSerialize for CatalogSet<T> {
-    async fn serialize<S: StreamSerializer>(&self, ser: &mut S) -> nsql_serde::Result<()> {
-        ser.write_u32(self.entries.len() as u32).await?;
-        for entry in self.entries.iter() {
-            let _ = entry;
-            // let tx = todo!();
-            // entry.version_for_tx(tx).value().serialize(ser).await?;
-        }
-        Ok(())
-    }
-}
-
-impl<T> StreamDeserializeWith for CatalogSet<T>
+impl<S, T> StreamDeserializeWith for CatalogSet<S, T>
 where
-    T: CatalogEntity,
+    T: CatalogEntity<S>,
     T::CreateInfo: StreamDeserialize,
 {
     type Context<'a> = Transaction;
@@ -106,9 +97,13 @@ where
     }
 }
 
-impl<T> Default for CatalogSet<T> {
+impl<S, T> Default for CatalogSet<S, T> {
     fn default() -> Self {
-        Self { entries: Default::default(), name_mapping: Default::default() }
+        Self {
+            entries: Default::default(),
+            name_mapping: Default::default(),
+            _marker: std::marker::PhantomData,
+        }
     }
 }
 
@@ -153,10 +148,10 @@ impl<T> VersionedEntry<T> {
     }
 }
 
-impl<T: CatalogEntity> CatalogSet<T> {
+impl<S, T: CatalogEntity<S>> CatalogSet<S, T> {
     #[inline]
-    pub fn create(&self, tx: &Transaction, info: T::CreateInfo) -> Result<Oid<T>, Conflict<T>> {
-        self.insert(tx, T::new(tx, info))
+    pub fn create(&self, tx: &Transaction, info: T::CreateInfo) -> Result<Oid<T>, Conflict<S, T>> {
+        self.insert(tx, T::create(tx, info))
     }
 
     pub(crate) fn entries(&self, tx: &Transaction) -> Vec<(Oid<T>, Arc<T>)> {
@@ -181,12 +176,12 @@ impl<T: CatalogEntity> CatalogSet<T> {
         Some(*self.name_mapping.get(name.as_ref())?.value())
     }
 
-    pub(crate) fn delete(&self, tx: &Transaction, oid: Oid<T>) -> Result<(), Conflict<T>> {
+    pub(crate) fn delete(&self, tx: &Transaction, oid: Oid<T>) -> Result<(), Conflict<S, T>> {
         self.entries.get_mut(&oid).expect("passed invalid `oid` somehow").delete(tx);
         Ok(())
     }
 
-    pub(crate) fn insert(&self, tx: &Transaction, value: T) -> Result<Oid<T>, Conflict<T>> {
+    pub(crate) fn insert(&self, tx: &Transaction, value: T) -> Result<Oid<T>, Conflict<S, T>> {
         // NOTE: this function takes &self and not &mut self, so we need to be mindful of correctness under concurrent usage.
 
         match self.name_mapping.entry(value.name()) {

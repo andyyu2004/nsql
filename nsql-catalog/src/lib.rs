@@ -21,13 +21,13 @@ use self::set::{CatalogSet, Conflict};
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 
 #[derive(Debug)]
-pub struct Catalog {
-    schemas: CatalogSet<Namespace>,
+pub struct Catalog<S> {
+    schemas: CatalogSet<S, Namespace<S>>,
 }
 
 pub const DEFAULT_SCHEMA: &str = "main";
 
-impl Catalog {
+impl<S> Catalog<S> {
     /// Create a blank catalog with the default schema
     pub fn create(tx: &Transaction) -> Result<Self> {
         let catalog = Self { schemas: Default::default() };
@@ -38,7 +38,7 @@ impl Catalog {
     }
 }
 
-impl Container for Catalog {}
+impl<S> Container<S> for Catalog<S> {}
 
 pub trait Entity {
     fn name(&self) -> Name;
@@ -46,37 +46,37 @@ pub trait Entity {
     fn desc() -> &'static str;
 }
 
-pub trait EntityRef: Copy {
-    type Entity: CatalogEntity<Container = Self::Container>;
+pub trait EntityRef<S>: Copy {
+    type Entity: CatalogEntity<S, Container = Self::Container>;
 
-    type Container: Container;
+    type Container: Container<S>;
 
-    fn container(self, catalog: &Catalog, tx: &Transaction) -> Arc<Self::Container>;
+    fn container(self, catalog: &Catalog<S>, tx: &Transaction) -> Arc<Self::Container>;
 
     fn entity_oid(self) -> Oid<Self::Entity>;
 
-    fn get(self, catalog: &Catalog, tx: &Transaction) -> Arc<Self::Entity> {
+    fn get(self, catalog: &Catalog<S>, tx: &Transaction) -> Arc<Self::Entity> {
         self.container(catalog, tx)
             .get(tx, self.entity_oid())
             .expect("`oid` should be valid for `tx`")
     }
 
-    fn delete(self, catalog: &Catalog, tx: &Transaction) -> Result<()> {
+    fn delete(self, catalog: &Catalog<S>, tx: &Transaction) -> Result<()> {
         self.container(catalog, tx).delete(tx, self.entity_oid())?;
         Ok(())
     }
 }
 
-pub trait Container {
-    fn create<T: CatalogEntity<Container = Self>>(
+pub trait Container<S> {
+    fn create<T: CatalogEntity<S, Container = Self>>(
         &self,
         tx: &Transaction,
         info: T::CreateInfo,
-    ) -> Result<Oid<T>, Conflict<T>> {
-        T::new(tx, info).insert(self, tx)
+    ) -> Result<Oid<T>, Conflict<S, T>> {
+        T::create(tx, info).insert(self, tx)
     }
 
-    fn get<T: CatalogEntity<Container = Self>>(
+    fn get<T: CatalogEntity<S, Container = Self>>(
         &self,
         tx: &Transaction,
         oid: Oid<T>,
@@ -86,15 +86,15 @@ pub trait Container {
 
     /// Delete the entity with the given `oid` from the catalog.
     /// Panics if the `oid` is not visible to `tx`.
-    fn delete<T: CatalogEntity<Container = Self>>(
+    fn delete<T: CatalogEntity<S, Container = Self>>(
         &self,
         tx: &Transaction,
         oid: Oid<T>,
-    ) -> Result<(), Conflict<T>> {
+    ) -> Result<(), Conflict<S, T>> {
         T::delete(self, tx, oid)
     }
 
-    fn get_by_name<T: CatalogEntity<Container = Self>>(
+    fn get_by_name<T: CatalogEntity<S, Container = Self>>(
         &self,
         tx: &Transaction,
         name: impl AsRef<str>,
@@ -102,11 +102,11 @@ pub trait Container {
         Ok(T::get_by_name(self, tx, name.as_ref()))
     }
 
-    fn find<T: CatalogEntity<Container = Self>>(&self, name: &str) -> Result<Option<Oid<T>>> {
+    fn find<T: CatalogEntity<S, Container = Self>>(&self, name: &str) -> Result<Option<Oid<T>>> {
         Ok(T::find(self, name))
     }
 
-    fn all<'a, T: CatalogEntity<Container = Self>>(
+    fn all<'a, T: CatalogEntity<S, Container = Self>>(
         &'a self,
         tx: &'a Transaction,
     ) -> Vec<(Oid<T>, Arc<T>)> {
@@ -122,22 +122,22 @@ pub(crate) mod private {
 
     /// This trait is sealed and cannot be implemented for types outside of this crate.
     /// These method should also not be visible to users of this crate.
-    pub trait CatalogEntity: Entity + StreamSerialize + Send + Sync + Sized + 'static {
+    pub trait CatalogEntity<S>: Entity + StreamSerialize + Send + Sync + Sized + 'static {
         type Container;
 
         type CreateInfo;
 
         /// extract the `CatalogSet` from the `container` for `Self`
-        fn catalog_set(container: &Self::Container) -> &CatalogSet<Self>;
+        fn catalog_set(container: &Self::Container) -> &CatalogSet<S, Self>;
 
-        fn new(tx: &Transaction, info: Self::CreateInfo) -> Self;
+        fn create(tx: &Transaction, info: Self::CreateInfo) -> Self;
 
         #[inline]
         fn insert(
             self,
             container: &Self::Container,
             tx: &Transaction,
-        ) -> Result<Oid<Self>, Conflict<Self>> {
+        ) -> Result<Oid<Self>, Conflict<S, Self>> {
             Self::catalog_set(container).insert(tx, self)
         }
 
@@ -146,7 +146,7 @@ pub(crate) mod private {
             self,
             container: &Self::Container,
             tx: &Transaction,
-        ) -> Result<Oid<Self>, Conflict<Self>> {
+        ) -> Result<Oid<Self>, Conflict<S, Self>> {
             Self::catalog_set(container).insert(tx, self)
         }
 
@@ -160,7 +160,7 @@ pub(crate) mod private {
             container: &Self::Container,
             tx: &Transaction,
             oid: Oid<Self>,
-        ) -> Result<(), Conflict<Self>> {
+        ) -> Result<(), Conflict<S, Self>> {
             Self::catalog_set(container).delete(tx, oid)
         }
 

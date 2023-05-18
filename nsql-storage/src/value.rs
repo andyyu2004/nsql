@@ -6,7 +6,6 @@ use rust_decimal::prelude::ToPrimitive;
 pub use rust_decimal::Decimal;
 
 use crate::schema::LogicalType;
-use crate::table_storage::TupleId;
 
 pub struct CastError<T> {
     value: Value,
@@ -48,7 +47,6 @@ pub enum Value {
     Bool(bool),
     Decimal(Decimal),
     Text(String),
-    Tid(TupleId),
 }
 
 impl Value {
@@ -80,7 +78,6 @@ impl Value {
             Value::Bool(_) => LogicalType::Bool,
             Value::Decimal(_) => LogicalType::Decimal,
             Value::Text(_) => LogicalType::Text,
-            Value::Tid(_) => LogicalType::Tid,
         }
     }
 }
@@ -94,7 +91,6 @@ impl fmt::Display for Value {
             Value::Decimal(d) => write!(f, "{d}"),
             Value::Text(s) => write!(f, "{s}"),
             Value::Int(i) => write!(f, "{i}"),
-            Value::Tid(t) => write!(f, "{t}"),
         }
     }
 }
