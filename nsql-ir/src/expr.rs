@@ -118,10 +118,18 @@ impl fmt::Display for BinOp {
     }
 }
 
-#[derive(Debug)]
 pub struct TableRef<S> {
     pub namespace: Oid<Namespace<S>>,
     pub table: Oid<Table<S>>,
+}
+
+impl<S> fmt::Debug for TableRef<S> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("TableRef")
+            .field("namespace", &self.namespace)
+            .field("table", &self.table)
+            .finish()
+    }
 }
 
 impl<S> Clone for TableRef<S> {

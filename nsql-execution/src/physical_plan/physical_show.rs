@@ -9,12 +9,12 @@ pub struct PhysicalShow {
 }
 
 impl PhysicalShow {
-    pub(crate) fn plan<S>(show: ir::ObjectType) -> Arc<dyn PhysicalNode<S>> {
+    pub(crate) fn plan<S: StorageEngine>(show: ir::ObjectType) -> Arc<dyn PhysicalNode<S>> {
         Arc::new(Self { show })
     }
 }
 
-impl<S> PhysicalNode<S> for PhysicalShow {
+impl<S: StorageEngine> PhysicalNode<S> for PhysicalShow {
     fn children(&self) -> &[Arc<dyn PhysicalNode<S>>] {
         &[]
     }
@@ -35,16 +35,16 @@ impl<S> PhysicalNode<S> for PhysicalShow {
 }
 
 #[async_trait::async_trait]
-impl<S> PhysicalSource<S> for PhysicalShow {
+impl<S: StorageEngine> PhysicalSource<S> for PhysicalShow {
     async fn source(&self, ctx: &ExecutionContext<S>) -> ExecutionResult<SourceState<Chunk>> {
         let catalog = ctx.catalog();
         let tx = ctx.tx();
         let mut tuples = vec![];
-        let namespaces = catalog.all::<Namespace>(&tx);
+        let namespaces = catalog.all::<Namespace<S>>(&tx);
         for (_, namespace) in namespaces {
             match self.show {
                 ir::ObjectType::Table => {
-                    for (_, table) in namespace.all::<Table>(&tx) {
+                    for (_, table) in namespace.all::<Table<S>>(&tx) {
                         tuples.push(Tuple::from(vec![Value::Text(table.name().to_string())]));
                     }
                 }
@@ -55,7 +55,7 @@ impl<S> PhysicalSource<S> for PhysicalShow {
     }
 }
 
-impl<S> Explain<S> for PhysicalShow {
+impl<S: StorageEngine> Explain<S> for PhysicalShow {
     fn explain(
         &self,
         _catalog: &Catalog<S>,

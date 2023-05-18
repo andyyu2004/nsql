@@ -2,14 +2,13 @@ use itertools::Itertools;
 
 use super::*;
 
-#[derive(Debug)]
 pub struct PhysicalProjection<S> {
     children: [Arc<dyn PhysicalNode<S>>; 1],
     projection: Box<[ir::Expr]>,
     evaluator: Evaluator,
 }
 
-impl<S> PhysicalProjection<S> {
+impl<S: StorageEngine> PhysicalProjection<S> {
     pub(crate) fn plan(
         source: Arc<dyn PhysicalNode<S>>,
         projection: Box<[ir::Expr]>,
@@ -19,7 +18,7 @@ impl<S> PhysicalProjection<S> {
 }
 
 #[async_trait::async_trait]
-impl<S> PhysicalOperator<S> for PhysicalProjection<S> {
+impl<S: StorageEngine> PhysicalOperator<S> for PhysicalProjection<S> {
     #[tracing::instrument(skip(self, _ctx, input))]
     async fn execute(
         &self,
@@ -32,7 +31,7 @@ impl<S> PhysicalOperator<S> for PhysicalProjection<S> {
     }
 }
 
-impl<S> PhysicalNode<S> for PhysicalProjection<S> {
+impl<S: StorageEngine> PhysicalNode<S> for PhysicalProjection<S> {
     fn children(&self) -> &[Arc<dyn PhysicalNode<S>>] {
         &self.children
     }
@@ -52,7 +51,7 @@ impl<S> PhysicalNode<S> for PhysicalProjection<S> {
     }
 }
 
-impl<S> Explain<S> for PhysicalProjection<S> {
+impl<S: StorageEngine> Explain<S> for PhysicalProjection<S> {
     fn explain(
         &self,
         _catalog: &Catalog<S>,

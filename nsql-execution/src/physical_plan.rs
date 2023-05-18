@@ -20,6 +20,7 @@ use std::sync::Arc;
 use anyhow::Result;
 use nsql_catalog::{Catalog, EntityRef, Transaction};
 use nsql_plan::Plan;
+use nsql_storage_engine::StorageEngine;
 
 pub use self::explain::Explain;
 use self::physical_create_namespace::PhysicalCreateNamespace;
@@ -48,7 +49,6 @@ pub struct PhysicalPlanner<S> {
 }
 
 /// Opaque physical plan that is ready to be executed
-#[derive(Debug)]
 pub struct PhysicalPlan<S>(Arc<dyn PhysicalNode<S>>);
 
 impl<S> PhysicalPlan<S> {
@@ -57,7 +57,7 @@ impl<S> PhysicalPlan<S> {
     }
 }
 
-impl<S> PhysicalPlanner<S> {
+impl<S: StorageEngine> PhysicalPlanner<S> {
     pub fn new(catalog: Arc<Catalog<S>>, tx: Arc<Transaction>) -> Self {
         Self { tx, catalog }
     }

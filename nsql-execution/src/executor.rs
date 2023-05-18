@@ -9,7 +9,7 @@ pub(crate) struct Executor<S> {
     _marker: std::marker::PhantomData<S>,
 }
 
-impl<S> Executor<S> {
+impl<S: StorageEngine> Executor<S> {
     #[async_recursion::async_recursion]
     async fn execute(
         self: Arc<Self>,
@@ -76,7 +76,7 @@ impl<S> Executor<S> {
     }
 }
 
-async fn execute_root_pipeline<S>(
+async fn execute_root_pipeline<S: StorageEngine>(
     ctx: ExecutionContext<S>,
     pipeline: RootPipeline,
 ) -> ExecutionResult<()> {
@@ -85,7 +85,7 @@ async fn execute_root_pipeline<S>(
     executor.execute(ctx, root).await
 }
 
-pub async fn execute<S>(
+pub async fn execute<S: StorageEngine>(
     ctx: ExecutionContext<S>,
     plan: PhysicalPlan<S>,
 ) -> ExecutionResult<Vec<Tuple>> {
@@ -102,19 +102,23 @@ pub(crate) struct OutputSink {
     tuples: RwLock<Vec<Tuple>>,
 }
 
-impl<S> PhysicalNode<S> for OutputSink {
+impl<S: StorageEngine> PhysicalNode<S> for OutputSink {
+    #[inline]
     fn children(&self) -> &[Arc<dyn PhysicalNode<S>>] {
         &[]
     }
 
+    #[inline]
     fn as_source(self: Arc<Self>) -> Result<Arc<dyn PhysicalSource<S>>, Arc<dyn PhysicalNode<S>>> {
         Err(self)
     }
 
+    #[inline]
     fn as_sink(self: Arc<Self>) -> Result<Arc<dyn PhysicalSink<S>>, Arc<dyn PhysicalNode<S>>> {
         Ok(self)
     }
 
+    #[inline]
     fn as_operator(
         self: Arc<Self>,
     ) -> Result<Arc<dyn PhysicalOperator<S>>, Arc<dyn PhysicalNode<S>>> {
@@ -123,14 +127,14 @@ impl<S> PhysicalNode<S> for OutputSink {
 }
 
 #[async_trait::async_trait]
-impl<S> PhysicalSource<S> for OutputSink {
+impl<S: StorageEngine> PhysicalSource<S> for OutputSink {
     async fn source(&self, _ctx: &ExecutionContext<S>) -> ExecutionResult<SourceState<Chunk>> {
         todo!()
     }
 }
 
 #[async_trait::async_trait]
-impl<S> PhysicalSink<S> for OutputSink {
+impl<S: StorageEngine> PhysicalSink<S> for OutputSink {
     async fn sink(&self, _ctx: &ExecutionContext<S>, tuple: Tuple) -> ExecutionResult<()> {
         self.tuples.write().push(tuple);
         Ok(())

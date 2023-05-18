@@ -2,21 +2,20 @@ use std::sync::atomic::{self, AtomicU64};
 
 use super::*;
 
-#[derive(Debug)]
 pub struct PhysicalLimit<S> {
     children: [Arc<dyn PhysicalNode<S>>; 1],
     yielded: AtomicU64,
     limit: u64,
 }
 
-impl<S> PhysicalLimit<S> {
+impl<S: StorageEngine> PhysicalLimit<S> {
     pub(crate) fn plan(source: Arc<dyn PhysicalNode<S>>, limit: u64) -> Arc<dyn PhysicalNode<S>> {
         Arc::new(Self { children: [source], limit, yielded: AtomicU64::new(0) })
     }
 }
 
 #[async_trait::async_trait]
-impl<S> PhysicalOperator<S> for PhysicalLimit<S> {
+impl<S: StorageEngine> PhysicalOperator<S> for PhysicalLimit<S> {
     async fn execute(
         &self,
         _ctx: &ExecutionContext<S>,
@@ -30,7 +29,7 @@ impl<S> PhysicalOperator<S> for PhysicalLimit<S> {
     }
 }
 
-impl<S> PhysicalNode<S> for PhysicalLimit<S> {
+impl<S: StorageEngine> PhysicalNode<S> for PhysicalLimit<S> {
     fn children(&self) -> &[Arc<dyn PhysicalNode<S>>] {
         &self.children
     }
@@ -50,7 +49,7 @@ impl<S> PhysicalNode<S> for PhysicalLimit<S> {
     }
 }
 
-impl<S> Explain<S> for PhysicalLimit<S> {
+impl<S: StorageEngine> Explain<S> for PhysicalLimit<S> {
     fn explain(
         &self,
         _catalog: &Catalog<S>,

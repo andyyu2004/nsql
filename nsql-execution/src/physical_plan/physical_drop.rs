@@ -2,18 +2,23 @@ use nsql_catalog::EntityRef;
 
 use super::*;
 
-#[derive(Debug)]
 pub struct PhysicalDrop<S> {
     refs: Vec<ir::EntityRef<S>>,
 }
 
-impl<S> PhysicalDrop<S> {
+impl<S> fmt::Debug for PhysicalDrop<S> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("PhysicalDrop").field("refs", &self.refs).finish()
+    }
+}
+
+impl<S: StorageEngine> PhysicalDrop<S> {
     pub(crate) fn plan(refs: Vec<ir::EntityRef<S>>) -> Arc<dyn PhysicalNode<S>> {
         Arc::new(Self { refs })
     }
 }
 
-impl<S> PhysicalNode<S> for PhysicalDrop<S> {
+impl<S: StorageEngine> PhysicalNode<S> for PhysicalDrop<S> {
     fn children(&self) -> &[Arc<dyn PhysicalNode<S>>] {
         &[]
     }
@@ -34,7 +39,7 @@ impl<S> PhysicalNode<S> for PhysicalDrop<S> {
 }
 
 #[async_trait::async_trait]
-impl<S> PhysicalSource<S> for PhysicalDrop<S> {
+impl<S: StorageEngine> PhysicalSource<S> for PhysicalDrop<S> {
     async fn source(&self, ctx: &ExecutionContext<S>) -> ExecutionResult<SourceState<Chunk>> {
         let tx = ctx.tx();
         let catalog = ctx.catalog();
@@ -48,7 +53,7 @@ impl<S> PhysicalSource<S> for PhysicalDrop<S> {
     }
 }
 
-impl<S> Explain<S> for PhysicalDrop<S> {
+impl<S: StorageEngine> Explain<S> for PhysicalDrop<S> {
     fn explain(
         &self,
         catalog: &Catalog<S>,

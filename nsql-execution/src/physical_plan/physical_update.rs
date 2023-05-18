@@ -5,7 +5,6 @@ use parking_lot::RwLock;
 
 use super::*;
 
-#[derive(Debug)]
 pub(crate) struct PhysicalUpdate<S> {
     children: [Arc<dyn PhysicalNode<S>>; 1],
     table_ref: ir::TableRef<S>,
@@ -14,7 +13,7 @@ pub(crate) struct PhysicalUpdate<S> {
     returning_evaluator: Evaluator,
 }
 
-impl<S> PhysicalUpdate<S> {
+impl<S: StorageEngine> PhysicalUpdate<S> {
     pub fn plan(
         table_ref: ir::TableRef<S>,
         // This is the source of the updates.
@@ -32,7 +31,7 @@ impl<S> PhysicalUpdate<S> {
     }
 }
 
-impl<S> PhysicalNode<S> for PhysicalUpdate<S> {
+impl<S: StorageEngine> PhysicalNode<S> for PhysicalUpdate<S> {
     #[inline]
     fn children(&self) -> &[Arc<dyn PhysicalNode<S>>] {
         &self.children
@@ -57,7 +56,7 @@ impl<S> PhysicalNode<S> for PhysicalUpdate<S> {
 }
 
 #[async_trait::async_trait]
-impl<S> PhysicalSink<S> for PhysicalUpdate<S> {
+impl<S: StorageEngine> PhysicalSink<S> for PhysicalUpdate<S> {
     async fn sink(&self, ctx: &ExecutionContext<S>, tuple: Tuple) -> ExecutionResult<()> {
         let tx = ctx.tx();
         let table = self.table_ref.get(&ctx.catalog(), &tx);
@@ -83,7 +82,7 @@ impl<S> PhysicalSink<S> for PhysicalUpdate<S> {
 }
 
 #[async_trait::async_trait]
-impl<S> PhysicalSource<S> for PhysicalUpdate<S> {
+impl<S: StorageEngine> PhysicalSource<S> for PhysicalUpdate<S> {
     #[inline]
     async fn source(&self, _ctx: &ExecutionContext<S>) -> ExecutionResult<SourceState<Chunk>> {
         let returning = match &self.returning {
@@ -102,7 +101,7 @@ impl<S> PhysicalSource<S> for PhysicalUpdate<S> {
     }
 }
 
-impl<S> Explain<S> for PhysicalUpdate<S> {
+impl<S: StorageEngine> Explain<S> for PhysicalUpdate<S> {
     fn explain(
         &self,
         catalog: &Catalog<S>,

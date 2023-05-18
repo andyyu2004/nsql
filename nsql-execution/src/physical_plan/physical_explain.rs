@@ -3,13 +3,20 @@ use nsql_storage::value::Value;
 
 use super::*;
 
-#[derive(Debug)]
 pub struct PhysicalExplain<S> {
     stringified_plan: AtomicTake<String>,
     children: [Arc<dyn PhysicalNode<S>>; 1],
 }
 
-impl<S> PhysicalExplain<S> {
+impl<S> fmt::Debug for PhysicalExplain<S> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("PhysicalExplain")
+            .field("stringified_plan", &self.stringified_plan)
+            .finish_non_exhaustive()
+    }
+}
+
+impl<S: StorageEngine> PhysicalExplain<S> {
     #[inline]
     pub(crate) fn plan(
         stringified_plan: String,
@@ -19,7 +26,7 @@ impl<S> PhysicalExplain<S> {
     }
 }
 
-impl<S> PhysicalNode<S> for PhysicalExplain<S> {
+impl<S: StorageEngine> PhysicalNode<S> for PhysicalExplain<S> {
     fn children(&self) -> &[Arc<dyn PhysicalNode<S>>] {
         // no children as we don't actually need to run anything (unless we're doing an analyse which is not implemented)
         &[]
@@ -41,14 +48,14 @@ impl<S> PhysicalNode<S> for PhysicalExplain<S> {
 }
 
 #[async_trait::async_trait]
-impl<S> PhysicalSource<S> for PhysicalExplain<S> {
+impl<S: StorageEngine> PhysicalSource<S> for PhysicalExplain<S> {
     async fn source(&self, _ctx: &ExecutionContext<S>) -> ExecutionResult<SourceState<Chunk>> {
         let plan = self.stringified_plan.take().expect("should not be called again");
         Ok(SourceState::Final(Chunk::singleton(Tuple::from(vec![Value::Text(plan)]))))
     }
 }
 
-impl<S> Explain<S> for PhysicalExplain<S> {
+impl<S: StorageEngine> Explain<S> for PhysicalExplain<S> {
     fn explain(
         &self,
         _catalog: &Catalog<S>,

@@ -15,7 +15,7 @@ impl PhysicalValues {
 }
 
 #[async_trait::async_trait]
-impl<S> PhysicalSource<S> for PhysicalValues {
+impl<S: StorageEngine> PhysicalSource<S> for PhysicalValues {
     async fn source(&self, _ctx: &ExecutionContext<S>) -> ExecutionResult<SourceState<Chunk>> {
         let index = self.index.fetch_add(1, atomic::Ordering::SeqCst);
         if index >= self.values.len() {
@@ -30,7 +30,7 @@ impl<S> PhysicalSource<S> for PhysicalValues {
     }
 }
 
-impl<S> PhysicalNode<S> for PhysicalValues<S> {
+impl<S: StorageEngine> PhysicalNode<S> for PhysicalValues {
     #[inline]
     fn children(&self) -> &[Arc<dyn PhysicalNode<S>>] {
         &[]
@@ -54,7 +54,7 @@ impl<S> PhysicalNode<S> for PhysicalValues<S> {
     }
 }
 
-impl<S> Explain<S> for PhysicalValues {
+impl<S: StorageEngine> Explain<S> for PhysicalValues {
     fn explain(
         &self,
         _catalog: &Catalog<S>,

@@ -5,7 +5,6 @@ use parking_lot::RwLock;
 
 use super::*;
 
-#[derive(Debug)]
 pub(crate) struct PhysicalInsert<S> {
     children: [Arc<dyn PhysicalNode<S>>; 1],
     table_ref: ir::TableRef<S>,
@@ -14,7 +13,7 @@ pub(crate) struct PhysicalInsert<S> {
     returning_evaluator: Evaluator,
 }
 
-impl<S> PhysicalInsert<S> {
+impl<S: StorageEngine> PhysicalInsert<S> {
     pub fn plan(
         table_ref: ir::TableRef<S>,
         source: Arc<dyn PhysicalNode<S>>,
@@ -30,7 +29,7 @@ impl<S> PhysicalInsert<S> {
     }
 }
 
-impl<S> PhysicalNode<S> for PhysicalInsert<S> {
+impl<S: StorageEngine> PhysicalNode<S> for PhysicalInsert<S> {
     fn children(&self) -> &[Arc<dyn PhysicalNode<S>>] {
         &self.children
     }
@@ -51,7 +50,7 @@ impl<S> PhysicalNode<S> for PhysicalInsert<S> {
 }
 
 #[async_trait::async_trait]
-impl<S> PhysicalSink<S> for PhysicalInsert<S> {
+impl<S: StorageEngine> PhysicalSink<S> for PhysicalInsert<S> {
     async fn sink(&self, ctx: &ExecutionContext<S>, tuple: Tuple) -> ExecutionResult<()> {
         let tx = ctx.tx();
         let table = self.table_ref.get(&ctx.catalog(), &tx);
@@ -68,7 +67,7 @@ impl<S> PhysicalSink<S> for PhysicalInsert<S> {
 }
 
 #[async_trait::async_trait]
-impl<S> PhysicalSource<S> for PhysicalInsert<S> {
+impl<S: StorageEngine> PhysicalSource<S> for PhysicalInsert<S> {
     #[inline]
     async fn source(&self, _ctx: &ExecutionContext<S>) -> ExecutionResult<SourceState<Chunk>> {
         let returning = match &self.returning {
@@ -87,7 +86,7 @@ impl<S> PhysicalSource<S> for PhysicalInsert<S> {
     }
 }
 
-impl<S> Explain<S> for PhysicalInsert<S> {
+impl<S: StorageEngine> Explain<S> for PhysicalInsert<S> {
     fn explain(
         &self,
         catalog: &Catalog<S>,

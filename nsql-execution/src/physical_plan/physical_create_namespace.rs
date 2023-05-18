@@ -11,12 +11,14 @@ pub struct PhysicalCreateNamespace {
 }
 
 impl PhysicalCreateNamespace {
-    pub(crate) fn plan<S>(info: ir::CreateNamespaceInfo) -> Arc<dyn PhysicalNode<S>> {
+    pub(crate) fn plan<S: StorageEngine>(
+        info: ir::CreateNamespaceInfo,
+    ) -> Arc<dyn PhysicalNode<S>> {
         Arc::new(Self { info })
     }
 }
 
-impl<S> PhysicalNode<S> for PhysicalCreateNamespace {
+impl<S: StorageEngine> PhysicalNode<S> for PhysicalCreateNamespace {
     fn children(&self) -> &[Arc<dyn PhysicalNode<S>>] {
         &[]
     }
@@ -37,12 +39,12 @@ impl<S> PhysicalNode<S> for PhysicalCreateNamespace {
 }
 
 #[async_trait::async_trait]
-impl<S> PhysicalSource<S> for PhysicalCreateNamespace {
+impl<S: StorageEngine> PhysicalSource<S> for PhysicalCreateNamespace {
     async fn source(&self, ctx: &ExecutionContext<S>) -> ExecutionResult<SourceState<Chunk>> {
         let tx = ctx.tx();
         let info = CreateNamespaceInfo { name: self.info.name.clone() };
 
-        if let Err(err) = ctx.catalog.create::<Namespace>(&tx, info) {
+        if let Err(err) = ctx.catalog.create::<Namespace<S>>(&tx, info) {
             if !self.info.if_not_exists {
                 return Err(err)?;
             }
@@ -52,7 +54,7 @@ impl<S> PhysicalSource<S> for PhysicalCreateNamespace {
     }
 }
 
-impl<S> Explain<S> for PhysicalCreateNamespace {
+impl<S: StorageEngine> Explain<S> for PhysicalCreateNamespace {
     fn explain(
         &self,
         _catalog: &Catalog<S>,

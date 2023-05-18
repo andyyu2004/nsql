@@ -3,6 +3,7 @@ use std::fmt;
 use nsql_arena::Idx;
 use nsql_catalog::Catalog;
 use nsql_storage::Transaction;
+use nsql_storage_engine::StorageEngine;
 
 use crate::pipeline::MetaPipeline;
 use crate::{PhysicalNode, RootPipeline};
@@ -28,7 +29,7 @@ pub struct RootPipelineExplainer<'a, S> {
     root_pipeline: &'a RootPipeline,
 }
 
-impl<S> RootPipelineExplainer<'_, S> {}
+impl<S: StorageEngine> RootPipelineExplainer<'_, S> {}
 
 pub struct MetaPipelineExplainer<'a, S> {
     root: &'a RootPipelineExplainer<'a, S>,
@@ -41,7 +42,7 @@ impl<'a, S> MetaPipelineExplainer<'a, S> {
         f: &mut fmt::Formatter<'_>,
         meta_pipeline: Idx<MetaPipeline>,
     ) -> fmt::Result {
-        let arena = &self.root_pipeline.arena;
+        let arena = &self.root.root_pipeline.arena;
         writeln!(
             f,
             "{:indent$}metapipeline #{}",

@@ -4,18 +4,23 @@ use nsql_storage::{TableStorage, TableStorageInfo};
 
 use super::*;
 
-#[derive(Debug)]
 pub struct PhysicalCreateTable<S> {
     info: ir::CreateTableInfo<S>,
 }
 
-impl<S> PhysicalCreateTable<S> {
+impl<S> fmt::Debug for PhysicalCreateTable<S> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("PhysicalCreateTable").field("info", &self.info).finish()
+    }
+}
+
+impl<S: StorageEngine> PhysicalCreateTable<S> {
     pub(crate) fn plan(info: ir::CreateTableInfo<S>) -> Arc<dyn PhysicalNode<S>> {
         Arc::new(Self { info })
     }
 }
 
-impl<S> PhysicalNode<S> for PhysicalCreateTable<S> {
+impl<S: StorageEngine> PhysicalNode<S> for PhysicalCreateTable<S> {
     fn children(&self) -> &[Arc<dyn PhysicalNode<S>>] {
         &[]
     }
@@ -36,7 +41,7 @@ impl<S> PhysicalNode<S> for PhysicalCreateTable<S> {
 }
 
 #[async_trait::async_trait]
-impl<S> PhysicalSource<S> for PhysicalCreateTable<S> {
+impl<S: StorageEngine> PhysicalSource<S> for PhysicalCreateTable<S> {
     async fn source(&self, ctx: &ExecutionContext<S>) -> ExecutionResult<SourceState<Chunk>> {
         let attrs = self
             .info
@@ -58,11 +63,12 @@ impl<S> PhysicalSource<S> for PhysicalCreateTable<S> {
         let catalog = ctx.catalog();
         let tx = ctx.tx();
         let schema = catalog
-            .get::<Namespace>(&tx, self.info.namespace)
+            .get::<Namespace<S>>(&tx, self.info.namespace)
             .expect("schema not found during execution");
 
-        let table_oid = schema.create::<Table>(&tx, info)?;
-        let table = schema.get::<Table>(&tx, table_oid).expect("table not found during execution");
+        let table_oid = schema.create::<Table<S>>(&tx, info)?;
+        let table =
+            schema.get::<Table<S>>(&tx, table_oid).expect("table not found during execution");
         for info in &self.info.columns {
             table.create::<Column>(&tx, info.clone())?;
         }
@@ -71,7 +77,7 @@ impl<S> PhysicalSource<S> for PhysicalCreateTable<S> {
     }
 }
 
-impl<S> Explain<S> for PhysicalCreateTable<S> {
+impl<S: StorageEngine> Explain<S> for PhysicalCreateTable<S> {
     fn explain(
         &self,
         _catalog: &Catalog<S>,

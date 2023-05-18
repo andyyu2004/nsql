@@ -11,7 +11,7 @@ impl PhysicalTransaction {
     }
 }
 
-impl<S> PhysicalNode<S> for PhysicalTransaction {
+impl<S: StorageEngine> PhysicalNode<S> for PhysicalTransaction {
     fn children(&self) -> &[Arc<dyn PhysicalNode<S>>] {
         &[]
     }
@@ -32,7 +32,7 @@ impl<S> PhysicalNode<S> for PhysicalTransaction {
 }
 
 #[async_trait::async_trait]
-impl<S> PhysicalSource<S> for PhysicalTransaction {
+impl<S: StorageEngine> PhysicalSource<S> for PhysicalTransaction {
     async fn source(&self, ctx: &ExecutionContext<S>) -> ExecutionResult<SourceState<Chunk>> {
         let tx = ctx.tx();
         match self.kind {
@@ -63,7 +63,7 @@ impl<S> PhysicalSource<S> for PhysicalTransaction {
     }
 }
 
-impl<S> Explain<S> for PhysicalTransaction {
+impl<S: StorageEngine> Explain<S> for PhysicalTransaction {
     fn explain(
         &self,
         _catalog: &Catalog<S>,

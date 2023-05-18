@@ -18,6 +18,7 @@ use nsql_buffer::Pool;
 use nsql_catalog::Catalog;
 use nsql_storage::tuple::Tuple;
 use nsql_storage::Transaction;
+use nsql_storage_engine::StorageEngine;
 pub use physical_plan::PhysicalPlanner;
 use smallvec::SmallVec;
 
@@ -38,7 +39,7 @@ fn build_pipelines<S>(sink: Arc<dyn PhysicalSink<S>>, plan: PhysicalPlan<S>) -> 
     RootPipeline { arena }
 }
 
-trait PhysicalNode<S>: Send + Sync + fmt::Debug + Explain<S> + Any + 'static {
+trait PhysicalNode<S>: Send + Sync + Explain<S> + Any + 'static {
     fn children(&self) -> &[Arc<dyn PhysicalNode<S>>];
 
     fn as_source(self: Arc<Self>) -> Result<Arc<dyn PhysicalSource<S>>, Arc<dyn PhysicalNode<S>>>;
@@ -73,7 +74,8 @@ trait PhysicalNode<S>: Send + Sync + fmt::Debug + Explain<S> + Any + 'static {
             Err(node) => match node.as_source() {
                 Ok(source) => arena[current].set_source(source),
                 Err(operator) => {
-                    let operator = operator.as_operator().unwrap();
+                    // Safety: we checked the other two cases above, must be an operator
+                    let operator = unsafe { operator.as_operator().unwrap_unchecked() };
                     let children = operator.children();
                     assert_eq!(
                         children.len(),
@@ -140,7 +142,7 @@ enum SourceState<T> {
 }
 
 #[async_trait::async_trait]
-trait PhysicalOperator<S, T = Tuple>: PhysicalNode<S> {
+trait PhysicalOperator<S: StorageEngine, T = Tuple>: PhysicalNode<S> {
     async fn execute(
         &self,
         ctx: &ExecutionContext<S>,
@@ -149,24 +151,34 @@ trait PhysicalOperator<S, T = Tuple>: PhysicalNode<S> {
 }
 
 #[async_trait::async_trait]
-trait PhysicalSource<S, T = Tuple>: PhysicalNode<S> {
+trait PhysicalSource<S: StorageEngine, T = Tuple>: PhysicalNode<S> {
     /// Return the next chunk from the source. An empty chunk indicates that the source is exhausted.
     async fn source(&self, ctx: &ExecutionContext<S>) -> ExecutionResult<SourceState<Chunk<T>>>;
 }
 
 #[async_trait::async_trait]
-trait PhysicalSink<S>: PhysicalSource<S> {
+trait PhysicalSink<S: StorageEngine>: PhysicalSource<S> {
     async fn sink(&self, ctx: &ExecutionContext<S>, tuple: Tuple) -> ExecutionResult<()>;
 }
 
-#[derive(Clone)]
-pub struct ExecutionContext<S> {
+pub struct ExecutionContext<S: StorageEngine> {
     pool: Arc<dyn Pool>,
     catalog: Arc<Catalog<S>>,
     tx: Arc<Transaction>,
 }
 
-impl<S> ExecutionContext<S> {
+impl<S: StorageEngine> Clone for ExecutionContext<S> {
+    #[inline]
+    fn clone(&self) -> Self {
+        Self {
+            pool: Arc::clone(&self.pool),
+            catalog: Arc::clone(&self.catalog),
+            tx: Arc::clone(&self.tx),
+        }
+    }
+}
+
+impl<S: StorageEngine> ExecutionContext<S> {
     #[inline]
     pub fn new(pool: Arc<dyn Pool>, catalog: Arc<Catalog<S>>, tx: Arc<Transaction>) -> Self {
         Self { pool, catalog, tx }

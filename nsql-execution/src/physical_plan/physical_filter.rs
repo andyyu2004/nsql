@@ -1,13 +1,12 @@
 use super::*;
 
-#[derive(Debug)]
 pub struct PhysicalFilter<S> {
     children: [Arc<dyn PhysicalNode<S>>; 1],
     predicate: ir::Expr,
     evaluator: Evaluator,
 }
 
-impl<S> PhysicalFilter<S> {
+impl<S: StorageEngine> PhysicalFilter<S> {
     pub(crate) fn plan(
         source: Arc<dyn PhysicalNode<S>>,
         predicate: ir::Expr,
@@ -17,7 +16,7 @@ impl<S> PhysicalFilter<S> {
 }
 
 #[async_trait::async_trait]
-impl<S> PhysicalOperator<S> for PhysicalFilter<S> {
+impl<S: StorageEngine> PhysicalOperator<S> for PhysicalFilter<S> {
     #[tracing::instrument(skip(self, _ctx, input))]
     async fn execute(
         &self,
@@ -35,7 +34,7 @@ impl<S> PhysicalOperator<S> for PhysicalFilter<S> {
     }
 }
 
-impl<S> PhysicalNode<S> for PhysicalFilter<S> {
+impl<S: StorageEngine> PhysicalNode<S> for PhysicalFilter<S> {
     fn children(&self) -> &[Arc<dyn PhysicalNode<S>>] {
         &self.children
     }
@@ -55,7 +54,7 @@ impl<S> PhysicalNode<S> for PhysicalFilter<S> {
     }
 }
 
-impl<S> Explain<S> for PhysicalFilter<S> {
+impl<S: StorageEngine> Explain<S> for PhysicalFilter<S> {
     fn explain(
         &self,
         _catalog: &Catalog<S>,

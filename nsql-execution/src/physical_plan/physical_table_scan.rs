@@ -23,7 +23,7 @@ pub struct PhysicalTableScan<S> {
 
 type TupleStream = Pin<Box<dyn Stream<Item = nsql_buffer::Result<Vec<Tuple>>> + Send>>;
 
-impl<S> fmt::Debug for PhysicalTableScan<S> {
+impl<S: StorageEngine> fmt::Debug for PhysicalTableScan<S> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("PhysicalTableScan")
             .field("table_ref", &self.table_ref)
@@ -32,7 +32,7 @@ impl<S> fmt::Debug for PhysicalTableScan<S> {
     }
 }
 
-impl<S> PhysicalTableScan<S> {
+impl<S: StorageEngine> PhysicalTableScan<S> {
     pub(crate) fn plan(
         table_ref: ir::TableRef<S>,
         projection: Option<Box<[ColumnIndex]>>,
@@ -49,7 +49,7 @@ impl<S> PhysicalTableScan<S> {
 }
 
 #[async_trait::async_trait]
-impl<S> PhysicalSource<S> for PhysicalTableScan<S> {
+impl<S: StorageEngine> PhysicalSource<S> for PhysicalTableScan<S> {
     #[tracing::instrument(skip(self, ctx))]
     async fn source(&self, ctx: &ExecutionContext<S>) -> ExecutionResult<SourceState<Chunk>> {
         let tx = ctx.tx();
@@ -91,7 +91,7 @@ impl<S> PhysicalSource<S> for PhysicalTableScan<S> {
     }
 }
 
-impl<S> PhysicalNode<S> for PhysicalTableScan<S> {
+impl<S: StorageEngine> PhysicalNode<S> for PhysicalTableScan<S> {
     fn children(&self) -> &[Arc<dyn PhysicalNode<S>>] {
         &[]
     }
@@ -111,7 +111,7 @@ impl<S> PhysicalNode<S> for PhysicalTableScan<S> {
     }
 }
 
-impl<S> Explain<S> for PhysicalTableScan<S> {
+impl<S: StorageEngine> Explain<S> for PhysicalTableScan<S> {
     fn explain(
         &self,
         catalog: &Catalog<S>,

@@ -10,11 +10,21 @@ pub use nsql_storage::value::{Decimal, Value};
 
 pub use self::expr::*;
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct CreateTableInfo<S> {
     pub name: Name,
     pub namespace: Oid<Namespace<S>>,
     pub columns: Vec<CreateColumnInfo>,
+}
+
+impl<S> fmt::Debug for CreateTableInfo<S> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("CreateTableInfo")
+            .field("name", &self.name)
+            .field("namespace", &self.namespace)
+            .field("columns", &self.columns)
+            .finish()
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -43,9 +53,17 @@ impl fmt::Display for ObjectType {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub enum EntityRef<S> {
     Table(TableRef<S>),
+}
+
+impl<S> fmt::Debug for EntityRef<S> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Table(table) => write!(f, "{table:?}"),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
