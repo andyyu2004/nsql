@@ -1,6 +1,11 @@
 #![deny(rust_2018_idioms)]
+#![feature(return_position_impl_trait_in_trait)]
+#![feature(impl_trait_projections)]
+
+use std::ops::RangeBounds;
 use std::path::Path;
 
+use heed::types::ByteSlice;
 use heed::UntypedDatabase;
 use nsql_storage_engine::{ReadTransaction, ReadTree, StorageEngine, Transaction, Tree};
 
@@ -86,6 +91,14 @@ impl<'txn> ReadTree<'_, 'txn, LmdbStorageEngine> for heed::UntypedDatabase {
         key: &[u8],
     ) -> Result<Option<Self::Bytes>, heed::Error> {
         self.get(&txn.tx, key)
+    }
+
+    fn range(
+        &'txn self,
+        txn: &'txn ReadonlyTx<'_>,
+        range: impl RangeBounds<[u8]>,
+    ) -> Result<impl Iterator<Item = Result<(Self::Bytes, Self::Bytes), heed::Error>>> {
+        self.range(&txn.tx, &range)
     }
 }
 

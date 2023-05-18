@@ -1,6 +1,10 @@
 #![deny(rust_2018_idioms)]
+#![feature(type_alias_impl_trait)]
+#![feature(return_position_impl_trait_in_trait)]
+#![feature(impl_trait_projections)]
+#![feature(bound_map)]
 
-use std::ops::Deref;
+use std::ops::{Deref, RangeBounds};
 use std::path::Path;
 
 use redb::{AccessGuard, ReadableTable};
@@ -97,6 +101,15 @@ impl<'env, 'txn> nsql_storage_engine::ReadTree<'env, 'txn, RedbStorageEngine>
     ) -> Result<Option<Self::Bytes>, redb::Error> {
         Ok(ReadableTable::get(self, key)?.map(AccessGuardDerefWrapper))
     }
+
+    fn range(
+        &'txn self,
+        _txn: &'txn ReadTransaction<'_>,
+        range: impl RangeBounds<[u8]>,
+    ) -> Result<impl Iterator<Item = Result<(Self::Bytes, Self::Bytes), redb::Error>>> {
+        Ok(ReadableTable::range::<&[u8]>(self, (range.start_bound(), range.end_bound()))?
+            .map(|kv| kv.map(|(k, v)| (AccessGuardDerefWrapper(k), AccessGuardDerefWrapper(v)))))
+    }
 }
 
 pub struct AccessGuardDerefWrapper<'a>(AccessGuard<'a, &'a [u8]>);
@@ -122,6 +135,16 @@ impl<'env, 'txn> nsql_storage_engine::ReadTree<'env, 'txn, RedbStorageEngine>
         key: &[u8],
     ) -> Result<Option<Self::Bytes>, redb::Error> {
         Ok(ReadableTable::get(self, key)?.map(AccessGuardDerefWrapper))
+    }
+
+    fn range(
+        &'txn self,
+        _txn: &'txn ReadTransaction<'_>,
+        range: impl RangeBounds<[u8]>,
+    ) -> Result<impl Iterator<Item = Result<(Self::Bytes, Self::Bytes), redb::Error>>, redb::Error>
+    {
+        Ok(ReadableTable::range::<&[u8]>(self, (range.start_bound(), range.end_bound()))?
+            .map(|kv| kv.map(|(k, v)| (AccessGuardDerefWrapper(k), AccessGuardDerefWrapper(v)))))
     }
 }
 

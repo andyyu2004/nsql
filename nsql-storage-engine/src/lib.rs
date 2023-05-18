@@ -1,6 +1,8 @@
+#![feature(return_position_impl_trait_in_trait)]
+#![feature(impl_trait_projections)]
 //! This crate defines the storage engine interfaces
 
-use std::ops::Deref;
+use std::ops::{Deref, RangeBounds};
 use std::path::Path;
 
 pub trait StorageEngine: Sized {
@@ -49,12 +51,19 @@ pub trait StorageEngine: Sized {
 
 pub trait ReadTree<'env, 'txn, S: StorageEngine> {
     type Bytes: Deref<Target = [u8]>;
+    // type Range: Iterator<Item = Result<(Self::Bytes, Self::Bytes), S::Error>>;
 
     fn get(
         &'txn self,
         txn: &'txn S::ReadTransaction<'_>,
         key: &[u8],
     ) -> Result<Option<Self::Bytes>, S::Error>;
+
+    fn range(
+        &'txn self,
+        txn: &'txn S::ReadTransaction<'_>,
+        range: impl RangeBounds<[u8]>,
+    ) -> Result<impl Iterator<Item = Result<(Self::Bytes, Self::Bytes), S::Error>>, S::Error>;
 }
 
 pub trait Tree<'env, 'txn, S: StorageEngine>: ReadTree<'env, 'txn, S> {
