@@ -42,11 +42,12 @@ pub trait StorageEngine: Sized {
     where
         'env: 'txn;
 
+    /// Open a tree for read/write access, creating it if it doesn't exist.
     fn open_tree<'env, 'txn>(
         &self,
         txn: &'txn Self::Transaction<'env>,
         name: &str,
-    ) -> Result<Option<Self::Tree<'env, 'txn>>, Self::Error>;
+    ) -> Result<Self::Tree<'env, 'txn>, Self::Error>;
 }
 
 pub trait ReadTree<'env, 'txn, S: StorageEngine> {

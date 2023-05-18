@@ -79,10 +79,10 @@ impl nsql_storage_engine::StorageEngine for RedbStorageEngine {
         &self,
         txn: &'txn Self::Transaction<'env>,
         name: &str,
-    ) -> Result<Option<Self::Tree<'env, 'txn>>, Self::Error> {
+    ) -> Result<Self::Tree<'env, 'txn>, Self::Error> {
         match txn.0.open_table(redb::TableDefinition::new(name)) {
-            Ok(table) => Ok(Some(table)),
-            Err(redb::Error::TableDoesNotExist(_)) => Ok(None),
+            Ok(table) => Ok(table),
+            Err(redb::Error::TableDoesNotExist(_)) => unreachable!(),
             Err(e) => Err(e),
         }
     }

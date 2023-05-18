@@ -60,6 +60,7 @@ impl StorageEngine for LmdbStorageEngine {
         Ok(ReadWriteTx { tx: inner })
     }
 
+    #[inline]
     fn open_tree_readonly<'env, 'txn>(
         &self,
         _txn: &'env Self::ReadTransaction<'txn>,
@@ -71,12 +72,13 @@ impl StorageEngine for LmdbStorageEngine {
         self.env.open_database(Some(name))
     }
 
+    #[inline]
     fn open_tree<'env, 'txn>(
         &self,
         _txn: &'txn Self::Transaction<'env>,
         name: &str,
-    ) -> Result<Option<Self::Tree<'env, 'txn>>, Self::Error> {
-        self.env.open_database(Some(name))
+    ) -> Result<Self::Tree<'env, 'txn>, Self::Error> {
+        self.env.create_database(Some(name))
     }
 }
 
