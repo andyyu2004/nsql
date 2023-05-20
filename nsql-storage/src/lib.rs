@@ -10,20 +10,13 @@ pub mod tuple;
 pub mod value;
 mod wal;
 
-use std::io;
-
+use anyhow::Error;
 use nsql_storage_engine::StorageEngine;
 pub use table_storage::{TableStorage, TableStorageInfo};
-use thiserror::Error;
 
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 
-#[derive(Debug, Error)]
-pub enum Error {
-    #[error(transparent)]
-    Fs(#[from] io::Error),
-}
-
+#[derive(Clone)]
 pub struct Storage<S> {
     storage: S,
 }
@@ -44,5 +37,10 @@ impl<S: StorageEngine> Storage<S> {
     #[inline]
     pub fn new(storage: S) -> Self {
         Self { storage }
+    }
+
+    #[inline]
+    pub fn storage(&self) -> S {
+        self.storage.clone()
     }
 }

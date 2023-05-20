@@ -49,7 +49,7 @@ impl<S: StorageEngine> PhysicalNode<S> for PhysicalExplain<S> {
 
 #[async_trait::async_trait]
 impl<S: StorageEngine> PhysicalSource<S> for PhysicalExplain<S> {
-    async fn source(&self, _ctx: &ExecutionContext<'_, S>) -> ExecutionResult<SourceState<Chunk>> {
+    fn source(&self, _ctx: &ExecutionContext<'_, S>) -> ExecutionResult<SourceState<Chunk>> {
         let plan = self.stringified_plan.take().expect("should not be called again");
         Ok(SourceState::Final(Chunk::singleton(Tuple::from(vec![Value::Text(plan)]))))
     }

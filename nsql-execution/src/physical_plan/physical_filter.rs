@@ -18,7 +18,7 @@ impl<S: StorageEngine> PhysicalFilter<S> {
 #[async_trait::async_trait]
 impl<S: StorageEngine> PhysicalOperator<S> for PhysicalFilter<S> {
     #[tracing::instrument(skip(self, _ctx, input))]
-    async fn execute(
+    fn execute(
         &self,
         _ctx: &ExecutionContext<'_, S>,
         input: Tuple,

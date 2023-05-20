@@ -36,7 +36,7 @@ impl<S: StorageEngine> PhysicalNode<S> for PhysicalShow {
 
 #[async_trait::async_trait]
 impl<S: StorageEngine> PhysicalSource<S> for PhysicalShow {
-    async fn source(&self, ctx: &ExecutionContext<'_, S>) -> ExecutionResult<SourceState<Chunk>> {
+    fn source(&self, ctx: &ExecutionContext<'_, S>) -> ExecutionResult<SourceState<Chunk>> {
         let catalog = ctx.catalog();
         let tx = ctx.tx();
         let mut tuples = vec![];

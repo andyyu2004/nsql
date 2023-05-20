@@ -51,11 +51,11 @@ impl<S: StorageEngine> PhysicalNode<S> for PhysicalInsert<S> {
 
 #[async_trait::async_trait]
 impl<S: StorageEngine> PhysicalSink<S> for PhysicalInsert<S> {
-    async fn sink(&self, ctx: &ExecutionContext<'_, S>, tuple: Tuple) -> ExecutionResult<()> {
+    fn sink(&self, ctx: &ExecutionContext<'_, S>, tuple: Tuple) -> ExecutionResult<()> {
         let tx = ctx.tx();
         let table = self.table_ref.get(&ctx.catalog(), &tx);
         let storage = table.storage();
-        storage.append(&tx, &tuple).await?;
+        storage.append(&tx, &tuple)?;
 
         // FIXME just do the return evaluation here
         if self.returning.is_some() {
@@ -69,7 +69,7 @@ impl<S: StorageEngine> PhysicalSink<S> for PhysicalInsert<S> {
 #[async_trait::async_trait]
 impl<S: StorageEngine> PhysicalSource<S> for PhysicalInsert<S> {
     #[inline]
-    async fn source(&self, _ctx: &ExecutionContext<'_, S>) -> ExecutionResult<SourceState<Chunk>> {
+    fn source(&self, _ctx: &ExecutionContext<'_, S>) -> ExecutionResult<SourceState<Chunk>> {
         let returning = match &self.returning {
             Some(returning) => returning,
             None => return Ok(SourceState::Done),

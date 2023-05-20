@@ -13,18 +13,18 @@ pub struct TableStorage<S> {
 
 impl<S: StorageEngine> TableStorage<S> {
     #[inline]
-    pub async fn initialize(storage: S, info: TableStorageInfo) -> Result<Self, S::Error> {
+    pub fn initialize(storage: S, info: TableStorageInfo) -> Result<Self, S::Error> {
         Ok(Self { storage, info })
     }
 
     #[inline]
-    pub async fn append(&self, tx: &S::Transaction<'_>, tuple: &Tuple) -> Result<(), S::Error> {
+    pub fn append(&self, tx: &S::Transaction<'_>, tuple: &Tuple) -> Result<(), S::Error> {
         todo!();
         Ok(())
     }
 
     #[inline]
-    pub async fn update(
+    pub fn update(
         &self,
         tx: &S::Transaction<'_>,
         id: &Tuple,
@@ -35,12 +35,12 @@ impl<S: StorageEngine> TableStorage<S> {
     }
 
     #[inline]
-    pub async fn scan(
+    pub fn scan(
         &self,
         tx: S::Transaction<'_>,
         projection: Option<Box<[TupleIndex]>>,
-    ) -> impl Stream<Item = Result<Vec<Tuple>, S::Error>> + Send {
-        futures_util::stream::empty()
+    ) -> impl Iterator<Item = Result<Vec<Tuple>, S::Error>> + Send {
+        [].into_iter()
         // self.heap
         //     .scan(tx, move |tid, tuple| {
         //         let mut tuple = match &projection {

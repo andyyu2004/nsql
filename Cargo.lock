@@ -1236,6 +1236,7 @@ dependencies = [
 name = "nsql"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "arc-swap",
  "async-trait",
  "datatest-stable",
@@ -1249,9 +1250,9 @@ dependencies = [
  "nsql-parse",
  "nsql-plan",
  "nsql-storage",
+ "nsql-storage-engine",
  "nsql-test",
  "sqllogictest",
- "thiserror",
  "tokio",
  "tracing",
  "tracing-subscriber",
@@ -1287,7 +1288,6 @@ dependencies = [
  "nsql-storage",
  "nsql-storage-engine",
  "nsql-util",
- "thiserror",
  "tracing",
 ]
 
@@ -1425,7 +1425,6 @@ dependencies = [
  "rkyv",
  "rust_decimal",
  "test-strategy",
- "thiserror",
  "tokio",
  "tracing",
  "tracing-test",

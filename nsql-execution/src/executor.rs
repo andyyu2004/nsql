@@ -10,37 +10,25 @@ pub(crate) struct Executor<S> {
 }
 
 impl<S: StorageEngine> Executor<S> {
-    #[async_recursion::async_recursion]
-    async fn execute(
+    fn execute(
         self: Arc<Self>,
         ctx: ExecutionContext<'_, S>,
         root: Idx<MetaPipeline<S>>,
     ) -> ExecutionResult<()> {
-        let mut join_set = JoinSet::new();
-
         let root = &self.arena[root];
         for &child in &root.children {
-            join_set.spawn(Arc::clone(&self).execute(ctx.clone(), child));
-        }
-
-        while let Some(res) = join_set.join_next().await {
-            res??;
+            Arc::clone(&self).execute(ctx.clone(), child);
         }
 
         for &pipeline in &root.pipelines {
-            join_set.spawn(Arc::clone(&self).execute_pipeline(ctx.clone(), pipeline));
+            Arc::clone(&self).execute_pipeline(ctx.clone(), pipeline)?;
+            // join_set.spawn(Arc::clone(&self).execute_pipeline(ctx, pipeline));
         }
-
-        while let Some(res) = join_set.join_next().await {
-            res??;
-        }
-
-        assert!(join_set.is_empty());
 
         Ok(())
     }
 
-    async fn execute_pipeline(
+    fn execute_pipeline(
         self: Arc<Self>,
         ctx: ExecutionContext<'_, S>,
         pipeline: Idx<Pipeline<S>>,
@@ -48,7 +36,7 @@ impl<S: StorageEngine> Executor<S> {
         let pipeline = &self.arena[pipeline];
         let mut done = false;
         while !done {
-            let chunk = match pipeline.source.source(&ctx).await? {
+            let chunk = match pipeline.source.source(&ctx)? {
                 SourceState::Yield(chunk) => chunk,
                 SourceState::Final(chunk) => {
                     // run once more around the loop with the final source chunk
@@ -60,7 +48,7 @@ impl<S: StorageEngine> Executor<S> {
 
             'outer: for mut tuple in chunk {
                 for op in &pipeline.operators {
-                    tuple = match op.execute(&ctx, tuple).await? {
+                    tuple = match op.execute(&ctx, tuple)? {
                         OperatorState::Yield(tuple) => tuple,
                         OperatorState::Continue => break 'outer,
                         // Once an operator completes, the entire pipeline is finishedK
@@ -68,7 +56,7 @@ impl<S: StorageEngine> Executor<S> {
                     };
                 }
 
-                pipeline.sink.sink(&ctx, tuple).await?;
+                pipeline.sink.sink(&ctx, tuple)?;
             }
         }
 
@@ -76,23 +64,23 @@ impl<S: StorageEngine> Executor<S> {
     }
 }
 
-async fn execute_root_pipeline<S: StorageEngine>(
+fn execute_root_pipeline<S: StorageEngine>(
     ctx: ExecutionContext<'_, S>,
     pipeline: RootPipeline<S>,
 ) -> ExecutionResult<()> {
     let root = pipeline.arena.root();
     let executor = Arc::new(Executor { arena: pipeline.arena, _marker: std::marker::PhantomData });
-    executor.execute(ctx, root).await
+    executor.execute(ctx, root)
 }
 
-pub async fn execute<S: StorageEngine>(
+pub fn execute<S: StorageEngine>(
     ctx: ExecutionContext<'_, S>,
     plan: PhysicalPlan<S>,
 ) -> ExecutionResult<Vec<Tuple>> {
     let sink = Arc::new(OutputSink::default());
     let root_pipeline = build_pipelines(Arc::clone(&sink) as Arc<dyn PhysicalSink<S>>, plan);
 
-    execute_root_pipeline(ctx, root_pipeline).await?;
+    execute_root_pipeline(ctx, root_pipeline)?;
 
     Ok(Arc::try_unwrap(sink).expect("should be last reference").tuples.into_inner())
 }
@@ -128,14 +116,14 @@ impl<S: StorageEngine> PhysicalNode<S> for OutputSink {
 
 #[async_trait::async_trait]
 impl<S: StorageEngine> PhysicalSource<S> for OutputSink {
-    async fn source(&self, _ctx: &ExecutionContext<'_, S>) -> ExecutionResult<SourceState<Chunk>> {
+    fn source(&self, _ctx: &ExecutionContext<'_, S>) -> ExecutionResult<SourceState<Chunk>> {
         todo!()
     }
 }
 
 #[async_trait::async_trait]
 impl<S: StorageEngine> PhysicalSink<S> for OutputSink {
-    async fn sink(&self, _ctx: &ExecutionContext<'_, S>, tuple: Tuple) -> ExecutionResult<()> {
+    fn sink(&self, _ctx: &ExecutionContext<'_, S>, tuple: Tuple) -> ExecutionResult<()> {
         self.tuples.write().push(tuple);
         Ok(())
     }

@@ -33,7 +33,7 @@ impl<S: StorageEngine> PhysicalNode<S> for PhysicalTransaction {
 
 #[async_trait::async_trait]
 impl<S: StorageEngine> PhysicalSource<S> for PhysicalTransaction {
-    async fn source(&self, ctx: &ExecutionContext<'_, S>) -> ExecutionResult<SourceState<Chunk>> {
+    fn source(&self, ctx: &ExecutionContext<'_, S>) -> ExecutionResult<SourceState<Chunk>> {
         let tx = ctx.tx();
         // match self.kind {
         //     ir::TransactionKind::Begin => {
@@ -47,14 +47,14 @@ impl<S: StorageEngine> PhysicalSource<S> for PhysicalTransaction {
         //         if tx.auto_commit() {
         //             return Err(nsql_storage::TransactionError::CommitWithoutTransaction)?;
         //         } else {
-        //             tx.commit().await?;
+        //             tx.commit()?;
         //         }
         //     }
         //     ir::TransactionKind::Rollback => {
         //         if tx.auto_commit() {
         //             return Err(nsql_storage::TransactionError::RollbackWithoutTransaction)?;
         //         } else {
-        //             tx.rollback().await;
+        //             tx.rollback();
         //         }
         //     }
         // }

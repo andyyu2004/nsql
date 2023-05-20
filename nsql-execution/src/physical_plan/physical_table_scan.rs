@@ -1,12 +1,10 @@
-use std::pin::Pin;
 use std::sync::atomic::{self, AtomicUsize};
 use std::sync::OnceLock;
 
-use futures_util::{Stream, StreamExt};
 use itertools::Itertools;
 use nsql_catalog::{Column, ColumnIndex, Container, Entity, Table};
 use nsql_storage::tuple::TupleIndex;
-use tokio::sync::{Mutex, OnceCell};
+use parking_lot::Mutex;
 
 use super::*;
 
@@ -17,12 +15,10 @@ pub struct PhysicalTableScan<S: StorageEngine> {
     current_batch: Mutex<Vec<Tuple>>,
     current_batch_index: AtomicUsize,
 
-    // mutex here just to make `Self: Sync`
-    stream: OnceCell<Mutex<TupleStream<S>>>,
+    stream: OnceLock<Mutex<TupleStream<S>>>,
 }
 
-type TupleStream<S: StorageEngine> =
-    Pin<Box<dyn Stream<Item = Result<Vec<Tuple>, S::Error>> + Send>>;
+type TupleStream<S> = Box<dyn Iterator<Item = Result<Vec<Tuple>, <S as StorageEngine>::Error>> + Send + Sync>;
 
 impl<S: StorageEngine> fmt::Debug for PhysicalTableScan<S> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -52,7 +48,7 @@ impl<S: StorageEngine> PhysicalTableScan<S> {
 #[async_trait::async_trait]
 impl<S: StorageEngine> PhysicalSource<S> for PhysicalTableScan<S> {
     #[tracing::instrument(skip(self, ctx))]
-    async fn source(&self, ctx: &ExecutionContext<'_, S>) -> ExecutionResult<SourceState<Chunk>> {
+    fn source(&self, ctx: &ExecutionContext<'_, S>) -> ExecutionResult<SourceState<Chunk>> {
         let tx = ctx.tx();
         let table = self.table.get_or_try_init(|| {
             let namespace = ctx.catalog.get(&tx, self.table_ref.namespace).unwrap();
@@ -61,25 +57,23 @@ impl<S: StorageEngine> PhysicalSource<S> for PhysicalTableScan<S> {
 
         // FIXME we can return an entire chunk at a time instead now
         loop {
-            let mut next_batch = self.current_batch.lock().await;
+            let mut next_batch = self.current_batch.lock();
             let idx = self.current_batch_index.fetch_add(1, atomic::Ordering::AcqRel);
             if idx < next_batch.len() {
                 let tuple = next_batch[idx].clone();
                 tracing::debug!(%tuple, "returning tuple");
                 return Ok(SourceState::Yield(Chunk::singleton(tuple)));
             } else {
-                let stream = self
-                    .stream
-                    .get_or_init(|| async move {
-                        let storage = table.storage();
-                        let projection = self.projection.as_ref().map(|p| {
-                            p.iter().map(|&idx| TupleIndex::new(idx.as_usize())).collect()
-                        });
-                        Mutex::new(Box::pin(storage.scan(ctx.tx(), projection).await) as _)
-                    })
-                    .await;
-                let mut stream = stream.lock().await;
-                match stream.next().await {
+                let stream = self.stream.get_or_init(|| {
+                    let storage = table.storage();
+                    let projection = self
+                        .projection
+                        .as_ref()
+                        .map(|p| p.iter().map(|&idx| TupleIndex::new(idx.as_usize())).collect());
+                    Mutex::new(Box::new(storage.scan(ctx.tx().clone(), projection)))
+                });
+
+                match stream.lock().next() {
                     Some(batch) => {
                         *next_batch = batch?;
                         self.current_batch_index.store(0, atomic::Ordering::Release);

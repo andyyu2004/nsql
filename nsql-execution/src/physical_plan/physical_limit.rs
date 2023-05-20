@@ -16,7 +16,7 @@ impl<S: StorageEngine> PhysicalLimit<S> {
 
 #[async_trait::async_trait]
 impl<S: StorageEngine> PhysicalOperator<S> for PhysicalLimit<S> {
-    async fn execute(
+    fn execute(
         &self,
         _ctx: &ExecutionContext<'_, S>,
         input: Tuple,

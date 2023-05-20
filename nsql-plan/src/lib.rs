@@ -44,9 +44,14 @@ pub enum Plan<S> {
     },
 }
 
-#[derive(Default)]
 pub struct Planner<S> {
     _marker: std::marker::PhantomData<S>,
+}
+
+impl<S> Default for Planner<S> {
+    fn default() -> Self {
+        Self { _marker: std::marker::PhantomData }
+    }
 }
 
 impl<S: StorageEngine> Planner<S> {

@@ -16,6 +16,7 @@ pub use anyhow::Error;
 use nsql_arena::Idx;
 use nsql_catalog::Catalog;
 use nsql_storage::tuple::Tuple;
+use nsql_storage::Storage;
 use nsql_storage_engine::StorageEngine;
 pub use physical_plan::PhysicalPlanner;
 use smallvec::SmallVec;
@@ -144,23 +145,19 @@ enum SourceState<T> {
 
 #[async_trait::async_trait]
 trait PhysicalOperator<S: StorageEngine, T = Tuple>: PhysicalNode<S> {
-    async fn execute(
-        &self,
-        ctx: &ExecutionContext<'_, S>,
-        input: T,
-    ) -> ExecutionResult<OperatorState<T>>;
+    fn execute(&self, ctx: &ExecutionContext<'_, S>, input: T)
+    -> ExecutionResult<OperatorState<T>>;
 }
 
 #[async_trait::async_trait]
 trait PhysicalSource<S: StorageEngine, T = Tuple>: PhysicalNode<S> {
     /// Return the next chunk from the source. An empty chunk indicates that the source is exhausted.
-    async fn source(&self, ctx: &ExecutionContext<'_, S>)
-    -> ExecutionResult<SourceState<Chunk<T>>>;
+    fn source(&self, ctx: &ExecutionContext<'_, S>) -> ExecutionResult<SourceState<Chunk<T>>>;
 }
 
 #[async_trait::async_trait]
 trait PhysicalSink<S: StorageEngine>: PhysicalSource<S> {
-    async fn sink(&self, ctx: &ExecutionContext<'_, S>, tuple: Tuple) -> ExecutionResult<()>;
+    fn sink(&self, ctx: &ExecutionContext<'_, S>, tuple: Tuple) -> ExecutionResult<()>;
 }
 
 #[derive(Clone)]
@@ -182,7 +179,7 @@ impl<'env, S: StorageEngine> ExecutionContext<'env, S> {
     }
 
     #[inline]
-    pub fn tx(&self) -> &S::Transaction<'_> {
+    pub fn tx(&self) -> &S::Transaction<'env> {
         &self.tx
     }
 

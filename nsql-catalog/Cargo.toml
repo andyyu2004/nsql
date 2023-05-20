@@ -10,5 +10,4 @@ nsql-core = { path = "../nsql-core" }
 nsql-storage = { path = "../nsql-storage" }
 nsql-storage-engine = { path = "../nsql-storage-engine" }
 nsql-util = { path = "../nsql-util" }
-thiserror = "1.0.38"
 tracing = "0.1.37"

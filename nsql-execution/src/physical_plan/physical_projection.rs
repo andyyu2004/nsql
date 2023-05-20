@@ -20,7 +20,7 @@ impl<S: StorageEngine> PhysicalProjection<S> {
 #[async_trait::async_trait]
 impl<S: StorageEngine> PhysicalOperator<S> for PhysicalProjection<S> {
     #[tracing::instrument(skip(self, _ctx, input))]
-    async fn execute(
+    fn execute(
         &self,
         _ctx: &ExecutionContext<'_, S>,
         input: Tuple,

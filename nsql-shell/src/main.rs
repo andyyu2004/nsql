@@ -22,22 +22,23 @@ async fn main() -> nsql::Result<()> {
             DefaultHinter::default().with_style(Style::new().italic().fg(Color::DarkGray)),
         ));
 
-    let prompt = NsqlPrompt {};
+    // let prompt = NsqlPrompt {};
 
-    let nsql = Nsql::mem().await?;
-    let conn = nsql.connect();
+    todo!();
+    // let nsql = Nsql::mem().await?;
+    // let conn = nsql.connect();
 
-    loop {
-        let sig = line_editor.read_line(&prompt)?;
-        match sig {
-            Signal::Success(buffer) => match conn.query(&buffer).await {
-                Ok(output) => println!("{}", tabulate(output)),
-                Err(e) => println!("{}", e),
-            },
-            Signal::CtrlC => continue,
-            Signal::CtrlD => break Ok(()),
-        }
-    }
+    // loop {
+    //     let sig = line_editor.read_line(&prompt)?;
+    //     match sig {
+    //         Signal::Success(buffer) => match conn.query(&buffer).await {
+    //             Ok(output) => println!("{}", tabulate(output)),
+    //             Err(e) => println!("{}", e),
+    //         },
+    //         Signal::CtrlC => continue,
+    //         Signal::CtrlD => break Ok(()),
+    //     }
+    // }
 }
 
 fn tabulate(output: MaterializedQueryOutput) -> Table {

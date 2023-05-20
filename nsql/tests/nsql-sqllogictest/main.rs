@@ -55,9 +55,9 @@ impl ColumnType for TypeWrapper {
     }
 }
 
-pub struct TestDb {
-    db: Nsql,
-    connections: BTreeMap<Option<String>, Connection>,
+pub struct TestDb<S> {
+    db: Nsql<S>,
+    connections: BTreeMap<Option<String>, Connection<'_, S>>,
 }
 
 impl TestDb {

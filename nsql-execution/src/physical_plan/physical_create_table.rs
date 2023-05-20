@@ -42,7 +42,7 @@ impl<S: StorageEngine> PhysicalNode<S> for PhysicalCreateTable<S> {
 
 #[async_trait::async_trait]
 impl<S: StorageEngine> PhysicalSource<S> for PhysicalCreateTable<S> {
-    async fn source(&self, ctx: &ExecutionContext<'_, S>) -> ExecutionResult<SourceState<Chunk>> {
+    fn source(&self, ctx: &ExecutionContext<'_, S>) -> ExecutionResult<SourceState<Chunk>> {
         let attrs = self
             .info
             .columns
@@ -53,9 +53,10 @@ impl<S: StorageEngine> PhysicalSource<S> for PhysicalCreateTable<S> {
 
         let info = CreateTableInfo {
             name: self.info.name.clone(),
-            storage: Arc::new(
-                TableStorage::initialize(ctx.storage(), TableStorageInfo::create(schema)).await?,
-            ),
+            storage: Arc::new(TableStorage::initialize(
+                ctx.storage(),
+                TableStorageInfo::create(schema),
+            )?),
         };
 
         let catalog = ctx.catalog();
