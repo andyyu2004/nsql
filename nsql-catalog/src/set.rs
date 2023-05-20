@@ -122,10 +122,11 @@ impl<S: StorageEngine, T: CatalogEntity<S>> CatalogSet<S, T> {
     #[inline]
     pub fn create(
         &self,
-        tx: &S::Transaction<'_>,
+        tx: &mut S::WriteTransaction<'_>,
         info: T::CreateInfo,
     ) -> Result<Oid<T>, Conflict<S, T>> {
-        self.insert(tx, T::create(tx, info))
+        let entity = T::create(tx, info);
+        self.insert(tx, entity)
     }
 
     pub(crate) fn entries(&self, tx: &S::Transaction<'_>) -> Vec<(Oid<T>, Arc<T>)> {
@@ -165,7 +166,7 @@ impl<S: StorageEngine, T: CatalogEntity<S>> CatalogSet<S, T> {
 
     pub(crate) fn insert(
         &self,
-        tx: &S::Transaction<'_>,
+        tx: &mut S::WriteTransaction<'_>,
         value: T,
     ) -> Result<Oid<T>, Conflict<S, T>> {
         // NOTE: this function takes &self and not &mut self, so we need to be mindful of correctness under concurrent usage.

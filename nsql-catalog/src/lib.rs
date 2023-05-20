@@ -29,7 +29,7 @@ pub const DEFAULT_SCHEMA: &str = "main";
 
 impl<S: StorageEngine> Catalog<S> {
     /// Create a blank catalog with the default schema
-    pub fn create(tx: &S::Transaction<'_>) -> Result<Self> {
+    pub fn create(tx: &mut S::WriteTransaction<'_>) -> Result<Self> {
         let catalog = Self { schemas: Default::default() };
         catalog
             .create::<Namespace<S>>(tx, CreateNamespaceInfo { name: DEFAULT_SCHEMA.into() })
@@ -70,7 +70,7 @@ pub trait EntityRef<S: StorageEngine>: Copy {
 pub trait Container<S: StorageEngine> {
     fn create<T: CatalogEntity<S, Container = Self>>(
         &self,
-        tx: &S::Transaction<'_>,
+        tx: &mut S::WriteTransaction<'_>,
         info: T::CreateInfo,
     ) -> Result<Oid<T>, Conflict<S, T>> {
         T::create(tx, info).insert(self, tx)
@@ -129,13 +129,13 @@ pub(crate) mod private {
         /// extract the `CatalogSet` from the `container` for `Self`
         fn catalog_set(container: &Self::Container) -> &CatalogSet<S, Self>;
 
-        fn create(tx: &S::Transaction<'_>, info: Self::CreateInfo) -> Self;
+        fn create(tx: &mut S::WriteTransaction<'_>, info: Self::CreateInfo) -> Self;
 
         #[inline]
         fn insert(
             self,
             container: &Self::Container,
-            tx: &S::Transaction<'_>,
+            tx: &mut S::WriteTransaction<'_>,
         ) -> Result<Oid<Self>, Conflict<S, Self>> {
             Self::catalog_set(container).insert(tx, self)
         }
@@ -144,7 +144,7 @@ pub(crate) mod private {
         fn try_insert(
             self,
             container: &Self::Container,
-            tx: &S::Transaction<'_>,
+            tx: &mut S::WriteTransaction<'_>,
         ) -> Result<Oid<Self>, Conflict<S, Self>> {
             Self::catalog_set(container).insert(tx, self)
         }

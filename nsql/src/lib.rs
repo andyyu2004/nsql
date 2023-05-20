@@ -31,10 +31,10 @@ pub struct MaterializedQueryOutput {
 
 impl<S: StorageEngine> Nsql<S> {
     pub fn open(path: impl AsRef<Path>) -> Result<Self> {
-        let storage = Storage::new(S::open(path)?);
-        // let tx = shared.storage.begin()?;
-        // let catalog = Arc::new(Catalog::create(&tx)?);
-        // tx.commit().await?;
+        let storage = S::open(path)?;
+        let mut tx = storage.begin()?;
+        let catalog = Arc::new(Catalog::create(&mut tx)?);
+        tx.commit().await?;
 
         todo!()
 
@@ -54,7 +54,7 @@ impl<S: StorageEngine> Nsql<S> {
 impl Nsql<EchoDbEngine> {
     #[cfg(feature = "in-memory")]
     pub fn in_memory() -> Result<Self> {
-        Self::open("")
+        todo!()
     }
 }
 

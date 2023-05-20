@@ -44,7 +44,7 @@ impl<S: StorageEngine> PhysicalSource<S> for PhysicalCreateNamespace {
         let tx = ctx.tx();
         let info = CreateNamespaceInfo { name: self.info.name.clone() };
 
-        if let Err(err) = ctx.catalog.create::<Namespace<S>>(&tx, info) {
+        if let Err(err) = ctx.catalog.create::<Namespace<S>>(&mut tx, info) {
             if !self.info.if_not_exists {
                 return Err(err)?;
             }

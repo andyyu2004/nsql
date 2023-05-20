@@ -14,7 +14,8 @@ fn nsql_sqllogictest(path: &Path) -> nsql::Result<(), Box<dyn Error>> {
     let filter =
         EnvFilter::try_from_env("NSQL_LOG").unwrap_or_else(|_| EnvFilter::new("nsql=DEBUG"));
     let _ = tracing_subscriber::fmt::fmt().with_env_filter(filter).try_init();
-    let db = TestDb::new(Nsql::in_memory().unwrap());
+    let dir = tempfile::tempfile()?;
+    let db = TestDb::new(Nsql::open().unwrap());
     let mut tester = Runner::new(db);
     tester.run_file(path)?;
     Ok(())
