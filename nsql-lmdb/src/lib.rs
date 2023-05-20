@@ -154,29 +154,17 @@ impl WriteTree<'_, '_, LmdbStorageEngine> for UntypedDatabase {
     }
 }
 
-impl<'env> Transaction<'env, LmdbStorageEngine> for ReadonlyTx<'env> {
-    type Error = heed::Error;
+impl<'env> Transaction<'env, LmdbStorageEngine> for ReadonlyTx<'env> {}
 
-    fn upgrade(&mut self) -> Result<Option<&mut ReadWriteTx<'env>>, Self::Error> {
-        Ok(None)
-    }
-}
-
-impl<'env> Transaction<'env, LmdbStorageEngine> for ReadWriteTx<'env> {
-    type Error = heed::Error;
-
-    fn upgrade(&mut self) -> Result<Option<&mut ReadWriteTx<'env>>, Self::Error> {
-        Ok(Some(self))
-    }
-}
+impl<'env> Transaction<'env, LmdbStorageEngine> for ReadWriteTx<'env> {}
 
 impl<'env> WriteTransaction<'env, LmdbStorageEngine> for ReadWriteTx<'env> {
-    fn commit(self) -> Result<(), Self::Error> {
+    fn commit(self) -> Result<(), heed::Error> {
         self.0.commit()
     }
 
     #[inline]
-    fn rollback(self) -> Result<(), Self::Error> {
+    fn rollback(self) -> Result<(), heed::Error> {
         self.0.abort();
         Ok(())
     }

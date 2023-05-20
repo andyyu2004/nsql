@@ -3,7 +3,7 @@ use std::fmt;
 use nsql_catalog::{Container, CreateNamespaceInfo, Namespace};
 
 use super::*;
-use crate::Chunk;
+use crate::{Chunk, ReadWriteExecutionMode};
 
 #[derive(Debug)]
 pub struct PhysicalCreateNamespace {
@@ -13,34 +13,50 @@ pub struct PhysicalCreateNamespace {
 impl PhysicalCreateNamespace {
     pub(crate) fn plan<S: StorageEngine>(
         info: ir::CreateNamespaceInfo,
-    ) -> Arc<dyn PhysicalNode<S>> {
+    ) -> Arc<dyn PhysicalNode<S, ReadWriteExecutionMode<S>>> {
         Arc::new(Self { info })
     }
 }
 
-impl<S: StorageEngine> PhysicalNode<S> for PhysicalCreateNamespace {
-    fn children(&self) -> &[Arc<dyn PhysicalNode<S>>] {
+impl<S: StorageEngine> PhysicalNode<S, ReadWriteExecutionMode<S>> for PhysicalCreateNamespace {
+    fn children(&self) -> &[Arc<dyn PhysicalNode<S, ReadWriteExecutionMode<S>>>] {
         &[]
     }
 
-    fn as_source(self: Arc<Self>) -> Result<Arc<dyn PhysicalSource<S>>, Arc<dyn PhysicalNode<S>>> {
+    fn as_source(
+        self: Arc<Self>,
+    ) -> Result<
+        Arc<dyn PhysicalSource<S, ReadWriteExecutionMode<S>>>,
+        Arc<dyn PhysicalNode<S, ReadWriteExecutionMode<S>>>,
+    > {
         Ok(self)
     }
 
-    fn as_sink(self: Arc<Self>) -> Result<Arc<dyn PhysicalSink<S>>, Arc<dyn PhysicalNode<S>>> {
+    fn as_sink(
+        self: Arc<Self>,
+    ) -> Result<
+        Arc<dyn PhysicalSink<S, ReadWriteExecutionMode<S>>>,
+        Arc<dyn PhysicalNode<S, ReadWriteExecutionMode<S>>>,
+    > {
         Err(self)
     }
 
     fn as_operator(
         self: Arc<Self>,
-    ) -> Result<Arc<dyn PhysicalOperator<S>>, Arc<dyn PhysicalNode<S>>> {
+    ) -> Result<
+        Arc<dyn PhysicalOperator<S, ReadWriteExecutionMode<S>>>,
+        Arc<dyn PhysicalNode<S, ReadWriteExecutionMode<S>>>,
+    > {
         Err(self)
     }
 }
 
 #[async_trait::async_trait]
-impl<S: StorageEngine> PhysicalSource<S> for PhysicalCreateNamespace {
-    fn source(&self, ctx: &ExecutionContext<'_, S>) -> ExecutionResult<SourceState<Chunk>> {
+impl<S: StorageEngine> PhysicalSource<S, ReadWriteExecutionMode<S>> for PhysicalCreateNamespace {
+    fn source(
+        &self,
+        ctx: &ExecutionContext<'_, S, ReadWriteExecutionMode<S>>,
+    ) -> ExecutionResult<SourceState<Chunk>> {
         let tx = ctx.tx();
         let info = CreateNamespaceInfo { name: self.info.name.clone() };
 

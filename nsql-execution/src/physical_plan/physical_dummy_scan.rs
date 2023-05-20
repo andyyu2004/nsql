@@ -4,34 +4,38 @@ use super::*;
 pub struct PhysicalDummyScan;
 
 impl PhysicalDummyScan {
-    pub(crate) fn plan<S: StorageEngine>() -> Arc<dyn PhysicalNode<S>> {
+    pub(crate) fn plan<S: StorageEngine>() -> Arc<dyn PhysicalNode<S, M>> {
         Arc::new(Self)
     }
 }
 
 #[async_trait::async_trait]
-impl<S: StorageEngine> PhysicalSource<S> for PhysicalDummyScan {
-    fn source(&self, _ctx: &ExecutionContext<'_, S>) -> ExecutionResult<SourceState<Chunk>> {
+impl<S: StorageEngine> PhysicalSource<S, M> for PhysicalDummyScan {
+    fn source(&self, _ctx: &ExecutionContext<'_, S, M>) -> ExecutionResult<SourceState<Chunk>> {
         Ok(SourceState::Final(Chunk::singleton(Tuple::empty())))
     }
 }
 
-impl<S: StorageEngine> PhysicalNode<S> for PhysicalDummyScan {
-    fn children(&self) -> &[Arc<dyn PhysicalNode<S>>] {
+impl<S: StorageEngine> PhysicalNode<S, M> for PhysicalDummyScan {
+    fn children(&self) -> &[Arc<dyn PhysicalNode<S, M>>] {
         &[]
     }
 
-    fn as_source(self: Arc<Self>) -> Result<Arc<dyn PhysicalSource<S>>, Arc<dyn PhysicalNode<S>>> {
+    fn as_source(
+        self: Arc<Self>,
+    ) -> Result<Arc<dyn PhysicalSource<S, M>>, Arc<dyn PhysicalNode<S, M>>> {
         Ok(self)
     }
 
-    fn as_sink(self: Arc<Self>) -> Result<Arc<dyn PhysicalSink<S>>, Arc<dyn PhysicalNode<S>>> {
+    fn as_sink(
+        self: Arc<Self>,
+    ) -> Result<Arc<dyn PhysicalSink<S, M>>, Arc<dyn PhysicalNode<S, M>>> {
         Err(self)
     }
 
     fn as_operator(
         self: Arc<Self>,
-    ) -> Result<Arc<dyn PhysicalOperator<S>>, Arc<dyn PhysicalNode<S>>> {
+    ) -> Result<Arc<dyn PhysicalOperator<S, M>>, Arc<dyn PhysicalNode<S, M>>> {
         Err(self)
     }
 }

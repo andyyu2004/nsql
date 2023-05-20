@@ -69,34 +69,16 @@ impl StorageEngine for EchoDbEngine {
     }
 }
 
-impl<'env> Transaction<'env, EchoDbEngine> for Tx<Key, Val> {
-    type Error = echodb::Error;
+impl<'env> Transaction<'env, EchoDbEngine> for Tx<Key, Val> {}
 
-    fn upgrade(
-        &mut self,
-    ) -> Result<Option<&mut <EchoDbEngine as StorageEngine>::WriteTransaction<'env>>, Self::Error>
-    {
-        todo!()
-    }
-}
-
-impl<'env> Transaction<'env, EchoDbEngine> for Arc<Tx<Key, Val>> {
-    type Error = echodb::Error;
-
-    fn upgrade(
-        &mut self,
-    ) -> Result<Option<&mut <EchoDbEngine as StorageEngine>::WriteTransaction<'env>>, Self::Error>
-    {
-        todo!()
-    }
-}
+impl<'env> Transaction<'env, EchoDbEngine> for Arc<Tx<Key, Val>> {}
 
 impl<'env> WriteTransaction<'env, EchoDbEngine> for Tx<Key, Val> {
-    fn commit(self) -> Result<(), Self::Error> {
+    fn commit(self) -> Result<(), echodb::Error> {
         todo!()
     }
 
-    fn rollback(self) -> Result<(), Self::Error> {
+    fn rollback(self) -> Result<(), echodb::Error> {
         todo!()
     }
 }

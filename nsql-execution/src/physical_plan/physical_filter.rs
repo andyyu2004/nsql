@@ -1,26 +1,26 @@
 use super::*;
 
 pub struct PhysicalFilter<S> {
-    children: [Arc<dyn PhysicalNode<S>>; 1],
+    children: [Arc<dyn PhysicalNode<S, M>>; 1],
     predicate: ir::Expr,
     evaluator: Evaluator,
 }
 
 impl<S: StorageEngine> PhysicalFilter<S> {
     pub(crate) fn plan(
-        source: Arc<dyn PhysicalNode<S>>,
+        source: Arc<dyn PhysicalNode<S, M>>,
         predicate: ir::Expr,
-    ) -> Arc<dyn PhysicalNode<S>> {
+    ) -> Arc<dyn PhysicalNode<S, M>> {
         Arc::new(Self { evaluator: Evaluator::new(), children: [source], predicate })
     }
 }
 
 #[async_trait::async_trait]
-impl<S: StorageEngine> PhysicalOperator<S> for PhysicalFilter<S> {
+impl<S: StorageEngine> PhysicalOperator<S, M> for PhysicalFilter<S> {
     #[tracing::instrument(skip(self, _ctx, input))]
     fn execute(
         &self,
-        _ctx: &ExecutionContext<'_, S>,
+        _ctx: &ExecutionContext<'_, S, M>,
         input: Tuple,
     ) -> ExecutionResult<OperatorState<Tuple>> {
         let value = self.evaluator.evaluate_expr(&input, &self.predicate);
@@ -34,22 +34,26 @@ impl<S: StorageEngine> PhysicalOperator<S> for PhysicalFilter<S> {
     }
 }
 
-impl<S: StorageEngine> PhysicalNode<S> for PhysicalFilter<S> {
-    fn children(&self) -> &[Arc<dyn PhysicalNode<S>>] {
+impl<S: StorageEngine> PhysicalNode<S, M> for PhysicalFilter<S> {
+    fn children(&self) -> &[Arc<dyn PhysicalNode<S, M>>] {
         &self.children
     }
 
-    fn as_source(self: Arc<Self>) -> Result<Arc<dyn PhysicalSource<S>>, Arc<dyn PhysicalNode<S>>> {
+    fn as_source(
+        self: Arc<Self>,
+    ) -> Result<Arc<dyn PhysicalSource<S, M>>, Arc<dyn PhysicalNode<S, M>>> {
         Err(self)
     }
 
-    fn as_sink(self: Arc<Self>) -> Result<Arc<dyn PhysicalSink<S>>, Arc<dyn PhysicalNode<S>>> {
+    fn as_sink(
+        self: Arc<Self>,
+    ) -> Result<Arc<dyn PhysicalSink<S, M>>, Arc<dyn PhysicalNode<S, M>>> {
         Err(self)
     }
 
     fn as_operator(
         self: Arc<Self>,
-    ) -> Result<Arc<dyn PhysicalOperator<S>>, Arc<dyn PhysicalNode<S>>> {
+    ) -> Result<Arc<dyn PhysicalOperator<S, M>>, Arc<dyn PhysicalNode<S, M>>> {
         Ok(self)
     }
 }

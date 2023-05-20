@@ -6,7 +6,7 @@ use parking_lot::RwLock;
 use super::*;
 
 pub(crate) struct PhysicalInsert<S> {
-    children: [Arc<dyn PhysicalNode<S>>; 1],
+    children: [Arc<dyn PhysicalNode<S, M>>; 1],
     table_ref: ir::TableRef<S>,
     returning: Option<Box<[ir::Expr]>>,
     returning_tuples: RwLock<VecDeque<Tuple>>,
@@ -16,9 +16,9 @@ pub(crate) struct PhysicalInsert<S> {
 impl<S: StorageEngine> PhysicalInsert<S> {
     pub fn plan(
         table_ref: ir::TableRef<S>,
-        source: Arc<dyn PhysicalNode<S>>,
+        source: Arc<dyn PhysicalNode<S, M>>,
         returning: Option<Box<[ir::Expr]>>,
-    ) -> Arc<dyn PhysicalNode<S>> {
+    ) -> Arc<dyn PhysicalNode<S, M>> {
         Arc::new(Self {
             table_ref,
             returning,
@@ -29,29 +29,33 @@ impl<S: StorageEngine> PhysicalInsert<S> {
     }
 }
 
-impl<S: StorageEngine> PhysicalNode<S> for PhysicalInsert<S> {
-    fn children(&self) -> &[Arc<dyn PhysicalNode<S>>] {
+impl<S: StorageEngine> PhysicalNode<S, M> for PhysicalInsert<S> {
+    fn children(&self) -> &[Arc<dyn PhysicalNode<S, M>>] {
         &self.children
     }
 
-    fn as_source(self: Arc<Self>) -> Result<Arc<dyn PhysicalSource<S>>, Arc<dyn PhysicalNode<S>>> {
+    fn as_source(
+        self: Arc<Self>,
+    ) -> Result<Arc<dyn PhysicalSource<S, M>>, Arc<dyn PhysicalNode<S, M>>> {
         Ok(self)
     }
 
-    fn as_sink(self: Arc<Self>) -> Result<Arc<dyn PhysicalSink<S>>, Arc<dyn PhysicalNode<S>>> {
+    fn as_sink(
+        self: Arc<Self>,
+    ) -> Result<Arc<dyn PhysicalSink<S, M>>, Arc<dyn PhysicalNode<S, M>>> {
         Ok(self)
     }
 
     fn as_operator(
         self: Arc<Self>,
-    ) -> Result<Arc<dyn PhysicalOperator<S>>, Arc<dyn PhysicalNode<S>>> {
+    ) -> Result<Arc<dyn PhysicalOperator<S, M>>, Arc<dyn PhysicalNode<S, M>>> {
         Err(self)
     }
 }
 
 #[async_trait::async_trait]
-impl<S: StorageEngine> PhysicalSink<S> for PhysicalInsert<S> {
-    fn sink(&self, ctx: &ExecutionContext<'_, S>, tuple: Tuple) -> ExecutionResult<()> {
+impl<S: StorageEngine> PhysicalSink<S, M> for PhysicalInsert<S> {
+    fn sink(&self, ctx: &ExecutionContext<'_, S, M>, tuple: Tuple) -> ExecutionResult<()> {
         let tx = ctx.tx();
         let table = self.table_ref.get(&ctx.catalog(), &tx);
         let storage = table.storage();
@@ -67,9 +71,9 @@ impl<S: StorageEngine> PhysicalSink<S> for PhysicalInsert<S> {
 }
 
 #[async_trait::async_trait]
-impl<S: StorageEngine> PhysicalSource<S> for PhysicalInsert<S> {
+impl<S: StorageEngine> PhysicalSource<S, M> for PhysicalInsert<S> {
     #[inline]
-    fn source(&self, _ctx: &ExecutionContext<'_, S>) -> ExecutionResult<SourceState<Chunk>> {
+    fn source(&self, _ctx: &ExecutionContext<'_, S, M>) -> ExecutionResult<SourceState<Chunk>> {
         let returning = match &self.returning {
             Some(returning) => returning,
             None => return Ok(SourceState::Done),

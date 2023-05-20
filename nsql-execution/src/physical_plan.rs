@@ -39,8 +39,8 @@ use self::physical_update::PhysicalUpdate;
 use self::physical_values::PhysicalValues;
 use crate::executor::OutputSink;
 use crate::{
-    Chunk, Evaluator, ExecutionContext, ExecutionResult, OperatorState, PhysicalNode,
-    PhysicalOperator, PhysicalSink, PhysicalSource, SourceState, Tuple,
+    Chunk, Evaluator, ExecutionContext, ExecutionMode, ExecutionResult, OperatorState,
+    PhysicalNode, PhysicalOperator, PhysicalSink, PhysicalSource, SourceState, Tuple,
 };
 
 pub struct PhysicalPlanner<S> {
@@ -48,10 +48,10 @@ pub struct PhysicalPlanner<S> {
 }
 
 /// Opaque physical plan that is ready to be executed
-pub struct PhysicalPlan<S>(Arc<dyn PhysicalNode<S>>);
+pub struct PhysicalPlan<S, M>(Arc<dyn PhysicalNode<S, M>>);
 
-impl<S> PhysicalPlan<S> {
-    pub(crate) fn root(&self) -> Arc<dyn PhysicalNode<S>> {
+impl<S, M> PhysicalPlan<S, M> {
+    pub(crate) fn root(&self) -> Arc<dyn PhysicalNode<S, M>> {
         Arc::clone(&self.0)
     }
 }
@@ -61,16 +61,20 @@ impl<S: StorageEngine> PhysicalPlanner<S> {
         Self { catalog }
     }
 
-    pub fn plan(&self, tx: &S::Transaction<'_>, plan: Box<Plan<S>>) -> Result<PhysicalPlan<S>> {
+    pub fn plan<M: ExecutionMode<S>>(
+        &self,
+        tx: &S::Transaction<'_>,
+        plan: Box<Plan<S>>,
+    ) -> Result<PhysicalPlan<S, M>> {
         self.plan_node(tx, plan).map(PhysicalPlan)
     }
 
     #[allow(clippy::boxed_local)]
-    fn plan_node(
+    fn plan_node<M: ExecutionMode<S>>(
         &self,
         tx: &S::Transaction<'_>,
         plan: Box<Plan<S>>,
-    ) -> Result<Arc<dyn PhysicalNode<S>>> {
+    ) -> Result<Arc<dyn PhysicalNode<S, M>>> {
         let plan = match *plan {
             Plan::Transaction(kind) => PhysicalTransaction::plan(kind),
             Plan::CreateTable(info) => PhysicalCreateTable::plan(info),

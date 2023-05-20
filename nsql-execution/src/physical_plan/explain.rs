@@ -5,7 +5,7 @@ use nsql_catalog::Catalog;
 use nsql_storage_engine::StorageEngine;
 
 use crate::pipeline::MetaPipeline;
-use crate::{PhysicalNode, RootPipeline};
+use crate::{ExecutionMode, PhysicalNode, RootPipeline};
 
 pub type Result<T = ()> = std::result::Result<T, fmt::Error>;
 
@@ -87,28 +87,33 @@ impl<S: StorageEngine> fmt::Display for RootPipelineExplainer<'_, '_, S> {
     }
 }
 
-pub(crate) fn explain<'a, 'env, S: StorageEngine>(
+pub(crate) fn explain<'a, 'env, S: StorageEngine, M: ExecutionMode<S>>(
     catalog: &'a Catalog<S>,
     tx: &'a S::Transaction<'env>,
-    node: &'a dyn PhysicalNode<S>,
-) -> PhysicalNodeExplainer<'a, 'env, S> {
+    node: &'a dyn PhysicalNode<S, M>,
+) -> PhysicalNodeExplainer<'a, 'env, S, M> {
     PhysicalNodeExplainer { catalog, tx, node, indent: 0 }
 }
 
-pub struct PhysicalNodeExplainer<'a, 'env, S: StorageEngine> {
+pub struct PhysicalNodeExplainer<'a, 'env, S: StorageEngine, M: ExecutionMode<S>> {
     catalog: &'a Catalog<S>,
     tx: &'a S::Transaction<'env>,
-    node: &'a dyn PhysicalNode<S>,
+    node: &'a dyn PhysicalNode<S, M>,
     indent: usize,
 }
 
-impl<'a, 'env, S: StorageEngine> PhysicalNodeExplainer<'a, 'env, S> {
-    fn explain_child(&self, node: &'a dyn PhysicalNode<S>) -> PhysicalNodeExplainer<'a, 'env, S> {
+impl<'a, 'env, S: StorageEngine, M: ExecutionMode<S>> PhysicalNodeExplainer<'a, 'env, S, M> {
+    fn explain_child(
+        &self,
+        node: &'a dyn PhysicalNode<S, M>,
+    ) -> PhysicalNodeExplainer<'a, 'env, S, M> {
         PhysicalNodeExplainer { catalog: self.catalog, tx: self.tx, node, indent: self.indent + 2 }
     }
 }
 
-impl<'a, 'env, S: StorageEngine> fmt::Display for PhysicalNodeExplainer<'a, 'env, S> {
+impl<'a, 'env, S: StorageEngine, M: ExecutionMode<S>> fmt::Display
+    for PhysicalNodeExplainer<'a, 'env, S, M>
+{
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{:indent$}", "", indent = self.indent)?;
         self.node.explain(self.catalog, self.tx, f)?;

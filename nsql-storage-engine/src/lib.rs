@@ -87,14 +87,10 @@ pub trait WriteTree<'env, 'txn, S: StorageEngine>: ReadTree<'env, 'txn, S> {
     fn delete(&mut self, txn: &mut S::WriteTransaction<'_>, key: &[u8]) -> Result<bool, S::Error>;
 }
 
-pub trait Transaction<'env, S: StorageEngine> {
-    type Error;
-
-    fn upgrade(&mut self) -> Result<Option<&mut S::WriteTransaction<'env>>, Self::Error>;
-}
+pub trait Transaction<'env, S: StorageEngine> {}
 
 pub trait WriteTransaction<'env, S: StorageEngine>: Transaction<'env, S> {
-    fn commit(self) -> Result<(), Self::Error>;
+    fn commit(self) -> Result<(), S::Error>;
 
-    fn rollback(self) -> Result<(), Self::Error>;
+    fn rollback(self) -> Result<(), S::Error>;
 }

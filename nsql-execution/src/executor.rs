@@ -3,24 +3,24 @@ use parking_lot::RwLock;
 
 use super::*;
 
-pub(crate) struct Executor<S> {
+pub(crate) struct Executor<S, M> {
     arena: PipelineArena<S>,
-    _marker: std::marker::PhantomData<S>,
+    _marker: std::marker::PhantomData<(S, M)>,
 }
 
-impl<S: StorageEngine> Executor<S> {
+impl<S: StorageEngine, M: ExecutionMode<S>> Executor<S, M> {
     fn execute(
         self: Arc<Self>,
-        ctx: ExecutionContext<'_, S>,
+        ctx: &ExecutionContext<'_, S, M>,
         root: Idx<MetaPipeline<S>>,
     ) -> ExecutionResult<()> {
         let root = &self.arena[root];
         for &child in &root.children {
-            Arc::clone(&self).execute(ctx.clone(), child)?;
+            Arc::clone(&self).execute(&ctx, child)?;
         }
 
         for &pipeline in &root.pipelines {
-            Arc::clone(&self).execute_pipeline(ctx.clone(), pipeline)?;
+            Arc::clone(&self).execute_pipeline(&ctx, pipeline)?;
             // join_set.spawn(Arc::clone(&self).execute_pipeline(ctx, pipeline));
         }
 
@@ -29,7 +29,7 @@ impl<S: StorageEngine> Executor<S> {
 
     fn execute_pipeline(
         self: Arc<Self>,
-        ctx: ExecutionContext<'_, S>,
+        ctx: &ExecutionContext<'_, S, M>,
         pipeline: Idx<Pipeline<S>>,
     ) -> ExecutionResult<()> {
         let pipeline = &self.arena[pipeline];
@@ -63,21 +63,21 @@ impl<S: StorageEngine> Executor<S> {
     }
 }
 
-fn execute_root_pipeline<S: StorageEngine>(
-    ctx: ExecutionContext<'_, S>,
+fn execute_root_pipeline<S: StorageEngine, M: ExecutionMode<S>>(
+    ctx: ExecutionContext<'_, S, M>,
     pipeline: RootPipeline<S>,
 ) -> ExecutionResult<()> {
     let root = pipeline.arena.root();
     let executor = Arc::new(Executor { arena: pipeline.arena, _marker: std::marker::PhantomData });
-    executor.execute(ctx, root)
+    executor.execute(&ctx, root)
 }
 
-pub fn execute<S: StorageEngine>(
-    ctx: ExecutionContext<'_, S>,
-    plan: PhysicalPlan<S>,
+pub fn execute<S: StorageEngine, M: ExecutionMode<S>>(
+    ctx: ExecutionContext<'_, S, M>,
+    plan: PhysicalPlan<S, M>,
 ) -> ExecutionResult<Vec<Tuple>> {
     let sink = Arc::new(OutputSink::default());
-    let root_pipeline = build_pipelines(Arc::clone(&sink) as Arc<dyn PhysicalSink<S>>, plan);
+    let root_pipeline = build_pipelines(Arc::clone(&sink) as Arc<dyn PhysicalSink<S, M>>, plan);
 
     execute_root_pipeline(ctx, root_pipeline)?;
 
@@ -89,40 +89,44 @@ pub(crate) struct OutputSink {
     tuples: RwLock<Vec<Tuple>>,
 }
 
-impl<S: StorageEngine> PhysicalNode<S> for OutputSink {
+impl<S: StorageEngine, M: ExecutionMode<S>> PhysicalNode<S, M> for OutputSink {
     #[inline]
-    fn children(&self) -> &[Arc<dyn PhysicalNode<S>>] {
+    fn children(&self) -> &[Arc<dyn PhysicalNode<S, M>>] {
         &[]
     }
 
     #[inline]
-    fn as_source(self: Arc<Self>) -> Result<Arc<dyn PhysicalSource<S>>, Arc<dyn PhysicalNode<S>>> {
+    fn as_source(
+        self: Arc<Self>,
+    ) -> Result<Arc<dyn PhysicalSource<S, M>>, Arc<dyn PhysicalNode<S, M>>> {
         Err(self)
     }
 
     #[inline]
-    fn as_sink(self: Arc<Self>) -> Result<Arc<dyn PhysicalSink<S>>, Arc<dyn PhysicalNode<S>>> {
+    fn as_sink(
+        self: Arc<Self>,
+    ) -> Result<Arc<dyn PhysicalSink<S, M>>, Arc<dyn PhysicalNode<S, M>>> {
         Ok(self)
     }
 
     #[inline]
     fn as_operator(
         self: Arc<Self>,
-    ) -> Result<Arc<dyn PhysicalOperator<S>>, Arc<dyn PhysicalNode<S>>> {
+    ) -> Result<Arc<dyn PhysicalOperator<S, M>>, Arc<dyn PhysicalNode<S, M>>> {
         Err(self)
     }
 }
 
 #[async_trait::async_trait]
-impl<S: StorageEngine> PhysicalSource<S> for OutputSink {
-    fn source(&self, _ctx: &ExecutionContext<'_, S>) -> ExecutionResult<SourceState<Chunk>> {
+impl<S: StorageEngine, M: ExecutionMode<S>> PhysicalSource<S, M> for OutputSink {
+    fn source(&self, _ctx: &ExecutionContext<'_, S, M>) -> ExecutionResult<SourceState<Chunk>> {
         todo!()
     }
 }
 
 #[async_trait::async_trait]
-impl<S: StorageEngine> PhysicalSink<S> for OutputSink {
-    fn sink(&self, _ctx: &ExecutionContext<'_, S>, tuple: Tuple) -> ExecutionResult<()> {
+impl<S: StorageEngine, M: ExecutionMode<S>> PhysicalSink<S, M> for OutputSink {
+    fn sink(&self, _ctx: &ExecutionContext<'_, S, M>, tuple: Tuple) -> ExecutionResult<()> {
         self.tuples.write().push(tuple);
         Ok(())
     }

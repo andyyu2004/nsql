@@ -3,6 +3,7 @@ use nsql_storage::schema::{Attribute, Schema};
 use nsql_storage::{TableStorage, TableStorageInfo};
 
 use super::*;
+use crate::ReadWriteExecutionMode;
 
 pub struct PhysicalCreateTable<S> {
     info: ir::CreateTableInfo<S>,
@@ -15,34 +16,55 @@ impl<S> fmt::Debug for PhysicalCreateTable<S> {
 }
 
 impl<S: StorageEngine> PhysicalCreateTable<S> {
-    pub(crate) fn plan(info: ir::CreateTableInfo<S>) -> Arc<dyn PhysicalNode<S>> {
+    pub(crate) fn plan(
+        info: ir::CreateTableInfo<S>,
+    ) -> Arc<dyn PhysicalNode<S, ReadWriteExecutionMode<S>>> {
         Arc::new(Self { info })
     }
 }
 
-impl<S: StorageEngine> PhysicalNode<S> for PhysicalCreateTable<S> {
-    fn children(&self) -> &[Arc<dyn PhysicalNode<S>>] {
+impl<S: StorageEngine> PhysicalNode<S, ReadWriteExecutionMode<S>> for PhysicalCreateTable<S> {
+    #[inline]
+    fn children(&self) -> &[Arc<dyn PhysicalNode<S, ReadWriteExecutionMode<S>>>] {
         &[]
     }
 
-    fn as_source(self: Arc<Self>) -> Result<Arc<dyn PhysicalSource<S>>, Arc<dyn PhysicalNode<S>>> {
+    #[inline]
+    fn as_source(
+        self: Arc<Self>,
+    ) -> Result<
+        Arc<dyn PhysicalSource<S, ReadWriteExecutionMode<S>>>,
+        Arc<dyn PhysicalNode<S, ReadWriteExecutionMode<S>>>,
+    > {
         Ok(self)
     }
 
-    fn as_sink(self: Arc<Self>) -> Result<Arc<dyn PhysicalSink<S>>, Arc<dyn PhysicalNode<S>>> {
+    #[inline]
+    fn as_sink(
+        self: Arc<Self>,
+    ) -> Result<
+        Arc<dyn PhysicalSink<S, ReadWriteExecutionMode<S>>>,
+        Arc<dyn PhysicalNode<S, ReadWriteExecutionMode<S>>>,
+    > {
         Err(self)
     }
 
+    #[inline]
     fn as_operator(
         self: Arc<Self>,
-    ) -> Result<Arc<dyn PhysicalOperator<S>>, Arc<dyn PhysicalNode<S>>> {
+    ) -> Result<
+        Arc<dyn PhysicalOperator<S, ReadWriteExecutionMode<S>>>,
+        Arc<dyn PhysicalNode<S, ReadWriteExecutionMode<S>>>,
+    > {
         Err(self)
     }
 }
 
-#[async_trait::async_trait]
-impl<S: StorageEngine> PhysicalSource<S> for PhysicalCreateTable<S> {
-    fn source(&self, ctx: &ExecutionContext<'_, S>) -> ExecutionResult<SourceState<Chunk>> {
+impl<S: StorageEngine> PhysicalSource<S, ReadWriteExecutionMode<S>> for PhysicalCreateTable<S> {
+    fn source(
+        &self,
+        ctx: &ExecutionContext<'_, S, ReadWriteExecutionMode<S>>,
+    ) -> ExecutionResult<SourceState<Chunk>> {
         let attrs = self
             .info
             .columns
@@ -60,9 +82,9 @@ impl<S: StorageEngine> PhysicalSource<S> for PhysicalCreateTable<S> {
         };
 
         let catalog = ctx.catalog();
-        let tx = ctx.tx();
+        let tx = ctx.tx_mut();
         let schema = catalog
-            .get::<Namespace<S>>(&tx, self.info.namespace)
+            .get::<Namespace<S>>(tx, self.info.namespace)
             .expect("schema not found during execution");
 
         let table_oid = schema.create::<Table<S>>(&mut tx, info)?;

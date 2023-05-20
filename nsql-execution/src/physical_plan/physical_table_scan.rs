@@ -18,7 +18,8 @@ pub struct PhysicalTableScan<S: StorageEngine> {
     stream: OnceLock<Mutex<TupleStream<S>>>,
 }
 
-type TupleStream<S> = Box<dyn Iterator<Item = Result<Vec<Tuple>, <S as StorageEngine>::Error>> + Send + Sync>;
+type TupleStream<S> =
+    Box<dyn Iterator<Item = Result<Vec<Tuple>, <S as StorageEngine>::Error>> + Send + Sync>;
 
 impl<S: StorageEngine> fmt::Debug for PhysicalTableScan<S> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -33,7 +34,7 @@ impl<S: StorageEngine> PhysicalTableScan<S> {
     pub(crate) fn plan(
         table_ref: ir::TableRef<S>,
         projection: Option<Box<[ColumnIndex]>>,
-    ) -> Arc<dyn PhysicalNode<S>> {
+    ) -> Arc<dyn PhysicalNode<S, M>> {
         Arc::new(Self {
             table_ref,
             projection,
@@ -46,9 +47,9 @@ impl<S: StorageEngine> PhysicalTableScan<S> {
 }
 
 #[async_trait::async_trait]
-impl<S: StorageEngine> PhysicalSource<S> for PhysicalTableScan<S> {
+impl<S: StorageEngine> PhysicalSource<S, M> for PhysicalTableScan<S> {
     #[tracing::instrument(skip(self, ctx))]
-    fn source(&self, ctx: &ExecutionContext<'_, S>) -> ExecutionResult<SourceState<Chunk>> {
+    fn source(&self, ctx: &ExecutionContext<'_, S, M>) -> ExecutionResult<SourceState<Chunk>> {
         let tx = ctx.tx();
         let table = self.table.get_or_try_init(|| {
             let namespace = ctx.catalog.get(&tx, self.table_ref.namespace).unwrap();
@@ -85,22 +86,26 @@ impl<S: StorageEngine> PhysicalSource<S> for PhysicalTableScan<S> {
     }
 }
 
-impl<S: StorageEngine> PhysicalNode<S> for PhysicalTableScan<S> {
-    fn children(&self) -> &[Arc<dyn PhysicalNode<S>>] {
+impl<S: StorageEngine> PhysicalNode<S, M> for PhysicalTableScan<S> {
+    fn children(&self) -> &[Arc<dyn PhysicalNode<S, M>>] {
         &[]
     }
 
-    fn as_source(self: Arc<Self>) -> Result<Arc<dyn PhysicalSource<S>>, Arc<dyn PhysicalNode<S>>> {
+    fn as_source(
+        self: Arc<Self>,
+    ) -> Result<Arc<dyn PhysicalSource<S, M>>, Arc<dyn PhysicalNode<S, M>>> {
         Ok(self)
     }
 
-    fn as_sink(self: Arc<Self>) -> Result<Arc<dyn PhysicalSink<S>>, Arc<dyn PhysicalNode<S>>> {
+    fn as_sink(
+        self: Arc<Self>,
+    ) -> Result<Arc<dyn PhysicalSink<S, M>>, Arc<dyn PhysicalNode<S, M>>> {
         Err(self)
     }
 
     fn as_operator(
         self: Arc<Self>,
-    ) -> Result<Arc<dyn PhysicalOperator<S>>, Arc<dyn PhysicalNode<S>>> {
+    ) -> Result<Arc<dyn PhysicalOperator<S, M>>, Arc<dyn PhysicalNode<S, M>>> {
         Err(self)
     }
 }

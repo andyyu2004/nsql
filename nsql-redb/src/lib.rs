@@ -200,32 +200,18 @@ impl<'env, 'txn> nsql_storage_engine::WriteTree<'env, 'txn, RedbStorageEngine>
     }
 }
 
-impl<'env> nsql_storage_engine::Transaction<'env, RedbStorageEngine> for ReadTransaction<'env> {
-    type Error = redb::Error;
+impl<'env> nsql_storage_engine::Transaction<'env, RedbStorageEngine> for ReadTransaction<'env> {}
 
-    #[inline]
-    fn upgrade(&mut self) -> std::result::Result<Option<&mut Transaction<'env>>, Self::Error> {
-        Ok(None)
-    }
-}
-
-impl<'env> nsql_storage_engine::Transaction<'env, RedbStorageEngine> for Transaction<'env> {
-    type Error = redb::Error;
-
-    #[inline]
-    fn upgrade(&mut self) -> std::result::Result<Option<&mut Transaction<'env>>, Self::Error> {
-        Ok(Some(self))
-    }
-}
+impl<'env> nsql_storage_engine::Transaction<'env, RedbStorageEngine> for Transaction<'env> {}
 
 impl<'env> nsql_storage_engine::WriteTransaction<'env, RedbStorageEngine> for Transaction<'env> {
     #[inline]
-    fn commit(self) -> Result<(), Self::Error> {
+    fn commit(self) -> Result<(), redb::Error> {
         self.0.commit()
     }
 
     #[inline]
-    fn rollback(self) -> Result<(), Self::Error> {
+    fn rollback(self) -> Result<(), redb::Error> {
         self.0.abort()
     }
 }

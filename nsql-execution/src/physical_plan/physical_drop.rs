@@ -1,6 +1,7 @@
 use nsql_catalog::EntityRef;
 
 use super::*;
+use crate::ReadWriteExecutionMode;
 
 pub struct PhysicalDrop<S> {
     refs: Vec<ir::EntityRef<S>>,
@@ -13,34 +14,52 @@ impl<S> fmt::Debug for PhysicalDrop<S> {
 }
 
 impl<S: StorageEngine> PhysicalDrop<S> {
-    pub(crate) fn plan(refs: Vec<ir::EntityRef<S>>) -> Arc<dyn PhysicalNode<S>> {
+    pub(crate) fn plan(
+        refs: Vec<ir::EntityRef<S>>,
+    ) -> Arc<dyn PhysicalNode<S, ReadWriteExecutionMode<S>>> {
         Arc::new(Self { refs })
     }
 }
 
-impl<S: StorageEngine> PhysicalNode<S> for PhysicalDrop<S> {
-    fn children(&self) -> &[Arc<dyn PhysicalNode<S>>] {
+impl<S: StorageEngine> PhysicalNode<S, ReadWriteExecutionMode<S>> for PhysicalDrop<S> {
+    fn children(&self) -> &[Arc<dyn PhysicalNode<S, ReadWriteExecutionMode<S>>>] {
         &[]
     }
 
-    fn as_source(self: Arc<Self>) -> Result<Arc<dyn PhysicalSource<S>>, Arc<dyn PhysicalNode<S>>> {
+    fn as_source(
+        self: Arc<Self>,
+    ) -> Result<
+        Arc<dyn PhysicalSource<S, ReadWriteExecutionMode<S>>>,
+        Arc<dyn PhysicalNode<S, ReadWriteExecutionMode<S>>>,
+    > {
         Ok(self)
     }
 
-    fn as_sink(self: Arc<Self>) -> Result<Arc<dyn PhysicalSink<S>>, Arc<dyn PhysicalNode<S>>> {
+    fn as_sink(
+        self: Arc<Self>,
+    ) -> Result<
+        Arc<dyn PhysicalSink<S, ReadWriteExecutionMode<S>>>,
+        Arc<dyn PhysicalNode<S, ReadWriteExecutionMode<S>>>,
+    > {
         Err(self)
     }
 
     fn as_operator(
         self: Arc<Self>,
-    ) -> Result<Arc<dyn PhysicalOperator<S>>, Arc<dyn PhysicalNode<S>>> {
+    ) -> Result<
+        Arc<dyn PhysicalOperator<S, ReadWriteExecutionMode<S>>>,
+        Arc<dyn PhysicalNode<S, ReadWriteExecutionMode<S>>>,
+    > {
         Err(self)
     }
 }
 
 #[async_trait::async_trait]
-impl<S: StorageEngine> PhysicalSource<S> for PhysicalDrop<S> {
-    fn source(&self, ctx: &ExecutionContext<'_, S>) -> ExecutionResult<SourceState<Chunk>> {
+impl<S: StorageEngine> PhysicalSource<S, ReadWriteExecutionMode<S>> for PhysicalDrop<S> {
+    fn source(
+        &self,
+        ctx: &ExecutionContext<'_, S, ReadWriteExecutionMode<S>>,
+    ) -> ExecutionResult<SourceState<Chunk>> {
         let tx = ctx.tx();
         let catalog = ctx.catalog();
         for entity_ref in &self.refs {
