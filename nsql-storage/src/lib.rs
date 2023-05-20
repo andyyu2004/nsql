@@ -1,5 +1,6 @@
 #![deny(rust_2018_idioms)]
 #![feature(async_fn_in_trait)]
+#![feature(anonymous_lifetime_in_impl_trait)]
 #![feature(split_array)]
 #![allow(incomplete_features)]
 

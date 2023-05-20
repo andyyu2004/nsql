@@ -16,11 +16,11 @@ impl<S: StorageEngine, M: ExecutionMode<S>> Executor<S, M> {
     ) -> ExecutionResult<()> {
         let root = &self.arena[root];
         for &child in &root.children {
-            Arc::clone(&self).execute(&ctx, child)?;
+            Arc::clone(&self).execute(ctx, child)?;
         }
 
         for &pipeline in &root.pipelines {
-            Arc::clone(&self).execute_pipeline(&ctx, pipeline)?;
+            Arc::clone(&self).execute_pipeline(ctx, pipeline)?;
             // join_set.spawn(Arc::clone(&self).execute_pipeline(ctx, pipeline));
         }
 
@@ -35,7 +35,7 @@ impl<S: StorageEngine, M: ExecutionMode<S>> Executor<S, M> {
         let pipeline = &self.arena[pipeline];
         let mut done = false;
         while !done {
-            let chunk = match pipeline.source.source(&ctx)? {
+            let chunk = match pipeline.source.source(ctx)? {
                 SourceState::Yield(chunk) => chunk,
                 SourceState::Final(chunk) => {
                     // run once more around the loop with the final source chunk
@@ -47,7 +47,7 @@ impl<S: StorageEngine, M: ExecutionMode<S>> Executor<S, M> {
 
             'outer: for mut tuple in chunk {
                 for op in &pipeline.operators {
-                    tuple = match op.execute(&ctx, tuple)? {
+                    tuple = match op.execute(ctx, tuple)? {
                         OperatorState::Yield(tuple) => tuple,
                         OperatorState::Continue => break 'outer,
                         // Once an operator completes, the entire pipeline is finishedK
@@ -55,7 +55,7 @@ impl<S: StorageEngine, M: ExecutionMode<S>> Executor<S, M> {
                     };
                 }
 
-                pipeline.sink.sink(&ctx, tuple)?;
+                pipeline.sink.sink(ctx, tuple)?;
             }
         }
 
@@ -64,12 +64,12 @@ impl<S: StorageEngine, M: ExecutionMode<S>> Executor<S, M> {
 }
 
 fn execute_root_pipeline<S: StorageEngine, M: ExecutionMode<S>>(
-    ctx: ExecutionContext<'_, S, M>,
+    mut ctx: ExecutionContext<'_, S, M>,
     pipeline: RootPipeline<S, M>,
 ) -> ExecutionResult<()> {
     let root = pipeline.arena.root();
     let executor = Arc::new(Executor { arena: pipeline.arena, _marker: std::marker::PhantomData });
-    executor.execute(&ctx, root)
+    executor.execute(&mut ctx, root)
 }
 
 pub fn execute<S: StorageEngine, M: ExecutionMode<S>>(

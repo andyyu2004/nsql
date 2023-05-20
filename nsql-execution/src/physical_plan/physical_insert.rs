@@ -69,10 +69,10 @@ impl<S: StorageEngine> PhysicalSink<S, ReadWriteExecutionMode<S>> for PhysicalIn
         ctx: &ExecutionContext<'_, S, ReadWriteExecutionMode<S>>,
         tuple: Tuple,
     ) -> ExecutionResult<()> {
-        let tx = ctx.tx_mut();
-        let table = self.table_ref.get(&ctx.catalog(), tx);
+        let mut tx = ctx.tx_mut();
+        let table = self.table_ref.get(&ctx.catalog(), &*tx);
         let storage = table.storage();
-        storage.append(tx, &tuple)?;
+        storage.append(&mut tx, &tuple)?;
 
         // FIXME just do the return evaluation here
         if self.returning.is_some() {

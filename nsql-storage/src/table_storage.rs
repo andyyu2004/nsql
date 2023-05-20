@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use nsql_storage_engine::StorageEngine;
+use nsql_storage_engine::{StorageEngine, Transaction};
 
 use crate::schema::Schema;
 use crate::tuple::{Tuple, TupleIndex};
@@ -36,9 +36,9 @@ impl<S: StorageEngine> TableStorage<S> {
     #[inline]
     pub fn scan(
         &self,
-        tx: S::Transaction<'_>,
+        tx: &impl Transaction<'_, S>,
         projection: Option<Box<[TupleIndex]>>,
-    ) -> impl Iterator<Item = Result<Vec<Tuple>, S::Error>> + Send {
+    ) -> impl Iterator<Item = Result<Vec<Tuple>, S::Error>> + Send + 'static {
         [].into_iter()
         // self.heap
         //     .scan(tx, move |tid, tuple| {

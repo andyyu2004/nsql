@@ -50,10 +50,10 @@ impl<S: StorageEngine> PhysicalTableScan<S> {
 impl<S: StorageEngine, M: ExecutionMode<S>> PhysicalSource<S, M> for PhysicalTableScan<S> {
     #[tracing::instrument(skip(self, ctx))]
     fn source(&self, ctx: &ExecutionContext<'_, S, M>) -> ExecutionResult<SourceState<Chunk>> {
-        let tx = ctx.tx();
         let table = self.table.get_or_try_init(|| {
-            let namespace = ctx.catalog.get(tx, self.table_ref.namespace).unwrap();
-            Ok::<_, nsql_catalog::Error>(namespace.get(tx, self.table_ref.table).unwrap())
+            let tx = ctx.tx();
+            let namespace = ctx.catalog.get(&*tx, self.table_ref.namespace).unwrap();
+            Ok::<_, nsql_catalog::Error>(namespace.get(&*tx, self.table_ref.table).unwrap())
         })?;
 
         // FIXME we can return an entire chunk at a time instead now
@@ -71,7 +71,7 @@ impl<S: StorageEngine, M: ExecutionMode<S>> PhysicalSource<S, M> for PhysicalTab
                         .projection
                         .as_ref()
                         .map(|p| p.iter().map(|&idx| TupleIndex::new(idx.as_usize())).collect());
-                    Mutex::new(Box::new(storage.scan(ctx.tx().clone(), projection)))
+                    Mutex::new(Box::new(storage.scan(&*ctx.tx(), projection)))
                 });
 
                 match stream.lock().next() {

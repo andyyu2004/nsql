@@ -40,7 +40,8 @@ use self::physical_values::PhysicalValues;
 use crate::executor::OutputSink;
 use crate::{
     Chunk, Evaluator, ExecutionContext, ExecutionMode, ExecutionResult, OperatorState,
-    PhysicalNode, PhysicalOperator, PhysicalSink, PhysicalSource, SourceState, Tuple,
+    PhysicalNode, PhysicalOperator, PhysicalSink, PhysicalSource, ReadWriteExecutionMode,
+    SourceState, Tuple,
 };
 
 pub struct PhysicalPlanner<S> {
@@ -69,6 +70,30 @@ impl<S: StorageEngine> PhysicalPlanner<S> {
         self.plan_node(tx, plan).map(PhysicalPlan)
     }
 
+    fn plan_node_write(
+        &self,
+        tx: &S::Transaction<'_>,
+        plan: Box<Plan<S>>,
+    ) -> Result<Arc<dyn PhysicalNode<S, ReadWriteExecutionMode<S>>>> {
+        match *plan {
+            Plan::Update { table_ref, source, returning } => {
+                let source = self.plan_node(tx, source)?;
+                Ok(PhysicalUpdate::plan(table_ref, source, returning))
+            }
+            Plan::Insert { table_ref, projection, source, returning } => {
+                let mut source = self.plan_node(tx, source)?;
+                if !projection.is_empty() {
+                    source = PhysicalProjection::plan(source, projection);
+                };
+                Ok(PhysicalInsert::plan(table_ref, source, returning))
+            }
+            Plan::CreateTable(info) => Ok(PhysicalCreateTable::plan(info)),
+            Plan::CreateNamespace(info) => Ok(PhysicalCreateNamespace::plan(info)),
+            Plan::Drop(refs) => Ok(PhysicalDrop::plan(refs)),
+            _ => self.plan_node(tx, plan),
+        }
+    }
+
     #[allow(clippy::boxed_local)]
     fn plan_node<M: ExecutionMode<S>>(
         &self,
@@ -77,9 +102,6 @@ impl<S: StorageEngine> PhysicalPlanner<S> {
     ) -> Result<Arc<dyn PhysicalNode<S, M>>> {
         let plan = match *plan {
             Plan::Transaction(kind) => PhysicalTransaction::plan(kind),
-            Plan::CreateTable(info) => PhysicalCreateTable::plan(info),
-            Plan::CreateNamespace(info) => PhysicalCreateNamespace::plan(info),
-            Plan::Drop(refs) => PhysicalDrop::plan(refs),
             Plan::Scan { table_ref, projection } => PhysicalTableScan::plan(table_ref, projection),
             Plan::Show(show) => PhysicalShow::plan(show),
             Plan::Explain(kind, plan) => {
@@ -99,13 +121,6 @@ impl<S: StorageEngine> PhysicalPlanner<S> {
 
                 PhysicalExplain::plan(stringified, plan)
             }
-            Plan::Insert { table_ref, projection, source, returning } => {
-                let mut source = self.plan_node(tx, source)?;
-                if !projection.is_empty() {
-                    source = PhysicalProjection::plan(source, projection);
-                };
-                PhysicalInsert::plan(table_ref, source, returning)
-            }
             Plan::Values { values } => PhysicalValues::plan(values),
             Plan::Projection { source, projection } => {
                 let source = self.plan_node(tx, source)?;
@@ -117,11 +132,12 @@ impl<S: StorageEngine> PhysicalPlanner<S> {
             Plan::Filter { source, predicate } => {
                 PhysicalFilter::plan(self.plan_node(tx, source)?, predicate)
             }
-            Plan::Update { table_ref, source, returning } => {
-                let source = self.plan_node(tx, source)?;
-                PhysicalUpdate::plan(table_ref, source, returning)
-            }
             Plan::Empty => PhysicalDummyScan::plan(),
+            Plan::CreateTable(_)
+            | Plan::CreateNamespace(_)
+            | Plan::Drop(_)
+            | Plan::Update { .. }
+            | Plan::Insert { .. } => unreachable!("write plans should go through plan_node_write"),
         };
 
         Ok(plan)

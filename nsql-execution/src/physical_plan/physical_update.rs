@@ -77,7 +77,7 @@ impl<S: StorageEngine> PhysicalSink<S, ReadWriteExecutionMode<S>> for PhysicalUp
         tuple: Tuple,
     ) -> ExecutionResult<()> {
         let tx = ctx.tx();
-        let table = self.table_ref.get(&ctx.catalog(), tx);
+        let table = self.table_ref.get(&ctx.catalog(), &*tx);
         let storage = table.storage();
 
         let (tuple, tid) = tuple.split_last().expect("expected tuple to be non-empty");

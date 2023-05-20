@@ -33,7 +33,7 @@ impl<S: StorageEngine> Nsql<S> {
     pub fn open(path: impl AsRef<Path>) -> Result<Self> {
         let storage = S::open(path)?;
         let mut tx = storage.begin()?;
-        let catalog = Arc::new(Catalog::create(&mut tx)?);
+        let catalog = Arc::new(Catalog::<S>::create(&mut tx)?);
         tx.commit()?;
 
         todo!()

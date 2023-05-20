@@ -60,11 +60,11 @@ impl<S: StorageEngine> PhysicalSource<S, ReadWriteExecutionMode<S>> for Physical
         &self,
         ctx: &ExecutionContext<'_, S, ReadWriteExecutionMode<S>>,
     ) -> ExecutionResult<SourceState<Chunk>> {
-        let tx = ctx.tx_mut();
+        let mut tx = ctx.tx_mut();
         let catalog = ctx.catalog();
         for entity_ref in &self.refs {
             match entity_ref {
-                ir::EntityRef::Table(table_ref) => table_ref.delete(&catalog, tx)?,
+                ir::EntityRef::Table(table_ref) => table_ref.delete(&catalog, &mut tx)?,
             }
         }
 

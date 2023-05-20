@@ -57,7 +57,7 @@ impl<S: StorageEngine> PhysicalSource<S, ReadWriteExecutionMode<S>> for Physical
         &self,
         ctx: &ExecutionContext<'_, S, ReadWriteExecutionMode<S>>,
     ) -> ExecutionResult<SourceState<Chunk>> {
-        let tx = ctx.tx();
+        let mut tx = ctx.tx_mut();
         let info = CreateNamespaceInfo { name: self.info.name.clone() };
 
         if let Err(err) = ctx.catalog.create::<Namespace<S>>(&mut tx, info) {
