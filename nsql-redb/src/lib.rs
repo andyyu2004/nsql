@@ -6,13 +6,15 @@
 
 use std::ops::{Deref, RangeBounds};
 use std::path::Path;
+use std::sync::Arc;
 
 use redb::{AccessGuard, ReadableTable};
 
 type Result<T, E = redb::Error> = std::result::Result<T, E>;
 
+#[derive(Clone)]
 pub struct RedbStorageEngine {
-    db: redb::Database,
+    db: Arc<redb::Database>,
 }
 
 pub struct ReadTransaction<'db>(redb::ReadTransaction<'db>);
@@ -43,7 +45,7 @@ impl nsql_storage_engine::StorageEngine for RedbStorageEngine {
     where
         Self: Sized,
     {
-        redb::Database::open(path).map(|db| Self { db })
+        redb::Database::open(path).map(Arc::new).map(|db| Self { db })
     }
 
     #[inline]

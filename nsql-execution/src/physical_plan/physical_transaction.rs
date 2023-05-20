@@ -6,7 +6,7 @@ pub struct PhysicalTransaction {
 }
 
 impl PhysicalTransaction {
-    pub(crate) fn plan<S>(kind: ir::TransactionKind) -> Arc<dyn PhysicalNode<S>> {
+    pub(crate) fn plan<S: StorageEngine>(kind: ir::TransactionKind) -> Arc<dyn PhysicalNode<S>> {
         Arc::new(Self { kind })
     }
 }

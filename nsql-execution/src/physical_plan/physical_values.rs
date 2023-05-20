@@ -9,7 +9,7 @@ pub struct PhysicalValues {
 }
 
 impl PhysicalValues {
-    pub(crate) fn plan<S>(values: ir::Values) -> Arc<dyn PhysicalNode<S>> {
+    pub(crate) fn plan<S: StorageEngine>(values: ir::Values) -> Arc<dyn PhysicalNode<S>> {
         Arc::new(PhysicalValues { values, index: AtomicUsize::new(0) })
     }
 }

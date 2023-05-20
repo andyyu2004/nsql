@@ -5,7 +5,7 @@
 use std::ops::{Deref, RangeBounds};
 use std::path::Path;
 
-pub trait StorageEngine: Send + Sync + Sized + 'static {
+pub trait StorageEngine: Clone + Send + Sync + Sized + 'static {
     type Error;
 
     type ReadTransaction<'env>: ReadTransaction

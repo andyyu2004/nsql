@@ -54,7 +54,7 @@ impl<S: StorageEngine> PhysicalSource<S> for PhysicalCreateTable<S> {
         let info = CreateTableInfo {
             name: self.info.name.clone(),
             storage: Arc::new(
-                TableStorage::initialize(ctx.pool(), TableStorageInfo::create(schema))
+                TableStorage::initialize(ctx.storage(), TableStorageInfo::create(schema))
                     .await
                     .map_err(|report| report.into_error())?,
             ),

@@ -10,6 +10,7 @@ use nsql_storage_engine::{ReadTransaction, ReadTree, StorageEngine, Transaction,
 
 type Result<T, E = heed::Error> = std::result::Result<T, E>;
 
+#[derive(Clone)]
 pub struct LmdbStorageEngine {
     env: heed::Env,
     main_db: UntypedDatabase,

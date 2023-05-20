@@ -161,32 +161,28 @@ trait PhysicalSink<S: StorageEngine>: PhysicalSource<S> {
     async fn sink(&self, ctx: &ExecutionContext<S>, tuple: Tuple) -> ExecutionResult<()>;
 }
 
+#[derive(Clone)]
 pub struct ExecutionContext<S: StorageEngine> {
     pool: Arc<dyn Pool>,
+    storage: S,
     catalog: Arc<Catalog<S>>,
     tx: Arc<Transaction>,
 }
 
-impl<S: StorageEngine> Clone for ExecutionContext<S> {
-    #[inline]
-    fn clone(&self) -> Self {
-        Self {
-            pool: Arc::clone(&self.pool),
-            catalog: Arc::clone(&self.catalog),
-            tx: Arc::clone(&self.tx),
-        }
-    }
-}
-
 impl<S: StorageEngine> ExecutionContext<S> {
     #[inline]
-    pub fn new(pool: Arc<dyn Pool>, catalog: Arc<Catalog<S>>, tx: Arc<Transaction>) -> Self {
-        Self { pool, catalog, tx }
+    pub fn new(
+        storage: S,
+        pool: Arc<dyn Pool>,
+        catalog: Arc<Catalog<S>>,
+        tx: Arc<Transaction>,
+    ) -> Self {
+        Self { storage, pool, catalog, tx }
     }
 
     #[inline]
-    pub fn pool(&self) -> Arc<dyn Pool> {
-        Arc::clone(&self.pool)
+    pub fn storage(&self) -> S {
+        self.storage.clone()
     }
 
     #[inline]
