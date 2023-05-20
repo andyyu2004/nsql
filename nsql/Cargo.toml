@@ -11,6 +11,7 @@ nsql-bind = { path = "../nsql-bind" }
 nsql-catalog = { path = "../nsql-catalog" }
 nsql-core = { path = "../nsql-core" }
 nsql-execution = { path = "../nsql-execution" }
+nsql-lmdb = { version = "0.1.0", path = "../nsql-lmdb" }
 nsql-opt = { path = "../nsql-opt" }
 
 nsql-parse = { path = "../nsql-parse" }
@@ -27,6 +28,7 @@ nsql-test = { path = "../nsql-test" }
 datatest-stable = "0.1.3"
 tracing-subscriber = { version = "0.3.16", features = ["env-filter"] }
 expect-test = "1.4.1"
+thiserror = "1.0.40"
 
 [[test]]
 name = "nsql-sqllogictest"

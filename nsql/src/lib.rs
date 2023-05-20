@@ -8,6 +8,7 @@ use arc_swap::ArcSwapOption;
 use nsql_bind::Binder;
 use nsql_catalog::Catalog;
 use nsql_execution::{ExecutionContext, PhysicalPlanner};
+use nsql_lmdb::LmdbStorageEngine;
 use nsql_opt::optimize;
 use nsql_plan::Planner;
 pub use nsql_storage::schema::LogicalType;
@@ -28,7 +29,7 @@ pub struct MaterializedQueryOutput {
 }
 
 impl<S: StorageEngine> Nsql<S> {
-    pub async fn open(path: impl AsRef<Path>) -> Result<Self> {
+    pub fn open(path: impl AsRef<Path>) -> Result<Self> {
         let storage = Storage::new(S::open(path)?);
         // let tx = shared.storage.begin()?;
         // let catalog = Arc::new(Catalog::create(&tx)?);
@@ -39,21 +40,19 @@ impl<S: StorageEngine> Nsql<S> {
         // Ok(Self::new(Shared { storage, buffer_pool, txm, catalog }))
     }
 
-    pub async fn mem() -> Result<Self> {
-        let storage = todo!();
-        // let tx = txm.begin();
-        // let catalog = Arc::new(Catalog::create(&tx)?);
-        // tx.commit().await?;
-
-        // Ok(Self::new(Shared { storage }))
-    }
-
     pub fn connect(&self) -> Connection<'_, S> {
         Connection { db: self.clone(), current_tx: Default::default() }
     }
 
     fn new(inner: Shared<S>) -> Self {
         Self { shared: Arc::new(inner) }
+    }
+}
+
+// FIXME don't have an im memory impl currently
+impl Nsql<LmdbStorageEngine> {
+    pub fn in_memory() -> Result<Self> {
+        Self::open("/tmp/nsql-tmp")
     }
 }
 
@@ -68,7 +67,7 @@ pub struct Connection<'env, S: StorageEngine> {
 }
 
 impl<S: StorageEngine> Connection<'_, S> {
-    pub async fn query(&self, query: &str) -> Result<MaterializedQueryOutput> {
+    pub fn query(&self, query: &str) -> Result<MaterializedQueryOutput> {
         // let tx = match self.current_tx.load_full() {
         //     Some(tx) => {
         //         tracing::debug!(xid = %tx.xid(), "continuing existing tx");
@@ -98,7 +97,7 @@ impl<S: StorageEngine> Connection<'_, S> {
 }
 
 impl<S: StorageEngine> Shared<S> {
-    async fn query(&self, tx: &S::Transaction<'_>, query: &str) -> Result<MaterializedQueryOutput> {
+    fn query(&self, tx: &S::Transaction<'_>, query: &str) -> Result<MaterializedQueryOutput> {
         let statements = nsql_parse::parse_statements(query)?;
         if statements.is_empty() {
             return Ok(MaterializedQueryOutput { types: vec![], tuples: vec![] });

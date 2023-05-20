@@ -2,19 +2,19 @@ use expect_test::{expect, Expect};
 use nsql::Nsql;
 use nsql_storage::tuple::TupleIndex;
 
-async fn check_explain(
-    setup: impl IntoIterator<Item = &str>,
+fn check_explain<'a>(
+    setup: impl IntoIterator<Item = &'a str>,
     query: &str,
     expect: Expect,
 ) -> nsql::Result<()> {
-    let nsql = Nsql::mem().await?;
+    let nsql = Nsql::in_memory()?;
     let conn = nsql.connect();
 
     for sql in setup {
-        conn.query(sql).await?;
+        conn.query(sql)?;
     }
 
-    let result = conn.query(query).await?;
+    let result = conn.query(query)?;
     assert_eq!(result.tuples.len(), 1);
     assert_eq!(result.tuples[0].len(), 1);
 
@@ -22,8 +22,7 @@ async fn check_explain(
     Ok(())
 }
 
-#[tokio::test]
-async fn test_explain() -> nsql::Result<()> {
+fn test_explain() -> nsql::Result<()> {
     check_explain(
         vec!["CREATE TABLE t (b boolean)"],
         "EXPLAIN UPDATE t SET b = true WHERE b",
@@ -33,8 +32,7 @@ async fn test_explain() -> nsql::Result<()> {
                 filter b
                   scan t (b, tid)
         "#]],
-    )
-    .await?;
+    )?;
 
     check_explain(
         vec!["CREATE TABLE t (b boolean)"],
@@ -52,8 +50,7 @@ async fn test_explain() -> nsql::Result<()> {
                       filter b
                       scan t (b, tid)
         "#]],
-    )
-    .await?;
+    )?;
 
     Ok(())
 }

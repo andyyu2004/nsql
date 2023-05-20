@@ -6,19 +6,18 @@ use std::time::Duration;
 use async_trait::async_trait;
 use nsql::{Connection, Nsql};
 use nsql_storage::schema::LogicalType;
+use nsql_storage_engine::StorageEngine;
 use sqllogictest::{AsyncDB, ColumnType, DBOutput, Runner};
 use tracing_subscriber::EnvFilter;
 
 fn nsql_sqllogictest(path: &Path) -> nsql::Result<(), Box<dyn Error>> {
-    nsql_test::start(async {
-        let filter =
-            EnvFilter::try_from_env("NSQL_LOG").unwrap_or_else(|_| EnvFilter::new("nsql=DEBUG"));
-        let _ = tracing_subscriber::fmt::fmt().with_env_filter(filter).try_init();
-        let db = TestDb::new(Nsql::mem().await.unwrap());
-        let mut tester = Runner::new(db);
-        tester.run_file_async(path).await?;
-        Ok(())
-    })
+    let filter =
+        EnvFilter::try_from_env("NSQL_LOG").unwrap_or_else(|_| EnvFilter::new("nsql=DEBUG"));
+    let _ = tracing_subscriber::fmt::fmt().with_env_filter(filter).try_init();
+    let db = TestDb::new(Nsql::in_memory().unwrap());
+    let mut tester = Runner::new(db);
+    tester.run_file(path)?;
+    Ok(())
 }
 
 // if you wish to debug a particular test, you can temporarily change the regex to match only that test
@@ -55,20 +54,24 @@ impl ColumnType for TypeWrapper {
     }
 }
 
-pub struct TestDb<S> {
+pub struct TestDb<S: StorageEngine> {
     db: Nsql<S>,
-    connections: BTreeMap<Option<String>, Connection<'_, S>>,
+    connections: BTreeMap<Option<String>, Connection<'static, S>>,
 }
 
-impl TestDb {
-    pub fn new(db: Nsql) -> Self {
+impl<S: StorageEngine> TestDb<S> {
+    pub fn new(db: Nsql<S>) -> Self {
         Self { db, connections: Default::default() }
     }
 }
 
+#[derive(thiserror::Error, Debug)]
+#[error(transparent)]
+pub struct ErrorWrapper(#[from] anyhow::Error);
+
 #[async_trait]
-impl AsyncDB for TestDb {
-    type Error = nsql::Error;
+impl<S: StorageEngine> AsyncDB for TestDb<S> {
+    type Error = ErrorWrapper;
 
     type ColumnType = TypeWrapper;
 
@@ -81,9 +84,11 @@ impl AsyncDB for TestDb {
         let conn = self
             .connections
             .entry(connection_name.map(Into::into))
-            .or_insert_with(|| self.db.connect());
+            // Safety: We don't close the storage engine until the end of the test, so this
+            // lifetime extension is ok.
+            .or_insert_with(|| unsafe { std::mem::transmute(self.db.connect()) });
 
-        let output = conn.query(sql).await?;
+        let output = conn.query(sql)?;
         Ok(DBOutput::Rows {
             types: output.types.into_iter().map(TypeWrapper).collect(),
             rows: output
