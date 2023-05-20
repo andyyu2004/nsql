@@ -15,7 +15,7 @@ use nsql_plan::Planner;
 pub use nsql_storage::schema::LogicalType;
 pub use nsql_storage::tuple::Tuple;
 use nsql_storage::Storage;
-use nsql_storage_engine::StorageEngine;
+use nsql_storage_engine::{StorageEngine, WriteTransaction};
 
 pub type Result<T, E = anyhow::Error> = std::result::Result<T, E>;
 
@@ -34,7 +34,7 @@ impl<S: StorageEngine> Nsql<S> {
         let storage = S::open(path)?;
         let mut tx = storage.begin()?;
         let catalog = Arc::new(Catalog::create(&mut tx)?);
-        tx.commit().await?;
+        tx.commit()?;
 
         todo!()
 

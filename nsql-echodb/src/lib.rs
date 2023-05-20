@@ -91,7 +91,15 @@ impl<'env> Transaction<'env, EchoDbEngine> for Arc<Tx<Key, Val>> {
     }
 }
 
-impl<'env> WriteTransaction<'env, EchoDbEngine> for Tx<Key, Val> {}
+impl<'env> WriteTransaction<'env, EchoDbEngine> for Tx<Key, Val> {
+    fn commit(self) -> Result<(), Self::Error> {
+        todo!()
+    }
+
+    fn rollback(self) -> Result<(), Self::Error> {
+        todo!()
+    }
+}
 
 impl<'env, 'txn> ReadTree<'env, 'txn, EchoDbEngine> for Db<Key, Val> {
     type Bytes = Vec<u8>;
@@ -101,7 +109,7 @@ impl<'env, 'txn> ReadTree<'env, 'txn, EchoDbEngine> for Db<Key, Val> {
         txn: &'txn <EchoDbEngine as StorageEngine>::Transaction<'_>,
         key: &[u8],
     ) -> Result<Option<Self::Bytes>, echodb::Error> {
-        Ok(txn.get(key)?.map(|v| v.clone()))
+        txn.get(key)
     }
 
     fn range(

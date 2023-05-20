@@ -93,4 +93,8 @@ pub trait Transaction<'env, S: StorageEngine> {
     fn upgrade(&mut self) -> Result<Option<&mut S::WriteTransaction<'env>>, Self::Error>;
 }
 
-pub trait WriteTransaction<'env, S: StorageEngine>: Transaction<'env, S> {}
+pub trait WriteTransaction<'env, S: StorageEngine>: Transaction<'env, S> {
+    fn commit(self) -> Result<(), Self::Error>;
+
+    fn rollback(self) -> Result<(), Self::Error>;
+}

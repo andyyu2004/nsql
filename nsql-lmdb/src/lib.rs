@@ -145,12 +145,12 @@ impl WriteTree<'_, '_, LmdbStorageEngine> for UntypedDatabase {
         key: &[u8],
         value: &[u8],
     ) -> Result<(), heed::Error> {
-        (*self).put(&mut txn.0, &key, &value)
+        (*self).put(&mut txn.0, key, value)
     }
 
     #[inline]
     fn delete(&mut self, txn: &mut ReadWriteTx<'_>, key: &[u8]) -> Result<bool, heed::Error> {
-        (*self).delete(&mut txn.0, &key)
+        (*self).delete(&mut txn.0, key)
     }
 }
 
@@ -170,7 +170,17 @@ impl<'env> Transaction<'env, LmdbStorageEngine> for ReadWriteTx<'env> {
     }
 }
 
-impl<'env> WriteTransaction<'env, LmdbStorageEngine> for ReadWriteTx<'env> {}
+impl<'env> WriteTransaction<'env, LmdbStorageEngine> for ReadWriteTx<'env> {
+    fn commit(self) -> Result<(), Self::Error> {
+        self.0.commit()
+    }
+
+    #[inline]
+    fn rollback(self) -> Result<(), Self::Error> {
+        self.0.abort();
+        Ok(())
+    }
+}
 
 #[cfg(test)]
 mod tests;

@@ -218,4 +218,14 @@ impl<'env> nsql_storage_engine::Transaction<'env, RedbStorageEngine> for Transac
     }
 }
 
-impl<'env> nsql_storage_engine::WriteTransaction<'env, RedbStorageEngine> for Transaction<'env> {}
+impl<'env> nsql_storage_engine::WriteTransaction<'env, RedbStorageEngine> for Transaction<'env> {
+    #[inline]
+    fn commit(self) -> Result<(), Self::Error> {
+        self.0.commit()
+    }
+
+    #[inline]
+    fn rollback(self) -> Result<(), Self::Error> {
+        self.0.abort()
+    }
+}
