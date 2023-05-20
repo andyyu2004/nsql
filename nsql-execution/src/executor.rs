@@ -13,7 +13,7 @@ impl<S: StorageEngine> Executor<S> {
     #[async_recursion::async_recursion]
     async fn execute(
         self: Arc<Self>,
-        ctx: ExecutionContext<S>,
+        ctx: ExecutionContext<'_, S>,
         root: Idx<MetaPipeline<S>>,
     ) -> ExecutionResult<()> {
         let mut join_set = JoinSet::new();
@@ -42,7 +42,7 @@ impl<S: StorageEngine> Executor<S> {
 
     async fn execute_pipeline(
         self: Arc<Self>,
-        ctx: ExecutionContext<S>,
+        ctx: ExecutionContext<'_, S>,
         pipeline: Idx<Pipeline<S>>,
     ) -> ExecutionResult<()> {
         let pipeline = &self.arena[pipeline];
@@ -77,7 +77,7 @@ impl<S: StorageEngine> Executor<S> {
 }
 
 async fn execute_root_pipeline<S: StorageEngine>(
-    ctx: ExecutionContext<S>,
+    ctx: ExecutionContext<'_, S>,
     pipeline: RootPipeline<S>,
 ) -> ExecutionResult<()> {
     let root = pipeline.arena.root();
@@ -86,7 +86,7 @@ async fn execute_root_pipeline<S: StorageEngine>(
 }
 
 pub async fn execute<S: StorageEngine>(
-    ctx: ExecutionContext<S>,
+    ctx: ExecutionContext<'_, S>,
     plan: PhysicalPlan<S>,
 ) -> ExecutionResult<Vec<Tuple>> {
     let sink = Arc::new(OutputSink::default());
@@ -128,14 +128,14 @@ impl<S: StorageEngine> PhysicalNode<S> for OutputSink {
 
 #[async_trait::async_trait]
 impl<S: StorageEngine> PhysicalSource<S> for OutputSink {
-    async fn source(&self, _ctx: &ExecutionContext<S>) -> ExecutionResult<SourceState<Chunk>> {
+    async fn source(&self, _ctx: &ExecutionContext<'_, S>) -> ExecutionResult<SourceState<Chunk>> {
         todo!()
     }
 }
 
 #[async_trait::async_trait]
 impl<S: StorageEngine> PhysicalSink<S> for OutputSink {
-    async fn sink(&self, _ctx: &ExecutionContext<S>, tuple: Tuple) -> ExecutionResult<()> {
+    async fn sink(&self, _ctx: &ExecutionContext<'_, S>, tuple: Tuple) -> ExecutionResult<()> {
         self.tuples.write().push(tuple);
         Ok(())
     }

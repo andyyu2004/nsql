@@ -40,7 +40,7 @@ impl<S: StorageEngine> PhysicalNode<S> for PhysicalDrop<S> {
 
 #[async_trait::async_trait]
 impl<S: StorageEngine> PhysicalSource<S> for PhysicalDrop<S> {
-    async fn source(&self, ctx: &ExecutionContext<S>) -> ExecutionResult<SourceState<Chunk>> {
+    async fn source(&self, ctx: &ExecutionContext<'_, S>) -> ExecutionResult<SourceState<Chunk>> {
         let tx = ctx.tx();
         let catalog = ctx.catalog();
         for entity_ref in &self.refs {

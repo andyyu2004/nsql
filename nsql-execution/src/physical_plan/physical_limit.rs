@@ -18,7 +18,7 @@ impl<S: StorageEngine> PhysicalLimit<S> {
 impl<S: StorageEngine> PhysicalOperator<S> for PhysicalLimit<S> {
     async fn execute(
         &self,
-        _ctx: &ExecutionContext<S>,
+        _ctx: &ExecutionContext<'_, S>,
         input: Tuple,
     ) -> ExecutionResult<OperatorState<Tuple>> {
         if self.yielded.fetch_add(1, atomic::Ordering::AcqRel) >= self.limit {

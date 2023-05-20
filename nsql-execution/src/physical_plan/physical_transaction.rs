@@ -33,7 +33,7 @@ impl<S: StorageEngine> PhysicalNode<S> for PhysicalTransaction {
 
 #[async_trait::async_trait]
 impl<S: StorageEngine> PhysicalSource<S> for PhysicalTransaction {
-    async fn source(&self, ctx: &ExecutionContext<S>) -> ExecutionResult<SourceState<Chunk>> {
+    async fn source(&self, ctx: &ExecutionContext<'_, S>) -> ExecutionResult<SourceState<Chunk>> {
         let tx = ctx.tx();
         match self.kind {
             ir::TransactionKind::Begin => {

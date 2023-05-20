@@ -22,7 +22,7 @@ impl<S: StorageEngine> PhysicalOperator<S> for PhysicalProjection<S> {
     #[tracing::instrument(skip(self, _ctx, input))]
     async fn execute(
         &self,
-        _ctx: &ExecutionContext<S>,
+        _ctx: &ExecutionContext<'_, S>,
         input: Tuple,
     ) -> ExecutionResult<OperatorState<Tuple>> {
         let output = self.evaluator.evaluate(&input, &self.projection);

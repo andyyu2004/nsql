@@ -57,7 +57,7 @@ impl<S: StorageEngine> PhysicalNode<S> for PhysicalUpdate<S> {
 
 #[async_trait::async_trait]
 impl<S: StorageEngine> PhysicalSink<S> for PhysicalUpdate<S> {
-    async fn sink(&self, ctx: &ExecutionContext<S>, tuple: Tuple) -> ExecutionResult<()> {
+    async fn sink(&self, ctx: &ExecutionContext<'_, S>, tuple: Tuple) -> ExecutionResult<()> {
         let tx = ctx.tx();
         let table = self.table_ref.get(&ctx.catalog(), &tx);
         let storage = table.storage();
@@ -79,7 +79,7 @@ impl<S: StorageEngine> PhysicalSink<S> for PhysicalUpdate<S> {
 #[async_trait::async_trait]
 impl<S: StorageEngine> PhysicalSource<S> for PhysicalUpdate<S> {
     #[inline]
-    async fn source(&self, _ctx: &ExecutionContext<S>) -> ExecutionResult<SourceState<Chunk>> {
+    async fn source(&self, _ctx: &ExecutionContext<'_, S>) -> ExecutionResult<SourceState<Chunk>> {
         let returning = match &self.returning {
             Some(returning) => returning,
             None => return Ok(SourceState::Done),

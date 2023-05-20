@@ -16,7 +16,7 @@ impl PhysicalValues {
 
 #[async_trait::async_trait]
 impl<S: StorageEngine> PhysicalSource<S> for PhysicalValues {
-    async fn source(&self, _ctx: &ExecutionContext<S>) -> ExecutionResult<SourceState<Chunk>> {
+    async fn source(&self, _ctx: &ExecutionContext<'_, S>) -> ExecutionResult<SourceState<Chunk>> {
         let index = self.index.fetch_add(1, atomic::Ordering::SeqCst);
         if index >= self.values.len() {
             return Ok(SourceState::Done);

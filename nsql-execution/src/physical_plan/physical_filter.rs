@@ -20,7 +20,7 @@ impl<S: StorageEngine> PhysicalOperator<S> for PhysicalFilter<S> {
     #[tracing::instrument(skip(self, _ctx, input))]
     async fn execute(
         &self,
-        _ctx: &ExecutionContext<S>,
+        _ctx: &ExecutionContext<'_, S>,
         input: Tuple,
     ) -> ExecutionResult<OperatorState<Tuple>> {
         let value = self.evaluator.evaluate_expr(&input, &self.predicate);

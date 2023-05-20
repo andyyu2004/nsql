@@ -17,12 +17,13 @@ pub struct RedbStorageEngine {
     db: Arc<redb::Database>,
 }
 
-pub struct ReadTransaction<'db>(redb::ReadTransaction<'db>);
+#[derive(Clone)]
+pub struct ReadTransaction<'env>(Arc<redb::ReadTransaction<'env>>);
 
-pub struct Transaction<'db>(redb::WriteTransaction<'db>);
+pub struct Transaction<'env>(redb::WriteTransaction<'env>);
 
-impl<'db> Deref for Transaction<'db> {
-    type Target = ReadTransaction<'db>;
+impl<'env> Deref for Transaction<'env> {
+    type Target = ReadTransaction<'env>;
 
     fn deref(&self) -> &Self::Target {
         unsafe { std::mem::transmute(self) }
@@ -32,9 +33,9 @@ impl<'db> Deref for Transaction<'db> {
 impl nsql_storage_engine::StorageEngine for RedbStorageEngine {
     type Error = redb::Error;
 
-    type ReadTransaction<'db> = ReadTransaction<'db>;
+    type Transaction<'env> = ReadTransaction<'env>;
 
-    type Transaction<'db> = Transaction<'db>;
+    type WriteTransaction<'env> = Transaction<'env>;
 
     type ReadTree<'env, 'txn> = redb::ReadOnlyTable<'txn, &'static [u8], &'static [u8]> where 'env: 'txn;
 
@@ -49,13 +50,13 @@ impl nsql_storage_engine::StorageEngine for RedbStorageEngine {
     }
 
     #[inline]
-    fn begin_readonly(&self) -> Result<Self::ReadTransaction<'_>, Self::Error> {
+    fn begin_readonly(&self) -> Result<Self::Transaction<'_>, Self::Error> {
         let tx = self.db.begin_read()?;
-        Ok(ReadTransaction(tx))
+        Ok(ReadTransaction(Arc::new(tx)))
     }
 
     #[inline]
-    fn begin(&self) -> std::result::Result<Self::Transaction<'_>, Self::Error> {
+    fn begin(&self) -> std::result::Result<Self::WriteTransaction<'_>, Self::Error> {
         let tx = self.db.begin_write()?;
         Ok(Transaction(tx))
     }
@@ -63,7 +64,7 @@ impl nsql_storage_engine::StorageEngine for RedbStorageEngine {
     #[inline]
     fn open_tree_readonly<'env, 'txn>(
         &self,
-        txn: &'env Self::ReadTransaction<'txn>,
+        txn: &'env Self::Transaction<'txn>,
         name: &str,
     ) -> Result<Option<Self::ReadTree<'env, 'txn>>, Self::Error>
     where
@@ -79,7 +80,7 @@ impl nsql_storage_engine::StorageEngine for RedbStorageEngine {
     #[inline]
     fn open_tree<'env, 'txn>(
         &self,
-        txn: &'txn Self::Transaction<'env>,
+        txn: &'txn Self::WriteTransaction<'env>,
         name: &str,
     ) -> Result<Self::Tree<'env, 'txn>, Self::Error> {
         match txn.0.open_table(redb::TableDefinition::new(name)) {
@@ -117,7 +118,7 @@ impl<'env, 'txn> nsql_storage_engine::ReadTree<'env, 'txn, RedbStorageEngine>
     #[inline]
     fn rev_range(
         &'txn self,
-        _txn: &'txn <RedbStorageEngine as nsql_storage_engine::StorageEngine>::ReadTransaction<'_>,
+        _txn: &'txn <RedbStorageEngine as nsql_storage_engine::StorageEngine>::Transaction<'_>,
         range: impl RangeBounds<[u8]>,
     ) -> Result<impl Iterator<Item = Result<(Self::Bytes, Self::Bytes), redb::Error>>, redb::Error>
     {
@@ -166,7 +167,7 @@ impl<'env, 'txn> nsql_storage_engine::ReadTree<'env, 'txn, RedbStorageEngine>
     #[inline]
     fn rev_range(
         &'txn self,
-        _txn: &'txn <RedbStorageEngine as nsql_storage_engine::StorageEngine>::ReadTransaction<'_>,
+        _txn: &'txn <RedbStorageEngine as nsql_storage_engine::StorageEngine>::Transaction<'_>,
         range: impl RangeBounds<[u8]>,
     ) -> Result<impl Iterator<Item = Result<(Self::Bytes, Self::Bytes), redb::Error>>, redb::Error>
     {
@@ -196,12 +197,22 @@ impl<'env, 'txn> nsql_storage_engine::Tree<'env, 'txn, RedbStorageEngine>
     }
 }
 
-impl<'env> nsql_storage_engine::ReadTransaction for ReadTransaction<'env> {
+impl<'env> nsql_storage_engine::ReadTransaction<'env, RedbStorageEngine> for ReadTransaction<'env> {
     type Error = redb::Error;
+
+    #[inline]
+    fn upgrade(&mut self) -> std::result::Result<Option<&mut Transaction<'env>>, Self::Error> {
+        Ok(None)
+    }
 }
 
-impl<'env> nsql_storage_engine::ReadTransaction for Transaction<'env> {
+impl<'env> nsql_storage_engine::ReadTransaction<'env, RedbStorageEngine> for Transaction<'env> {
     type Error = redb::Error;
+
+    #[inline]
+    fn upgrade(&mut self) -> std::result::Result<Option<&mut Transaction<'env>>, Self::Error> {
+        Ok(Some(self))
+    }
 }
 
-impl<'env> nsql_storage_engine::Transaction for Transaction<'env> {}
+impl<'env> nsql_storage_engine::Transaction<'env, RedbStorageEngine> for Transaction<'env> {}

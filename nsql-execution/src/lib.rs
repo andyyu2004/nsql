@@ -145,7 +145,7 @@ enum SourceState<T> {
 trait PhysicalOperator<S: StorageEngine, T = Tuple>: PhysicalNode<S> {
     async fn execute(
         &self,
-        ctx: &ExecutionContext<S>,
+        ctx: &ExecutionContext<'_, S>,
         input: T,
     ) -> ExecutionResult<OperatorState<T>>;
 }
@@ -153,29 +153,30 @@ trait PhysicalOperator<S: StorageEngine, T = Tuple>: PhysicalNode<S> {
 #[async_trait::async_trait]
 trait PhysicalSource<S: StorageEngine, T = Tuple>: PhysicalNode<S> {
     /// Return the next chunk from the source. An empty chunk indicates that the source is exhausted.
-    async fn source(&self, ctx: &ExecutionContext<S>) -> ExecutionResult<SourceState<Chunk<T>>>;
+    async fn source(&self, ctx: &ExecutionContext<'_, S>)
+    -> ExecutionResult<SourceState<Chunk<T>>>;
 }
 
 #[async_trait::async_trait]
 trait PhysicalSink<S: StorageEngine>: PhysicalSource<S> {
-    async fn sink(&self, ctx: &ExecutionContext<S>, tuple: Tuple) -> ExecutionResult<()>;
+    async fn sink(&self, ctx: &ExecutionContext<'_, S>, tuple: Tuple) -> ExecutionResult<()>;
 }
 
 #[derive(Clone)]
-pub struct ExecutionContext<S: StorageEngine> {
+pub struct ExecutionContext<'env, S: StorageEngine> {
     pool: Arc<dyn Pool>,
     storage: S,
     catalog: Arc<Catalog<S>>,
-    tx: Arc<Transaction>,
+    tx: S::Transaction<'env>,
 }
 
-impl<S: StorageEngine> ExecutionContext<S> {
+impl<'env, S: StorageEngine> ExecutionContext<'env, S> {
     #[inline]
     pub fn new(
         storage: S,
         pool: Arc<dyn Pool>,
         catalog: Arc<Catalog<S>>,
-        tx: Arc<Transaction>,
+        tx: S::Transaction<'env>,
     ) -> Self {
         Self { storage, pool, catalog, tx }
     }
@@ -186,8 +187,8 @@ impl<S: StorageEngine> ExecutionContext<S> {
     }
 
     #[inline]
-    pub fn tx(&self) -> Arc<Transaction> {
-        Arc::clone(&self.tx)
+    pub fn tx(&self) -> &S::Transaction<'_> {
+        self.tx.as_ref()
     }
 
     #[inline]

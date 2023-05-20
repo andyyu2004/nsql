@@ -38,7 +38,7 @@ impl<S: StorageEngine> TableStorage<S> {
     #[inline]
     pub async fn scan(
         &self,
-        tx: S::ReadTransaction<'_>,
+        tx: S::Transaction<'_>,
         projection: Option<Box<[TupleIndex]>>,
     ) -> impl Stream<Item = nsql_buffer::Result<Vec<Tuple>>> + Send {
         futures_util::stream::empty()

@@ -4,7 +4,9 @@
 
 use std::ops::RangeBounds;
 use std::path::Path;
+use std::sync::Arc;
 
+use heed::flags::Flags;
 use heed::UntypedDatabase;
 use nsql_storage_engine::{ReadTransaction, ReadTree, StorageEngine, Transaction, Tree};
 
@@ -16,8 +18,9 @@ pub struct LmdbStorageEngine {
     main_db: UntypedDatabase,
 }
 
+#[derive(Clone)]
 pub struct ReadonlyTx<'env> {
-    tx: heed::RoTxn<'env>,
+    tx: Arc<heed::RoTxn<'env>>,
 }
 
 pub struct ReadWriteTx<'env> {
@@ -27,9 +30,9 @@ pub struct ReadWriteTx<'env> {
 impl StorageEngine for LmdbStorageEngine {
     type Error = heed::Error;
 
-    type ReadTransaction<'env> = ReadonlyTx<'env>;
+    type Transaction<'env> = ReadonlyTx<'env>;
 
-    type Transaction<'env> = ReadWriteTx<'env>;
+    type WriteTransaction<'env> = ReadWriteTx<'env>;
 
     type ReadTree<'env, 'txn> = UntypedDatabase where 'env: 'txn;
 
@@ -43,20 +46,21 @@ impl StorageEngine for LmdbStorageEngine {
         // large value `max_readers` has a performance issues so I don't think having a lmdb database per table is practical.
         // Perhaps we can do a lmdb database per schema and have a reasonable limit on it (say ~100)
         std::fs::OpenOptions::new().create(true).write(true).truncate(false).open(&path)?;
-        let env = unsafe { heed::EnvOpenOptions::new().flag(heed::flags::Flags::MdbNoSubDir) }
-            .open(path)?;
+        let env =
+            unsafe { heed::EnvOpenOptions::new().flag(Flags::MdbNoSubDir).flag(Flags::MdbNoTls) }
+                .open(path)?;
         let main_db = env.open_database(None)?.expect("main database should exist");
         Ok(Self { main_db, env })
     }
 
     #[inline]
-    fn begin_readonly(&self) -> Result<Self::ReadTransaction<'_>, Self::Error> {
+    fn begin_readonly(&self) -> Result<Self::Transaction<'_>, Self::Error> {
         let tx = self.env.read_txn()?;
-        Ok(ReadonlyTx { tx })
+        Ok(ReadonlyTx { tx: Arc::new(tx) })
     }
 
     #[inline]
-    fn begin(&self) -> std::result::Result<Self::Transaction<'_>, Self::Error> {
+    fn begin(&self) -> std::result::Result<Self::WriteTransaction<'_>, Self::Error> {
         let inner = self.env.write_txn()?;
         Ok(ReadWriteTx { tx: inner })
     }
@@ -64,7 +68,7 @@ impl StorageEngine for LmdbStorageEngine {
     #[inline]
     fn open_tree_readonly<'env, 'txn>(
         &self,
-        _txn: &'env Self::ReadTransaction<'txn>,
+        _txn: &'env Self::Transaction<'txn>,
         name: &str,
     ) -> Result<Option<Self::ReadTree<'env, 'txn>>, Self::Error>
     where
@@ -76,7 +80,7 @@ impl StorageEngine for LmdbStorageEngine {
     #[inline]
     fn open_tree<'env, 'txn>(
         &self,
-        _txn: &'txn Self::Transaction<'env>,
+        _txn: &'txn Self::WriteTransaction<'env>,
         name: &str,
     ) -> Result<Self::Tree<'env, 'txn>, Self::Error> {
         self.env.create_database(Some(name))
@@ -132,15 +136,23 @@ impl Tree<'_, '_, LmdbStorageEngine> for heed::UntypedDatabase {
     }
 }
 
-impl<'env> ReadTransaction for ReadonlyTx<'env> {
+impl<'env> ReadTransaction<'env, LmdbStorageEngine> for ReadonlyTx<'env> {
     type Error = heed::Error;
+
+    fn upgrade(&mut self) -> Result<Option<&mut ReadWriteTx<'env>>, Self::Error> {
+        Ok(None)
+    }
 }
 
-impl<'env> ReadTransaction for ReadWriteTx<'env> {
+impl<'env> ReadTransaction<'env, LmdbStorageEngine> for ReadWriteTx<'env> {
     type Error = heed::Error;
+
+    fn upgrade(&mut self) -> Result<Option<&mut ReadWriteTx<'env>>, Self::Error> {
+        Ok(Some(self))
+    }
 }
 
-impl<'env> Transaction for ReadWriteTx<'env> {}
+impl<'env> Transaction<'env, LmdbStorageEngine> for ReadWriteTx<'env> {}
 
 #[cfg(test)]
 mod tests;

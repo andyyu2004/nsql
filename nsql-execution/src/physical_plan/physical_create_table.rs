@@ -42,7 +42,7 @@ impl<S: StorageEngine> PhysicalNode<S> for PhysicalCreateTable<S> {
 
 #[async_trait::async_trait]
 impl<S: StorageEngine> PhysicalSource<S> for PhysicalCreateTable<S> {
-    async fn source(&self, ctx: &ExecutionContext<S>) -> ExecutionResult<SourceState<Chunk>> {
+    async fn source(&self, ctx: &ExecutionContext<'_, S>) -> ExecutionResult<SourceState<Chunk>> {
         let attrs = self
             .info
             .columns
