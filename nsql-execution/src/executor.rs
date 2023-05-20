@@ -16,7 +16,7 @@ impl<S: StorageEngine> Executor<S> {
     ) -> ExecutionResult<()> {
         let root = &self.arena[root];
         for &child in &root.children {
-            Arc::clone(&self).execute(ctx.clone(), child);
+            Arc::clone(&self).execute(ctx.clone(), child)?;
         }
 
         for &pipeline in &root.pipelines {

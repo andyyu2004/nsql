@@ -64,7 +64,7 @@ impl nsql_storage_engine::StorageEngine for RedbStorageEngine {
     #[inline]
     fn open_tree_readonly<'env, 'txn>(
         &self,
-        txn: &'env Self::Transaction<'txn>,
+        txn: &'txn Self::Transaction<'env>,
         name: &str,
     ) -> Result<Option<Self::ReadTree<'env, 'txn>>, Self::Error>
     where
@@ -82,7 +82,10 @@ impl nsql_storage_engine::StorageEngine for RedbStorageEngine {
         &self,
         txn: &'txn mut Self::WriteTransaction<'env>,
         name: &str,
-    ) -> Result<Self::Tree<'env, 'txn>, Self::Error> {
+    ) -> Result<Self::Tree<'env, 'txn>, Self::Error>
+    where
+        'env: 'txn,
+    {
         match txn.0.open_table(redb::TableDefinition::new(name)) {
             Ok(table) => Ok(table),
             Err(redb::Error::TableDoesNotExist(_)) => unreachable!(),
@@ -177,7 +180,7 @@ impl<'env, 'txn> nsql_storage_engine::ReadTree<'env, 'txn, RedbStorageEngine>
     }
 }
 
-impl<'env, 'txn> nsql_storage_engine::Tree<'env, 'txn, RedbStorageEngine>
+impl<'env, 'txn> nsql_storage_engine::WriteTree<'env, 'txn, RedbStorageEngine>
     for redb::Table<'env, 'txn, &[u8], &[u8]>
 {
     #[inline]
@@ -197,7 +200,7 @@ impl<'env, 'txn> nsql_storage_engine::Tree<'env, 'txn, RedbStorageEngine>
     }
 }
 
-impl<'env> nsql_storage_engine::ReadTransaction<'env, RedbStorageEngine> for ReadTransaction<'env> {
+impl<'env> nsql_storage_engine::Transaction<'env, RedbStorageEngine> for ReadTransaction<'env> {
     type Error = redb::Error;
 
     #[inline]
@@ -206,7 +209,7 @@ impl<'env> nsql_storage_engine::ReadTransaction<'env, RedbStorageEngine> for Rea
     }
 }
 
-impl<'env> nsql_storage_engine::ReadTransaction<'env, RedbStorageEngine> for Transaction<'env> {
+impl<'env> nsql_storage_engine::Transaction<'env, RedbStorageEngine> for Transaction<'env> {
     type Error = redb::Error;
 
     #[inline]
@@ -215,4 +218,4 @@ impl<'env> nsql_storage_engine::ReadTransaction<'env, RedbStorageEngine> for Tra
     }
 }
 
-impl<'env> nsql_storage_engine::Transaction<'env, RedbStorageEngine> for Transaction<'env> {}
+impl<'env> nsql_storage_engine::WriteTransaction<'env, RedbStorageEngine> for Transaction<'env> {}

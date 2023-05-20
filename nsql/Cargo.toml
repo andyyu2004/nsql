@@ -17,7 +17,8 @@ nsql-opt = { path = "../nsql-opt" }
 nsql-parse = { path = "../nsql-parse" }
 nsql-plan = { path = "../nsql-plan" }
 nsql-storage = { path = "../nsql-storage" }
-nsql-storage-engine = { version = "0.1.0", path = "../nsql-storage-engine" }
+nsql-storage-engine = { path = "../nsql-storage-engine" }
+nsql-echodb = { path = "../nsql-echodb", optional = true }
 tracing = "0.1.37"
 
 [dev-dependencies]
@@ -36,3 +37,7 @@ harness = false
 
 [[test]]
 name = "nsql-test"
+
+[features]
+default = ["in-memory"]
+in-memory = ["nsql-echodb"]

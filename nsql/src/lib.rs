@@ -7,6 +7,7 @@ pub use anyhow::Error;
 use arc_swap::ArcSwapOption;
 use nsql_bind::Binder;
 use nsql_catalog::Catalog;
+use nsql_echodb::EchoDbEngine;
 use nsql_execution::{ExecutionContext, PhysicalPlanner};
 use nsql_lmdb::LmdbStorageEngine;
 use nsql_opt::optimize;
@@ -50,9 +51,10 @@ impl<S: StorageEngine> Nsql<S> {
 }
 
 // FIXME don't have an im memory impl currently
-impl Nsql<LmdbStorageEngine> {
+impl Nsql<EchoDbEngine> {
+    #[cfg(feature = "in-memory")]
     pub fn in_memory() -> Result<Self> {
-        Self::open("/tmp/nsql-tmp")
+        Self::open("")
     }
 }
 

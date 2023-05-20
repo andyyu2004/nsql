@@ -9,11 +9,11 @@ use std::path::Path;
 pub trait StorageEngine: Clone + Send + Sync + Sized + 'static {
     type Error: Send + Sync + Error + 'static;
 
-    type Transaction<'env>: ReadTransaction<'env, Self> + Clone + Send + Sync
+    type Transaction<'env>: Transaction<'env, Self> + Clone + Send + Sync
     where
         Self: 'env;
 
-    type WriteTransaction<'env>: Transaction<'env, Self>
+    type WriteTransaction<'env>: WriteTransaction<'env, Self>
     where
         Self: 'env;
 
@@ -22,7 +22,7 @@ pub trait StorageEngine: Clone + Send + Sync + Sized + 'static {
         Self: 'env + 'txn,
         'env: 'txn;
 
-    type Tree<'env, 'txn>: Tree<'env, 'txn, Self>
+    type Tree<'env, 'txn>: WriteTree<'env, 'txn, Self>
     where
         Self: 'env + 'txn,
         'env: 'txn;
@@ -37,7 +37,7 @@ pub trait StorageEngine: Clone + Send + Sync + Sized + 'static {
 
     fn open_tree_readonly<'env, 'txn>(
         &self,
-        txn: &'env Self::Transaction<'txn>,
+        txn: &'txn Self::Transaction<'env>,
         name: &str,
     ) -> Result<Option<Self::ReadTree<'env, 'txn>>, Self::Error>
     where
@@ -48,7 +48,9 @@ pub trait StorageEngine: Clone + Send + Sync + Sized + 'static {
         &self,
         txn: &'txn mut Self::WriteTransaction<'env>,
         name: &str,
-    ) -> Result<Self::Tree<'env, 'txn>, Self::Error>;
+    ) -> Result<Self::Tree<'env, 'txn>, Self::Error>
+    where
+        'env: 'txn;
 }
 
 pub trait ReadTree<'env, 'txn, S: StorageEngine> {
@@ -74,7 +76,7 @@ pub trait ReadTree<'env, 'txn, S: StorageEngine> {
     ) -> Result<impl Iterator<Item = Result<(Self::Bytes, Self::Bytes), S::Error>>, S::Error>;
 }
 
-pub trait Tree<'env, 'txn, S: StorageEngine>: ReadTree<'env, 'txn, S> {
+pub trait WriteTree<'env, 'txn, S: StorageEngine>: ReadTree<'env, 'txn, S> {
     fn put(
         &mut self,
         txn: &mut S::WriteTransaction<'_>,
@@ -85,10 +87,10 @@ pub trait Tree<'env, 'txn, S: StorageEngine>: ReadTree<'env, 'txn, S> {
     fn delete(&mut self, txn: &mut S::WriteTransaction<'_>, key: &[u8]) -> Result<bool, S::Error>;
 }
 
-pub trait ReadTransaction<'env, S: StorageEngine> {
+pub trait Transaction<'env, S: StorageEngine> {
     type Error;
 
     fn upgrade(&mut self) -> Result<Option<&mut S::WriteTransaction<'env>>, Self::Error>;
 }
 
-pub trait Transaction<'env, S: StorageEngine>: ReadTransaction<'env, S> {}
+pub trait WriteTransaction<'env, S: StorageEngine>: Transaction<'env, S> {}

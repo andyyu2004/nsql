@@ -8,7 +8,7 @@ use std::sync::Arc;
 
 use heed::types::ByteSlice;
 use heed::Flag;
-use nsql_storage_engine::{ReadTransaction, ReadTree, StorageEngine, Transaction, Tree};
+use nsql_storage_engine::{ReadTree, StorageEngine, Transaction, WriteTransaction, WriteTree};
 
 type Result<T, E = heed::Error> = std::result::Result<T, E>;
 
@@ -83,7 +83,7 @@ impl StorageEngine for LmdbStorageEngine {
     #[inline]
     fn open_tree_readonly<'env, 'txn>(
         &self,
-        txn: &'env Self::Transaction<'txn>,
+        txn: &'txn Self::Transaction<'env>,
         name: &str,
     ) -> Result<Option<Self::ReadTree<'env, 'txn>>, Self::Error>
     where
@@ -97,7 +97,10 @@ impl StorageEngine for LmdbStorageEngine {
         &self,
         txn: &'txn mut Self::WriteTransaction<'env>,
         name: &str,
-    ) -> Result<Self::Tree<'env, 'txn>, Self::Error> {
+    ) -> Result<Self::Tree<'env, 'txn>, Self::Error>
+    where
+        'env: 'txn,
+    {
         self.env.create_database(&mut txn.0, Some(name))
     }
 }
@@ -134,7 +137,7 @@ impl<'txn> ReadTree<'_, 'txn, LmdbStorageEngine> for UntypedDatabase {
     }
 }
 
-impl Tree<'_, '_, LmdbStorageEngine> for UntypedDatabase {
+impl WriteTree<'_, '_, LmdbStorageEngine> for UntypedDatabase {
     #[inline]
     fn put(
         &mut self,
@@ -151,7 +154,7 @@ impl Tree<'_, '_, LmdbStorageEngine> for UntypedDatabase {
     }
 }
 
-impl<'env> ReadTransaction<'env, LmdbStorageEngine> for ReadonlyTx<'env> {
+impl<'env> Transaction<'env, LmdbStorageEngine> for ReadonlyTx<'env> {
     type Error = heed::Error;
 
     fn upgrade(&mut self) -> Result<Option<&mut ReadWriteTx<'env>>, Self::Error> {
@@ -159,7 +162,7 @@ impl<'env> ReadTransaction<'env, LmdbStorageEngine> for ReadonlyTx<'env> {
     }
 }
 
-impl<'env> ReadTransaction<'env, LmdbStorageEngine> for ReadWriteTx<'env> {
+impl<'env> Transaction<'env, LmdbStorageEngine> for ReadWriteTx<'env> {
     type Error = heed::Error;
 
     fn upgrade(&mut self) -> Result<Option<&mut ReadWriteTx<'env>>, Self::Error> {
@@ -167,7 +170,7 @@ impl<'env> ReadTransaction<'env, LmdbStorageEngine> for ReadWriteTx<'env> {
     }
 }
 
-impl<'env> Transaction<'env, LmdbStorageEngine> for ReadWriteTx<'env> {}
+impl<'env> WriteTransaction<'env, LmdbStorageEngine> for ReadWriteTx<'env> {}
 
 #[cfg(test)]
 mod tests;

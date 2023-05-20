@@ -5,6 +5,7 @@ members = [
     "nsql-bind",
     "nsql-catalog",
     "nsql-core",
+    "nsql-echodb",
     "nsql-execution",
     "nsql-ir",
     "nsql-parse",
