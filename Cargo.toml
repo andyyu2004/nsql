@@ -7,7 +7,6 @@ members = [
     "nsql-core",
     "nsql-execution",
     "nsql-ir",
-    "nsql-fs",
     "nsql-parse",
     "nsql-plan",
     "nsql-opt",
