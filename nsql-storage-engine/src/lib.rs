@@ -8,7 +8,7 @@ use std::path::Path;
 pub trait StorageEngine: Clone + Send + Sync + Sized + 'static {
     type Error;
 
-    type Transaction<'env>: ReadTransaction<'env, Self> + Clone
+    type Transaction<'env>: ReadTransaction<'env, Self> + Clone + Send + Sync
     where
         Self: 'env;
 

@@ -57,7 +57,7 @@ impl<S: StorageEngine> Explain<S> for PhysicalDrop<S> {
     fn explain(
         &self,
         catalog: &Catalog<S>,
-        tx: &Transaction,
+        tx: &S::Transaction<'_>,
         f: &mut fmt::Formatter<'_>,
     ) -> explain::Result {
         write!(f, "drop ")?;

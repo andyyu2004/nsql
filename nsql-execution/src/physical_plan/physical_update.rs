@@ -100,7 +100,7 @@ impl<S: StorageEngine> Explain<S> for PhysicalUpdate<S> {
     fn explain(
         &self,
         catalog: &Catalog<S>,
-        tx: &Transaction,
+        tx: &S::Transaction<'_>,
         f: &mut fmt::Formatter<'_>,
     ) -> explain::Result {
         write!(f, "update {}", self.table_ref.get(catalog, tx).name())?;

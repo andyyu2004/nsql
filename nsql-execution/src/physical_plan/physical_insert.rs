@@ -90,7 +90,7 @@ impl<S: StorageEngine> Explain<S> for PhysicalInsert<S> {
     fn explain(
         &self,
         catalog: &Catalog<S>,
-        tx: &Transaction,
+        tx: &S::Transaction<'_>,
         f: &mut fmt::Formatter<'_>,
     ) -> explain::Result {
         write!(f, "insert into {}", self.table_ref.get(catalog, tx).name())?;

@@ -145,7 +145,7 @@ impl<S: StorageEngine> Explain<S> for OutputSink {
     fn explain(
         &self,
         _catalog: &Catalog<S>,
-        _tx: &Transaction,
+        _tx: &S::Transaction<'_>,
         f: &mut fmt::Formatter<'_>,
     ) -> explain::Result {
         write!(f, "output")

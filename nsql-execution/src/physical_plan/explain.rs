@@ -10,33 +10,36 @@ use crate::{PhysicalNode, RootPipeline};
 
 pub type Result<T = ()> = std::result::Result<T, fmt::Error>;
 
-pub trait Explain<S> {
-    fn explain(&self, catalog: &Catalog<S>, tx: &Transaction, f: &mut fmt::Formatter<'_>)
-    -> Result;
+pub trait Explain<S: StorageEngine> {
+    fn explain(
+        &self,
+        catalog: &Catalog<S>,
+        tx: &S::Transaction<'_>,
+        f: &mut fmt::Formatter<'_>,
+    ) -> Result;
 }
 
-pub(crate) fn explain_pipeline<'a, S>(
+pub(crate) fn explain_pipeline<'a, 'env, S: StorageEngine>(
     catalog: &'a Catalog<S>,
-    tx: &'a Transaction,
+    tx: &'a S::Transaction<'env>,
     root_pipeline: &'a RootPipeline<S>,
-) -> impl fmt::Display + 'a {
+) -> RootPipelineExplainer<'a, 'env, S> {
     RootPipelineExplainer { catalog, tx, root_pipeline }
 }
 
-pub struct RootPipelineExplainer<'a, S> {
+pub struct RootPipelineExplainer<'a, 'env, S: StorageEngine> {
     catalog: &'a Catalog<S>,
-    tx: &'a Transaction,
+    tx: &'a S::Transaction<'env>,
     root_pipeline: &'a RootPipeline<S>,
 }
 
-impl<S: StorageEngine> RootPipelineExplainer<'_, S> {}
-
-pub struct MetaPipelineExplainer<'a, S> {
-    root: &'a RootPipelineExplainer<'a, S>,
+pub struct MetaPipelineExplainer<'a, 'env, S: StorageEngine> {
+    root: &'a RootPipelineExplainer<'a, 'env, S>,
+    tx: &'a S::Transaction<'env>,
     indent: usize,
 }
 
-impl<'a, S> MetaPipelineExplainer<'a, S> {
+impl<'a, 'env, S: StorageEngine> MetaPipelineExplainer<'a, 'env, S> {
     fn explain_meta_pipeline(
         &self,
         f: &mut fmt::Formatter<'_>,
@@ -64,49 +67,49 @@ impl<'a, S> MetaPipelineExplainer<'a, S> {
             let pipeline = &arena[pipeline];
             for node in pipeline.nodes().rev() {
                 write!(f, "{:indent$}", "", indent = self.indent + 4)?;
-                node.explain(self.root.catalog, self.root.tx, f)?;
+                node.explain(self.root.catalog, self.tx, f)?;
                 writeln!(f)?;
             }
         }
 
         for &child in &meta_pipeline.children {
             writeln!(f)?;
-            MetaPipelineExplainer { root: self.root, indent: self.indent + 6 }
+            MetaPipelineExplainer { root: self.root, tx: self.tx, indent: self.indent + 6 }
                 .explain_meta_pipeline(f, child)?;
         }
         Ok(())
     }
 }
 
-impl<S> fmt::Display for RootPipelineExplainer<'_, S> {
+impl<S: StorageEngine> fmt::Display for RootPipelineExplainer<'_, '_, S> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        MetaPipelineExplainer { root: self, indent: 0 }
+        MetaPipelineExplainer { root: self, tx: self.tx, indent: 0 }
             .explain_meta_pipeline(f, self.root_pipeline.arena.root())
     }
 }
 
-pub(crate) fn explain<'a, S>(
+pub(crate) fn explain<'a, 'env, S: StorageEngine>(
     catalog: &'a Catalog<S>,
-    tx: &'a Transaction,
+    tx: &'a S::Transaction<'env>,
     node: &'a dyn PhysicalNode<S>,
-) -> impl fmt::Display + 'a {
+) -> PhysicalNodeExplainer<'a, 'env, S> {
     PhysicalNodeExplainer { catalog, tx, node, indent: 0 }
 }
 
-pub struct PhysicalNodeExplainer<'a, S> {
+pub struct PhysicalNodeExplainer<'a, 'env, S: StorageEngine> {
     catalog: &'a Catalog<S>,
-    tx: &'a Transaction,
+    tx: &'a S::Transaction<'env>,
     node: &'a dyn PhysicalNode<S>,
     indent: usize,
 }
 
-impl<'a, S> PhysicalNodeExplainer<'a, S> {
-    fn explain_child(&self, node: &'a dyn PhysicalNode<S>) -> PhysicalNodeExplainer<'_, S> {
+impl<'a, 'env, S: StorageEngine> PhysicalNodeExplainer<'a, 'env, S> {
+    fn explain_child(&self, node: &'a dyn PhysicalNode<S>) -> PhysicalNodeExplainer<'a, 'env, S> {
         PhysicalNodeExplainer { catalog: self.catalog, tx: self.tx, node, indent: self.indent + 2 }
     }
 }
 
-impl<S> fmt::Display for PhysicalNodeExplainer<'_, S> {
+impl<'a, 'env, S: StorageEngine> fmt::Display for PhysicalNodeExplainer<'a, 'env, S> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{:indent$}", "", indent = self.indent)?;
         self.node.explain(self.catalog, self.tx, f)?;

@@ -39,7 +39,7 @@ fn build_pipelines<S>(sink: Arc<dyn PhysicalSink<S>>, plan: PhysicalPlan<S>) -> 
     RootPipeline { arena }
 }
 
-trait PhysicalNode<S>: Send + Sync + Explain<S> + Any + 'static {
+trait PhysicalNode<S: StorageEngine>: Send + Sync + Explain<S> + Any + 'static {
     fn children(&self) -> &[Arc<dyn PhysicalNode<S>>];
 
     fn as_source(self: Arc<Self>) -> Result<Arc<dyn PhysicalSource<S>>, Arc<dyn PhysicalNode<S>>>;
@@ -188,7 +188,7 @@ impl<'env, S: StorageEngine> ExecutionContext<'env, S> {
 
     #[inline]
     pub fn tx(&self) -> &S::Transaction<'_> {
-        self.tx.as_ref()
+        &self.tx
     }
 
     #[inline]

@@ -18,7 +18,7 @@ use std::fmt;
 use std::sync::Arc;
 
 use anyhow::Result;
-use nsql_catalog::{Catalog, EntityRef, Transaction};
+use nsql_catalog::{Catalog, EntityRef};
 use nsql_plan::Plan;
 use nsql_storage_engine::StorageEngine;
 
@@ -44,7 +44,6 @@ use crate::{
 };
 
 pub struct PhysicalPlanner<S> {
-    tx: Arc<Transaction>,
     catalog: Arc<Catalog<S>>,
 }
 
@@ -58,16 +57,20 @@ impl<S> PhysicalPlan<S> {
 }
 
 impl<S: StorageEngine> PhysicalPlanner<S> {
-    pub fn new(catalog: Arc<Catalog<S>>, tx: Arc<Transaction>) -> Self {
-        Self { tx, catalog }
+    pub fn new(catalog: Arc<Catalog<S>>) -> Self {
+        Self { catalog }
     }
 
-    pub fn plan(&self, plan: Box<Plan<S>>) -> Result<PhysicalPlan<S>> {
-        self.plan_node(plan).map(PhysicalPlan)
+    pub fn plan(&self, tx: &S::Transaction<'_>, plan: Box<Plan<S>>) -> Result<PhysicalPlan<S>> {
+        self.plan_node(tx, plan).map(PhysicalPlan)
     }
 
     #[allow(clippy::boxed_local)]
-    fn plan_node(&self, plan: Box<Plan<S>>) -> Result<Arc<dyn PhysicalNode<S>>> {
+    fn plan_node(
+        &self,
+        tx: &S::Transaction<'_>,
+        plan: Box<Plan<S>>,
+    ) -> Result<Arc<dyn PhysicalNode<S>>> {
         let plan = match *plan {
             Plan::Transaction(kind) => PhysicalTransaction::plan(kind),
             Plan::CreateTable(info) => PhysicalCreateTable::plan(info),
@@ -76,16 +79,16 @@ impl<S: StorageEngine> PhysicalPlanner<S> {
             Plan::Scan { table_ref, projection } => PhysicalTableScan::plan(table_ref, projection),
             Plan::Show(show) => PhysicalShow::plan(show),
             Plan::Explain(kind, plan) => {
-                let plan = self.plan_node(plan)?;
+                let plan = self.plan_node(tx, plan)?;
                 let stringified = match kind {
                     ir::ExplainMode::Physical => {
-                        explain::explain(&self.catalog, &self.tx, plan.as_ref()).to_string()
+                        explain::explain(&self.catalog, &tx, plan.as_ref()).to_string()
                     }
                     ir::ExplainMode::Pipeline => {
                         let sink = Arc::new(OutputSink::default());
                         let pipeline =
                             crate::build_pipelines(sink, PhysicalPlan(Arc::clone(&plan)));
-                        let disp = explain::explain_pipeline(&self.catalog, &self.tx, &pipeline);
+                        let disp = explain::explain_pipeline(&self.catalog, &tx, &pipeline);
                         disp.to_string()
                     }
                 };
@@ -93,7 +96,7 @@ impl<S: StorageEngine> PhysicalPlanner<S> {
                 PhysicalExplain::plan(stringified, plan)
             }
             Plan::Insert { table_ref, projection, source, returning } => {
-                let mut source = self.plan_node(source)?;
+                let mut source = self.plan_node(tx, source)?;
                 if !projection.is_empty() {
                     source = PhysicalProjection::plan(source, projection);
                 };
@@ -101,15 +104,17 @@ impl<S: StorageEngine> PhysicalPlanner<S> {
             }
             Plan::Values { values } => PhysicalValues::plan(values),
             Plan::Projection { source, projection } => {
-                let source = self.plan_node(source)?;
+                let source = self.plan_node(tx, source)?;
                 PhysicalProjection::plan(source, projection)
             }
-            Plan::Limit { source, limit } => PhysicalLimit::plan(self.plan_node(source)?, limit),
+            Plan::Limit { source, limit } => {
+                PhysicalLimit::plan(self.plan_node(tx, source)?, limit)
+            }
             Plan::Filter { source, predicate } => {
-                PhysicalFilter::plan(self.plan_node(source)?, predicate)
+                PhysicalFilter::plan(self.plan_node(tx, source)?, predicate)
             }
             Plan::Update { table_ref, source, returning } => {
-                let source = self.plan_node(source)?;
+                let source = self.plan_node(tx, source)?;
                 PhysicalUpdate::plan(table_ref, source, returning)
             }
             Plan::Empty => PhysicalDummyScan::plan(),

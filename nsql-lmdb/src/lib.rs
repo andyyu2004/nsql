@@ -2,7 +2,7 @@
 #![feature(return_position_impl_trait_in_trait)]
 #![feature(impl_trait_projections)]
 
-use std::ops::RangeBounds;
+use std::ops::{Deref, RangeBounds};
 use std::path::Path;
 use std::sync::Arc;
 
@@ -20,8 +20,24 @@ pub struct LmdbStorageEngine {
 
 #[derive(Clone)]
 pub struct ReadonlyTx<'env> {
-    tx: Arc<heed::RoTxn<'env>>,
+    tx: Arc<SendRoTxnWrapper<'env>>,
 }
+
+struct SendRoTxnWrapper<'env>(heed::RoTxn<'env>);
+
+impl<'env> Deref for SendRoTxnWrapper<'env> {
+    type Target = heed::RoTxn<'env>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+// This type is apparently safe to send across threads but heed doesn't have the implementation
+// The `sync-read-txn` enables `Sync` but not `Send` currently.
+// https://github.com/meilisearch/heed/issues/149
+// FIXME judging by `lmdb.h` comments I don't think it is `Sync` (but it is `Send`)
+unsafe impl Send for SendRoTxnWrapper<'_> {}
 
 pub struct ReadWriteTx<'env> {
     tx: heed::RwTxn<'env, 'env>,
@@ -56,7 +72,7 @@ impl StorageEngine for LmdbStorageEngine {
     #[inline]
     fn begin_readonly(&self) -> Result<Self::Transaction<'_>, Self::Error> {
         let tx = self.env.read_txn()?;
-        Ok(ReadonlyTx { tx: Arc::new(tx) })
+        Ok(ReadonlyTx { tx: Arc::new(SendRoTxnWrapper(tx)) })
     }
 
     #[inline]
