@@ -10,12 +10,8 @@ rust_decimal = { version = "1.28.1", default-features = false, features = [
     "rkyv",
 ] }
 nsql-arena = { path = "../nsql-arena" }
-nsql-btree = { path = "../nsql-btree" }
-nsql-buffer = { path = "../nsql-buffer" }
 nsql-core = { path = "../nsql-core" }
-nsql-pager = { path = "../nsql-pager" }
 nsql-rkyv = { path = "../nsql-rkyv" }
-nsql-serde = { path = "../nsql-serde" }
 nsql-util = { path = "../nsql-util" }
 rkyv = { version = "0.7.40", default-features = false, features = [
     "archive_be",

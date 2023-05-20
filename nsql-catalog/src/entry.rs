@@ -2,8 +2,6 @@ use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::marker::PhantomData;
 
-use nsql_serde::{StreamDeserialize, StreamDeserializer, StreamSerialize, StreamSerializer};
-
 /// An opaque identifier for an entity in a catalog set.
 /// This is only unique per catalog set. If you have multiple catalog sets containing the same
 /// type, it is currently possible to misuse this type and read from the wrong set.
@@ -11,19 +9,6 @@ use nsql_serde::{StreamDeserialize, StreamDeserializer, StreamSerialize, StreamS
 pub struct Oid<T: ?Sized> {
     oid: u64,
     marker: PhantomData<fn() -> T>,
-}
-
-impl<T: ?Sized> StreamDeserialize for Oid<T> {
-    async fn deserialize<D: StreamDeserializer>(de: &mut D) -> nsql_serde::Result<Self> {
-        let oid = u64::deserialize(de).await?;
-        Ok(Self::new(oid))
-    }
-}
-
-impl<T: ?Sized> StreamSerialize for Oid<T> {
-    async fn serialize<S: StreamSerializer>(&self, ser: &mut S) -> nsql_serde::Result<()> {
-        self.oid.serialize(ser).await
-    }
 }
 
 impl<T: ?Sized> fmt::Debug for Oid<T> {

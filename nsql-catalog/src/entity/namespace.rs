@@ -1,4 +1,3 @@
-use nsql_serde::{StreamDeserialize, StreamSerialize};
 use nsql_storage_engine::StorageEngine;
 
 use crate::private::CatalogEntity;
@@ -17,7 +16,7 @@ impl<S: StorageEngine, T: CatalogEntity<S, Container = Namespace<S>>> NamespaceE
 
 impl<S: StorageEngine> Container<S> for Namespace<S> {}
 
-#[derive(Debug, StreamSerialize, StreamDeserialize)]
+#[derive(Debug)]
 pub struct CreateNamespaceInfo {
     pub name: Name,
 }

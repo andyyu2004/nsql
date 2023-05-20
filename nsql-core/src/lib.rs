@@ -9,11 +9,10 @@ use std::borrow::Borrow;
 use std::fmt;
 use std::ops::Deref;
 
-use nsql_serde::{StreamDeserialize, StreamSerialize};
 use smol_str::SmolStr;
 
 /// Lowercase name of a catalog entry (for case insensitive lookup)
-#[derive(Clone, Debug, PartialEq, Eq, Hash, StreamSerialize, StreamDeserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Name {
     name: SmolStr,
 }

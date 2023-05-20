@@ -238,12 +238,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bef38d45163c2f1dde094a7dfd33ccf595c92905c8f8f4fdc18d06fb1037718a"
 
 [[package]]
-name = "bitflags"
-version = "2.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "24a6904aef64d73cf10ab17ebace7befb918b82164785cb89907993be7f83813"
-
-[[package]]
 name = "block-buffer"
 version = "0.10.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -297,12 +291,6 @@ name = "byteorder"
 version = "1.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "14c189c53d098945499cdfa7ecc63567cf3886b3332b312a5b4585d8d3a6a610"
-
-[[package]]
-name = "bytes"
-version = "1.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "89b2fd2a0dcf38d7971e2194b6b6eebab45ae01067456a7fd93d5547a61b70be"
 
 [[package]]
 name = "cast"
@@ -371,7 +359,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4ea181bf566f71cb9a5d17a59e1871af638180a18fb0035c92ae62b705207123"
 dependencies = [
  "atty",
- "bitflags 1.3.2",
+ "bitflags",
  "clap_derive 3.2.25",
  "clap_lex 0.2.4",
  "indexmap",
@@ -400,7 +388,7 @@ checksum = "914c8c79fb560f238ef6429439a30023c862f7a28e688c58f7203f12b29970bd"
 dependencies = [
  "anstream",
  "anstyle",
- "bitflags 1.3.2",
+ "bitflags",
  "clap_lex 0.4.1",
  "strsim",
 ]
@@ -446,18 +434,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8a2dd5a6fe8c6e3502f568a6353e5273bbb15193ad9a89e457b9970798efbea1"
 
 [[package]]
-name = "coarsetime"
-version = "0.1.23"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a90d114103adbc625300f346d4d09dfb4ab1c4a8df6868435dd903392ecf4354"
-dependencies = [
- "libc",
- "once_cell",
- "wasi 0.11.0+wasi-snapshot-preview1",
- "wasm-bindgen",
-]
-
-[[package]]
 name = "codespan-reporting"
 version = "0.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -491,27 +467,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e496a50fda8aacccc86d7529e2c1e0892dbd0f898a6b5645b5561b89c3210efa"
 
 [[package]]
-name = "cov-mark"
-version = "2.0.0-pre.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0d48d8f76bd9331f19fe2aaf3821a9f9fb32c3963e1e3d6ce82a8c09cef7444a"
-
-[[package]]
-name = "crc"
-version = "3.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "86ec7a15cbe22e59248fc7eadb1907dab5ba09372595da4d73dd805ed4417dfe"
-dependencies = [
- "crc-catalog",
-]
-
-[[package]]
-name = "crc-catalog"
-version = "2.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9cace84e55f07e7301bae1c519df89cdad8cc3cd868413d3fdbdeca9ff3db484"
-
-[[package]]
 name = "criterion"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -523,7 +478,6 @@ dependencies = [
  "ciborium",
  "clap 3.2.25",
  "criterion-plot",
- "futures",
  "itertools",
  "lazy_static",
  "num-traits",
@@ -535,7 +489,6 @@ dependencies = [
  "serde_derive",
  "serde_json",
  "tinytemplate",
- "tokio",
  "walkdir",
 ]
 
@@ -547,20 +500,6 @@ checksum = "6b50826342786a51a89e2da3a28f1c32b06e387201bc2d19791f622c673706b1"
 dependencies = [
  "cast",
  "itertools",
-]
-
-[[package]]
-name = "crossbeam"
-version = "0.8.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2801af0d36612ae591caa9568261fddce32ce6e08a7275ea334a06a4ad021a2c"
-dependencies = [
- "cfg-if",
- "crossbeam-channel",
- "crossbeam-deque",
- "crossbeam-epoch",
- "crossbeam-queue",
- "crossbeam-utils",
 ]
 
 [[package]]
@@ -634,7 +573,7 @@ version = "0.26.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a84cda67535339806297f1b331d6dd6320470d2a0fe65381e79ee9e156dd3d13"
 dependencies = [
- "bitflags 1.3.2",
+ "bitflags",
  "crossterm_winapi",
  "libc",
  "mio",
@@ -1346,12 +1285,10 @@ dependencies = [
  "error-stack",
  "expect-test",
  "nsql-bind",
- "nsql-buffer",
  "nsql-catalog",
  "nsql-core",
  "nsql-execution",
  "nsql-opt",
- "nsql-pager",
  "nsql-parse",
  "nsql-plan",
  "nsql-storage",
@@ -1384,53 +1321,12 @@ dependencies = [
 ]
 
 [[package]]
-name = "nsql-btree"
-version = "0.1.0"
-dependencies = [
- "async-recursion",
- "bitflags 2.2.1",
- "bytes",
- "cov-mark",
- "criterion",
- "dashmap",
- "nsql-arena",
- "nsql-buffer",
- "nsql-pager",
- "nsql-rkyv",
- "nsql-test",
- "nsql-util",
- "parking_lot",
- "proptest",
- "rkyv",
- "smallvec",
- "test-strategy",
- "tokio",
- "tracing",
- "tracing-test",
-]
-
-[[package]]
-name = "nsql-buffer"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "coarsetime",
- "crossbeam",
- "lruk",
- "nsql-pager",
- "nsql-test",
- "parking_lot",
- "rustc-hash",
-]
-
-[[package]]
 name = "nsql-catalog"
 version = "0.1.0"
 dependencies = [
  "anyhow",
  "dashmap",
  "nsql-core",
- "nsql-serde",
  "nsql-storage",
  "nsql-storage-engine",
  "nsql-util",
@@ -1442,7 +1338,6 @@ dependencies = [
 name = "nsql-core"
 version = "0.1.0"
 dependencies = [
- "nsql-serde",
  "rkyv",
  "smol_str",
 ]
@@ -1459,11 +1354,9 @@ dependencies = [
  "futures-util",
  "itertools",
  "nsql-arena",
- "nsql-buffer",
  "nsql-catalog",
  "nsql-core",
  "nsql-ir",
- "nsql-pager",
  "nsql-plan",
  "nsql-storage",
  "nsql-storage-engine",
@@ -1511,25 +1404,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "nsql-pager"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "bytes",
- "crc",
- "nsql-fs",
- "nsql-serde",
- "nsql-test",
- "nsql-util",
- "pin-utils",
- "proptest",
- "rkyv",
- "test-strategy",
- "tokio",
- "tracing",
-]
-
-[[package]]
 name = "nsql-parse"
 version = "0.1.0"
 dependencies = [
@@ -1561,30 +1435,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "nsql-serde"
-version = "0.1.0"
-dependencies = [
- "arrayvec 0.7.2",
- "error-stack",
- "nsql-arena",
- "nsql-serde-derive",
- "pin-project-lite",
- "rend",
- "rust_decimal",
- "smol_str",
- "tokio",
-]
-
-[[package]]
-name = "nsql-serde-derive"
-version = "0.1.0"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 1.0.109",
-]
-
-[[package]]
 name = "nsql-shell"
 version = "0.1.0"
 dependencies = [
@@ -1608,12 +1458,8 @@ dependencies = [
  "futures-util",
  "itertools",
  "nsql-arena",
- "nsql-btree",
- "nsql-buffer",
  "nsql-core",
- "nsql-pager",
  "nsql-rkyv",
- "nsql-serde",
  "nsql-storage-engine",
  "nsql-test",
  "nsql-util",
@@ -1906,7 +1752,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "29f1b898011ce9595050a68e60f90bad083ff2987a695a42357134c8381fba70"
 dependencies = [
  "bit-set",
- "bitflags 1.3.2",
+ "bitflags",
  "byteorder",
  "lazy_static",
  "num-traits",
@@ -2048,7 +1894,7 @@ version = "0.2.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fb5a58c1855b4b6819d59012155603f0b22ad30cad752600aadfcb695265519a"
 dependencies = [
- "bitflags 1.3.2",
+ "bitflags",
 ]
 
 [[package]]
@@ -2057,7 +1903,7 @@ version = "0.3.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "567664f262709473930a4bf9e51bf2ebf3348f2e748ccc50dea20646858f8f29"
 dependencies = [
- "bitflags 1.3.2",
+ "bitflags",
 ]
 
 [[package]]
@@ -2187,7 +2033,7 @@ version = "0.37.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "acf8729d8542766f1b2cf77eb034d52f40d375bb8b615d0b147089946e16613d"
 dependencies = [
- "bitflags 1.3.2",
+ "bitflags",
  "errno",
  "io-lifetimes",
  "libc",
@@ -2680,9 +2526,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0aa32867d44e6f2ce3385e89dceb990188b8bb0fb25b0cf576647a6f98ac5105"
 dependencies = [
  "autocfg",
- "bytes",
  "num_cpus",
- "parking_lot",
  "pin-project-lite",
  "tokio-macros",
  "windows-sys 0.48.0",
