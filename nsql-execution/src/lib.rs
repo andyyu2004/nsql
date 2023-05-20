@@ -33,7 +33,7 @@ pub type ExecutionResult<T, E = Error> = std::result::Result<T, E>;
 fn build_pipelines<S: StorageEngine, M: ExecutionMode<S>>(
     sink: Arc<dyn PhysicalSink<S, M>>,
     plan: PhysicalPlan<S, M>,
-) -> RootPipeline<S> {
+) -> RootPipeline<S, M> {
     let (mut builder, root_meta_pipeline) = PipelineBuilderArena::new(sink);
     builder.build(root_meta_pipeline, plan.root());
     let arena = builder.finish();
@@ -58,9 +58,9 @@ trait PhysicalNode<S: StorageEngine, M: ExecutionMode<S>>:
 
     fn build_pipelines(
         self: Arc<Self>,
-        arena: &mut PipelineBuilderArena<S>,
-        meta_builder: Idx<MetaPipelineBuilder<S>>,
-        current: Idx<PipelineBuilder<S>>,
+        arena: &mut PipelineBuilderArena<S, M>,
+        meta_builder: Idx<MetaPipelineBuilder<S, M>>,
+        current: Idx<PipelineBuilder<S, M>>,
     ) {
         match self.as_sink() {
             Ok(sink) => {
@@ -167,7 +167,7 @@ trait PhysicalSink<S: StorageEngine, M: ExecutionMode<S>>: PhysicalSource<S, M> 
     fn sink(&self, ctx: &ExecutionContext<'_, S, M>, tuple: Tuple) -> ExecutionResult<()>;
 }
 
-trait ExecutionMode<S: StorageEngine>: Clone + Copy {
+trait ExecutionMode<S: StorageEngine>: Clone + Copy + 'static {
     type Transaction<'env>: Transaction<'env, S>;
 }
 
@@ -233,6 +233,6 @@ impl<'env, S: StorageEngine, M: ExecutionMode<S>> ExecutionContext<'env, S, M> {
     }
 }
 
-struct RootPipeline<S> {
-    arena: PipelineArena<S>,
+struct RootPipeline<S, M> {
+    arena: PipelineArena<S, M>,
 }

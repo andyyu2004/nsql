@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use dashmap::DashMap;
 use nsql_core::Name;
-use nsql_storage_engine::StorageEngine;
+use nsql_storage_engine::{StorageEngine, Transaction};
 
 use crate::entry::Oid;
 use crate::private::CatalogEntity;
@@ -129,18 +129,20 @@ impl<S: StorageEngine, T: CatalogEntity<S>> CatalogSet<S, T> {
         self.insert(tx, entity)
     }
 
-    pub(crate) fn entries(&self, tx: &S::Transaction<'_>) -> Vec<(Oid<T>, Arc<T>)> {
-        self.entries
-            .iter()
-            .enumerate()
-            .flat_map(|(idx, entry)| {
-                entry.version_for_tx(tx).map(|entry| (Oid::new(idx as u64), entry.value()))
-            })
-            .collect()
+    pub(crate) fn entries(&self, tx: &impl Transaction<'_, S>) -> Vec<(Oid<T>, Arc<T>)> {
+        todo!()
+        // self.entries
+        //     .iter()
+        //     .enumerate()
+        //     .flat_map(|(idx, entry)| {
+        //         entry.version_for_tx(tx).map(|entry| (Oid::new(idx as u64), entry.value()))
+        //     })
+        //     .collect()
     }
 
-    pub(crate) fn get(&self, tx: &S::Transaction<'_>, oid: Oid<T>) -> Option<Arc<T>> {
-        self.entries.get(&oid).unwrap().version_for_tx(tx).map(|entry| entry.value())
+    pub(crate) fn get(&self, tx: &impl Transaction<'_, S>, oid: Oid<T>) -> Option<Arc<T>> {
+        todo!()
+        // self.entries.get(&oid).unwrap().version_for_tx(tx).map(|entry| entry.value())
     }
 
     pub(crate) fn get_by_name(
@@ -157,10 +159,11 @@ impl<S: StorageEngine, T: CatalogEntity<S>> CatalogSet<S, T> {
 
     pub(crate) fn delete(
         &self,
-        tx: &S::Transaction<'_>,
+        tx: &mut S::WriteTransaction<'_>,
         oid: Oid<T>,
     ) -> Result<(), Conflict<S, T>> {
-        self.entries.get_mut(&oid).expect("passed invalid `oid` somehow").delete(tx);
+        todo!();
+        // self.entries.get_mut(&oid).expect("passed invalid `oid` somehow").delete(tx);
         Ok(())
     }
 

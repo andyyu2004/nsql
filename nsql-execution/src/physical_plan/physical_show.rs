@@ -9,12 +9,14 @@ pub struct PhysicalShow {
 }
 
 impl PhysicalShow {
-    pub(crate) fn plan<S: StorageEngine>(show: ir::ObjectType) -> Arc<dyn PhysicalNode<S, M>> {
+    pub(crate) fn plan<S: StorageEngine, M: ExecutionMode<S>>(
+        show: ir::ObjectType,
+    ) -> Arc<dyn PhysicalNode<S, M>> {
         Arc::new(Self { show })
     }
 }
 
-impl<S: StorageEngine> PhysicalNode<S, M> for PhysicalShow {
+impl<S: StorageEngine, M: ExecutionMode<S>> PhysicalNode<S, M> for PhysicalShow {
     fn children(&self) -> &[Arc<dyn PhysicalNode<S, M>>] {
         &[]
     }
@@ -39,16 +41,16 @@ impl<S: StorageEngine> PhysicalNode<S, M> for PhysicalShow {
 }
 
 #[async_trait::async_trait]
-impl<S: StorageEngine> PhysicalSource<S, M> for PhysicalShow {
+impl<S: StorageEngine, M: ExecutionMode<S>> PhysicalSource<S, M> for PhysicalShow {
     fn source(&self, ctx: &ExecutionContext<'_, S, M>) -> ExecutionResult<SourceState<Chunk>> {
         let catalog = ctx.catalog();
         let tx = ctx.tx();
         let mut tuples = vec![];
-        let namespaces = catalog.all::<Namespace<S>>(&tx);
+        let namespaces = catalog.all::<Namespace<S>>(tx);
         for (_, namespace) in namespaces {
             match self.show {
                 ir::ObjectType::Table => {
-                    for (_, table) in namespace.all::<Table<S>>(&tx) {
+                    for (_, table) in namespace.all::<Table<S>>(tx) {
                         tuples.push(Tuple::from(vec![Value::Text(table.name().to_string())]));
                     }
                 }

@@ -9,13 +9,15 @@ pub struct PhysicalValues {
 }
 
 impl PhysicalValues {
-    pub(crate) fn plan<S: StorageEngine>(values: ir::Values) -> Arc<dyn PhysicalNode<S, M>> {
+    pub(crate) fn plan<S: StorageEngine, M: ExecutionMode<S>>(
+        values: ir::Values,
+    ) -> Arc<dyn PhysicalNode<S, M>> {
         Arc::new(PhysicalValues { values, index: AtomicUsize::new(0) })
     }
 }
 
 #[async_trait::async_trait]
-impl<S: StorageEngine> PhysicalSource<S, M> for PhysicalValues {
+impl<S: StorageEngine, M: ExecutionMode<S>> PhysicalSource<S, M> for PhysicalValues {
     fn source(&self, _ctx: &ExecutionContext<'_, S, M>) -> ExecutionResult<SourceState<Chunk>> {
         let index = self.index.fetch_add(1, atomic::Ordering::SeqCst);
         if index >= self.values.len() {
@@ -30,7 +32,7 @@ impl<S: StorageEngine> PhysicalSource<S, M> for PhysicalValues {
     }
 }
 
-impl<S: StorageEngine> PhysicalNode<S, M> for PhysicalValues {
+impl<S: StorageEngine, M: ExecutionMode<S>> PhysicalNode<S, M> for PhysicalValues {
     #[inline]
     fn children(&self) -> &[Arc<dyn PhysicalNode<S, M>>] {
         &[]

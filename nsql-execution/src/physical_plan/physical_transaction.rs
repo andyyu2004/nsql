@@ -6,12 +6,14 @@ pub struct PhysicalTransaction {
 }
 
 impl PhysicalTransaction {
-    pub(crate) fn plan<S: StorageEngine>(kind: ir::TransactionKind) -> Arc<dyn PhysicalNode<S, M>> {
+    pub(crate) fn plan<S: StorageEngine, M: ExecutionMode<S>>(
+        kind: ir::TransactionKind,
+    ) -> Arc<dyn PhysicalNode<S, M>> {
         Arc::new(Self { kind })
     }
 }
 
-impl<S: StorageEngine> PhysicalNode<S, M> for PhysicalTransaction {
+impl<S: StorageEngine, M: ExecutionMode<S>> PhysicalNode<S, M> for PhysicalTransaction {
     fn children(&self) -> &[Arc<dyn PhysicalNode<S, M>>] {
         &[]
     }
@@ -36,7 +38,7 @@ impl<S: StorageEngine> PhysicalNode<S, M> for PhysicalTransaction {
 }
 
 #[async_trait::async_trait]
-impl<S: StorageEngine> PhysicalSource<S, M> for PhysicalTransaction {
+impl<S: StorageEngine, M: ExecutionMode<S>> PhysicalSource<S, M> for PhysicalTransaction {
     fn source(&self, ctx: &ExecutionContext<'_, S, M>) -> ExecutionResult<SourceState<Chunk>> {
         let tx = ctx.tx();
         // match self.kind {

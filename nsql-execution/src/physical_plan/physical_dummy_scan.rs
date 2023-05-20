@@ -4,19 +4,19 @@ use super::*;
 pub struct PhysicalDummyScan;
 
 impl PhysicalDummyScan {
-    pub(crate) fn plan<S: StorageEngine>() -> Arc<dyn PhysicalNode<S, M>> {
+    pub(crate) fn plan<S: StorageEngine, M: ExecutionMode<S>>() -> Arc<dyn PhysicalNode<S, M>> {
         Arc::new(Self)
     }
 }
 
 #[async_trait::async_trait]
-impl<S: StorageEngine> PhysicalSource<S, M> for PhysicalDummyScan {
+impl<S: StorageEngine, M: ExecutionMode<S>> PhysicalSource<S, M> for PhysicalDummyScan {
     fn source(&self, _ctx: &ExecutionContext<'_, S, M>) -> ExecutionResult<SourceState<Chunk>> {
         Ok(SourceState::Final(Chunk::singleton(Tuple::empty())))
     }
 }
 
-impl<S: StorageEngine> PhysicalNode<S, M> for PhysicalDummyScan {
+impl<S: StorageEngine, M: ExecutionMode<S>> PhysicalNode<S, M> for PhysicalDummyScan {
     fn children(&self) -> &[Arc<dyn PhysicalNode<S, M>>] {
         &[]
     }

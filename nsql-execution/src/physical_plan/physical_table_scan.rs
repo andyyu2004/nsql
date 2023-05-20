@@ -31,7 +31,7 @@ impl<S: StorageEngine> fmt::Debug for PhysicalTableScan<S> {
 }
 
 impl<S: StorageEngine> PhysicalTableScan<S> {
-    pub(crate) fn plan(
+    pub(crate) fn plan<M: ExecutionMode<S>>(
         table_ref: ir::TableRef<S>,
         projection: Option<Box<[ColumnIndex]>>,
     ) -> Arc<dyn PhysicalNode<S, M>> {
@@ -47,13 +47,13 @@ impl<S: StorageEngine> PhysicalTableScan<S> {
 }
 
 #[async_trait::async_trait]
-impl<S: StorageEngine> PhysicalSource<S, M> for PhysicalTableScan<S> {
+impl<S: StorageEngine, M: ExecutionMode<S>> PhysicalSource<S, M> for PhysicalTableScan<S> {
     #[tracing::instrument(skip(self, ctx))]
     fn source(&self, ctx: &ExecutionContext<'_, S, M>) -> ExecutionResult<SourceState<Chunk>> {
         let tx = ctx.tx();
         let table = self.table.get_or_try_init(|| {
-            let namespace = ctx.catalog.get(&tx, self.table_ref.namespace).unwrap();
-            Ok::<_, nsql_catalog::Error>(namespace.get(&tx, self.table_ref.table).unwrap())
+            let namespace = ctx.catalog.get(tx, self.table_ref.namespace).unwrap();
+            Ok::<_, nsql_catalog::Error>(namespace.get(tx, self.table_ref.table).unwrap())
         })?;
 
         // FIXME we can return an entire chunk at a time instead now
@@ -86,7 +86,7 @@ impl<S: StorageEngine> PhysicalSource<S, M> for PhysicalTableScan<S> {
     }
 }
 
-impl<S: StorageEngine> PhysicalNode<S, M> for PhysicalTableScan<S> {
+impl<S: StorageEngine, M: ExecutionMode<S>> PhysicalNode<S, M> for PhysicalTableScan<S> {
     fn children(&self) -> &[Arc<dyn PhysicalNode<S, M>>] {
         &[]
     }

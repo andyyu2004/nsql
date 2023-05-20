@@ -1,12 +1,12 @@
 use super::*;
 
-pub struct PhysicalFilter<S> {
+pub struct PhysicalFilter<S, M> {
     children: [Arc<dyn PhysicalNode<S, M>>; 1],
     predicate: ir::Expr,
     evaluator: Evaluator,
 }
 
-impl<S: StorageEngine> PhysicalFilter<S> {
+impl<S: StorageEngine, M: ExecutionMode<S>> PhysicalFilter<S, M> {
     pub(crate) fn plan(
         source: Arc<dyn PhysicalNode<S, M>>,
         predicate: ir::Expr,
@@ -15,8 +15,7 @@ impl<S: StorageEngine> PhysicalFilter<S> {
     }
 }
 
-#[async_trait::async_trait]
-impl<S: StorageEngine> PhysicalOperator<S, M> for PhysicalFilter<S> {
+impl<S: StorageEngine, M: ExecutionMode<S>> PhysicalOperator<S, M> for PhysicalFilter<S, M> {
     #[tracing::instrument(skip(self, _ctx, input))]
     fn execute(
         &self,
@@ -34,23 +33,27 @@ impl<S: StorageEngine> PhysicalOperator<S, M> for PhysicalFilter<S> {
     }
 }
 
-impl<S: StorageEngine> PhysicalNode<S, M> for PhysicalFilter<S> {
+impl<S: StorageEngine, M: ExecutionMode<S>> PhysicalNode<S, M> for PhysicalFilter<S, M> {
+    #[inline]
     fn children(&self) -> &[Arc<dyn PhysicalNode<S, M>>] {
         &self.children
     }
 
+    #[inline]
     fn as_source(
         self: Arc<Self>,
     ) -> Result<Arc<dyn PhysicalSource<S, M>>, Arc<dyn PhysicalNode<S, M>>> {
         Err(self)
     }
 
+    #[inline]
     fn as_sink(
         self: Arc<Self>,
     ) -> Result<Arc<dyn PhysicalSink<S, M>>, Arc<dyn PhysicalNode<S, M>>> {
         Err(self)
     }
 
+    #[inline]
     fn as_operator(
         self: Arc<Self>,
     ) -> Result<Arc<dyn PhysicalOperator<S, M>>, Arc<dyn PhysicalNode<S, M>>> {
@@ -58,7 +61,7 @@ impl<S: StorageEngine> PhysicalNode<S, M> for PhysicalFilter<S> {
     }
 }
 
-impl<S: StorageEngine> Explain<S> for PhysicalFilter<S> {
+impl<S: StorageEngine, M: ExecutionMode<S>> Explain<S> for PhysicalFilter<S, M> {
     fn explain(
         &self,
         _catalog: &Catalog<S>,

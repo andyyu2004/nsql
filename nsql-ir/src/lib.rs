@@ -1,3 +1,4 @@
+#![feature(anonymous_lifetime_in_impl_trait)]
 #![deny(rust_2018_idioms)]
 
 pub mod expr;

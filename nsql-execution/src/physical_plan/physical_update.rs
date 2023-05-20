@@ -4,9 +4,10 @@ use nsql_catalog::EntityRef;
 use parking_lot::RwLock;
 
 use super::*;
+use crate::ReadWriteExecutionMode;
 
 pub(crate) struct PhysicalUpdate<S> {
-    children: [Arc<dyn PhysicalNode<S, M>>; 1],
+    children: [Arc<dyn PhysicalNode<S, ReadWriteExecutionMode<S>>>; 1],
     table_ref: ir::TableRef<S>,
     returning: Option<Box<[ir::Expr]>>,
     returning_tuples: RwLock<VecDeque<Tuple>>,
@@ -18,9 +19,9 @@ impl<S: StorageEngine> PhysicalUpdate<S> {
         table_ref: ir::TableRef<S>,
         // This is the source of the updates.
         // The schema should be that of the table being updated + the `tid` in the rightmost column
-        source: Arc<dyn PhysicalNode<S, M>>,
+        source: Arc<dyn PhysicalNode<S, ReadWriteExecutionMode<S>>>,
         returning: Option<Box<[ir::Expr]>>,
-    ) -> Arc<dyn PhysicalNode<S, M>> {
+    ) -> Arc<dyn PhysicalNode<S, ReadWriteExecutionMode<S>>> {
         Arc::new(Self {
             table_ref,
             returning,
@@ -31,39 +32,52 @@ impl<S: StorageEngine> PhysicalUpdate<S> {
     }
 }
 
-impl<S: StorageEngine> PhysicalNode<S, M> for PhysicalUpdate<S> {
+impl<S: StorageEngine> PhysicalNode<S, ReadWriteExecutionMode<S>> for PhysicalUpdate<S> {
     #[inline]
-    fn children(&self) -> &[Arc<dyn PhysicalNode<S, M>>] {
+    fn children(&self) -> &[Arc<dyn PhysicalNode<S, ReadWriteExecutionMode<S>>>] {
         &self.children
     }
 
     #[inline]
     fn as_source(
         self: Arc<Self>,
-    ) -> Result<Arc<dyn PhysicalSource<S, M>>, Arc<dyn PhysicalNode<S, M>>> {
+    ) -> Result<
+        Arc<dyn PhysicalSource<S, ReadWriteExecutionMode<S>>>,
+        Arc<dyn PhysicalNode<S, ReadWriteExecutionMode<S>>>,
+    > {
         Ok(self)
     }
 
     #[inline]
     fn as_sink(
         self: Arc<Self>,
-    ) -> Result<Arc<dyn PhysicalSink<S, M>>, Arc<dyn PhysicalNode<S, M>>> {
+    ) -> Result<
+        Arc<dyn PhysicalSink<S, ReadWriteExecutionMode<S>>>,
+        Arc<dyn PhysicalNode<S, ReadWriteExecutionMode<S>>>,
+    > {
         Ok(self)
     }
 
     #[inline]
     fn as_operator(
         self: Arc<Self>,
-    ) -> Result<Arc<dyn PhysicalOperator<S, M>>, Arc<dyn PhysicalNode<S, M>>> {
+    ) -> Result<
+        Arc<dyn PhysicalOperator<S, ReadWriteExecutionMode<S>>>,
+        Arc<dyn PhysicalNode<S, ReadWriteExecutionMode<S>>>,
+    > {
         Err(self)
     }
 }
 
 #[async_trait::async_trait]
-impl<S: StorageEngine> PhysicalSink<S, M> for PhysicalUpdate<S> {
-    fn sink(&self, ctx: &ExecutionContext<'_, S, M>, tuple: Tuple) -> ExecutionResult<()> {
+impl<S: StorageEngine> PhysicalSink<S, ReadWriteExecutionMode<S>> for PhysicalUpdate<S> {
+    fn sink(
+        &self,
+        ctx: &ExecutionContext<'_, S, ReadWriteExecutionMode<S>>,
+        tuple: Tuple,
+    ) -> ExecutionResult<()> {
         let tx = ctx.tx();
-        let table = self.table_ref.get(&ctx.catalog(), &tx);
+        let table = self.table_ref.get(&ctx.catalog(), tx);
         let storage = table.storage();
 
         let (tuple, tid) = tuple.split_last().expect("expected tuple to be non-empty");
@@ -71,7 +85,7 @@ impl<S: StorageEngine> PhysicalSink<S, M> for PhysicalUpdate<S> {
         todo!();
         // storage.update(&tx, tid, &tuple).map_err(|report| report.into_error())?;
 
-        // FIXME just do the return evaluation here
+        // FIXReadWriteExecutionMode<S>E just do the return evaluation here
         if self.returning.is_some() {
             self.returning_tuples.write().push_back(tuple);
         }
@@ -81,9 +95,12 @@ impl<S: StorageEngine> PhysicalSink<S, M> for PhysicalUpdate<S> {
 }
 
 #[async_trait::async_trait]
-impl<S: StorageEngine> PhysicalSource<S, M> for PhysicalUpdate<S> {
+impl<S: StorageEngine> PhysicalSource<S, ReadWriteExecutionMode<S>> for PhysicalUpdate<S> {
     #[inline]
-    fn source(&self, _ctx: &ExecutionContext<'_, S, M>) -> ExecutionResult<SourceState<Chunk>> {
+    fn source(
+        &self,
+        _ctx: &ExecutionContext<'_, S, ReadWriteExecutionMode<S>>,
+    ) -> ExecutionResult<SourceState<Chunk>> {
         let returning = match &self.returning {
             Some(returning) => returning,
             None => return Ok(SourceState::Done),

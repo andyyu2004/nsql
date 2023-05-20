@@ -89,9 +89,9 @@ impl<S: StorageEngine> PhysicalSource<S, ReadWriteExecutionMode<S>> for Physical
 
         let table_oid = schema.create::<Table<S>>(&mut tx, info)?;
         let table =
-            schema.get::<Table<S>>(&tx, table_oid).expect("table not found during execution");
+            schema.get::<Table<S>>(tx, table_oid).expect("table not found during execution");
         for info in &self.info.columns {
-            table.create::<Column>(&mut tx, info.clone())?;
+            table.create::<Column>(tx, info.clone())?;
         }
 
         Ok(SourceState::Done)

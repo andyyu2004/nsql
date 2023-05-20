@@ -1,3 +1,4 @@
+#![feature(anonymous_lifetime_in_impl_trait)]
 #![feature(async_fn_in_trait)]
 #![allow(incomplete_features)]
 #![deny(rust_2018_idioms)]
@@ -10,7 +11,7 @@ use std::sync::Arc;
 
 pub use anyhow::Error;
 use nsql_core::Name;
-use nsql_storage_engine::StorageEngine;
+use nsql_storage_engine::{StorageEngine, Transaction};
 
 pub use self::entity::namespace::{CreateNamespaceInfo, Namespace, NamespaceEntity};
 pub use self::entity::table::{Column, ColumnIndex, CreateColumnInfo, CreateTableInfo, Table};
@@ -51,17 +52,17 @@ pub trait EntityRef<S: StorageEngine>: Copy {
 
     type Container: Container<S>;
 
-    fn container(self, catalog: &Catalog<S>, tx: &S::Transaction<'_>) -> Arc<Self::Container>;
+    fn container(self, catalog: &Catalog<S>, tx: &impl Transaction<'_, S>) -> Arc<Self::Container>;
 
     fn entity_oid(self) -> Oid<Self::Entity>;
 
-    fn get(self, catalog: &Catalog<S>, tx: &S::Transaction<'_>) -> Arc<Self::Entity> {
+    fn get(self, catalog: &Catalog<S>, tx: &impl Transaction<'_, S>) -> Arc<Self::Entity> {
         self.container(catalog, tx)
             .get(tx, self.entity_oid())
             .expect("`oid` should be valid for `tx`")
     }
 
-    fn delete(self, catalog: &Catalog<S>, tx: &S::Transaction<'_>) -> Result<()> {
+    fn delete(self, catalog: &Catalog<S>, tx: &mut S::WriteTransaction<'_>) -> Result<()> {
         self.container(catalog, tx).delete(tx, self.entity_oid())?;
         Ok(())
     }
@@ -78,7 +79,7 @@ pub trait Container<S: StorageEngine> {
 
     fn get<T: CatalogEntity<S, Container = Self>>(
         &self,
-        tx: &S::Transaction<'_>,
+        tx: &impl Transaction<'_, S>,
         oid: Oid<T>,
     ) -> Option<Arc<T>> {
         T::get(self, tx, oid)
@@ -88,7 +89,7 @@ pub trait Container<S: StorageEngine> {
     /// Panics if the `oid` is not visible to `tx`.
     fn delete<T: CatalogEntity<S, Container = Self>>(
         &self,
-        tx: &S::Transaction<'_>,
+        tx: &mut S::WriteTransaction<'_>,
         oid: Oid<T>,
     ) -> Result<(), Conflict<S, T>> {
         T::delete(self, tx, oid)
@@ -108,7 +109,7 @@ pub trait Container<S: StorageEngine> {
 
     fn all<T: CatalogEntity<S, Container = Self>>(
         &self,
-        tx: &S::Transaction<'_>,
+        tx: &impl Transaction<'_, S>,
     ) -> Vec<(Oid<T>, Arc<T>)> {
         T::all(self, tx)
     }
@@ -152,7 +153,7 @@ pub(crate) mod private {
         #[inline]
         fn get(
             container: &Self::Container,
-            tx: &S::Transaction<'_>,
+            tx: &impl Transaction<'_, S>,
             oid: Oid<Self>,
         ) -> Option<Arc<Self>> {
             Self::catalog_set(container).get(tx, oid)
@@ -161,7 +162,7 @@ pub(crate) mod private {
         #[inline]
         fn delete(
             container: &Self::Container,
-            tx: &S::Transaction<'_>,
+            tx: &mut S::WriteTransaction<'_>,
             oid: Oid<Self>,
         ) -> Result<(), Conflict<S, Self>> {
             Self::catalog_set(container).delete(tx, oid)
@@ -184,7 +185,7 @@ pub(crate) mod private {
         #[inline]
         fn all(
             container: &Self::Container,
-            tx: &S::Transaction<'_>,
+            tx: &impl Transaction<'_, S>,
         ) -> Vec<(Oid<Self>, Arc<Self>)> {
             Self::catalog_set(container).entries(tx)
         }

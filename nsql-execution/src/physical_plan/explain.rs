@@ -18,31 +18,31 @@ pub trait Explain<S: StorageEngine> {
     ) -> Result;
 }
 
-pub(crate) fn explain_pipeline<'a, 'env, S: StorageEngine>(
+pub(crate) fn explain_pipeline<'a, 'env, S: StorageEngine, M: ExecutionMode<S>>(
     catalog: &'a Catalog<S>,
     tx: &'a S::Transaction<'env>,
-    root_pipeline: &'a RootPipeline<S>,
-) -> RootPipelineExplainer<'a, 'env, S> {
+    root_pipeline: &'a RootPipeline<S, M>,
+) -> RootPipelineExplainer<'a, 'env, S, M> {
     RootPipelineExplainer { catalog, tx, root_pipeline }
 }
 
-pub struct RootPipelineExplainer<'a, 'env, S: StorageEngine> {
+pub struct RootPipelineExplainer<'a, 'env, S: StorageEngine, M: ExecutionMode<S>> {
     catalog: &'a Catalog<S>,
     tx: &'a S::Transaction<'env>,
-    root_pipeline: &'a RootPipeline<S>,
+    root_pipeline: &'a RootPipeline<S, M>,
 }
 
-pub struct MetaPipelineExplainer<'a, 'env, S: StorageEngine> {
-    root: &'a RootPipelineExplainer<'a, 'env, S>,
+pub struct MetaPipelineExplainer<'a, 'env, S: StorageEngine, M: ExecutionMode<S>> {
+    root: &'a RootPipelineExplainer<'a, 'env, S, M>,
     tx: &'a S::Transaction<'env>,
     indent: usize,
 }
 
-impl<'a, 'env, S: StorageEngine> MetaPipelineExplainer<'a, 'env, S> {
+impl<'a, 'env, S: StorageEngine, M: ExecutionMode<S>> MetaPipelineExplainer<'a, 'env, S, M> {
     fn explain_meta_pipeline(
         &self,
         f: &mut fmt::Formatter<'_>,
-        meta_pipeline: Idx<MetaPipeline<S>>,
+        meta_pipeline: Idx<MetaPipeline<S, M>>,
     ) -> fmt::Result {
         let arena = &self.root.root_pipeline.arena;
         writeln!(
@@ -80,7 +80,7 @@ impl<'a, 'env, S: StorageEngine> MetaPipelineExplainer<'a, 'env, S> {
     }
 }
 
-impl<S: StorageEngine> fmt::Display for RootPipelineExplainer<'_, '_, S> {
+impl<S: StorageEngine, M: ExecutionMode<S>> fmt::Display for RootPipelineExplainer<'_, '_, S, M> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         MetaPipelineExplainer { root: self, tx: self.tx, indent: 0 }
             .explain_meta_pipeline(f, self.root_pipeline.arena.root())

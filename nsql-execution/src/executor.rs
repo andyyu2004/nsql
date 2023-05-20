@@ -4,7 +4,7 @@ use parking_lot::RwLock;
 use super::*;
 
 pub(crate) struct Executor<S, M> {
-    arena: PipelineArena<S>,
+    arena: PipelineArena<S, M>,
     _marker: std::marker::PhantomData<(S, M)>,
 }
 
@@ -12,7 +12,7 @@ impl<S: StorageEngine, M: ExecutionMode<S>> Executor<S, M> {
     fn execute(
         self: Arc<Self>,
         ctx: &ExecutionContext<'_, S, M>,
-        root: Idx<MetaPipeline<S>>,
+        root: Idx<MetaPipeline<S, M>>,
     ) -> ExecutionResult<()> {
         let root = &self.arena[root];
         for &child in &root.children {
@@ -30,7 +30,7 @@ impl<S: StorageEngine, M: ExecutionMode<S>> Executor<S, M> {
     fn execute_pipeline(
         self: Arc<Self>,
         ctx: &ExecutionContext<'_, S, M>,
-        pipeline: Idx<Pipeline<S>>,
+        pipeline: Idx<Pipeline<S, M>>,
     ) -> ExecutionResult<()> {
         let pipeline = &self.arena[pipeline];
         let mut done = false;
@@ -65,7 +65,7 @@ impl<S: StorageEngine, M: ExecutionMode<S>> Executor<S, M> {
 
 fn execute_root_pipeline<S: StorageEngine, M: ExecutionMode<S>>(
     ctx: ExecutionContext<'_, S, M>,
-    pipeline: RootPipeline<S>,
+    pipeline: RootPipeline<S, M>,
 ) -> ExecutionResult<()> {
     let root = pipeline.arena.root();
     let executor = Arc::new(Executor { arena: pipeline.arena, _marker: std::marker::PhantomData });

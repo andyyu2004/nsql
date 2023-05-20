@@ -3,12 +3,12 @@ use nsql_storage::value::Value;
 
 use super::*;
 
-pub struct PhysicalExplain<S> {
+pub struct PhysicalExplain<S, M> {
     stringified_plan: AtomicTake<String>,
     children: [Arc<dyn PhysicalNode<S, M>>; 1],
 }
 
-impl<S> fmt::Debug for PhysicalExplain<S> {
+impl<S, M> fmt::Debug for PhysicalExplain<S, M> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("PhysicalExplain")
             .field("stringified_plan", &self.stringified_plan)
@@ -16,7 +16,7 @@ impl<S> fmt::Debug for PhysicalExplain<S> {
     }
 }
 
-impl<S: StorageEngine> PhysicalExplain<S> {
+impl<S: StorageEngine, M: ExecutionMode<S>> PhysicalExplain<S, M> {
     #[inline]
     pub(crate) fn plan(
         stringified_plan: String,
@@ -26,7 +26,7 @@ impl<S: StorageEngine> PhysicalExplain<S> {
     }
 }
 
-impl<S: StorageEngine> PhysicalNode<S, M> for PhysicalExplain<S> {
+impl<S: StorageEngine, M: ExecutionMode<S>> PhysicalNode<S, M> for PhysicalExplain<S, M> {
     fn children(&self) -> &[Arc<dyn PhysicalNode<S, M>>] {
         // no children as we don't actually need to run anything (unless we're doing an analyse which is not implemented)
         &[]
@@ -52,14 +52,14 @@ impl<S: StorageEngine> PhysicalNode<S, M> for PhysicalExplain<S> {
 }
 
 #[async_trait::async_trait]
-impl<S: StorageEngine> PhysicalSource<S, M> for PhysicalExplain<S> {
+impl<S: StorageEngine, M: ExecutionMode<S>> PhysicalSource<S, M> for PhysicalExplain<S, M> {
     fn source(&self, _ctx: &ExecutionContext<'_, S, M>) -> ExecutionResult<SourceState<Chunk>> {
         let plan = self.stringified_plan.take().expect("should not be called again");
         Ok(SourceState::Final(Chunk::singleton(Tuple::from(vec![Value::Text(plan)]))))
     }
 }
 
-impl<S: StorageEngine> Explain<S> for PhysicalExplain<S> {
+impl<S: StorageEngine, M: ExecutionMode<S>> Explain<S> for PhysicalExplain<S, M> {
     fn explain(
         &self,
         _catalog: &Catalog<S>,

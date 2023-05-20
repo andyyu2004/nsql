@@ -2,13 +2,13 @@ use std::sync::atomic::{self, AtomicU64};
 
 use super::*;
 
-pub struct PhysicalLimit<S> {
+pub struct PhysicalLimit<S, M> {
     children: [Arc<dyn PhysicalNode<S, M>>; 1],
     yielded: AtomicU64,
     limit: u64,
 }
 
-impl<S: StorageEngine> PhysicalLimit<S> {
+impl<S: StorageEngine, M: ExecutionMode<S>> PhysicalLimit<S, M> {
     pub(crate) fn plan(
         source: Arc<dyn PhysicalNode<S, M>>,
         limit: u64,
@@ -18,7 +18,7 @@ impl<S: StorageEngine> PhysicalLimit<S> {
 }
 
 #[async_trait::async_trait]
-impl<S: StorageEngine> PhysicalOperator<S, M> for PhysicalLimit<S> {
+impl<S: StorageEngine, M: ExecutionMode<S>> PhysicalOperator<S, M> for PhysicalLimit<S, M> {
     fn execute(
         &self,
         _ctx: &ExecutionContext<'_, S, M>,
@@ -32,7 +32,7 @@ impl<S: StorageEngine> PhysicalOperator<S, M> for PhysicalLimit<S> {
     }
 }
 
-impl<S: StorageEngine> PhysicalNode<S, M> for PhysicalLimit<S> {
+impl<S: StorageEngine, M: ExecutionMode<S>> PhysicalNode<S, M> for PhysicalLimit<S, M> {
     fn children(&self) -> &[Arc<dyn PhysicalNode<S, M>>] {
         &self.children
     }
@@ -56,7 +56,7 @@ impl<S: StorageEngine> PhysicalNode<S, M> for PhysicalLimit<S> {
     }
 }
 
-impl<S: StorageEngine> Explain<S> for PhysicalLimit<S> {
+impl<S: StorageEngine, M: ExecutionMode<S>> Explain<S> for PhysicalLimit<S, M> {
     fn explain(
         &self,
         _catalog: &Catalog<S>,

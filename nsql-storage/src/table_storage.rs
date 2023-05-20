@@ -17,7 +17,7 @@ impl<S: StorageEngine> TableStorage<S> {
     }
 
     #[inline]
-    pub fn append(&self, tx: &S::Transaction<'_>, tuple: &Tuple) -> Result<(), S::Error> {
+    pub fn append(&self, tx: &mut S::WriteTransaction<'_>, tuple: &Tuple) -> Result<(), S::Error> {
         todo!();
         Ok(())
     }

@@ -4,9 +4,10 @@ use nsql_catalog::EntityRef;
 use parking_lot::RwLock;
 
 use super::*;
+use crate::ReadWriteExecutionMode;
 
 pub(crate) struct PhysicalInsert<S> {
-    children: [Arc<dyn PhysicalNode<S, M>>; 1],
+    children: [Arc<dyn PhysicalNode<S, ReadWriteExecutionMode<S>>>; 1],
     table_ref: ir::TableRef<S>,
     returning: Option<Box<[ir::Expr]>>,
     returning_tuples: RwLock<VecDeque<Tuple>>,
@@ -16,9 +17,9 @@ pub(crate) struct PhysicalInsert<S> {
 impl<S: StorageEngine> PhysicalInsert<S> {
     pub fn plan(
         table_ref: ir::TableRef<S>,
-        source: Arc<dyn PhysicalNode<S, M>>,
+        source: Arc<dyn PhysicalNode<S, ReadWriteExecutionMode<S>>>,
         returning: Option<Box<[ir::Expr]>>,
-    ) -> Arc<dyn PhysicalNode<S, M>> {
+    ) -> Arc<dyn PhysicalNode<S, ReadWriteExecutionMode<S>>> {
         Arc::new(Self {
             table_ref,
             returning,
@@ -29,37 +30,49 @@ impl<S: StorageEngine> PhysicalInsert<S> {
     }
 }
 
-impl<S: StorageEngine> PhysicalNode<S, M> for PhysicalInsert<S> {
-    fn children(&self) -> &[Arc<dyn PhysicalNode<S, M>>] {
+impl<S: StorageEngine> PhysicalNode<S, ReadWriteExecutionMode<S>> for PhysicalInsert<S> {
+    fn children(&self) -> &[Arc<dyn PhysicalNode<S, ReadWriteExecutionMode<S>>>] {
         &self.children
     }
 
     fn as_source(
         self: Arc<Self>,
-    ) -> Result<Arc<dyn PhysicalSource<S, M>>, Arc<dyn PhysicalNode<S, M>>> {
+    ) -> Result<
+        Arc<dyn PhysicalSource<S, ReadWriteExecutionMode<S>>>,
+        Arc<dyn PhysicalNode<S, ReadWriteExecutionMode<S>>>,
+    > {
         Ok(self)
     }
 
     fn as_sink(
         self: Arc<Self>,
-    ) -> Result<Arc<dyn PhysicalSink<S, M>>, Arc<dyn PhysicalNode<S, M>>> {
+    ) -> Result<
+        Arc<dyn PhysicalSink<S, ReadWriteExecutionMode<S>>>,
+        Arc<dyn PhysicalNode<S, ReadWriteExecutionMode<S>>>,
+    > {
         Ok(self)
     }
 
     fn as_operator(
         self: Arc<Self>,
-    ) -> Result<Arc<dyn PhysicalOperator<S, M>>, Arc<dyn PhysicalNode<S, M>>> {
+    ) -> Result<
+        Arc<dyn PhysicalOperator<S, ReadWriteExecutionMode<S>>>,
+        Arc<dyn PhysicalNode<S, ReadWriteExecutionMode<S>>>,
+    > {
         Err(self)
     }
 }
 
-#[async_trait::async_trait]
-impl<S: StorageEngine> PhysicalSink<S, M> for PhysicalInsert<S> {
-    fn sink(&self, ctx: &ExecutionContext<'_, S, M>, tuple: Tuple) -> ExecutionResult<()> {
-        let tx = ctx.tx();
-        let table = self.table_ref.get(&ctx.catalog(), &tx);
+impl<S: StorageEngine> PhysicalSink<S, ReadWriteExecutionMode<S>> for PhysicalInsert<S> {
+    fn sink(
+        &self,
+        ctx: &ExecutionContext<'_, S, ReadWriteExecutionMode<S>>,
+        tuple: Tuple,
+    ) -> ExecutionResult<()> {
+        let tx = ctx.tx_mut();
+        let table = self.table_ref.get(&ctx.catalog(), tx);
         let storage = table.storage();
-        storage.append(&tx, &tuple)?;
+        storage.append(tx, &tuple)?;
 
         // FIXME just do the return evaluation here
         if self.returning.is_some() {
@@ -71,9 +84,12 @@ impl<S: StorageEngine> PhysicalSink<S, M> for PhysicalInsert<S> {
 }
 
 #[async_trait::async_trait]
-impl<S: StorageEngine> PhysicalSource<S, M> for PhysicalInsert<S> {
+impl<S: StorageEngine> PhysicalSource<S, ReadWriteExecutionMode<S>> for PhysicalInsert<S> {
     #[inline]
-    fn source(&self, _ctx: &ExecutionContext<'_, S, M>) -> ExecutionResult<SourceState<Chunk>> {
+    fn source(
+        &self,
+        _ctx: &ExecutionContext<'_, S, ReadWriteExecutionMode<S>>,
+    ) -> ExecutionResult<SourceState<Chunk>> {
         let returning = match &self.returning {
             Some(returning) => returning,
             None => return Ok(SourceState::Done),

@@ -2,13 +2,13 @@ use itertools::Itertools;
 
 use super::*;
 
-pub struct PhysicalProjection<S> {
+pub struct PhysicalProjection<S, M> {
     children: [Arc<dyn PhysicalNode<S, M>>; 1],
     projection: Box<[ir::Expr]>,
     evaluator: Evaluator,
 }
 
-impl<S: StorageEngine> PhysicalProjection<S> {
+impl<S: StorageEngine, M: ExecutionMode<S>> PhysicalProjection<S, M> {
     pub(crate) fn plan(
         source: Arc<dyn PhysicalNode<S, M>>,
         projection: Box<[ir::Expr]>,
@@ -18,7 +18,7 @@ impl<S: StorageEngine> PhysicalProjection<S> {
 }
 
 #[async_trait::async_trait]
-impl<S: StorageEngine> PhysicalOperator<S, M> for PhysicalProjection<S> {
+impl<S: StorageEngine, M: ExecutionMode<S>> PhysicalOperator<S, M> for PhysicalProjection<S, M> {
     #[tracing::instrument(skip(self, _ctx, input))]
     fn execute(
         &self,
@@ -31,7 +31,7 @@ impl<S: StorageEngine> PhysicalOperator<S, M> for PhysicalProjection<S> {
     }
 }
 
-impl<S: StorageEngine> PhysicalNode<S, M> for PhysicalProjection<S> {
+impl<S: StorageEngine, M: ExecutionMode<S>> PhysicalNode<S, M> for PhysicalProjection<S, M> {
     fn children(&self) -> &[Arc<dyn PhysicalNode<S, M>>] {
         &self.children
     }
@@ -55,7 +55,7 @@ impl<S: StorageEngine> PhysicalNode<S, M> for PhysicalProjection<S> {
     }
 }
 
-impl<S: StorageEngine> Explain<S> for PhysicalProjection<S> {
+impl<S: StorageEngine, M: ExecutionMode<S>> Explain<S> for PhysicalProjection<S, M> {
     fn explain(
         &self,
         _catalog: &Catalog<S>,
