@@ -2,11 +2,12 @@
 #![feature(impl_trait_projections)]
 //! This crate defines the storage engine interfaces
 
+use std::error::Error;
 use std::ops::{Deref, RangeBounds};
 use std::path::Path;
 
 pub trait StorageEngine: Clone + Send + Sync + Sized + 'static {
-    type Error;
+    type Error: Send + Sync + Error + 'static;
 
     type Transaction<'env>: ReadTransaction<'env, Self> + Clone + Send + Sync
     where
@@ -45,7 +46,7 @@ pub trait StorageEngine: Clone + Send + Sync + Sized + 'static {
     /// Open a tree for read/write access, creating it if it doesn't exist.
     fn open_tree<'env, 'txn>(
         &self,
-        txn: &'txn Self::WriteTransaction<'env>,
+        txn: &'txn mut Self::WriteTransaction<'env>,
         name: &str,
     ) -> Result<Self::Tree<'env, 'txn>, Self::Error>;
 }

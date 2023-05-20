@@ -10,7 +10,7 @@ use tokio::sync::{Mutex, OnceCell};
 
 use super::*;
 
-pub struct PhysicalTableScan<S> {
+pub struct PhysicalTableScan<S: StorageEngine> {
     table_ref: ir::TableRef<S>,
     table: OnceLock<Arc<Table<S>>>,
     projection: Option<Box<[ColumnIndex]>>,
@@ -18,10 +18,11 @@ pub struct PhysicalTableScan<S> {
     current_batch_index: AtomicUsize,
 
     // mutex here just to make `Self: Sync`
-    stream: OnceCell<Mutex<TupleStream>>,
+    stream: OnceCell<Mutex<TupleStream<S>>>,
 }
 
-type TupleStream = Pin<Box<dyn Stream<Item = nsql_buffer::Result<Vec<Tuple>>> + Send>>;
+type TupleStream<S: StorageEngine> =
+    Pin<Box<dyn Stream<Item = Result<Vec<Tuple>, S::Error>> + Send>>;
 
 impl<S: StorageEngine> fmt::Debug for PhysicalTableScan<S> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -80,8 +81,7 @@ impl<S: StorageEngine> PhysicalSource<S> for PhysicalTableScan<S> {
                 let mut stream = stream.lock().await;
                 match stream.next().await {
                     Some(batch) => {
-                        let batch = batch.map_err(|report| report.into_error())?;
-                        *next_batch = batch;
+                        *next_batch = batch?;
                         self.current_batch_index.store(0, atomic::Ordering::Release);
                     }
                     None => return Ok(SourceState::Done),

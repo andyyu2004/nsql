@@ -4,6 +4,6 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-heed = { version = "0.11.0", default-features = false, features = ["lmdb", "sync-read-txn"] }
+heed = { git = "https://github.com/meilisearch/heed", branch = "main", default-features = false }
 nsql-storage-engine = { path = "../nsql-storage-engine" }
 

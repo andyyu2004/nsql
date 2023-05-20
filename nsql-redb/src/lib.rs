@@ -80,7 +80,7 @@ impl nsql_storage_engine::StorageEngine for RedbStorageEngine {
     #[inline]
     fn open_tree<'env, 'txn>(
         &self,
-        txn: &'txn Self::WriteTransaction<'env>,
+        txn: &'txn mut Self::WriteTransaction<'env>,
         name: &str,
     ) -> Result<Self::Tree<'env, 'txn>, Self::Error> {
         match txn.0.open_table(redb::TableDefinition::new(name)) {

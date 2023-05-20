@@ -55,7 +55,7 @@ impl<S: StorageEngine> PhysicalSink<S> for PhysicalInsert<S> {
         let tx = ctx.tx();
         let table = self.table_ref.get(&ctx.catalog(), &tx);
         let storage = table.storage();
-        storage.append(&tx, &tuple).await.map_err(|report| report.into_error())?;
+        storage.append(&tx, &tuple).await?;
 
         // FIXME just do the return evaluation here
         if self.returning.is_some() {

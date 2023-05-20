@@ -2,8 +2,6 @@ use std::fmt;
 use std::ops::Index;
 use std::sync::Arc;
 
-use nsql_serde::{StreamDeserialize, StreamDeserializeWith, StreamDeserializer};
-
 use crate::schema::{PhysicalType, Schema};
 use crate::value::{Decimal, Value};
 
@@ -65,35 +63,6 @@ impl fmt::Display for Tuple {
             }
         }
         write!(f, ")")
-    }
-}
-
-impl StreamDeserializeWith for Tuple {
-    type Context<'a> = TupleDeserializationContext;
-
-    async fn deserialize_with<D: StreamDeserializer>(
-        ctx: &Self::Context<'_>,
-        de: &mut D,
-    ) -> nsql_serde::Result<Self> {
-        let attributes = ctx.schema.attributes();
-        let mut values = Vec::with_capacity(attributes.len());
-
-        for attribute in attributes {
-            let value = match attribute.physical_type() {
-                PhysicalType::Bool => {
-                    let b = bool::deserialize(de).await?;
-                    Value::Bool(b)
-                }
-                PhysicalType::Decimal => {
-                    let d = <Decimal as StreamDeserialize>::deserialize(de).await?;
-                    Value::Decimal(d)
-                }
-                PhysicalType::Int32 => todo!(),
-            };
-            values.push(value);
-        }
-
-        Ok(Self::from(values))
     }
 }
 

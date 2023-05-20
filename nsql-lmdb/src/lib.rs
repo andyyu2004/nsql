@@ -6,11 +6,13 @@ use std::ops::{Deref, RangeBounds};
 use std::path::Path;
 use std::sync::Arc;
 
-use heed::flags::Flags;
-use heed::UntypedDatabase;
+use heed::types::ByteSlice;
+use heed::Flag;
 use nsql_storage_engine::{ReadTransaction, ReadTree, StorageEngine, Transaction, Tree};
 
 type Result<T, E = heed::Error> = std::result::Result<T, E>;
+
+type UntypedDatabase = heed::Database<ByteSlice, ByteSlice>;
 
 #[derive(Clone)]
 pub struct LmdbStorageEngine {
@@ -19,9 +21,7 @@ pub struct LmdbStorageEngine {
 }
 
 #[derive(Clone)]
-pub struct ReadonlyTx<'env> {
-    tx: Arc<SendRoTxnWrapper<'env>>,
-}
+pub struct ReadonlyTx<'env>(Arc<SendRoTxnWrapper<'env>>);
 
 struct SendRoTxnWrapper<'env>(heed::RoTxn<'env>);
 
@@ -38,10 +38,9 @@ impl<'env> Deref for SendRoTxnWrapper<'env> {
 // https://github.com/meilisearch/heed/issues/149
 // FIXME judging by `lmdb.h` comments I don't think it is `Sync` (but it is `Send`)
 unsafe impl Send for SendRoTxnWrapper<'_> {}
+unsafe impl Sync for SendRoTxnWrapper<'_> {}
 
-pub struct ReadWriteTx<'env> {
-    tx: heed::RwTxn<'env, 'env>,
-}
+pub struct ReadWriteTx<'env>(heed::RwTxn<'env>);
 
 impl StorageEngine for LmdbStorageEngine {
     type Error = heed::Error;
@@ -62,48 +61,48 @@ impl StorageEngine for LmdbStorageEngine {
         // large value `max_readers` has a performance issues so I don't think having a lmdb database per table is practical.
         // Perhaps we can do a lmdb database per schema and have a reasonable limit on it (say ~100)
         std::fs::OpenOptions::new().create(true).write(true).truncate(false).open(&path)?;
-        let env =
-            unsafe { heed::EnvOpenOptions::new().flag(Flags::MdbNoSubDir).flag(Flags::MdbNoTls) }
-                .open(path)?;
-        let main_db = env.open_database(None)?.expect("main database should exist");
+        let env = unsafe { heed::EnvOpenOptions::new().flag(Flag::NoSubDir).flag(Flag::NoTls) }
+            .open(path)?;
+        let main_db =
+            env.open_database(&env.read_txn()?, None)?.expect("main database should exist");
         Ok(Self { main_db, env })
     }
 
     #[inline]
     fn begin_readonly(&self) -> Result<Self::Transaction<'_>, Self::Error> {
         let tx = self.env.read_txn()?;
-        Ok(ReadonlyTx { tx: Arc::new(SendRoTxnWrapper(tx)) })
+        Ok(ReadonlyTx(Arc::new(SendRoTxnWrapper(tx))))
     }
 
     #[inline]
     fn begin(&self) -> std::result::Result<Self::WriteTransaction<'_>, Self::Error> {
         let inner = self.env.write_txn()?;
-        Ok(ReadWriteTx { tx: inner })
+        Ok(ReadWriteTx(inner))
     }
 
     #[inline]
     fn open_tree_readonly<'env, 'txn>(
         &self,
-        _txn: &'env Self::Transaction<'txn>,
+        txn: &'env Self::Transaction<'txn>,
         name: &str,
     ) -> Result<Option<Self::ReadTree<'env, 'txn>>, Self::Error>
     where
         'env: 'txn,
     {
-        self.env.open_database(Some(name))
+        self.env.open_database(&txn.0, Some(name))
     }
 
     #[inline]
     fn open_tree<'env, 'txn>(
         &self,
-        _txn: &'txn Self::WriteTransaction<'env>,
+        txn: &'txn mut Self::WriteTransaction<'env>,
         name: &str,
     ) -> Result<Self::Tree<'env, 'txn>, Self::Error> {
-        self.env.create_database(Some(name))
+        self.env.create_database(&mut txn.0, Some(name))
     }
 }
 
-impl<'txn> ReadTree<'_, 'txn, LmdbStorageEngine> for heed::UntypedDatabase {
+impl<'txn> ReadTree<'_, 'txn, LmdbStorageEngine> for UntypedDatabase {
     type Bytes = &'txn [u8];
 
     #[inline]
@@ -112,7 +111,7 @@ impl<'txn> ReadTree<'_, 'txn, LmdbStorageEngine> for heed::UntypedDatabase {
         txn: &'txn ReadonlyTx<'_>,
         key: &[u8],
     ) -> Result<Option<Self::Bytes>, heed::Error> {
-        self.get(&txn.tx, key)
+        self.get(&txn.0, key)
     }
 
     #[inline]
@@ -121,7 +120,7 @@ impl<'txn> ReadTree<'_, 'txn, LmdbStorageEngine> for heed::UntypedDatabase {
         txn: &'txn ReadonlyTx<'_>,
         range: impl RangeBounds<[u8]>,
     ) -> Result<impl Iterator<Item = Result<(Self::Bytes, Self::Bytes), heed::Error>>> {
-        self.range(&txn.tx, &range)
+        self.range(&txn.0, &(range.start_bound(), range.end_bound()))
     }
 
     #[inline]
@@ -131,11 +130,11 @@ impl<'txn> ReadTree<'_, 'txn, LmdbStorageEngine> for heed::UntypedDatabase {
         range: impl RangeBounds<[u8]>,
     ) -> Result<impl Iterator<Item = Result<(Self::Bytes, Self::Bytes), heed::Error>>, heed::Error>
     {
-        self.rev_range(&txn.tx, &range)
+        self.rev_range(&txn.0, &range)
     }
 }
 
-impl Tree<'_, '_, LmdbStorageEngine> for heed::UntypedDatabase {
+impl Tree<'_, '_, LmdbStorageEngine> for UntypedDatabase {
     #[inline]
     fn put(
         &mut self,
@@ -143,12 +142,12 @@ impl Tree<'_, '_, LmdbStorageEngine> for heed::UntypedDatabase {
         key: &[u8],
         value: &[u8],
     ) -> Result<(), heed::Error> {
-        (*self).put(&mut txn.tx, key, value)
+        (*self).put(&mut txn.0, &key, &value)
     }
 
     #[inline]
     fn delete(&mut self, txn: &mut ReadWriteTx<'_>, key: &[u8]) -> Result<bool, heed::Error> {
-        (*self).delete(&mut txn.tx, key)
+        (*self).delete(&mut txn.0, &key)
     }
 }
 

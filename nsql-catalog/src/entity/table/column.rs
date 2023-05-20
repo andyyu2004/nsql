@@ -1,6 +1,5 @@
 use std::fmt;
 
-use nsql_serde::{StreamDeserialize, StreamSerialize};
 use nsql_storage::schema::LogicalType;
 use nsql_storage_engine::StorageEngine;
 
@@ -8,7 +7,7 @@ use crate::private::CatalogEntity;
 use crate::set::CatalogSet;
 use crate::{Entity, Name, Table};
 
-#[derive(Clone, StreamSerialize)]
+#[derive(Clone)]
 pub struct Column {
     name: Name,
     index: ColumnIndex,
@@ -33,9 +32,7 @@ impl fmt::Debug for Column {
     }
 }
 
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, StreamSerialize, StreamDeserialize,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ColumnIndex {
     index: u8,
 }
@@ -53,7 +50,7 @@ impl ColumnIndex {
     }
 }
 
-#[derive(Debug, Clone, StreamDeserialize)]
+#[derive(Debug, Clone)]
 pub struct CreateColumnInfo {
     pub name: Name,
     /// The index of the column in the table.

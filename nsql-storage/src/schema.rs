@@ -2,7 +2,6 @@ use std::fmt;
 use std::sync::OnceLock;
 
 use nsql_core::Name;
-use nsql_serde::{StreamDeserialize, StreamDeserializer, StreamSerialize, StreamSerializer};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Schema {
@@ -58,18 +57,6 @@ impl fmt::Display for LogicalType {
             LogicalType::Null => write!(f, "null"),
             LogicalType::Tid => write!(f, "tid"),
         }
-    }
-}
-
-impl StreamSerialize for LogicalType {
-    async fn serialize<S: StreamSerializer>(&self, _ser: &mut S) -> nsql_serde::Result<()> {
-        todo!()
-    }
-}
-
-impl StreamDeserialize for LogicalType {
-    async fn deserialize<D: StreamDeserializer>(_de: &mut D) -> nsql_serde::Result<Self> {
-        todo!()
     }
 }
 

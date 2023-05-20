@@ -14,7 +14,6 @@ use std::sync::Arc;
 
 pub use anyhow::Error;
 use nsql_arena::Idx;
-use nsql_buffer::Pool;
 use nsql_catalog::Catalog;
 use nsql_storage::tuple::Tuple;
 use nsql_storage_engine::StorageEngine;
@@ -166,7 +165,6 @@ trait PhysicalSink<S: StorageEngine>: PhysicalSource<S> {
 
 #[derive(Clone)]
 pub struct ExecutionContext<'env, S: StorageEngine> {
-    pool: Arc<dyn Pool>,
     storage: S,
     catalog: Arc<Catalog<S>>,
     tx: S::Transaction<'env>,
@@ -174,13 +172,8 @@ pub struct ExecutionContext<'env, S: StorageEngine> {
 
 impl<'env, S: StorageEngine> ExecutionContext<'env, S> {
     #[inline]
-    pub fn new(
-        storage: S,
-        pool: Arc<dyn Pool>,
-        catalog: Arc<Catalog<S>>,
-        tx: S::Transaction<'env>,
-    ) -> Self {
-        Self { storage, pool, catalog, tx }
+    pub fn new(storage: S, catalog: Arc<Catalog<S>>, tx: S::Transaction<'env>) -> Self {
+        Self { storage, catalog, tx }
     }
 
     #[inline]

@@ -13,12 +13,12 @@ pub struct TableStorage<S> {
 
 impl<S: StorageEngine> TableStorage<S> {
     #[inline]
-    pub async fn initialize(storage: S, info: TableStorageInfo) -> nsql_buffer::Result<Self> {
+    pub async fn initialize(storage: S, info: TableStorageInfo) -> Result<Self, S::Error> {
         Ok(Self { storage, info })
     }
 
     #[inline]
-    pub async fn append(&self, tx: &S::Transaction<'_>, tuple: &Tuple) -> nsql_buffer::Result<()> {
+    pub async fn append(&self, tx: &S::Transaction<'_>, tuple: &Tuple) -> Result<(), S::Error> {
         todo!();
         Ok(())
     }
@@ -29,7 +29,7 @@ impl<S: StorageEngine> TableStorage<S> {
         tx: &S::Transaction<'_>,
         id: &Tuple,
         tuple: &Tuple,
-    ) -> nsql_buffer::Result<()> {
+    ) -> Result<(), S::Error> {
         todo!();
         Ok(())
     }
@@ -39,7 +39,7 @@ impl<S: StorageEngine> TableStorage<S> {
         &self,
         tx: S::Transaction<'_>,
         projection: Option<Box<[TupleIndex]>>,
-    ) -> impl Stream<Item = nsql_buffer::Result<Vec<Tuple>>> + Send {
+    ) -> impl Stream<Item = Result<Vec<Tuple>, S::Error>> + Send {
         futures_util::stream::empty()
         // self.heap
         //     .scan(tx, move |tid, tuple| {
