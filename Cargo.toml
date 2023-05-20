@@ -18,13 +18,6 @@ members = [
     "nsql-util",
     "nsql-lmdb",
     "nsql-redb",
-    "lruk",
-    "vendor/tracing-test/tracing-test",
-    "vendor/tracing-test/tracing-test-macro",
-    "vendor/tracing-test/tracing-test-macro-tests",
-    "vendor/sqllogictest/sqllogictest",
-    "vendor/sqllogictest/tests",
-
 ]
 
 [profile.bench]

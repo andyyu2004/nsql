@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use futures_util::Stream;
 use nsql_storage_engine::StorageEngine;
 
 use crate::schema::Schema;

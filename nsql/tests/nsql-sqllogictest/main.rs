@@ -7,7 +7,7 @@ use async_trait::async_trait;
 use nsql::{Connection, Nsql};
 use nsql_storage::schema::LogicalType;
 use nsql_storage_engine::StorageEngine;
-use sqllogictest::{AsyncDB, ColumnType, DBOutput, Runner};
+use sqllogictest::{AsyncDB, ColumnType, DBOutput, Runner, DB};
 use tracing_subscriber::EnvFilter;
 
 fn nsql_sqllogictest(path: &Path) -> nsql::Result<(), Box<dyn Error>> {
@@ -70,13 +70,13 @@ impl<S: StorageEngine> TestDb<S> {
 pub struct ErrorWrapper(#[from] anyhow::Error);
 
 #[async_trait]
-impl<S: StorageEngine> AsyncDB for TestDb<S> {
+impl<S: StorageEngine> DB for TestDb<S> {
     type Error = ErrorWrapper;
 
     type ColumnType = TypeWrapper;
 
     #[tracing::instrument(skip(self))]
-    async fn run_on(
+    fn run_on(
         &mut self,
         connection_name: Option<&str>,
         sql: &str,
@@ -101,9 +101,5 @@ impl<S: StorageEngine> AsyncDB for TestDb<S> {
 
     fn engine_name(&self) -> &str {
         "nsql"
-    }
-
-    async fn sleep(dur: Duration) {
-        tokio::time::sleep(dur).await
     }
 }

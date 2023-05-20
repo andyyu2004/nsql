@@ -5,7 +5,6 @@
 
 pub mod schema;
 mod table_storage;
-mod transaction;
 pub mod tuple;
 pub mod value;
 mod wal;
