@@ -18,10 +18,11 @@ pub(crate) struct Scope {
 
 impl Scope {
     /// Insert a table and its columns to the scope
-    #[tracing::instrument(skip(self, binder, table_ref))]
+    #[tracing::instrument(skip(self, tx, binder, table_ref))]
     pub fn bind_table<S: StorageEngine>(
         &self,
         binder: &Binder<S>,
+        tx: &S::Transaction<'_>,
         table_path: Path,
         table_ref: ir::TableRef<S>,
         alias: Option<&TableAlias>,
@@ -29,8 +30,8 @@ impl Scope {
         tracing::debug!("binding table");
         let mut columns = self.columns.clone();
 
-        let table = table_ref.get(&binder.catalog, &binder.tx);
-        let mut table_columns = table.all::<Column>(&binder.tx);
+        let table = table_ref.get(&binder.catalog, tx);
+        let mut table_columns = table.all::<Column>(tx);
         table_columns.sort_by_key(|(_, col)| col.index());
 
         if let Some(alias) = alias {

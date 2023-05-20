@@ -2,6 +2,7 @@ use std::collections::HashSet;
 use std::sync::Arc;
 
 pub(crate) use nsql_arena::{Arena, Idx};
+use nsql_storage_engine::StorageEngine;
 
 use crate::{PhysicalNode, PhysicalOperator, PhysicalSink, PhysicalSource};
 
@@ -135,7 +136,7 @@ impl<S> MetaPipelineBuilder<S> {
     }
 }
 
-impl<S> PipelineBuilderArena<S> {
+impl<S: StorageEngine> PipelineBuilderArena<S> {
     pub(crate) fn new_child_meta_pipeline(
         &mut self,
         parent: Idx<MetaPipelineBuilder<S>>,

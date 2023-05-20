@@ -3,7 +3,7 @@ mod column;
 use std::fmt;
 use std::sync::Arc;
 
-use nsql_storage::{TableStorage, Transaction};
+use nsql_storage::TableStorage;
 use nsql_storage_engine::StorageEngine;
 
 pub use self::column::{Column, ColumnIndex, CreateColumnInfo};
@@ -73,7 +73,7 @@ impl<S: StorageEngine> CatalogEntity<S> for Table<S> {
         &container.tables
     }
 
-    fn create(_tx: &Transaction, info: Self::CreateInfo) -> Self {
+    fn create(_tx: &S::Transaction<'_>, info: Self::CreateInfo) -> Self {
         Self { name: info.name, storage: info.storage, columns: Default::default() }
     }
 }

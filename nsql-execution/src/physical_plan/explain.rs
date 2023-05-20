@@ -2,7 +2,6 @@ use std::fmt;
 
 use nsql_arena::Idx;
 use nsql_catalog::Catalog;
-use nsql_storage::Transaction;
 use nsql_storage_engine::StorageEngine;
 
 use crate::pipeline::MetaPipeline;

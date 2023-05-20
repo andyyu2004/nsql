@@ -1,5 +1,4 @@
 use nsql_serde::{StreamDeserialize, StreamSerialize};
-use nsql_storage::Transaction;
 use nsql_storage_engine::StorageEngine;
 
 use crate::private::CatalogEntity;
@@ -12,9 +11,9 @@ pub struct Namespace<S> {
     pub(crate) tables: CatalogSet<S, Table<S>>,
 }
 
-pub trait NamespaceEntity<S>: CatalogEntity<S, Container = Namespace<S>> {}
+pub trait NamespaceEntity<S: StorageEngine>: CatalogEntity<S, Container = Namespace<S>> {}
 
-impl<S, T: CatalogEntity<S, Container = Namespace<S>>> NamespaceEntity<S> for T {}
+impl<S: StorageEngine, T: CatalogEntity<S, Container = Namespace<S>>> NamespaceEntity<S> for T {}
 
 impl<S: StorageEngine> Container<S> for Namespace<S> {}
 
@@ -34,7 +33,7 @@ impl<S: StorageEngine> CatalogEntity<S> for Namespace<S> {
     }
 
     #[inline]
-    fn create(_tx: &Transaction, info: Self::CreateInfo) -> Self {
+    fn create(_tx: &S::Transaction<'_>, info: Self::CreateInfo) -> Self {
         Self { name: info.name, tables: Default::default() }
     }
 }

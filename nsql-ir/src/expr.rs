@@ -5,9 +5,7 @@ use std::ops::Deref;
 use std::sync::Arc;
 
 pub use eval::EvalNotConst;
-use nsql_catalog::{
-    Catalog, Column, ColumnIndex, Container, EntityRef, Namespace, Oid, Table, Transaction,
-};
+use nsql_catalog::{Catalog, Column, ColumnIndex, Container, EntityRef, Namespace, Oid, Table};
 use nsql_storage::schema::LogicalType;
 use nsql_storage::tuple::TupleIndex;
 use nsql_storage::value::Value;
@@ -147,7 +145,7 @@ impl<S: StorageEngine> EntityRef<S> for TableRef<S> {
     type Container = Namespace<S>;
 
     #[inline]
-    fn container(self, catalog: &Catalog<S>, tx: &Transaction) -> Arc<Self::Container> {
+    fn container(self, catalog: &Catalog<S>, tx: &S::Transaction<'_>) -> Arc<Self::Container> {
         catalog.get(tx, self.namespace).expect("namespace should exist for `tx`")
     }
 
@@ -178,7 +176,7 @@ impl<S: StorageEngine> EntityRef<S> for ColumnRef<S> {
     type Container = Table<S>;
 
     #[inline]
-    fn container(self, catalog: &Catalog<S>, tx: &Transaction) -> Arc<Self::Container> {
+    fn container(self, catalog: &Catalog<S>, tx: &S::Transaction<'_>) -> Arc<Self::Container> {
         self.table_ref.get(catalog, tx)
     }
 

@@ -1,11 +1,10 @@
 use std::sync::Arc;
 
-use futures_util::{stream, Stream, StreamExt};
+use futures_util::Stream;
 use nsql_storage_engine::StorageEngine;
 
 use crate::schema::Schema;
 use crate::tuple::{Tuple, TupleIndex};
-use crate::{Transaction, Xid};
 
 pub struct TableStorage<S> {
     storage: S,
@@ -19,7 +18,7 @@ impl<S: StorageEngine> TableStorage<S> {
     }
 
     #[inline]
-    pub async fn append(&self, tx: &Arc<Transaction>, tuple: &Tuple) -> nsql_buffer::Result<()> {
+    pub async fn append(&self, tx: &S::Transaction<'_>, tuple: &Tuple) -> nsql_buffer::Result<()> {
         todo!();
         Ok(())
     }
@@ -27,7 +26,7 @@ impl<S: StorageEngine> TableStorage<S> {
     #[inline]
     pub async fn update(
         &self,
-        tx: &Arc<Transaction>,
+        tx: &S::Transaction<'_>,
         id: &Tuple,
         tuple: &Tuple,
     ) -> nsql_buffer::Result<()> {

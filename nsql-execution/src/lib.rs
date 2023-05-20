@@ -17,7 +17,6 @@ use nsql_arena::Idx;
 use nsql_buffer::Pool;
 use nsql_catalog::Catalog;
 use nsql_storage::tuple::Tuple;
-use nsql_storage::Transaction;
 use nsql_storage_engine::StorageEngine;
 pub use physical_plan::PhysicalPlanner;
 use smallvec::SmallVec;
@@ -32,7 +31,10 @@ use self::pipeline::{
 
 pub type ExecutionResult<T, E = Error> = std::result::Result<T, E>;
 
-fn build_pipelines<S>(sink: Arc<dyn PhysicalSink<S>>, plan: PhysicalPlan<S>) -> RootPipeline<S> {
+fn build_pipelines<S: StorageEngine>(
+    sink: Arc<dyn PhysicalSink<S>>,
+    plan: PhysicalPlan<S>,
+) -> RootPipeline<S> {
     let (mut builder, root_meta_pipeline) = PipelineBuilderArena::new(sink);
     builder.build(root_meta_pipeline, plan.root());
     let arena = builder.finish();

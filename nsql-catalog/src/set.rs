@@ -1,13 +1,11 @@
 use std::error::Error;
 use std::fmt;
 use std::marker::PhantomData;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 
-use dashmap::mapref::entry::Entry;
 use dashmap::DashMap;
 use nsql_core::Name;
-use nsql_serde::{AsyncReadExt, StreamDeserialize, StreamDeserializeWith, StreamDeserializer};
-use nsql_storage::{Transaction, Version};
+use nsql_storage_engine::StorageEngine;
 
 use crate::entry::Oid;
 use crate::private::CatalogEntity;
@@ -34,15 +32,15 @@ impl fmt::Display for WriteOperation {
     }
 }
 
-impl<S, T: CatalogEntity<S>> Error for Conflict<S, T> {}
+impl<S: StorageEngine, T: CatalogEntity<S>> Error for Conflict<S, T> {}
 
-impl<S, T: CatalogEntity<S>> fmt::Debug for Conflict<S, T> {
+impl<S: StorageEngine, T: CatalogEntity<S>> fmt::Debug for Conflict<S, T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{self}")
     }
 }
 
-impl<S, T: CatalogEntity<S>> fmt::Display for Conflict<S, T> {
+impl<S: StorageEngine, T: CatalogEntity<S>> fmt::Display for Conflict<S, T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Conflict::AlreadyExists(_, entity) => {
@@ -57,7 +55,7 @@ impl<S, T: CatalogEntity<S>> fmt::Display for Conflict<S, T> {
 
 #[derive(Debug)]
 pub struct CatalogSet<S, T> {
-    entries: DashMap<Oid<T>, VersionedEntry<T>>,
+    entries: DashMap<Oid<T>, VersionedEntry<S, T>>,
     name_mapping: DashMap<Name, Oid<T>>,
     _marker: std::marker::PhantomData<S>,
 }
@@ -69,28 +67,6 @@ impl<S, T> CatalogSet<S, T> {
             name_mapping: DashMap::with_capacity(capacity),
             _marker: std::marker::PhantomData,
         }
-    }
-}
-
-impl<S, T> StreamDeserializeWith for CatalogSet<S, T>
-where
-    T: CatalogEntity<S>,
-    T::CreateInfo: StreamDeserialize,
-{
-    type Context<'a> = Transaction;
-
-    async fn deserialize_with<D: StreamDeserializer>(
-        tx: &Self::Context<'_>,
-        de: &mut D,
-    ) -> nsql_serde::Result<Self> {
-        let len = de.read_u32().await? as usize;
-        let set = Self::with_capacity(len);
-        for _ in 0..len {
-            let item = T::CreateInfo::deserialize(de).await?;
-            set.create(tx, item)
-                .expect("creation should not fail as it was serialized from a valid state");
-        }
-        Ok(set)
     }
 }
 
@@ -107,51 +83,52 @@ impl<S, T> Default for CatalogSet<S, T> {
 // FIXME hack implementation that will get by for now
 // This should eventually maybe share code with the heap tuple versioning
 #[derive(Debug)]
-struct VersionedEntry<T> {
-    versions: Vec<Arc<CatalogEntry<T>>>,
+struct VersionedEntry<S, T> {
+    versions: Vec<Arc<CatalogEntry<S, T>>>,
 }
 
-impl<T> VersionedEntry<T> {
-    pub(crate) fn new(entry: CatalogEntry<T>) -> Self {
+impl<S: StorageEngine, T> VersionedEntry<S, T> {
+    pub(crate) fn new(entry: CatalogEntry<S, T>) -> Self {
         Self { versions: vec![Arc::new(entry)] }
     }
 }
 
-impl<T> VersionedEntry<T> {
+impl<S: StorageEngine, T> VersionedEntry<S, T> {
     /// Get the latest visible version for the given transaction.
-    pub(crate) fn version_for_tx(&self, tx: &Transaction) -> Option<Arc<CatalogEntry<T>>> {
-        self.versions.iter().rev().find(|version| tx.can_see(version.version())).map(Arc::clone)
+    pub(crate) fn version_for_tx(
+        &self,
+        tx: &S::Transaction<'_>,
+    ) -> Option<Arc<CatalogEntry<S, T>>> {
+        todo!()
     }
 
-    pub(crate) fn latest(&self) -> Arc<CatalogEntry<T>> {
+    pub(crate) fn latest(&self) -> Arc<CatalogEntry<S, T>> {
         Arc::clone(self.versions.last().expect("must have at least one version"))
     }
 
-    pub(crate) fn delete(&mut self, tx: &Transaction) {
+    pub(crate) fn delete(&mut self, tx: &S::Transaction<'_>) {
         let version = self
             .version_for_tx(tx)
             .expect("caller must ensure there is a visible version for the given transaction");
         version.delete(tx);
     }
 
-    pub(crate) fn push_version(&mut self, version: CatalogEntry<T>) {
-        assert!(self.latest().version().xmax().is_some(), "must delete the latest version first?");
-        debug_assert!(
-            self.versions.is_empty()
-                || self.versions.last().unwrap().version().xmin() < version.version().xmin(),
-            "versions must be ordered by xmin"
-        );
-        self.versions.push(Arc::new(version))
+    pub(crate) fn push_version(&mut self, version: CatalogEntry<S, T>) {
+        todo!()
     }
 }
 
-impl<S, T: CatalogEntity<S>> CatalogSet<S, T> {
+impl<S: StorageEngine, T: CatalogEntity<S>> CatalogSet<S, T> {
     #[inline]
-    pub fn create(&self, tx: &Transaction, info: T::CreateInfo) -> Result<Oid<T>, Conflict<S, T>> {
+    pub fn create(
+        &self,
+        tx: &S::Transaction<'_>,
+        info: T::CreateInfo,
+    ) -> Result<Oid<T>, Conflict<S, T>> {
         self.insert(tx, T::create(tx, info))
     }
 
-    pub(crate) fn entries(&self, tx: &Transaction) -> Vec<(Oid<T>, Arc<T>)> {
+    pub(crate) fn entries(&self, tx: &S::Transaction<'_>) -> Vec<(Oid<T>, Arc<T>)> {
         self.entries
             .iter()
             .enumerate()
@@ -161,11 +138,15 @@ impl<S, T: CatalogEntity<S>> CatalogSet<S, T> {
             .collect()
     }
 
-    pub(crate) fn get(&self, tx: &Transaction, oid: Oid<T>) -> Option<Arc<T>> {
+    pub(crate) fn get(&self, tx: &S::Transaction<'_>, oid: Oid<T>) -> Option<Arc<T>> {
         self.entries.get(&oid).unwrap().version_for_tx(tx).map(|entry| entry.value())
     }
 
-    pub(crate) fn get_by_name(&self, tx: &Transaction, name: &str) -> Option<(Oid<T>, Arc<T>)> {
+    pub(crate) fn get_by_name(
+        &self,
+        tx: &S::Transaction<'_>,
+        name: &str,
+    ) -> Option<(Oid<T>, Arc<T>)> {
         self.find(name).and_then(|oid| self.get(tx, oid).map(|item| (oid, item)))
     }
 
@@ -173,63 +154,25 @@ impl<S, T: CatalogEntity<S>> CatalogSet<S, T> {
         Some(*self.name_mapping.get(name.as_ref())?.value())
     }
 
-    pub(crate) fn delete(&self, tx: &Transaction, oid: Oid<T>) -> Result<(), Conflict<S, T>> {
+    pub(crate) fn delete(
+        &self,
+        tx: &S::Transaction<'_>,
+        oid: Oid<T>,
+    ) -> Result<(), Conflict<S, T>> {
         self.entries.get_mut(&oid).expect("passed invalid `oid` somehow").delete(tx);
         Ok(())
     }
 
-    pub(crate) fn insert(&self, tx: &Transaction, value: T) -> Result<Oid<T>, Conflict<S, T>> {
+    pub(crate) fn insert(
+        &self,
+        tx: &S::Transaction<'_>,
+        value: T,
+    ) -> Result<Oid<T>, Conflict<S, T>> {
         // NOTE: this function takes &self and not &mut self, so we need to be mindful of correctness under concurrent usage.
-
-        match self.name_mapping.entry(value.name()) {
-            Entry::Occupied(mut entry) => {
-                // If there is an existing entry, we need to check for conflicts with our insertion
-                let latest = self.latest(*entry.get());
-                if !tx.can_see(latest.version()) {
-                    // If the existing entry is not visible to our transaction, then either
-                    match latest.version().xmax() {
-                        // 1. It was deleted before our transaction started (or we deleted it ourserlves),
-                        //    in which case we can insert the new entry
-                        Some(xmax) if xmax <= tx.xid() => {
-                            let oid = self.next_oid();
-                            entry.insert(oid);
-                            debug_assert!(
-                                self.entries.get(&oid).is_none(),
-                                "next_oid() should return a unique oid"
-                            );
-
-                            let _entry = self.entries.entry(oid).or_insert_with(|| {
-                                VersionedEntry::new(CatalogEntry::new(tx, value))
-                            });
-
-                            Ok(oid)
-                        }
-                        // 2. It was created after our transaction started, in which case we have a write-write conflict
-                        _ => Err(Conflict::WriteWrite(WriteOperation::Create, value)),
-                    }
-                } else {
-                    // Otherwise, the existing entry is visible to our transaction, so we return an `AlreadyExists` conflict
-                    Err(Conflict::AlreadyExists(PhantomData, value))
-                }
-            }
-            Entry::Vacant(entry) => {
-                let oid = self.next_oid();
-                entry.insert(oid);
-                debug_assert!(
-                    self.entries.get(&oid).is_none(),
-                    "next_oid() should return a unique oid"
-                );
-
-                self.entries
-                    .entry(oid)
-                    .or_insert_with(|| VersionedEntry::new(CatalogEntry::new(tx, value)));
-
-                Ok(oid)
-            }
-        }
+        todo!()
     }
 
-    fn latest(&self, oid: Oid<T>) -> Arc<CatalogEntry<T>> {
+    fn latest(&self, oid: Oid<T>) -> Arc<CatalogEntry<S, T>> {
         self.entries.get(&oid).unwrap().latest()
     }
 
@@ -244,27 +187,22 @@ impl<S, T: CatalogEntity<S>> CatalogSet<S, T> {
 }
 
 #[derive(Debug)]
-struct CatalogEntry<T> {
-    version: RwLock<Version>,
+struct CatalogEntry<S, T> {
     value: Arc<T>,
+    _marker: PhantomData<S>,
 }
 
-impl<T> CatalogEntry<T> {
+impl<S: StorageEngine, T> CatalogEntry<S, T> {
     #[inline]
     pub fn value(&self) -> Arc<T> {
         Arc::clone(&self.value)
     }
 
-    pub(crate) fn new(tx: &Transaction, value: T) -> Self {
-        Self { version: RwLock::new(tx.version()), value: Arc::new(value) }
+    pub(crate) fn new(tx: &S::Transaction<'_>, value: T) -> Self {
+        Self { value: Arc::new(value), _marker: PhantomData }
     }
 
-    pub(crate) fn version(&self) -> Version {
-        *self.version.read().unwrap()
-    }
-
-    fn delete(&self, tx: &Transaction) {
-        let mut version = self.version.write().unwrap();
-        *version = version.delete_with(tx);
+    fn delete(&self, tx: &S::Transaction<'_>) {
+        todo!()
     }
 }

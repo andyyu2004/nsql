@@ -10,7 +10,6 @@ use std::sync::Arc;
 
 pub use anyhow::Error;
 use nsql_core::Name;
-pub use nsql_storage::Transaction;
 use nsql_storage_engine::StorageEngine;
 
 pub use self::entity::namespace::{CreateNamespaceInfo, Namespace, NamespaceEntity};
@@ -30,7 +29,7 @@ pub const DEFAULT_SCHEMA: &str = "main";
 
 impl<S: StorageEngine> Catalog<S> {
     /// Create a blank catalog with the default schema
-    pub fn create(tx: &Transaction) -> Result<Self> {
+    pub fn create(tx: &S::Transaction<'_>) -> Result<Self> {
         let catalog = Self { schemas: Default::default() };
         catalog
             .create::<Namespace<S>>(tx, CreateNamespaceInfo { name: DEFAULT_SCHEMA.into() })
@@ -52,26 +51,26 @@ pub trait EntityRef<S: StorageEngine>: Copy {
 
     type Container: Container<S>;
 
-    fn container(self, catalog: &Catalog<S>, tx: &Transaction) -> Arc<Self::Container>;
+    fn container(self, catalog: &Catalog<S>, tx: &S::Transaction<'_>) -> Arc<Self::Container>;
 
     fn entity_oid(self) -> Oid<Self::Entity>;
 
-    fn get(self, catalog: &Catalog<S>, tx: &Transaction) -> Arc<Self::Entity> {
+    fn get(self, catalog: &Catalog<S>, tx: &S::Transaction<'_>) -> Arc<Self::Entity> {
         self.container(catalog, tx)
             .get(tx, self.entity_oid())
             .expect("`oid` should be valid for `tx`")
     }
 
-    fn delete(self, catalog: &Catalog<S>, tx: &Transaction) -> Result<()> {
+    fn delete(self, catalog: &Catalog<S>, tx: &S::Transaction<'_>) -> Result<()> {
         self.container(catalog, tx).delete(tx, self.entity_oid())?;
         Ok(())
     }
 }
 
-pub trait Container<S> {
+pub trait Container<S: StorageEngine> {
     fn create<T: CatalogEntity<S, Container = Self>>(
         &self,
-        tx: &Transaction,
+        tx: &S::Transaction<'_>,
         info: T::CreateInfo,
     ) -> Result<Oid<T>, Conflict<S, T>> {
         T::create(tx, info).insert(self, tx)
@@ -79,7 +78,7 @@ pub trait Container<S> {
 
     fn get<T: CatalogEntity<S, Container = Self>>(
         &self,
-        tx: &Transaction,
+        tx: &S::Transaction<'_>,
         oid: Oid<T>,
     ) -> Option<Arc<T>> {
         T::get(self, tx, oid)
@@ -89,7 +88,7 @@ pub trait Container<S> {
     /// Panics if the `oid` is not visible to `tx`.
     fn delete<T: CatalogEntity<S, Container = Self>>(
         &self,
-        tx: &Transaction,
+        tx: &S::Transaction<'_>,
         oid: Oid<T>,
     ) -> Result<(), Conflict<S, T>> {
         T::delete(self, tx, oid)
@@ -97,7 +96,7 @@ pub trait Container<S> {
 
     fn get_by_name<T: CatalogEntity<S, Container = Self>>(
         &self,
-        tx: &Transaction,
+        tx: &S::Transaction<'_>,
         name: impl AsRef<str>,
     ) -> Result<Option<(Oid<T>, Arc<T>)>> {
         Ok(T::get_by_name(self, tx, name.as_ref()))
@@ -107,9 +106,9 @@ pub trait Container<S> {
         Ok(T::find(self, name))
     }
 
-    fn all<'a, T: CatalogEntity<S, Container = Self>>(
-        &'a self,
-        tx: &'a Transaction,
+    fn all<T: CatalogEntity<S, Container = Self>>(
+        &self,
+        tx: &S::Transaction<'_>,
     ) -> Vec<(Oid<T>, Arc<T>)> {
         T::all(self, tx)
     }
@@ -122,7 +121,7 @@ pub(crate) mod private {
 
     /// This trait is sealed and cannot be implemented for types outside of this crate.
     /// These method should also not be visible to users of this crate.
-    pub trait CatalogEntity<S>: Entity + Send + Sync + Sized + 'static {
+    pub trait CatalogEntity<S: StorageEngine>: Entity + Send + Sync + Sized + 'static {
         type Container;
 
         type CreateInfo;
@@ -130,13 +129,13 @@ pub(crate) mod private {
         /// extract the `CatalogSet` from the `container` for `Self`
         fn catalog_set(container: &Self::Container) -> &CatalogSet<S, Self>;
 
-        fn create(tx: &Transaction, info: Self::CreateInfo) -> Self;
+        fn create(tx: &S::Transaction<'_>, info: Self::CreateInfo) -> Self;
 
         #[inline]
         fn insert(
             self,
             container: &Self::Container,
-            tx: &Transaction,
+            tx: &S::Transaction<'_>,
         ) -> Result<Oid<Self>, Conflict<S, Self>> {
             Self::catalog_set(container).insert(tx, self)
         }
@@ -145,20 +144,24 @@ pub(crate) mod private {
         fn try_insert(
             self,
             container: &Self::Container,
-            tx: &Transaction,
+            tx: &S::Transaction<'_>,
         ) -> Result<Oid<Self>, Conflict<S, Self>> {
             Self::catalog_set(container).insert(tx, self)
         }
 
         #[inline]
-        fn get(container: &Self::Container, tx: &Transaction, oid: Oid<Self>) -> Option<Arc<Self>> {
+        fn get(
+            container: &Self::Container,
+            tx: &S::Transaction<'_>,
+            oid: Oid<Self>,
+        ) -> Option<Arc<Self>> {
             Self::catalog_set(container).get(tx, oid)
         }
 
         #[inline]
         fn delete(
             container: &Self::Container,
-            tx: &Transaction,
+            tx: &S::Transaction<'_>,
             oid: Oid<Self>,
         ) -> Result<(), Conflict<S, Self>> {
             Self::catalog_set(container).delete(tx, oid)
@@ -167,7 +170,7 @@ pub(crate) mod private {
         #[inline]
         fn get_by_name(
             container: &Self::Container,
-            tx: &Transaction,
+            tx: &S::Transaction<'_>,
             name: &str,
         ) -> Option<(Oid<Self>, Arc<Self>)> {
             Self::catalog_set(container).get_by_name(tx, name)
@@ -179,7 +182,10 @@ pub(crate) mod private {
         }
 
         #[inline]
-        fn all(container: &Self::Container, tx: &Transaction) -> Vec<(Oid<Self>, Arc<Self>)> {
+        fn all(
+            container: &Self::Container,
+            tx: &S::Transaction<'_>,
+        ) -> Vec<(Oid<Self>, Arc<Self>)> {
             Self::catalog_set(container).entries(tx)
         }
     }

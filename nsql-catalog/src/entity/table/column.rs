@@ -2,7 +2,7 @@ use std::fmt;
 
 use nsql_serde::{StreamDeserialize, StreamSerialize};
 use nsql_storage::schema::LogicalType;
-use nsql_storage::Transaction;
+use nsql_storage_engine::StorageEngine;
 
 use crate::private::CatalogEntity;
 use crate::set::CatalogSet;
@@ -73,7 +73,7 @@ impl Entity for Column {
     }
 }
 
-impl<S> CatalogEntity<S> for Column {
+impl<S: StorageEngine> CatalogEntity<S> for Column {
     type Container = Table<S>;
 
     type CreateInfo = CreateColumnInfo;
@@ -82,7 +82,7 @@ impl<S> CatalogEntity<S> for Column {
         &table.columns
     }
 
-    fn create(_tx: &Transaction, info: Self::CreateInfo) -> Self {
+    fn create(_tx: &S::Transaction<'_>, info: Self::CreateInfo) -> Self {
         Self { name: info.name, index: ColumnIndex::new(info.index), ty: info.ty }
     }
 }

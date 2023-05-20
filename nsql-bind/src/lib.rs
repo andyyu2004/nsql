@@ -17,14 +17,12 @@ use nsql_catalog::{
 use nsql_core::Name;
 use nsql_parse::ast::{self, HiveDistributionStyle};
 use nsql_storage::schema::LogicalType;
-use nsql_storage::Transaction;
 use nsql_storage_engine::StorageEngine;
 
 use self::scope::Scope;
 
 pub struct Binder<S> {
     catalog: Arc<Catalog<S>>,
-    tx: Arc<Transaction>,
 }
 
 macro_rules! not_implemented {
@@ -49,11 +47,11 @@ use unbound;
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 
 impl<S: StorageEngine> Binder<S> {
-    pub fn new(catalog: Arc<Catalog<S>>, tx: Arc<Transaction>) -> Self {
-        Self { catalog, tx }
+    pub fn new(catalog: Arc<Catalog<S>>) -> Self {
+        Self { catalog }
     }
 
-    pub fn bind(&self, stmt: &ast::Statement) -> Result<ir::Stmt<S>> {
+    pub fn bind(&self, tx: &S::Transaction<'_>, stmt: &ast::Statement) -> Result<ir::Stmt<S>> {
         let scope = &Scope::default();
         let stmt = match stmt {
             ast::Statement::CreateTable {
@@ -151,7 +149,7 @@ impl<S: StorageEngine> Binder<S> {
                 not_implemented!(on.is_some());
 
                 // We bind the columns of the table first, so that we can use them in the following projection
-                let (scope, table_ref) = self.bind_table(scope, table_name, None)?;
+                let (scope, table_ref) = self.bind_table(tx, scope, table_name, None)?;
 
                 // We model the insertion columns list as a projection over the source
                 let projection = columns
@@ -160,7 +158,7 @@ impl<S: StorageEngine> Binder<S> {
                     .map(|expr| self.bind_expr(&scope, &expr))
                     .collect::<Result<_>>()?;
 
-                let (scope, source) = self.bind_query(&scope, source)?;
+                let (scope, source) = self.bind_query(tx, &scope, source)?;
                 let returning = returning
                     .as_ref()
                     .map(|items| {
@@ -174,7 +172,7 @@ impl<S: StorageEngine> Binder<S> {
                 ir::Stmt::Insert { table_ref, projection, source, returning }
             }
             ast::Statement::Query(query) => {
-                let (_scope, query) = self.bind_query(scope, query)?;
+                let (_scope, query) = self.bind_query(tx, scope, query)?;
                 ir::Stmt::Query(query)
             }
             ast::Statement::StartTransaction { modes } => {
@@ -212,7 +210,7 @@ impl<S: StorageEngine> Binder<S> {
                     .map(|name| match object_type {
                         ast::ObjectType::Table => {
                             let (namespace, table) =
-                                self.bind_namespaced_entity::<Table<S>>(name)?;
+                                self.bind_namespaced_entity::<Table<S>>(tx, name)?;
                             Ok(ir::EntityRef::Table(ir::TableRef { namespace, table }))
                         }
                         ast::ObjectType::View => todo!(),
@@ -236,14 +234,14 @@ impl<S: StorageEngine> Binder<S> {
                         not_implemented!(alias.is_some());
                         not_implemented!(args.is_some());
                         not_implemented!(!with_hints.is_empty());
-                        self.bind_table(scope, name, alias.as_ref())?
+                        self.bind_table(tx, scope, name, alias.as_ref())?
                     }
                     _ => not_implemented!("update with non-table relation"),
                 };
 
                 // FIXME hacky way to build the projection
-                let table = table_ref.get(&self.catalog, &self.tx);
-                let columns = table.all::<Column>(&self.tx);
+                let table = table_ref.get(&self.catalog, tx);
+                let columns = table.all::<Column>(tx);
                 let projection = Some(
                     columns
                         .iter()
@@ -262,7 +260,7 @@ impl<S: StorageEngine> Binder<S> {
                     source = source.filter(predicate);
                 }
 
-                let assignments = self.bind_assignments(&scope, table_ref, assignments)?;
+                let assignments = self.bind_assignments(tx, &scope, table_ref, assignments)?;
                 source = source.project(assignments);
 
                 let returning = returning
@@ -286,7 +284,7 @@ impl<S: StorageEngine> Binder<S> {
                     false => ir::ExplainMode::Physical,
                     true => ir::ExplainMode::Pipeline,
                 };
-                ir::Stmt::Explain(kind, Box::new(self.bind(statement)?))
+                ir::Stmt::Explain(kind, Box::new(self.bind(tx, statement)?))
             }
             ast::Statement::SetVariable { local: _, hivevar: _, variable: _, value: _ } => todo!(),
             _ => unimplemented!("unimplemented statement: {:?}", stmt),
@@ -297,12 +295,13 @@ impl<S: StorageEngine> Binder<S> {
 
     fn bind_assignments(
         &self,
+        tx: &S::Transaction<'_>,
         scope: &Scope,
         table_ref: ir::TableRef<S>,
         assignments: &[ast::Assignment],
     ) -> Result<Box<[ir::Expr]>> {
-        let table = table_ref.get(&self.catalog, &self.tx);
-        let columns = table.all::<Column>(&self.tx);
+        let table = table_ref.get(&self.catalog, tx);
+        let columns = table.all::<Column>(tx);
 
         for assignment in assignments {
             assert!(!assignment.id.is_empty());
@@ -389,19 +388,23 @@ impl<S: StorageEngine> Binder<S> {
 
     fn bind_namespaced_entity<T: NamespaceEntity<S>>(
         &self,
+        tx: &S::Transaction<'_>,
         path: &Path,
     ) -> Result<(Oid<Namespace<S>>, Oid<T>)> {
         match path {
-            Path::Unqualified(name) => self.bind_namespaced_entity(&Path::Qualified {
-                prefix: Box::new(Path::Unqualified(DEFAULT_SCHEMA.into())),
-                name: name.clone(),
-            }),
+            Path::Unqualified(name) => self.bind_namespaced_entity(
+                tx,
+                &Path::Qualified {
+                    prefix: Box::new(Path::Unqualified(DEFAULT_SCHEMA.into())),
+                    name: name.clone(),
+                },
+            ),
             Path::Qualified { prefix, name } => match prefix.as_ref() {
                 Path::Qualified { .. } => not_implemented!("qualified schemas"),
                 Path::Unqualified(schema) => {
                     let (schema_oid, schema) = self
                         .catalog
-                        .get_by_name::<Namespace<S>>(&self.tx, schema.as_str())?
+                        .get_by_name::<Namespace<S>>(tx, schema.as_str())?
                         .ok_or_else(|| unbound!(Namespace<S>, path))?;
 
                     let entity_oid = schema.find(name)?.ok_or_else(|| unbound!(T, path))?;
@@ -426,6 +429,7 @@ impl<S: StorageEngine> Binder<S> {
 
     fn bind_query(
         &self,
+        tx: &S::Transaction<'_>,
         scope: &Scope,
         query: &ast::Query,
     ) -> Result<(Scope, Box<ir::QueryPlan<S>>)> {
@@ -436,7 +440,7 @@ impl<S: StorageEngine> Binder<S> {
         not_implemented!(fetch.is_some());
         not_implemented!(!locks.is_empty());
 
-        let (scope, mut table_expr) = self.bind_table_expr(scope, body)?;
+        let (scope, mut table_expr) = self.bind_table_expr(tx, scope, body)?;
 
         if let Some(limit) = limit {
             // LIMIT is currently not allowed to reference any columns
@@ -454,11 +458,12 @@ impl<S: StorageEngine> Binder<S> {
 
     fn bind_table_expr(
         &self,
+        tx: &S::Transaction<'_>,
         scope: &Scope,
         body: &ast::SetExpr,
     ) -> Result<(Scope, Box<ir::QueryPlan<S>>)> {
         let (scope, expr) = match body {
-            ast::SetExpr::Select(sel) => self.bind_select(scope, sel)?,
+            ast::SetExpr::Select(sel) => self.bind_select(tx, scope, sel)?,
             ast::SetExpr::Query(_) => todo!(),
             ast::SetExpr::SetOperation { .. } => todo!(),
             ast::SetExpr::Values(values) => {
@@ -475,6 +480,7 @@ impl<S: StorageEngine> Binder<S> {
 
     fn bind_select(
         &self,
+        tx: &S::Transaction<'_>,
         scope: &Scope,
         select: &ast::Select,
     ) -> Result<(Scope, Box<ir::QueryPlan<S>>)> {
@@ -506,7 +512,7 @@ impl<S: StorageEngine> Binder<S> {
 
         let (scope, mut source) = match &from[..] {
             [] => (scope.clone(), Box::new(ir::QueryPlan::Empty)),
-            [table] => self.bind_joint_tables(scope, table)?,
+            [table] => self.bind_joint_tables(tx, scope, table)?,
             _ => todo!(),
         };
 
@@ -526,16 +532,18 @@ impl<S: StorageEngine> Binder<S> {
 
     fn bind_joint_tables(
         &self,
+        tx: &S::Transaction<'_>,
         scope: &Scope,
         tables: &ast::TableWithJoins,
     ) -> Result<(Scope, Box<ir::QueryPlan<S>>)> {
         not_implemented!(!tables.joins.is_empty());
         let table = &tables.relation;
-        self.bind_table_factor(scope, table)
+        self.bind_table_factor(tx, scope, table)
     }
 
     fn bind_table_factor(
         &self,
+        tx: &S::Transaction<'_>,
         scope: &Scope,
         table: &ast::TableFactor,
     ) -> Result<(Scope, Box<ir::QueryPlan<S>>)> {
@@ -544,13 +552,13 @@ impl<S: StorageEngine> Binder<S> {
                 not_implemented!(args.is_some());
                 not_implemented!(!with_hints.is_empty());
 
-                let (scope, table_ref) = self.bind_table(scope, name, alias.as_ref())?;
+                let (scope, table_ref) = self.bind_table(tx, scope, name, alias.as_ref())?;
                 (scope, Box::new(ir::QueryPlan::TableRef { table_ref, projection: None }))
             }
             ast::TableFactor::Derived { lateral, subquery, alias } => {
                 not_implemented!(*lateral);
 
-                let (mut scope, subquery) = self.bind_query(scope, subquery)?;
+                let (mut scope, subquery) = self.bind_query(tx, scope, subquery)?;
                 if let Some(alias) = alias {
                     scope = scope.alias(self.lower_table_alias(alias))?;
                 }
@@ -568,16 +576,17 @@ impl<S: StorageEngine> Binder<S> {
 
     fn bind_table(
         &self,
+        tx: &S::Transaction<'_>,
         scope: &Scope,
         table_name: &ast::ObjectName,
         alias: Option<&ast::TableAlias>,
     ) -> Result<(Scope, ir::TableRef<S>)> {
         let alias = alias.map(|alias| self.lower_table_alias(alias));
         let table_name = self.lower_path(&table_name.0)?;
-        let (namespace, table) = self.bind_namespaced_entity::<Table<S>>(&table_name)?;
+        let (namespace, table) = self.bind_namespaced_entity::<Table<S>>(tx, &table_name)?;
         let table_ref = ir::TableRef { namespace, table };
 
-        Ok((scope.bind_table(self, table_name, table_ref, alias.as_ref())?, table_ref))
+        Ok((scope.bind_table(self, tx, table_name, table_ref, alias.as_ref())?, table_ref))
     }
 
     fn lower_table_alias(&self, alias: &ast::TableAlias) -> TableAlias {

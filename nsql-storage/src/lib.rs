@@ -11,16 +11,10 @@ pub mod value;
 mod wal;
 
 use std::io;
-use std::sync::Arc;
 
-use nsql_pager::Pager;
+use nsql_storage_engine::StorageEngine;
 pub use table_storage::{TableStorage, TableStorageInfo};
 use thiserror::Error;
-
-pub use self::transaction::{
-    Transaction, TransactionError, TransactionManager, TransactionState, Transactional, Version,
-    Xid,
-};
 
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 
@@ -30,12 +24,12 @@ pub enum Error {
     Fs(#[from] io::Error),
 }
 
-pub struct Storage {
-    pager: Arc<dyn Pager>,
+pub struct Storage<S> {
+    storage: S,
 }
 
-impl Storage {
-    pub async fn load(&self, _tx: &Transaction) -> Result<()> {
+impl<S: StorageEngine> Storage<S> {
+    pub async fn load(&self, _tx: &S::Transaction<'_>) -> Result<()> {
         todo!()
         // let reader = self.pager.meta_page_reader();
         // let checkpointer = Checkpointer::new(self.pager.as_ref());
@@ -48,12 +42,7 @@ impl Storage {
     }
 
     #[inline]
-    pub fn new(pager: Arc<dyn Pager>) -> Self {
-        Self { pager }
-    }
-
-    #[inline]
-    pub fn pager(&self) -> Arc<dyn Pager> {
-        Arc::clone(&self.pager)
+    pub fn new(storage: S) -> Self {
+        Self { storage }
     }
 }
