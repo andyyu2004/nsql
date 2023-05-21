@@ -9,6 +9,8 @@ use std::path::Path;
 pub trait StorageEngine: Clone + Send + Sync + Sized + 'static {
     type Error: Send + Sync + Error + 'static;
 
+    type Bytes<'txn>: Deref<Target = [u8]>;
+
     type Transaction<'env>: Transaction<'env, Self> + Clone + Send + Sync
     where
         Self: 'env;
@@ -22,7 +24,7 @@ pub trait StorageEngine: Clone + Send + Sync + Sized + 'static {
         Self: 'env + 'txn,
         'env: 'txn;
 
-    type Tree<'env, 'txn>: WriteTree<'env, 'txn, Self>
+    type WriteTree<'env, 'txn>: WriteTree<'env, 'txn, Self>
     where
         Self: 'env + 'txn,
         'env: 'txn;
@@ -48,48 +50,49 @@ pub trait StorageEngine: Clone + Send + Sync + Sized + 'static {
         &self,
         txn: &'txn mut Self::WriteTransaction<'env>,
         name: &str,
-    ) -> Result<Self::Tree<'env, 'txn>, Self::Error>
+    ) -> Result<Self::WriteTree<'env, 'txn>, Self::Error>
     where
         'env: 'txn;
 }
 
-pub trait ReadTree<'env, 'txn, S: StorageEngine> {
-    type Bytes: Deref<Target = [u8]>;
-    // type Range: Iterator<Item = Result<(Self::Bytes, Self::Bytes), S::Error>>;
+pub trait ReadTree<'env, 'txn, S: StorageEngine> {}
 
-    fn get(
+pub trait WriteTree<'env, 'txn, S: StorageEngine>: ReadTree<'env, 'txn, S> {}
+
+pub trait Transaction<'env, S: StorageEngine> {
+    fn get<'txn>(
         &'txn self,
-        txn: &'txn S::Transaction<'_>,
+        tree: &'txn S::ReadTree<'env, 'txn>,
         key: &[u8],
-    ) -> Result<Option<Self::Bytes>, S::Error>;
+    ) -> Result<Option<S::Bytes<'txn>>, S::Error>;
 
-    fn range(
+    fn range<'txn>(
         &'txn self,
-        txn: &'txn S::Transaction<'_>,
+        tree: &'txn S::ReadTree<'env, 'txn>,
         range: impl RangeBounds<[u8]>,
-    ) -> Result<impl Iterator<Item = Result<(Self::Bytes, Self::Bytes), S::Error>>, S::Error>;
+    ) -> Result<impl Iterator<Item = Result<(S::Bytes<'txn>, S::Bytes<'txn>), S::Error>>, S::Error>;
 
-    fn rev_range(
+    fn rev_range<'txn>(
         &'txn self,
-        txn: &'txn S::Transaction<'_>,
+        tree: &'txn S::ReadTree<'env, 'txn>,
         range: impl RangeBounds<[u8]>,
-    ) -> Result<impl Iterator<Item = Result<(Self::Bytes, Self::Bytes), S::Error>>, S::Error>;
+    ) -> Result<impl Iterator<Item = Result<(S::Bytes<'txn>, S::Bytes<'txn>), S::Error>>, S::Error>;
 }
 
-pub trait WriteTree<'env, 'txn, S: StorageEngine>: ReadTree<'env, 'txn, S> {
-    fn put(
-        &mut self,
-        txn: &mut S::WriteTransaction<'_>,
+pub trait WriteTransaction<'env, S: StorageEngine>: Transaction<'env, S> {
+    fn put<'txn>(
+        &'txn mut self,
+        tree: &mut S::WriteTree<'env, 'txn>,
         key: &[u8],
         value: &[u8],
     ) -> Result<(), S::Error>;
 
-    fn delete(&mut self, txn: &mut S::WriteTransaction<'_>, key: &[u8]) -> Result<bool, S::Error>;
-}
+    fn delete<'txn>(
+        &mut self,
+        tree: &mut S::WriteTree<'env, 'txn>,
+        key: &[u8],
+    ) -> Result<bool, S::Error>;
 
-pub trait Transaction<'env, S: StorageEngine> {}
-
-pub trait WriteTransaction<'env, S: StorageEngine>: Transaction<'env, S> {
     fn commit(self) -> Result<(), S::Error>;
 
     fn rollback(self) -> Result<(), S::Error>;

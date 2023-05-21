@@ -4,7 +4,7 @@ use anyhow::bail;
 use nsql_catalog::{Column, Container, Entity, EntityRef};
 use nsql_core::Name;
 use nsql_storage::schema::LogicalType;
-use nsql_storage_engine::StorageEngine;
+use nsql_storage_engine::{StorageEngine, Transaction};
 
 use super::unbound;
 use crate::{Binder, Path, Result, TableAlias};
@@ -22,7 +22,7 @@ impl Scope {
     pub fn bind_table<S: StorageEngine>(
         &self,
         binder: &Binder<S>,
-        tx: &S::Transaction<'_>,
+        tx: &impl Transaction<'_, S>,
         table_path: Path,
         table_ref: ir::TableRef<S>,
         alias: Option<&TableAlias>,

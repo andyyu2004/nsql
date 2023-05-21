@@ -45,13 +45,15 @@ pub struct ReadWriteTx<'env>(heed::RwTxn<'env>);
 impl StorageEngine for LmdbStorageEngine {
     type Error = heed::Error;
 
+    type Bytes<'txn> = &'txn [u8];
+
     type Transaction<'env> = ReadonlyTx<'env>;
 
     type WriteTransaction<'env> = ReadWriteTx<'env>;
 
     type ReadTree<'env, 'txn> = UntypedDatabase where 'env: 'txn;
 
-    type Tree<'env, 'txn> = UntypedDatabase where 'env: 'txn;
+    type WriteTree<'env, 'txn> = UntypedDatabase where 'env: 'txn;
 
     #[inline]
     fn open(path: impl AsRef<Path>) -> Result<Self, Self::Error>
@@ -97,7 +99,7 @@ impl StorageEngine for LmdbStorageEngine {
         &self,
         txn: &'txn mut Self::WriteTransaction<'env>,
         name: &str,
-    ) -> Result<Self::Tree<'env, 'txn>, Self::Error>
+    ) -> Result<Self::WriteTree<'env, 'txn>, Self::Error>
     where
         'env: 'txn,
     {
@@ -105,58 +107,117 @@ impl StorageEngine for LmdbStorageEngine {
     }
 }
 
-impl<'txn> ReadTree<'_, 'txn, LmdbStorageEngine> for UntypedDatabase {
-    type Bytes = &'txn [u8];
+impl<'txn> ReadTree<'_, 'txn, LmdbStorageEngine> for UntypedDatabase {}
 
+impl WriteTree<'_, '_, LmdbStorageEngine> for UntypedDatabase {}
+
+impl<'env> Transaction<'env, LmdbStorageEngine> for ReadonlyTx<'env> {
     #[inline]
-    fn get(
-        &self,
-        txn: &'txn ReadonlyTx<'_>,
+    fn get<'txn>(
+        &'txn self,
+        tree: &<LmdbStorageEngine as StorageEngine>::ReadTree<'env, 'txn>,
         key: &[u8],
-    ) -> Result<Option<Self::Bytes>, heed::Error> {
-        self.get(&txn.0, key)
+    ) -> std::result::Result<
+        Option<<LmdbStorageEngine as StorageEngine>::Bytes<'txn>>,
+        <LmdbStorageEngine as StorageEngine>::Error,
+    > {
+        tree.get(&self.0, key)
     }
 
     #[inline]
-    fn range(
+    fn range<'txn>(
         &'txn self,
-        txn: &'txn ReadonlyTx<'_>,
+        tree: &'txn <LmdbStorageEngine as StorageEngine>::ReadTree<'env, 'txn>,
         range: impl RangeBounds<[u8]>,
-    ) -> Result<impl Iterator<Item = Result<(Self::Bytes, Self::Bytes), heed::Error>>> {
-        self.range(&txn.0, &(range.start_bound(), range.end_bound()))
+    ) -> std::result::Result<
+        impl Iterator<
+            Item = std::result::Result<
+                (
+                    <LmdbStorageEngine as StorageEngine>::Bytes<'txn>,
+                    <LmdbStorageEngine as StorageEngine>::Bytes<'txn>,
+                ),
+                <LmdbStorageEngine as StorageEngine>::Error,
+            >,
+        >,
+        <LmdbStorageEngine as StorageEngine>::Error,
+    > {
+        tree.range(&self.0, &range)
     }
 
     #[inline]
-    fn rev_range(
+    fn rev_range<'txn>(
         &'txn self,
-        txn: &'txn ReadonlyTx<'_>,
+        tree: &'txn <LmdbStorageEngine as StorageEngine>::ReadTree<'env, 'txn>,
         range: impl RangeBounds<[u8]>,
-    ) -> Result<impl Iterator<Item = Result<(Self::Bytes, Self::Bytes), heed::Error>>, heed::Error>
-    {
-        self.rev_range(&txn.0, &range)
+    ) -> std::result::Result<
+        impl Iterator<
+            Item = std::result::Result<
+                (
+                    <LmdbStorageEngine as StorageEngine>::Bytes<'txn>,
+                    <LmdbStorageEngine as StorageEngine>::Bytes<'txn>,
+                ),
+                <LmdbStorageEngine as StorageEngine>::Error,
+            >,
+        >,
+        <LmdbStorageEngine as StorageEngine>::Error,
+    > {
+        tree.rev_range(&self.0, &range)
     }
 }
 
-impl WriteTree<'_, '_, LmdbStorageEngine> for UntypedDatabase {
+impl<'env> Transaction<'env, LmdbStorageEngine> for ReadWriteTx<'env> {
     #[inline]
-    fn put(
-        &mut self,
-        txn: &mut ReadWriteTx<'_>,
+    fn get<'txn>(
+        &'txn self,
+        tree: &<LmdbStorageEngine as StorageEngine>::ReadTree<'env, 'txn>,
         key: &[u8],
-        value: &[u8],
-    ) -> Result<(), heed::Error> {
-        (*self).put(&mut txn.0, key, value)
+    ) -> std::result::Result<
+        Option<<LmdbStorageEngine as StorageEngine>::Bytes<'txn>>,
+        <LmdbStorageEngine as StorageEngine>::Error,
+    > {
+        tree.get(&self.0, key)
     }
 
     #[inline]
-    fn delete(&mut self, txn: &mut ReadWriteTx<'_>, key: &[u8]) -> Result<bool, heed::Error> {
-        (*self).delete(&mut txn.0, key)
+    fn range<'txn>(
+        &'txn self,
+        tree: &'txn <LmdbStorageEngine as StorageEngine>::ReadTree<'env, 'txn>,
+        range: impl RangeBounds<[u8]>,
+    ) -> std::result::Result<
+        impl Iterator<
+            Item = std::result::Result<
+                (
+                    <LmdbStorageEngine as StorageEngine>::Bytes<'txn>,
+                    <LmdbStorageEngine as StorageEngine>::Bytes<'txn>,
+                ),
+                <LmdbStorageEngine as StorageEngine>::Error,
+            >,
+        >,
+        <LmdbStorageEngine as StorageEngine>::Error,
+    > {
+        tree.range(&self.0, &range)
+    }
+
+    #[inline]
+    fn rev_range<'txn>(
+        &'txn self,
+        tree: &'txn <LmdbStorageEngine as StorageEngine>::ReadTree<'env, 'txn>,
+        range: impl RangeBounds<[u8]>,
+    ) -> std::result::Result<
+        impl Iterator<
+            Item = std::result::Result<
+                (
+                    <LmdbStorageEngine as StorageEngine>::Bytes<'txn>,
+                    <LmdbStorageEngine as StorageEngine>::Bytes<'txn>,
+                ),
+                <LmdbStorageEngine as StorageEngine>::Error,
+            >,
+        >,
+        <LmdbStorageEngine as StorageEngine>::Error,
+    > {
+        tree.rev_range(&self.0, &range)
     }
 }
-
-impl<'env> Transaction<'env, LmdbStorageEngine> for ReadonlyTx<'env> {}
-
-impl<'env> Transaction<'env, LmdbStorageEngine> for ReadWriteTx<'env> {}
 
 impl<'env> WriteTransaction<'env, LmdbStorageEngine> for ReadWriteTx<'env> {
     fn commit(self) -> Result<(), heed::Error> {
@@ -168,6 +229,38 @@ impl<'env> WriteTransaction<'env, LmdbStorageEngine> for ReadWriteTx<'env> {
         self.0.abort();
         Ok(())
     }
+
+    fn put<'txn>(
+        &'txn mut self,
+        tree: &mut <LmdbStorageEngine as StorageEngine>::WriteTree<'env, 'txn>,
+        key: &[u8],
+        value: &[u8],
+    ) -> std::result::Result<(), <LmdbStorageEngine as StorageEngine>::Error> {
+        tree.put(&mut self.0, key, value)
+    }
+
+    fn delete<'txn>(
+        &'txn mut self,
+        tree: &mut <LmdbStorageEngine as StorageEngine>::WriteTree<'env, 'txn>,
+        key: &[u8],
+    ) -> std::result::Result<bool, <LmdbStorageEngine as StorageEngine>::Error> {
+        tree.delete(&mut self.0, key)
+    }
+
+    // #[inline]
+    // fn put(
+    //     &mut self,
+    //     txn: &mut ReadWriteTx<'_>,
+    //     key: &[u8],
+    //     value: &[u8],
+    // ) -> Result<(), heed::Error> {
+    //     (*self).put(&mut txn.0, key, value)
+    // }
+    //
+    // #[inline]
+    // fn delete(&mut self, txn: &mut ReadWriteTx<'_>, key: &[u8]) -> Result<bool, heed::Error> {
+    //     (*self).delete(&mut txn.0, key)
+    // }
 }
 
 #[cfg(test)]

@@ -31,6 +31,8 @@ impl<'env> Deref for Transaction<'env> {
 }
 
 impl nsql_storage_engine::StorageEngine for RedbStorageEngine {
+    type Bytes<'txn> = AccessGuardDerefWrapper<'txn>;
+
     type Error = redb::Error;
 
     type Transaction<'env> = ReadTransaction<'env>;
@@ -39,7 +41,7 @@ impl nsql_storage_engine::StorageEngine for RedbStorageEngine {
 
     type ReadTree<'env, 'txn> = redb::ReadOnlyTable<'txn, &'static [u8], &'static [u8]> where 'env: 'txn;
 
-    type Tree<'env, 'txn> = redb::Table<'env, 'txn, &'static [u8], &'static [u8]> where 'env: 'txn;
+    type WriteTree<'env, 'txn> = redb::Table<'env, 'txn, &'static [u8], &'static [u8]> where 'env: 'txn;
 
     #[inline]
     fn open(path: impl AsRef<Path>) -> Result<Self, Self::Error>
@@ -82,7 +84,7 @@ impl nsql_storage_engine::StorageEngine for RedbStorageEngine {
         &self,
         txn: &'txn mut Self::WriteTransaction<'env>,
         name: &str,
-    ) -> Result<Self::Tree<'env, 'txn>, Self::Error>
+    ) -> Result<Self::WriteTree<'env, 'txn>, Self::Error>
     where
         'env: 'txn,
     {
@@ -97,38 +99,6 @@ impl nsql_storage_engine::StorageEngine for RedbStorageEngine {
 impl<'env, 'txn> nsql_storage_engine::ReadTree<'env, 'txn, RedbStorageEngine>
     for redb::ReadOnlyTable<'txn, &[u8], &[u8]>
 {
-    type Bytes = AccessGuardDerefWrapper<'txn>;
-
-    #[inline]
-    fn get(
-        &'txn self,
-        _txn: &'txn ReadTransaction<'_>,
-        key: &[u8],
-    ) -> Result<Option<Self::Bytes>, redb::Error> {
-        Ok(ReadableTable::get(self, key)?.map(AccessGuardDerefWrapper))
-    }
-
-    #[inline]
-    fn range(
-        &'txn self,
-        _txn: &'txn ReadTransaction<'_>,
-        range: impl RangeBounds<[u8]>,
-    ) -> Result<impl Iterator<Item = Result<(Self::Bytes, Self::Bytes), redb::Error>>> {
-        Ok(ReadableTable::range::<&[u8]>(self, (range.start_bound(), range.end_bound()))?
-            .map(|kv| kv.map(|(k, v)| (AccessGuardDerefWrapper(k), AccessGuardDerefWrapper(v)))))
-    }
-
-    #[inline]
-    fn rev_range(
-        &'txn self,
-        _txn: &'txn <RedbStorageEngine as nsql_storage_engine::StorageEngine>::Transaction<'_>,
-        range: impl RangeBounds<[u8]>,
-    ) -> Result<impl Iterator<Item = Result<(Self::Bytes, Self::Bytes), redb::Error>>, redb::Error>
-    {
-        Ok(ReadableTable::range::<&[u8]>(self, (range.start_bound(), range.end_bound()))?
-            .map(|kv| kv.map(|(k, v)| (AccessGuardDerefWrapper(k), AccessGuardDerefWrapper(v))))
-            .rev())
-    }
 }
 
 pub struct AccessGuardDerefWrapper<'a>(AccessGuard<'a, &'a [u8]>);
@@ -145,64 +115,126 @@ impl<'a> Deref for AccessGuardDerefWrapper<'a> {
 impl<'env, 'txn> nsql_storage_engine::ReadTree<'env, 'txn, RedbStorageEngine>
     for redb::Table<'env, 'txn, &[u8], &[u8]>
 {
-    type Bytes = AccessGuardDerefWrapper<'txn>;
-
-    #[inline]
-    fn get(
-        &'txn self,
-        _txn: &'txn ReadTransaction<'_>,
-        key: &[u8],
-    ) -> Result<Option<Self::Bytes>, redb::Error> {
-        Ok(ReadableTable::get(self, key)?.map(AccessGuardDerefWrapper))
-    }
-
-    #[inline]
-    fn range(
-        &'txn self,
-        _txn: &'txn ReadTransaction<'_>,
-        range: impl RangeBounds<[u8]>,
-    ) -> Result<impl Iterator<Item = Result<(Self::Bytes, Self::Bytes), redb::Error>>, redb::Error>
-    {
-        Ok(ReadableTable::range::<&[u8]>(self, (range.start_bound(), range.end_bound()))?
-            .map(|kv| kv.map(|(k, v)| (AccessGuardDerefWrapper(k), AccessGuardDerefWrapper(v)))))
-    }
-
-    #[inline]
-    fn rev_range(
-        &'txn self,
-        _txn: &'txn <RedbStorageEngine as nsql_storage_engine::StorageEngine>::Transaction<'_>,
-        range: impl RangeBounds<[u8]>,
-    ) -> Result<impl Iterator<Item = Result<(Self::Bytes, Self::Bytes), redb::Error>>, redb::Error>
-    {
-        Ok(ReadableTable::range::<&[u8]>(self, (range.start_bound(), range.end_bound()))?
-            .map(|kv| kv.map(|(k, v)| (AccessGuardDerefWrapper(k), AccessGuardDerefWrapper(v))))
-            .rev())
-    }
 }
 
 impl<'env, 'txn> nsql_storage_engine::WriteTree<'env, 'txn, RedbStorageEngine>
     for redb::Table<'env, 'txn, &[u8], &[u8]>
 {
+}
+
+impl<'env> nsql_storage_engine::Transaction<'env, RedbStorageEngine> for ReadTransaction<'env> {
     #[inline]
-    fn put(
-        &mut self,
-        _txn: &mut Transaction<'_>,
+    fn get<'txn>(
+        &'txn self,
+        tree: &'txn <RedbStorageEngine as nsql_storage_engine::StorageEngine>::ReadTree<'env, 'txn>,
         key: &[u8],
-        value: &[u8],
-    ) -> Result<(), redb::Error> {
-        self.insert(key, value)?;
-        Ok(())
+    ) -> std::result::Result<
+        Option<<RedbStorageEngine as nsql_storage_engine::StorageEngine>::Bytes<'txn>>,
+        <RedbStorageEngine as nsql_storage_engine::StorageEngine>::Error,
+    > {
+        Ok(ReadableTable::get(tree, key)?.map(AccessGuardDerefWrapper))
     }
 
     #[inline]
-    fn delete(&mut self, _txn: &mut Transaction<'_>, key: &[u8]) -> Result<bool, redb::Error> {
-        Ok(self.remove(key)?.is_some())
+    fn range<'txn>(
+        &'txn self,
+        tree: &'txn <RedbStorageEngine as nsql_storage_engine::StorageEngine>::ReadTree<'env, 'txn>,
+        range: impl RangeBounds<[u8]>,
+    ) -> std::result::Result<
+        impl Iterator<
+            Item = std::result::Result<
+                (
+                    <RedbStorageEngine as nsql_storage_engine::StorageEngine>::Bytes<'txn>,
+                    <RedbStorageEngine as nsql_storage_engine::StorageEngine>::Bytes<'txn>,
+                ),
+                <RedbStorageEngine as nsql_storage_engine::StorageEngine>::Error,
+            >,
+        >,
+        <RedbStorageEngine as nsql_storage_engine::StorageEngine>::Error,
+    > {
+        Ok(ReadableTable::range::<&[u8]>(tree, (range.start_bound(), range.end_bound()))?
+            .map(|kv| kv.map(|(k, v)| (AccessGuardDerefWrapper(k), AccessGuardDerefWrapper(v)))))
+    }
+
+    #[inline]
+    fn rev_range<'txn>(
+        &'txn self,
+        tree: &'txn <RedbStorageEngine as nsql_storage_engine::StorageEngine>::ReadTree<'env, 'txn>,
+        range: impl RangeBounds<[u8]>,
+    ) -> std::result::Result<
+        impl Iterator<
+            Item = std::result::Result<
+                (
+                    <RedbStorageEngine as nsql_storage_engine::StorageEngine>::Bytes<'txn>,
+                    <RedbStorageEngine as nsql_storage_engine::StorageEngine>::Bytes<'txn>,
+                ),
+                <RedbStorageEngine as nsql_storage_engine::StorageEngine>::Error,
+            >,
+        >,
+        <RedbStorageEngine as nsql_storage_engine::StorageEngine>::Error,
+    > {
+        Ok(ReadableTable::range::<&[u8]>(tree, (range.start_bound(), range.end_bound()))?
+            .map(|kv| kv.map(|(k, v)| (AccessGuardDerefWrapper(k), AccessGuardDerefWrapper(v))))
+            .rev())
     }
 }
 
-impl<'env> nsql_storage_engine::Transaction<'env, RedbStorageEngine> for ReadTransaction<'env> {}
+impl<'env> nsql_storage_engine::Transaction<'env, RedbStorageEngine> for Transaction<'env> {
+    #[inline]
+    fn get<'txn>(
+        &'txn self,
+        tree: &'txn <RedbStorageEngine as nsql_storage_engine::StorageEngine>::ReadTree<'env, 'txn>,
+        key: &[u8],
+    ) -> std::result::Result<
+        Option<<RedbStorageEngine as nsql_storage_engine::StorageEngine>::Bytes<'txn>>,
+        <RedbStorageEngine as nsql_storage_engine::StorageEngine>::Error,
+    > {
+        Ok(ReadableTable::get(tree, key)?.map(AccessGuardDerefWrapper))
+    }
 
-impl<'env> nsql_storage_engine::Transaction<'env, RedbStorageEngine> for Transaction<'env> {}
+    #[inline]
+    fn range<'txn>(
+        &'txn self,
+        tree: &'txn <RedbStorageEngine as nsql_storage_engine::StorageEngine>::ReadTree<'env, 'txn>,
+        range: impl RangeBounds<[u8]>,
+    ) -> std::result::Result<
+        impl Iterator<
+            Item = std::result::Result<
+                (
+                    <RedbStorageEngine as nsql_storage_engine::StorageEngine>::Bytes<'txn>,
+                    <RedbStorageEngine as nsql_storage_engine::StorageEngine>::Bytes<'txn>,
+                ),
+                <RedbStorageEngine as nsql_storage_engine::StorageEngine>::Error,
+            >,
+        >,
+        <RedbStorageEngine as nsql_storage_engine::StorageEngine>::Error,
+    > {
+        Ok(ReadableTable::range::<&[u8]>(tree, (range.start_bound(), range.end_bound()))?
+            .map(|kv| kv.map(|(k, v)| (AccessGuardDerefWrapper(k), AccessGuardDerefWrapper(v)))))
+    }
+
+    #[inline]
+    fn rev_range<'txn>(
+        &'txn self,
+        tree: &'txn <RedbStorageEngine as nsql_storage_engine::StorageEngine>::ReadTree<'env, 'txn>,
+        range: impl RangeBounds<[u8]>,
+    ) -> std::result::Result<
+        impl Iterator<
+            Item = std::result::Result<
+                (
+                    <RedbStorageEngine as nsql_storage_engine::StorageEngine>::Bytes<'txn>,
+                    <RedbStorageEngine as nsql_storage_engine::StorageEngine>::Bytes<'txn>,
+                ),
+                <RedbStorageEngine as nsql_storage_engine::StorageEngine>::Error,
+            >,
+        >,
+        <RedbStorageEngine as nsql_storage_engine::StorageEngine>::Error,
+    > {
+        Ok(ReadableTable::range::<&[u8]>(tree, (range.start_bound(), range.end_bound()))?
+            .map(|kv| kv.map(|(k, v)| (AccessGuardDerefWrapper(k), AccessGuardDerefWrapper(v))))
+            .rev())
+    }
+}
 
 impl<'env> nsql_storage_engine::WriteTransaction<'env, RedbStorageEngine> for Transaction<'env> {
     #[inline]
@@ -213,5 +245,25 @@ impl<'env> nsql_storage_engine::WriteTransaction<'env, RedbStorageEngine> for Tr
     #[inline]
     fn rollback(self) -> Result<(), redb::Error> {
         self.0.abort()
+    }
+
+    fn put<'txn>(
+        &'txn mut self,
+        tree: &mut <RedbStorageEngine as nsql_storage_engine::StorageEngine>::WriteTree<'env, 'txn>,
+        key: &[u8],
+        value: &[u8],
+    ) -> std::result::Result<(), <RedbStorageEngine as nsql_storage_engine::StorageEngine>::Error>
+    {
+        tree.insert(key, value)?;
+        Ok(())
+    }
+
+    fn delete<'txn>(
+        &mut self,
+        tree: &mut <RedbStorageEngine as nsql_storage_engine::StorageEngine>::WriteTree<'env, 'txn>,
+        key: &[u8],
+    ) -> std::result::Result<bool, <RedbStorageEngine as nsql_storage_engine::StorageEngine>::Error>
+    {
+        Ok(tree.remove(key)?.is_some())
     }
 }

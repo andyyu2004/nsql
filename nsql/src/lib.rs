@@ -7,7 +7,6 @@ pub use anyhow::Error;
 use arc_swap::ArcSwapOption;
 use nsql_bind::Binder;
 use nsql_catalog::Catalog;
-use nsql_echodb::EchoDbEngine;
 use nsql_execution::{ExecutionContext, PhysicalPlanner};
 use nsql_lmdb::LmdbStorageEngine;
 use nsql_opt::optimize;
@@ -51,7 +50,7 @@ impl<S: StorageEngine> Nsql<S> {
 }
 
 // FIXME don't have an im memory impl currently
-impl Nsql<EchoDbEngine> {
+impl Nsql<LmdbStorageEngine> {
     #[cfg(feature = "in-memory")]
     pub fn in_memory() -> Result<Self> {
         todo!()
@@ -66,6 +65,11 @@ struct Shared<S> {
 pub struct Connection<'env, S: StorageEngine> {
     db: Nsql<S>,
     current_tx: ArcSwapOption<S::Transaction<'env>>,
+}
+
+enum Transaction<'env, S: StorageEngine> {
+    Read(S::Transaction<'env>),
+    Write(S::WriteTransaction<'env>),
 }
 
 impl<S: StorageEngine> Connection<'_, S> {
@@ -99,7 +103,7 @@ impl<S: StorageEngine> Connection<'_, S> {
 }
 
 impl<S: StorageEngine> Shared<S> {
-    fn query(&self, tx: &S::Transaction<'_>, query: &str) -> Result<MaterializedQueryOutput> {
+    fn query(&self, tx: &Transaction<'_, S>, query: &str) -> Result<MaterializedQueryOutput> {
         let statements = nsql_parse::parse_statements(query)?;
         if statements.is_empty() {
             return Ok(MaterializedQueryOutput { types: vec![], tuples: vec![] });

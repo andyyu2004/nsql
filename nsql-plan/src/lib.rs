@@ -44,6 +44,28 @@ pub enum Plan<S> {
     },
 }
 
+impl<S> Plan<S> {
+    /// Returns true if this plan requires a write transaction to execute
+    pub fn requires_write_transaction(&self) -> bool {
+        match self {
+            Plan::Empty
+            | Plan::Transaction(_)
+            | Plan::Show(_)
+            | Plan::Explain(..)
+            | Plan::Scan { .. }
+            | Plan::Values { .. } => false,
+            Plan::Projection { source, .. }
+            | Plan::Limit { source, .. }
+            | Plan::Filter { source, .. } => source.requires_write_transaction(),
+            Plan::Insert { .. }
+            | Plan::Drop(_)
+            | Plan::CreateTable(_)
+            | Plan::CreateNamespace(_)
+            | Plan::Update { .. } => true,
+        }
+    }
+}
+
 pub struct Planner<S> {
     _marker: std::marker::PhantomData<S>,
 }

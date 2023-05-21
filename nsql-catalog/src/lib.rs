@@ -97,7 +97,7 @@ pub trait Container<S: StorageEngine> {
 
     fn get_by_name<T: CatalogEntity<S, Container = Self>>(
         &self,
-        tx: &S::Transaction<'_>,
+        tx: &impl Transaction<'_, S>,
         name: impl AsRef<str>,
     ) -> Result<Option<(Oid<T>, Arc<T>)>> {
         Ok(T::get_by_name(self, tx, name.as_ref()))
@@ -171,7 +171,7 @@ pub(crate) mod private {
         #[inline]
         fn get_by_name(
             container: &Self::Container,
-            tx: &S::Transaction<'_>,
+            tx: &impl Transaction<'_, S>,
             name: &str,
         ) -> Option<(Oid<Self>, Arc<Self>)> {
             Self::catalog_set(container).get_by_name(tx, name)

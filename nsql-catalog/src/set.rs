@@ -147,7 +147,7 @@ impl<S: StorageEngine, T: CatalogEntity<S>> CatalogSet<S, T> {
 
     pub(crate) fn get_by_name(
         &self,
-        tx: &S::Transaction<'_>,
+        tx: &impl Transaction<'_, S>,
         name: &str,
     ) -> Option<(Oid<T>, Arc<T>)> {
         self.find(name).and_then(|oid| self.get(tx, oid).map(|item| (oid, item)))
