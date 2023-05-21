@@ -41,7 +41,7 @@ use crate::executor::OutputSink;
 use crate::{
     Chunk, Evaluator, ExecutionContext, ExecutionMode, ExecutionResult, OperatorState,
     PhysicalNode, PhysicalOperator, PhysicalSink, PhysicalSource, ReadWriteExecutionMode,
-    SourceState, Tuple,
+    ReadonlyExecutionMode, SourceState, Tuple,
 };
 
 pub struct PhysicalPlanner<S> {
@@ -57,9 +57,48 @@ impl<S, M> PhysicalPlan<S, M> {
     }
 }
 
+pub enum ReadOrWritePlan<S> {
+    Readonly(Arc<dyn PhysicalNode<S, ReadonlyExecutionMode<S>>>),
+    ReadWrite(Arc<dyn PhysicalNode<S, ReadWriteExecutionMode<S>>>),
+}
+
+// impl<S: StorageEngine> ReadOrWritePlan<S> {
+//     fn map<M: ExecutionMode<S>>(
+//         self,
+//         f: impl FnOnce(Arc<dyn PhysicalNode<S, M>>) -> Arc<dyn PhysicalNode<S, M>>,
+//     ) -> Self {
+//         match self {
+//             ReadOrWritePlan::Readonly(plan) => ReadOrWritePlan::Readonly(f(plan)),
+//             ReadOrWritePlan::ReadWrite(plan) => ReadOrWritePlan::ReadWrite(f(plan)),
+//         }
+//     }
+// }
+
 impl<S: StorageEngine> PhysicalPlanner<S> {
     pub fn new(catalog: Arc<Catalog<S>>) -> Self {
         Self { catalog }
+    }
+
+    pub fn plan_generic(
+        &self,
+        tx: &S::Transaction<'_>,
+        plan: Box<Plan<S>>,
+    ) -> Result<ReadOrWritePlan<S>> {
+        match *plan {
+            Plan::Projection { source, projection } => match self.plan_generic(tx, source)? {
+                ReadOrWritePlan::Readonly(plan) => {
+                    Ok(ReadOrWritePlan::Readonly(PhysicalProjection::plan(plan, projection)))
+                }
+                ReadOrWritePlan::ReadWrite(plan) => {
+                    Ok(ReadOrWritePlan::ReadWrite(PhysicalProjection::plan(plan, projection)))
+                }
+            },
+            Plan::Limit { source, limit } => {
+                todo!();
+                // PhysicalLimit::plan(self.plan_node(tx, source)?, limit)
+            }
+            _ => todo!(),
+        }
     }
 
     pub fn plan<M: ExecutionMode<S>>(
@@ -108,13 +147,13 @@ impl<S: StorageEngine> PhysicalPlanner<S> {
                 let plan = self.plan_node(tx, plan)?;
                 let stringified = match kind {
                     ir::ExplainMode::Physical => {
-                        explain::explain(&self.catalog, &tx, plan.as_ref()).to_string()
+                        explain::explain(&self.catalog, tx, plan.as_ref()).to_string()
                     }
                     ir::ExplainMode::Pipeline => {
                         let sink = Arc::new(OutputSink::default());
                         let pipeline =
                             crate::build_pipelines(sink, PhysicalPlan(Arc::clone(&plan)));
-                        let disp = explain::explain_pipeline(&self.catalog, &tx, &pipeline);
+                        let disp = explain::explain_pipeline(&self.catalog, tx, &pipeline);
                         disp.to_string()
                     }
                 };
