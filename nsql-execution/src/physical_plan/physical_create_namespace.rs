@@ -11,23 +11,25 @@ pub struct PhysicalCreateNamespace {
 }
 
 impl PhysicalCreateNamespace {
-    pub(crate) fn plan<S: StorageEngine>(
+    pub(crate) fn plan<'env, S: StorageEngine>(
         info: ir::CreateNamespaceInfo,
-    ) -> Arc<dyn PhysicalNode<S, ReadWriteExecutionMode<S>>> {
+    ) -> Arc<dyn PhysicalNode<'env, S, ReadWriteExecutionMode<S>>> {
         Arc::new(Self { info })
     }
 }
 
-impl<S: StorageEngine> PhysicalNode<S, ReadWriteExecutionMode<S>> for PhysicalCreateNamespace {
-    fn children(&self) -> &[Arc<dyn PhysicalNode<S, ReadWriteExecutionMode<S>>>] {
+impl<'env, S: StorageEngine> PhysicalNode<'env, S, ReadWriteExecutionMode<S>>
+    for PhysicalCreateNamespace
+{
+    fn children(&self) -> &[Arc<dyn PhysicalNode<'env, S, ReadWriteExecutionMode<S>>>] {
         &[]
     }
 
     fn as_source(
         self: Arc<Self>,
     ) -> Result<
-        Arc<dyn PhysicalSource<S, ReadWriteExecutionMode<S>>>,
-        Arc<dyn PhysicalNode<S, ReadWriteExecutionMode<S>>>,
+        Arc<dyn PhysicalSource<'env, S, ReadWriteExecutionMode<S>>>,
+        Arc<dyn PhysicalNode<'env, S, ReadWriteExecutionMode<S>>>,
     > {
         Ok(self)
     }
@@ -35,8 +37,8 @@ impl<S: StorageEngine> PhysicalNode<S, ReadWriteExecutionMode<S>> for PhysicalCr
     fn as_sink(
         self: Arc<Self>,
     ) -> Result<
-        Arc<dyn PhysicalSink<S, ReadWriteExecutionMode<S>>>,
-        Arc<dyn PhysicalNode<S, ReadWriteExecutionMode<S>>>,
+        Arc<dyn PhysicalSink<'env, S, ReadWriteExecutionMode<S>>>,
+        Arc<dyn PhysicalNode<'env, S, ReadWriteExecutionMode<S>>>,
     > {
         Err(self)
     }
@@ -44,18 +46,20 @@ impl<S: StorageEngine> PhysicalNode<S, ReadWriteExecutionMode<S>> for PhysicalCr
     fn as_operator(
         self: Arc<Self>,
     ) -> Result<
-        Arc<dyn PhysicalOperator<S, ReadWriteExecutionMode<S>>>,
-        Arc<dyn PhysicalNode<S, ReadWriteExecutionMode<S>>>,
+        Arc<dyn PhysicalOperator<'env, S, ReadWriteExecutionMode<S>>>,
+        Arc<dyn PhysicalNode<'env, S, ReadWriteExecutionMode<S>>>,
     > {
         Err(self)
     }
 }
 
 #[async_trait::async_trait]
-impl<S: StorageEngine> PhysicalSource<S, ReadWriteExecutionMode<S>> for PhysicalCreateNamespace {
+impl<'env, S: StorageEngine> PhysicalSource<'env, S, ReadWriteExecutionMode<S>>
+    for PhysicalCreateNamespace
+{
     fn source(
         &self,
-        ctx: &ExecutionContext<'_, '_, S, ReadWriteExecutionMode<S>>,
+        ctx: &ExecutionContext<'env, S, ReadWriteExecutionMode<S>>,
     ) -> ExecutionResult<SourceState<Chunk>> {
         let mut tx = ctx.tx_mut();
         let info = CreateNamespaceInfo { name: self.info.name.clone() };
@@ -70,7 +74,7 @@ impl<S: StorageEngine> PhysicalSource<S, ReadWriteExecutionMode<S>> for Physical
     }
 }
 
-impl<S: StorageEngine> Explain<S> for PhysicalCreateNamespace {
+impl<'env, S: StorageEngine> Explain<S> for PhysicalCreateNamespace {
     fn explain(
         &self,
         _catalog: &Catalog<S>,

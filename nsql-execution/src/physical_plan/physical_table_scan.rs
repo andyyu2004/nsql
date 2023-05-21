@@ -21,7 +21,7 @@ pub struct PhysicalTableScan<S: StorageEngine> {
 type TupleStream<S> =
     Box<dyn Iterator<Item = Result<Vec<Tuple>, <S as StorageEngine>::Error>> + Send + Sync>;
 
-impl<S: StorageEngine> fmt::Debug for PhysicalTableScan<S> {
+impl<'env, S: StorageEngine> fmt::Debug for PhysicalTableScan<S> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("PhysicalTableScan")
             .field("table_ref", &self.table_ref)
@@ -30,11 +30,11 @@ impl<S: StorageEngine> fmt::Debug for PhysicalTableScan<S> {
     }
 }
 
-impl<S: StorageEngine> PhysicalTableScan<S> {
-    pub(crate) fn plan<M: ExecutionMode<S>>(
+impl<'env, S: StorageEngine> PhysicalTableScan<S> {
+    pub(crate) fn plan<M: ExecutionMode<'env, S>>(
         table_ref: ir::TableRef<S>,
         projection: Option<Box<[ColumnIndex]>>,
-    ) -> Arc<dyn PhysicalNode<S, M>> {
+    ) -> Arc<dyn PhysicalNode<'env, S, M>> {
         Arc::new(Self {
             table_ref,
             projection,
@@ -47,9 +47,11 @@ impl<S: StorageEngine> PhysicalTableScan<S> {
 }
 
 #[async_trait::async_trait]
-impl<S: StorageEngine, M: ExecutionMode<S>> PhysicalSource<S, M> for PhysicalTableScan<S> {
+impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSource<'env, S, M>
+    for PhysicalTableScan<S>
+{
     #[tracing::instrument(skip(self, ctx))]
-    fn source(&self, ctx: &ExecutionContext<'_, '_, S, M>) -> ExecutionResult<SourceState<Chunk>> {
+    fn source(&self, ctx: &ExecutionContext<'env, S, M>) -> ExecutionResult<SourceState<Chunk>> {
         let table = self.table.get_or_try_init(|| {
             let tx = ctx.tx();
             let namespace = ctx.catalog.get(&*tx, self.table_ref.namespace).unwrap();
@@ -86,31 +88,33 @@ impl<S: StorageEngine, M: ExecutionMode<S>> PhysicalSource<S, M> for PhysicalTab
     }
 }
 
-impl<S: StorageEngine, M: ExecutionMode<S>> PhysicalNode<S, M> for PhysicalTableScan<S> {
-    fn children(&self) -> &[Arc<dyn PhysicalNode<S, M>>] {
+impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode<'env, S, M>
+    for PhysicalTableScan<S>
+{
+    fn children(&self) -> &[Arc<dyn PhysicalNode<'env, S, M>>] {
         &[]
     }
 
     fn as_source(
         self: Arc<Self>,
-    ) -> Result<Arc<dyn PhysicalSource<S, M>>, Arc<dyn PhysicalNode<S, M>>> {
+    ) -> Result<Arc<dyn PhysicalSource<'env, S, M>>, Arc<dyn PhysicalNode<'env, S, M>>> {
         Ok(self)
     }
 
     fn as_sink(
         self: Arc<Self>,
-    ) -> Result<Arc<dyn PhysicalSink<S, M>>, Arc<dyn PhysicalNode<S, M>>> {
+    ) -> Result<Arc<dyn PhysicalSink<'env, S, M>>, Arc<dyn PhysicalNode<'env, S, M>>> {
         Err(self)
     }
 
     fn as_operator(
         self: Arc<Self>,
-    ) -> Result<Arc<dyn PhysicalOperator<S, M>>, Arc<dyn PhysicalNode<S, M>>> {
+    ) -> Result<Arc<dyn PhysicalOperator<'env, S, M>>, Arc<dyn PhysicalNode<'env, S, M>>> {
         Err(self)
     }
 }
 
-impl<S: StorageEngine> Explain<S> for PhysicalTableScan<S> {
+impl<'env, S: StorageEngine> Explain<S> for PhysicalTableScan<S> {
     fn explain(
         &self,
         catalog: &Catalog<S>,

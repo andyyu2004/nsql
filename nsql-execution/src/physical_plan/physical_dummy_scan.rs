@@ -4,43 +4,48 @@ use super::*;
 pub struct PhysicalDummyScan;
 
 impl PhysicalDummyScan {
-    pub(crate) fn plan<S: StorageEngine, M: ExecutionMode<S>>() -> Arc<dyn PhysicalNode<S, M>> {
+    pub(crate) fn plan<'env, S: StorageEngine, M: ExecutionMode<'env, S>>()
+    -> Arc<dyn PhysicalNode<'env, S, M>> {
         Arc::new(Self)
     }
 }
 
 #[async_trait::async_trait]
-impl<S: StorageEngine, M: ExecutionMode<S>> PhysicalSource<S, M> for PhysicalDummyScan {
-    fn source(&self, _ctx: &ExecutionContext<'_, '_, S, M>) -> ExecutionResult<SourceState<Chunk>> {
+impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSource<'env, S, M>
+    for PhysicalDummyScan
+{
+    fn source(&self, _ctx: &ExecutionContext<'env, S, M>) -> ExecutionResult<SourceState<Chunk>> {
         Ok(SourceState::Final(Chunk::singleton(Tuple::empty())))
     }
 }
 
-impl<S: StorageEngine, M: ExecutionMode<S>> PhysicalNode<S, M> for PhysicalDummyScan {
-    fn children(&self) -> &[Arc<dyn PhysicalNode<S, M>>] {
+impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode<'env, S, M>
+    for PhysicalDummyScan
+{
+    fn children(&self) -> &[Arc<dyn PhysicalNode<'env, S, M>>] {
         &[]
     }
 
     fn as_source(
         self: Arc<Self>,
-    ) -> Result<Arc<dyn PhysicalSource<S, M>>, Arc<dyn PhysicalNode<S, M>>> {
+    ) -> Result<Arc<dyn PhysicalSource<'env, S, M>>, Arc<dyn PhysicalNode<'env, S, M>>> {
         Ok(self)
     }
 
     fn as_sink(
         self: Arc<Self>,
-    ) -> Result<Arc<dyn PhysicalSink<S, M>>, Arc<dyn PhysicalNode<S, M>>> {
+    ) -> Result<Arc<dyn PhysicalSink<'env, S, M>>, Arc<dyn PhysicalNode<'env, S, M>>> {
         Err(self)
     }
 
     fn as_operator(
         self: Arc<Self>,
-    ) -> Result<Arc<dyn PhysicalOperator<S, M>>, Arc<dyn PhysicalNode<S, M>>> {
+    ) -> Result<Arc<dyn PhysicalOperator<'env, S, M>>, Arc<dyn PhysicalNode<'env, S, M>>> {
         Err(self)
     }
 }
 
-impl<S: StorageEngine> Explain<S> for PhysicalDummyScan {
+impl<'env, S: StorageEngine> Explain<S> for PhysicalDummyScan {
     fn explain(
         &self,
         _catalog: &Catalog<S>,

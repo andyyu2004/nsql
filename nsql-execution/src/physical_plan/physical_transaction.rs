@@ -6,40 +6,44 @@ pub struct PhysicalTransaction {
 }
 
 impl PhysicalTransaction {
-    pub(crate) fn plan<S: StorageEngine, M: ExecutionMode<S>>(
+    pub(crate) fn plan<'env, S: StorageEngine, M: ExecutionMode<'env, S>>(
         kind: ir::TransactionKind,
-    ) -> Arc<dyn PhysicalNode<S, M>> {
+    ) -> Arc<dyn PhysicalNode<'env, S, M>> {
         Arc::new(Self { kind })
     }
 }
 
-impl<S: StorageEngine, M: ExecutionMode<S>> PhysicalNode<S, M> for PhysicalTransaction {
-    fn children(&self) -> &[Arc<dyn PhysicalNode<S, M>>] {
+impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode<'env, S, M>
+    for PhysicalTransaction
+{
+    fn children(&self) -> &[Arc<dyn PhysicalNode<'env, S, M>>] {
         &[]
     }
 
     fn as_source(
         self: Arc<Self>,
-    ) -> Result<Arc<dyn PhysicalSource<S, M>>, Arc<dyn PhysicalNode<S, M>>> {
+    ) -> Result<Arc<dyn PhysicalSource<'env, S, M>>, Arc<dyn PhysicalNode<'env, S, M>>> {
         Ok(self)
     }
 
     fn as_sink(
         self: Arc<Self>,
-    ) -> Result<Arc<dyn PhysicalSink<S, M>>, Arc<dyn PhysicalNode<S, M>>> {
+    ) -> Result<Arc<dyn PhysicalSink<'env, S, M>>, Arc<dyn PhysicalNode<'env, S, M>>> {
         Err(self)
     }
 
     fn as_operator(
         self: Arc<Self>,
-    ) -> Result<Arc<dyn PhysicalOperator<S, M>>, Arc<dyn PhysicalNode<S, M>>> {
+    ) -> Result<Arc<dyn PhysicalOperator<'env, S, M>>, Arc<dyn PhysicalNode<'env, S, M>>> {
         Err(self)
     }
 }
 
 #[async_trait::async_trait]
-impl<S: StorageEngine, M: ExecutionMode<S>> PhysicalSource<S, M> for PhysicalTransaction {
-    fn source(&self, ctx: &ExecutionContext<'_, '_, S, M>) -> ExecutionResult<SourceState<Chunk>> {
+impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSource<'env, S, M>
+    for PhysicalTransaction
+{
+    fn source(&self, ctx: &ExecutionContext<'env, S, M>) -> ExecutionResult<SourceState<Chunk>> {
         let tx = ctx.tx();
         // match self.kind {
         //     ir::TransactionKind::Begin => {
@@ -70,7 +74,7 @@ impl<S: StorageEngine, M: ExecutionMode<S>> PhysicalSource<S, M> for PhysicalTra
     }
 }
 
-impl<S: StorageEngine> Explain<S> for PhysicalTransaction {
+impl<'env, S: StorageEngine> Explain<S> for PhysicalTransaction {
     fn explain(
         &self,
         _catalog: &Catalog<S>,

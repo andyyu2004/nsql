@@ -2,26 +2,28 @@ use std::sync::atomic::{self, AtomicU64};
 
 use super::*;
 
-pub struct PhysicalLimit<S, M> {
-    children: [Arc<dyn PhysicalNode<S, M>>; 1],
+pub struct PhysicalLimit<'env, S, M> {
+    children: [Arc<dyn PhysicalNode<'env, S, M>>; 1],
     yielded: AtomicU64,
     limit: u64,
 }
 
-impl<S: StorageEngine, M: ExecutionMode<S>> PhysicalLimit<S, M> {
+impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalLimit<'env, S, M> {
     pub(crate) fn plan(
-        source: Arc<dyn PhysicalNode<S, M>>,
+        source: Arc<dyn PhysicalNode<'env, S, M>>,
         limit: u64,
-    ) -> Arc<dyn PhysicalNode<S, M>> {
+    ) -> Arc<dyn PhysicalNode<'env, S, M>> {
         Arc::new(Self { children: [source], limit, yielded: AtomicU64::new(0) })
     }
 }
 
 #[async_trait::async_trait]
-impl<S: StorageEngine, M: ExecutionMode<S>> PhysicalOperator<S, M> for PhysicalLimit<S, M> {
+impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalOperator<'env, S, M>
+    for PhysicalLimit<'env, S, M>
+{
     fn execute(
         &self,
-        _ctx: &ExecutionContext<'_, '_, S, M>,
+        _ctx: &ExecutionContext<'env, S, M>,
         input: Tuple,
     ) -> ExecutionResult<OperatorState<Tuple>> {
         if self.yielded.fetch_add(1, atomic::Ordering::AcqRel) >= self.limit {
@@ -32,31 +34,33 @@ impl<S: StorageEngine, M: ExecutionMode<S>> PhysicalOperator<S, M> for PhysicalL
     }
 }
 
-impl<S: StorageEngine, M: ExecutionMode<S>> PhysicalNode<S, M> for PhysicalLimit<S, M> {
-    fn children(&self) -> &[Arc<dyn PhysicalNode<S, M>>] {
+impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode<'env, S, M>
+    for PhysicalLimit<'env, S, M>
+{
+    fn children(&self) -> &[Arc<dyn PhysicalNode<'env, S, M>>] {
         &self.children
     }
 
     fn as_source(
         self: Arc<Self>,
-    ) -> Result<Arc<dyn PhysicalSource<S, M>>, Arc<dyn PhysicalNode<S, M>>> {
+    ) -> Result<Arc<dyn PhysicalSource<'env, S, M>>, Arc<dyn PhysicalNode<'env, S, M>>> {
         Err(self)
     }
 
     fn as_sink(
         self: Arc<Self>,
-    ) -> Result<Arc<dyn PhysicalSink<S, M>>, Arc<dyn PhysicalNode<S, M>>> {
+    ) -> Result<Arc<dyn PhysicalSink<'env, S, M>>, Arc<dyn PhysicalNode<'env, S, M>>> {
         Err(self)
     }
 
     fn as_operator(
         self: Arc<Self>,
-    ) -> Result<Arc<dyn PhysicalOperator<S, M>>, Arc<dyn PhysicalNode<S, M>>> {
+    ) -> Result<Arc<dyn PhysicalOperator<'env, S, M>>, Arc<dyn PhysicalNode<'env, S, M>>> {
         Ok(self)
     }
 }
 
-impl<S: StorageEngine, M: ExecutionMode<S>> Explain<S> for PhysicalLimit<S, M> {
+impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> Explain<S> for PhysicalLimit<'env, S, M> {
     fn explain(
         &self,
         _catalog: &Catalog<S>,

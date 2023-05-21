@@ -18,31 +18,31 @@ pub trait Explain<S: StorageEngine> {
     ) -> Result;
 }
 
-pub(crate) fn explain_pipeline<'a, 'env, S: StorageEngine, M: ExecutionMode<S>>(
+pub(crate) fn explain_pipeline<'a, 'env, S: StorageEngine, M: ExecutionMode<'env, S>>(
     catalog: &'a Catalog<S>,
     tx: &'a S::Transaction<'env>,
-    root_pipeline: &'a RootPipeline<S, M>,
+    root_pipeline: &'a RootPipeline<'env, S, M>,
 ) -> RootPipelineExplainer<'a, 'env, S, M> {
     RootPipelineExplainer { catalog, tx, root_pipeline }
 }
 
-pub struct RootPipelineExplainer<'a, 'env, S: StorageEngine, M: ExecutionMode<S>> {
+pub struct RootPipelineExplainer<'a, 'env, S: StorageEngine, M: ExecutionMode<'env, S>> {
     catalog: &'a Catalog<S>,
     tx: &'a S::Transaction<'env>,
-    root_pipeline: &'a RootPipeline<S, M>,
+    root_pipeline: &'a RootPipeline<'env, S, M>,
 }
 
-pub struct MetaPipelineExplainer<'a, 'env, S: StorageEngine, M: ExecutionMode<S>> {
+pub struct MetaPipelineExplainer<'a, 'env, S: StorageEngine, M: ExecutionMode<'env, S>> {
     root: &'a RootPipelineExplainer<'a, 'env, S, M>,
     tx: &'a S::Transaction<'env>,
     indent: usize,
 }
 
-impl<'a, 'env, S: StorageEngine, M: ExecutionMode<S>> MetaPipelineExplainer<'a, 'env, S, M> {
+impl<'a, 'env, S: StorageEngine, M: ExecutionMode<'env, S>> MetaPipelineExplainer<'a, 'env, S, M> {
     fn explain_meta_pipeline(
         &self,
         f: &mut fmt::Formatter<'_>,
-        meta_pipeline: Idx<MetaPipeline<S, M>>,
+        meta_pipeline: Idx<MetaPipeline<'env, S, M>>,
     ) -> fmt::Result {
         let arena = &self.root.root_pipeline.arena;
         writeln!(
@@ -80,38 +80,40 @@ impl<'a, 'env, S: StorageEngine, M: ExecutionMode<S>> MetaPipelineExplainer<'a, 
     }
 }
 
-impl<S: StorageEngine, M: ExecutionMode<S>> fmt::Display for RootPipelineExplainer<'_, '_, S, M> {
+impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> fmt::Display
+    for RootPipelineExplainer<'_, 'env, S, M>
+{
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         MetaPipelineExplainer { root: self, tx: self.tx, indent: 0 }
             .explain_meta_pipeline(f, self.root_pipeline.arena.root())
     }
 }
 
-pub(crate) fn explain<'a, 'env, S: StorageEngine, M: ExecutionMode<S>>(
+pub(crate) fn explain<'a, 'env, S: StorageEngine, M: ExecutionMode<'env, S>>(
     catalog: &'a Catalog<S>,
     tx: &'a S::Transaction<'env>,
-    node: &'a dyn PhysicalNode<S, M>,
+    node: &'a dyn PhysicalNode<'env, S, M>,
 ) -> PhysicalNodeExplainer<'a, 'env, S, M> {
     PhysicalNodeExplainer { catalog, tx, node, indent: 0 }
 }
 
-pub struct PhysicalNodeExplainer<'a, 'env, S: StorageEngine, M: ExecutionMode<S>> {
+pub struct PhysicalNodeExplainer<'a, 'env, S: StorageEngine, M: ExecutionMode<'env, S>> {
     catalog: &'a Catalog<S>,
     tx: &'a S::Transaction<'env>,
-    node: &'a dyn PhysicalNode<S, M>,
+    node: &'a dyn PhysicalNode<'env, S, M>,
     indent: usize,
 }
 
-impl<'a, 'env, S: StorageEngine, M: ExecutionMode<S>> PhysicalNodeExplainer<'a, 'env, S, M> {
+impl<'a, 'env, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNodeExplainer<'a, 'env, S, M> {
     fn explain_child(
         &self,
-        node: &'a dyn PhysicalNode<S, M>,
+        node: &'a dyn PhysicalNode<'env, S, M>,
     ) -> PhysicalNodeExplainer<'a, 'env, S, M> {
         PhysicalNodeExplainer { catalog: self.catalog, tx: self.tx, node, indent: self.indent + 2 }
     }
 }
 
-impl<'a, 'env, S: StorageEngine, M: ExecutionMode<S>> fmt::Display
+impl<'a, 'env, S: StorageEngine, M: ExecutionMode<'env, S>> fmt::Display
     for PhysicalNodeExplainer<'a, 'env, S, M>
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

@@ -6,20 +6,20 @@ use parking_lot::RwLock;
 use super::*;
 use crate::ReadWriteExecutionMode;
 
-pub(crate) struct PhysicalInsert<S> {
-    children: [Arc<dyn PhysicalNode<S, ReadWriteExecutionMode<S>>>; 1],
+pub(crate) struct PhysicalInsert<'env, S> {
+    children: [Arc<dyn PhysicalNode<'env, S, ReadWriteExecutionMode<S>>>; 1],
     table_ref: ir::TableRef<S>,
     returning: Option<Box<[ir::Expr]>>,
     returning_tuples: RwLock<VecDeque<Tuple>>,
     returning_evaluator: Evaluator,
 }
 
-impl<S: StorageEngine> PhysicalInsert<S> {
+impl<'env, S: StorageEngine> PhysicalInsert<'env, S> {
     pub fn plan(
         table_ref: ir::TableRef<S>,
-        source: Arc<dyn PhysicalNode<S, ReadWriteExecutionMode<S>>>,
+        source: Arc<dyn PhysicalNode<'env, S, ReadWriteExecutionMode<S>>>,
         returning: Option<Box<[ir::Expr]>>,
-    ) -> Arc<dyn PhysicalNode<S, ReadWriteExecutionMode<S>>> {
+    ) -> Arc<dyn PhysicalNode<'env, S, ReadWriteExecutionMode<S>>> {
         Arc::new(Self {
             table_ref,
             returning,
@@ -30,16 +30,18 @@ impl<S: StorageEngine> PhysicalInsert<S> {
     }
 }
 
-impl<S: StorageEngine> PhysicalNode<S, ReadWriteExecutionMode<S>> for PhysicalInsert<S> {
-    fn children(&self) -> &[Arc<dyn PhysicalNode<S, ReadWriteExecutionMode<S>>>] {
+impl<'env, S: StorageEngine> PhysicalNode<'env, S, ReadWriteExecutionMode<S>>
+    for PhysicalInsert<'env, S>
+{
+    fn children(&self) -> &[Arc<dyn PhysicalNode<'env, S, ReadWriteExecutionMode<S>>>] {
         &self.children
     }
 
     fn as_source(
         self: Arc<Self>,
     ) -> Result<
-        Arc<dyn PhysicalSource<S, ReadWriteExecutionMode<S>>>,
-        Arc<dyn PhysicalNode<S, ReadWriteExecutionMode<S>>>,
+        Arc<dyn PhysicalSource<'env, S, ReadWriteExecutionMode<S>>>,
+        Arc<dyn PhysicalNode<'env, S, ReadWriteExecutionMode<S>>>,
     > {
         Ok(self)
     }
@@ -47,8 +49,8 @@ impl<S: StorageEngine> PhysicalNode<S, ReadWriteExecutionMode<S>> for PhysicalIn
     fn as_sink(
         self: Arc<Self>,
     ) -> Result<
-        Arc<dyn PhysicalSink<S, ReadWriteExecutionMode<S>>>,
-        Arc<dyn PhysicalNode<S, ReadWriteExecutionMode<S>>>,
+        Arc<dyn PhysicalSink<'env, S, ReadWriteExecutionMode<S>>>,
+        Arc<dyn PhysicalNode<'env, S, ReadWriteExecutionMode<S>>>,
     > {
         Ok(self)
     }
@@ -56,17 +58,19 @@ impl<S: StorageEngine> PhysicalNode<S, ReadWriteExecutionMode<S>> for PhysicalIn
     fn as_operator(
         self: Arc<Self>,
     ) -> Result<
-        Arc<dyn PhysicalOperator<S, ReadWriteExecutionMode<S>>>,
-        Arc<dyn PhysicalNode<S, ReadWriteExecutionMode<S>>>,
+        Arc<dyn PhysicalOperator<'env, S, ReadWriteExecutionMode<S>>>,
+        Arc<dyn PhysicalNode<'env, S, ReadWriteExecutionMode<S>>>,
     > {
         Err(self)
     }
 }
 
-impl<S: StorageEngine> PhysicalSink<S, ReadWriteExecutionMode<S>> for PhysicalInsert<S> {
+impl<'env, S: StorageEngine> PhysicalSink<'env, S, ReadWriteExecutionMode<S>>
+    for PhysicalInsert<'env, S>
+{
     fn sink(
         &self,
-        ctx: &ExecutionContext<'_, '_, S, ReadWriteExecutionMode<S>>,
+        ctx: &ExecutionContext<'env, S, ReadWriteExecutionMode<S>>,
         tuple: Tuple,
     ) -> ExecutionResult<()> {
         let mut tx = ctx.tx_mut();
@@ -83,12 +87,13 @@ impl<S: StorageEngine> PhysicalSink<S, ReadWriteExecutionMode<S>> for PhysicalIn
     }
 }
 
-#[async_trait::async_trait]
-impl<S: StorageEngine> PhysicalSource<S, ReadWriteExecutionMode<S>> for PhysicalInsert<S> {
+impl<'env, S: StorageEngine> PhysicalSource<'env, S, ReadWriteExecutionMode<S>>
+    for PhysicalInsert<'env, S>
+{
     #[inline]
     fn source(
         &self,
-        _ctx: &ExecutionContext<'_, '_, S, ReadWriteExecutionMode<S>>,
+        _ctx: &ExecutionContext<'env, S, ReadWriteExecutionMode<S>>,
     ) -> ExecutionResult<SourceState<Chunk>> {
         let returning = match &self.returning {
             Some(returning) => returning,
@@ -106,7 +111,7 @@ impl<S: StorageEngine> PhysicalSource<S, ReadWriteExecutionMode<S>> for Physical
     }
 }
 
-impl<S: StorageEngine> Explain<S> for PhysicalInsert<S> {
+impl<'env, S: StorageEngine> Explain<S> for PhysicalInsert<'env, S> {
     fn explain(
         &self,
         catalog: &Catalog<S>,

@@ -49,24 +49,24 @@ pub struct PhysicalPlanner<S> {
 }
 
 /// Opaque physical plan that is ready to be executed
-pub struct PhysicalPlan<S, M>(Arc<dyn PhysicalNode<S, M>>);
+pub struct PhysicalPlan<'env, S, M>(Arc<dyn PhysicalNode<'env, S, M>>);
 
-impl<S, M> PhysicalPlan<S, M> {
-    pub(crate) fn root(&self) -> Arc<dyn PhysicalNode<S, M>> {
+impl<'env, S, M> PhysicalPlan<'env, S, M> {
+    pub(crate) fn root(&self) -> Arc<dyn PhysicalNode<'env, S, M>> {
         Arc::clone(&self.0)
     }
 }
 
-impl<S: StorageEngine> PhysicalPlanner<S> {
+impl<'env, S: StorageEngine> PhysicalPlanner<S> {
     pub fn new(catalog: Arc<Catalog<S>>) -> Self {
         Self { catalog }
     }
 
-    pub fn plan<M: ExecutionMode<S>>(
+    pub fn plan<M: ExecutionMode<'env, S>>(
         &self,
         tx: &impl Transaction<'_, S>,
         plan: Box<Plan<S>>,
-    ) -> Result<PhysicalPlan<S, M>> {
+    ) -> Result<PhysicalPlan<'env, S, M>> {
         self.plan_node(tx, plan).map(PhysicalPlan)
     }
 
@@ -74,7 +74,7 @@ impl<S: StorageEngine> PhysicalPlanner<S> {
         &self,
         tx: &impl Transaction<'_, S>,
         plan: Box<Plan<S>>,
-    ) -> Result<Arc<dyn PhysicalNode<S, ReadWriteExecutionMode<S>>>> {
+    ) -> Result<Arc<dyn PhysicalNode<'env, S, ReadWriteExecutionMode<S>> + 'env>> {
         match *plan {
             Plan::Update { table_ref, source, returning } => {
                 let source = self.plan_node(tx, source)?;
@@ -95,11 +95,11 @@ impl<S: StorageEngine> PhysicalPlanner<S> {
     }
 
     #[allow(clippy::boxed_local)]
-    fn plan_node<M: ExecutionMode<S>>(
+    fn plan_node<M: ExecutionMode<'env, S>>(
         &self,
         tx: &impl Transaction<'_, S>,
         plan: Box<Plan<S>>,
-    ) -> Result<Arc<dyn PhysicalNode<S, M>>> {
+    ) -> Result<Arc<dyn PhysicalNode<'env, S, M>>> {
         let plan = match *plan {
             Plan::Transaction(kind) => PhysicalTransaction::plan(kind),
             Plan::Scan { table_ref, projection } => PhysicalTableScan::plan(table_ref, projection),

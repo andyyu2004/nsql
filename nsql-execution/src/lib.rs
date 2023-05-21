@@ -9,7 +9,6 @@ mod physical_plan;
 mod pipeline;
 mod vis;
 
-use std::any::Any;
 use std::fmt;
 use std::sync::Arc;
 
@@ -18,7 +17,6 @@ use nsql_arena::Idx;
 use nsql_catalog::Catalog;
 use nsql_storage::tuple::Tuple;
 use nsql_storage_engine::{StorageEngine, Transaction};
-use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 pub use physical_plan::PhysicalPlanner;
 use smallvec::SmallVec;
 
@@ -32,37 +30,38 @@ use self::pipeline::{
 
 pub type ExecutionResult<T, E = Error> = std::result::Result<T, E>;
 
-fn build_pipelines<S: StorageEngine, M: ExecutionMode<S>>(
-    sink: Arc<dyn PhysicalSink<S, M>>,
-    plan: PhysicalPlan<S, M>,
-) -> RootPipeline<S, M> {
+fn build_pipelines<'env, S: StorageEngine, M: ExecutionMode<'env, S>>(
+    sink: Arc<dyn PhysicalSink<'env, S, M>>,
+    plan: PhysicalPlan<'env, S, M>,
+) -> RootPipeline<'env, S, M> {
     let (mut builder, root_meta_pipeline) = PipelineBuilderArena::new(sink);
     builder.build(root_meta_pipeline, plan.root());
     let arena = builder.finish();
     RootPipeline { arena }
 }
 
-trait PhysicalNode<S: StorageEngine, M: ExecutionMode<S>>:
-    Send + Sync + Explain<S> + Any + 'static
+trait PhysicalNode<'env, S: StorageEngine, M: ExecutionMode<'env, S>>:
+    Send + Sync + Explain<S> + 'env
 {
-    fn children(&self) -> &[Arc<dyn PhysicalNode<S, M>>];
+    fn children(&self) -> &[Arc<dyn PhysicalNode<'env, S, M>>];
 
     fn as_source(
         self: Arc<Self>,
-    ) -> Result<Arc<dyn PhysicalSource<S, M>>, Arc<dyn PhysicalNode<S, M>>>;
+    ) -> Result<Arc<dyn PhysicalSource<'env, S, M>>, Arc<dyn PhysicalNode<'env, S, M>>>;
 
-    fn as_sink(self: Arc<Self>)
-    -> Result<Arc<dyn PhysicalSink<S, M>>, Arc<dyn PhysicalNode<S, M>>>;
+    fn as_sink(
+        self: Arc<Self>,
+    ) -> Result<Arc<dyn PhysicalSink<'env, S, M>>, Arc<dyn PhysicalNode<'env, S, M>>>;
 
     fn as_operator(
         self: Arc<Self>,
-    ) -> Result<Arc<dyn PhysicalOperator<S, M>>, Arc<dyn PhysicalNode<S, M>>>;
+    ) -> Result<Arc<dyn PhysicalOperator<'env, S, M>>, Arc<dyn PhysicalNode<'env, S, M>>>;
 
     fn build_pipelines(
         self: Arc<Self>,
-        arena: &mut PipelineBuilderArena<S, M>,
-        meta_builder: Idx<MetaPipelineBuilder<S, M>>,
-        current: Idx<PipelineBuilder<S, M>>,
+        arena: &mut PipelineBuilderArena<'env, S, M>,
+        meta_builder: Idx<MetaPipelineBuilder<'env, S, M>>,
+        current: Idx<PipelineBuilder<'env, S, M>>,
     ) {
         match self.as_sink() {
             Ok(sink) => {
@@ -75,7 +74,7 @@ trait PhysicalNode<S: StorageEngine, M: ExecutionMode<S>>:
                 // If we have a sink node (which is also a source),
                 // - set it to be the source of the current pipeline,
                 // - recursively build the pipeline for its child with `sink` as the sink of the new metapipeline
-                arena[current].set_source(Arc::clone(&sink) as Arc<dyn PhysicalSource<S, M>>);
+                arena[current].set_source(Arc::clone(&sink) as Arc<dyn PhysicalSource<'env, S, M>>);
                 let child_meta_builder = arena.new_child_meta_pipeline(meta_builder, sink);
                 arena.build(child_meta_builder, child);
             }
@@ -150,35 +149,33 @@ enum SourceState<T> {
 }
 
 #[async_trait::async_trait]
-trait PhysicalOperator<S: StorageEngine, M: ExecutionMode<S>, T = Tuple>: PhysicalNode<S, M> {
+trait PhysicalOperator<'env, S: StorageEngine, M: ExecutionMode<'env, S>, T = Tuple>:
+    PhysicalNode<'env, S, M>
+{
     fn execute(
         &self,
-        ctx: &ExecutionContext<'_, '_, S, M>,
+        ctx: &ExecutionContext<'env, S, M>,
         input: T,
     ) -> ExecutionResult<OperatorState<T>>;
 }
 
 #[async_trait::async_trait]
-trait PhysicalSource<S: StorageEngine, M: ExecutionMode<S>, T = Tuple>: PhysicalNode<S, M> {
+trait PhysicalSource<'env, S: StorageEngine, M: ExecutionMode<'env, S>, T = Tuple>:
+    PhysicalNode<'env, S, M>
+{
     /// Return the next chunk from the source. An empty chunk indicates that the source is exhausted.
-    fn source(
-        &self,
-        ctx: &ExecutionContext<'_, '_, S, M>,
-    ) -> ExecutionResult<SourceState<Chunk<T>>>;
+    fn source(&self, ctx: &ExecutionContext<'env, S, M>) -> ExecutionResult<SourceState<Chunk<T>>>;
 }
 
 #[async_trait::async_trait]
-trait PhysicalSink<'env, S: StorageEngine, M: ExecutionMode<'env, S>>: PhysicalSource<S, M> {
-    fn sink(&self, ctx: &ExecutionContext<'_, '_, S, M>, tuple: Tuple) -> ExecutionResult<()>;
+trait PhysicalSink<'env, S: StorageEngine, M: ExecutionMode<'env, S>>:
+    PhysicalSource<'env, S, M>
+{
+    fn sink(&self, ctx: &ExecutionContext<'env, S, M>, tuple: Tuple) -> ExecutionResult<()>;
 }
 
-pub trait ExecutionMode<'env, S: StorageEngine>: private::Sealed + Clone + Copy + 'static {
+pub trait ExecutionMode<'env, S: StorageEngine>: private::Sealed + Clone + Copy + 'env {
     type Transaction: Transaction<'env, S>;
-
-    type Ref<'a, T>
-    where
-        T: 'a,
-        'env: 'a;
 }
 
 mod private {
@@ -198,10 +195,8 @@ impl<S> private::Sealed for ReadonlyExecutionMode<S> {}
 
 impl<S> Copy for ReadonlyExecutionMode<S> {}
 
-impl<S: StorageEngine> ExecutionMode<S> for ReadonlyExecutionMode<S> {
-    type Transaction<'env> = S::Transaction<'env>;
-
-    type Ref<'a, T> = &'a T where T: 'a;
+impl<'env, S: StorageEngine> ExecutionMode<'env, S> for ReadonlyExecutionMode<S> {
+    type Transaction = S::Transaction<'env>;
 }
 
 pub struct ReadWriteExecutionMode<S>(std::marker::PhantomData<S>);
@@ -217,21 +212,19 @@ impl<S> Copy for ReadWriteExecutionMode<S> {}
 
 impl<S> private::Sealed for ReadWriteExecutionMode<S> {}
 
-impl<S: StorageEngine> ExecutionMode<S> for ReadWriteExecutionMode<S> {
-    type Transaction<'env> = S::WriteTransaction<'env>;
-
-    type Ref<'a, T> = &'a mut T where T: 'a;
+impl<'env, S: StorageEngine> ExecutionMode<'env, S> for ReadWriteExecutionMode<S> {
+    type Transaction = S::WriteTransaction<'env>;
 }
 
-pub struct ExecutionContext<'a, 'env, S: StorageEngine, M: ExecutionMode<S>> {
+pub struct ExecutionContext<'env, S: StorageEngine, M: ExecutionMode<'env, S>> {
     storage: S,
     catalog: Arc<Catalog<S>>,
-    tx: M::Ref<'a>,
+    tx: M::Transaction,
 }
 
-impl<'a, 'env, S: StorageEngine, M: ExecutionMode<S>> ExecutionContext<'a, 'env, S, M> {
+impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> ExecutionContext<'env, S, M> {
     #[inline]
-    pub fn new(storage: S, catalog: Arc<Catalog<S>>, tx: M::Ref<'a>) -> Self {
+    pub fn new(storage: S, catalog: Arc<Catalog<S>>, tx: M::Transaction) -> Self {
         Self { storage, catalog, tx }
     }
 
@@ -241,13 +234,14 @@ impl<'a, 'env, S: StorageEngine, M: ExecutionMode<S>> ExecutionContext<'a, 'env,
     }
 
     #[inline]
-    pub fn tx(&self) -> &M::Ref<'a> {
+    pub fn tx(&self) -> &M::Transaction {
         &self.tx
     }
 
     #[inline]
-    pub fn tx_mut(&mut self) -> &mut M::Ref<'a> {
-        &mut self.tx
+    pub fn tx_mut(&self) -> &mut M::Transaction {
+        todo!()
+        // &mut self.tx
     }
 
     #[inline]
@@ -256,6 +250,6 @@ impl<'a, 'env, S: StorageEngine, M: ExecutionMode<S>> ExecutionContext<'a, 'env,
     }
 }
 
-struct RootPipeline<S, M> {
-    arena: PipelineArena<S, M>,
+struct RootPipeline<'env, S, M> {
+    arena: PipelineArena<'env, S, M>,
 }
