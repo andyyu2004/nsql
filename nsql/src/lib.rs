@@ -56,7 +56,7 @@ impl<S: StorageEngine> Nsql<S> {
 impl Nsql<LmdbStorageEngine> {
     #[cfg(feature = "in-memory")]
     pub fn in_memory() -> Result<Self> {
-        todo!()
+        Self::open(":memory:")
     }
 }
 

@@ -1,21 +1,21 @@
 use std::collections::BTreeMap;
 use std::error::Error;
 use std::path::Path;
-use std::time::Duration;
 
 use async_trait::async_trait;
 use nsql::{Connection, Nsql};
+use nsql_lmdb::LmdbStorageEngine;
 use nsql_storage::schema::LogicalType;
 use nsql_storage_engine::StorageEngine;
-use sqllogictest::{AsyncDB, ColumnType, DBOutput, Runner, DB};
+use sqllogictest::{ColumnType, DBOutput, Runner, DB};
 use tracing_subscriber::EnvFilter;
 
 fn nsql_sqllogictest(path: &Path) -> nsql::Result<(), Box<dyn Error>> {
     let filter =
         EnvFilter::try_from_env("NSQL_LOG").unwrap_or_else(|_| EnvFilter::new("nsql=DEBUG"));
     let _ = tracing_subscriber::fmt::fmt().with_env_filter(filter).try_init();
-    let dir = tempfile::tempfile()?;
-    let db = TestDb::new(Nsql::open().unwrap());
+    let db_path = nsql_test::tempfile::NamedTempFile::new()?.into_temp_path();
+    let db = TestDb::new(Nsql::<LmdbStorageEngine>::open(db_path).unwrap());
     let mut tester = Runner::new(db);
     tester.run_file(path)?;
     Ok(())
