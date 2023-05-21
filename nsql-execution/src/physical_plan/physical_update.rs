@@ -73,7 +73,7 @@ impl<S: StorageEngine> PhysicalNode<S, ReadWriteExecutionMode<S>> for PhysicalUp
 impl<S: StorageEngine> PhysicalSink<S, ReadWriteExecutionMode<S>> for PhysicalUpdate<S> {
     fn sink(
         &self,
-        ctx: &ExecutionContext<'_, S, ReadWriteExecutionMode<S>>,
+        ctx: &ExecutionContext<'_, '_, S, ReadWriteExecutionMode<S>>,
         tuple: Tuple,
     ) -> ExecutionResult<()> {
         let tx = ctx.tx();
@@ -99,7 +99,7 @@ impl<S: StorageEngine> PhysicalSource<S, ReadWriteExecutionMode<S>> for Physical
     #[inline]
     fn source(
         &self,
-        _ctx: &ExecutionContext<'_, S, ReadWriteExecutionMode<S>>,
+        _ctx: &ExecutionContext<'_, '_, S, ReadWriteExecutionMode<S>>,
     ) -> ExecutionResult<SourceState<Chunk>> {
         let returning = match &self.returning {
             Some(returning) => returning,

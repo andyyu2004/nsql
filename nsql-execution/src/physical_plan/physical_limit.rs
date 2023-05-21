@@ -21,7 +21,7 @@ impl<S: StorageEngine, M: ExecutionMode<S>> PhysicalLimit<S, M> {
 impl<S: StorageEngine, M: ExecutionMode<S>> PhysicalOperator<S, M> for PhysicalLimit<S, M> {
     fn execute(
         &self,
-        _ctx: &ExecutionContext<'_, S, M>,
+        _ctx: &ExecutionContext<'_, '_, S, M>,
         input: Tuple,
     ) -> ExecutionResult<OperatorState<Tuple>> {
         if self.yielded.fetch_add(1, atomic::Ordering::AcqRel) >= self.limit {

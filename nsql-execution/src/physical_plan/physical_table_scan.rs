@@ -49,7 +49,7 @@ impl<S: StorageEngine> PhysicalTableScan<S> {
 #[async_trait::async_trait]
 impl<S: StorageEngine, M: ExecutionMode<S>> PhysicalSource<S, M> for PhysicalTableScan<S> {
     #[tracing::instrument(skip(self, ctx))]
-    fn source(&self, ctx: &ExecutionContext<'_, S, M>) -> ExecutionResult<SourceState<Chunk>> {
+    fn source(&self, ctx: &ExecutionContext<'_, '_, S, M>) -> ExecutionResult<SourceState<Chunk>> {
         let table = self.table.get_or_try_init(|| {
             let tx = ctx.tx();
             let namespace = ctx.catalog.get(&*tx, self.table_ref.namespace).unwrap();

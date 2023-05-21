@@ -63,7 +63,7 @@ impl<S: StorageEngine> PhysicalNode<S, ReadWriteExecutionMode<S>> for PhysicalCr
 impl<S: StorageEngine> PhysicalSource<S, ReadWriteExecutionMode<S>> for PhysicalCreateTable<S> {
     fn source(
         &self,
-        ctx: &ExecutionContext<'_, S, ReadWriteExecutionMode<S>>,
+        ctx: &ExecutionContext<'_, '_, S, ReadWriteExecutionMode<S>>,
     ) -> ExecutionResult<SourceState<Chunk>> {
         let attrs = self
             .info

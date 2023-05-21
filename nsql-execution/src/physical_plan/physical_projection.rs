@@ -22,7 +22,7 @@ impl<S: StorageEngine, M: ExecutionMode<S>> PhysicalOperator<S, M> for PhysicalP
     #[tracing::instrument(skip(self, _ctx, input))]
     fn execute(
         &self,
-        _ctx: &ExecutionContext<'_, S, M>,
+        _ctx: &ExecutionContext<'_, '_, S, M>,
         input: Tuple,
     ) -> ExecutionResult<OperatorState<Tuple>> {
         let output = self.evaluator.evaluate(&input, &self.projection);

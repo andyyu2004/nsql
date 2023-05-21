@@ -20,7 +20,7 @@ use std::sync::Arc;
 use anyhow::Result;
 use nsql_catalog::{Catalog, EntityRef};
 use nsql_plan::Plan;
-use nsql_storage_engine::StorageEngine;
+use nsql_storage_engine::{StorageEngine, Transaction};
 
 pub use self::explain::Explain;
 use self::physical_create_namespace::PhysicalCreateNamespace;
@@ -64,7 +64,7 @@ impl<S: StorageEngine> PhysicalPlanner<S> {
 
     pub fn plan<M: ExecutionMode<S>>(
         &self,
-        tx: &S::Transaction<'_>,
+        tx: &impl Transaction<'_, S>,
         plan: Box<Plan<S>>,
     ) -> Result<PhysicalPlan<S, M>> {
         self.plan_node(tx, plan).map(PhysicalPlan)
@@ -72,7 +72,7 @@ impl<S: StorageEngine> PhysicalPlanner<S> {
 
     fn plan_node_write(
         &self,
-        tx: &S::Transaction<'_>,
+        tx: &impl Transaction<'_, S>,
         plan: Box<Plan<S>>,
     ) -> Result<Arc<dyn PhysicalNode<S, ReadWriteExecutionMode<S>>>> {
         match *plan {
@@ -97,7 +97,7 @@ impl<S: StorageEngine> PhysicalPlanner<S> {
     #[allow(clippy::boxed_local)]
     fn plan_node<M: ExecutionMode<S>>(
         &self,
-        tx: &S::Transaction<'_>,
+        tx: &impl Transaction<'_, S>,
         plan: Box<Plan<S>>,
     ) -> Result<Arc<dyn PhysicalNode<S, M>>> {
         let plan = match *plan {
@@ -105,21 +105,24 @@ impl<S: StorageEngine> PhysicalPlanner<S> {
             Plan::Scan { table_ref, projection } => PhysicalTableScan::plan(table_ref, projection),
             Plan::Show(show) => PhysicalShow::plan(show),
             Plan::Explain(kind, plan) => {
-                let plan = self.plan_node(tx, plan)?;
-                let stringified = match kind {
-                    ir::ExplainMode::Physical => {
-                        explain::explain(&self.catalog, tx, plan.as_ref()).to_string()
-                    }
-                    ir::ExplainMode::Pipeline => {
-                        let sink = Arc::new(OutputSink::default());
-                        let pipeline =
-                            crate::build_pipelines(sink, PhysicalPlan(Arc::clone(&plan)));
-                        let disp = explain::explain_pipeline(&self.catalog, tx, &pipeline);
-                        disp.to_string()
-                    }
-                };
-
-                PhysicalExplain::plan(stringified, plan)
+                todo!()
+                // let plan = self.plan_node(tx, plan)?;
+                // let stringified = match kind {
+                //     ir::ExplainMode::Physical => {
+                //         todo!()
+                //         // explain::explain(&self.catalog, tx, plan.as_ref()).to_string()
+                //     }
+                //     ir::ExplainMode::Pipeline => {
+                //         todo!()
+                //         let sink = Arc::new(OutputSink::default());
+                //         let pipeline =
+                //             crate::build_pipelines(sink, PhysicalPlan(Arc::clone(&plan)));
+                //         let disp = explain::explain_pipeline(&self.catalog, tx, &pipeline);
+                //         disp.to_string()
+                //     }
+                // };
+                //
+                // PhysicalExplain::plan(stringified, plan)
             }
             Plan::Values { values } => PhysicalValues::plan(values),
             Plan::Projection { source, projection } => {

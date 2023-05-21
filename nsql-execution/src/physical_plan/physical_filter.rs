@@ -19,7 +19,7 @@ impl<S: StorageEngine, M: ExecutionMode<S>> PhysicalOperator<S, M> for PhysicalF
     #[tracing::instrument(skip(self, _ctx, input))]
     fn execute(
         &self,
-        _ctx: &ExecutionContext<'_, S, M>,
+        _ctx: &ExecutionContext<'_, '_, S, M>,
         input: Tuple,
     ) -> ExecutionResult<OperatorState<Tuple>> {
         let value = self.evaluator.evaluate_expr(&input, &self.predicate);

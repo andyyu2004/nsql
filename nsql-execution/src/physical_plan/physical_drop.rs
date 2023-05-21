@@ -58,7 +58,7 @@ impl<S: StorageEngine> PhysicalNode<S, ReadWriteExecutionMode<S>> for PhysicalDr
 impl<S: StorageEngine> PhysicalSource<S, ReadWriteExecutionMode<S>> for PhysicalDrop<S> {
     fn source(
         &self,
-        ctx: &ExecutionContext<'_, S, ReadWriteExecutionMode<S>>,
+        ctx: &ExecutionContext<'_, '_, S, ReadWriteExecutionMode<S>>,
     ) -> ExecutionResult<SourceState<Chunk>> {
         let mut tx = ctx.tx_mut();
         let catalog = ctx.catalog();

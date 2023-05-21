@@ -1,3 +1,4 @@
+#![feature(anonymous_lifetime_in_impl_trait)]
 #![deny(rust_2018_idioms)]
 #![feature(trait_upcasting)]
 #![feature(once_cell_try)]
@@ -152,7 +153,7 @@ enum SourceState<T> {
 trait PhysicalOperator<S: StorageEngine, M: ExecutionMode<S>, T = Tuple>: PhysicalNode<S, M> {
     fn execute(
         &self,
-        ctx: &ExecutionContext<'_, S, M>,
+        ctx: &ExecutionContext<'_, '_, S, M>,
         input: T,
     ) -> ExecutionResult<OperatorState<T>>;
 }
@@ -160,35 +161,53 @@ trait PhysicalOperator<S: StorageEngine, M: ExecutionMode<S>, T = Tuple>: Physic
 #[async_trait::async_trait]
 trait PhysicalSource<S: StorageEngine, M: ExecutionMode<S>, T = Tuple>: PhysicalNode<S, M> {
     /// Return the next chunk from the source. An empty chunk indicates that the source is exhausted.
-    fn source(&self, ctx: &ExecutionContext<'_, S, M>) -> ExecutionResult<SourceState<Chunk<T>>>;
+    fn source(
+        &self,
+        ctx: &ExecutionContext<'_, '_, S, M>,
+    ) -> ExecutionResult<SourceState<Chunk<T>>>;
 }
 
 #[async_trait::async_trait]
-trait PhysicalSink<S: StorageEngine, M: ExecutionMode<S>>: PhysicalSource<S, M> {
-    fn sink(&self, ctx: &ExecutionContext<'_, S, M>, tuple: Tuple) -> ExecutionResult<()>;
+trait PhysicalSink<'env, S: StorageEngine, M: ExecutionMode<'env, S>>: PhysicalSource<S, M> {
+    fn sink(&self, ctx: &ExecutionContext<'_, '_, S, M>, tuple: Tuple) -> ExecutionResult<()>;
 }
 
-pub trait ExecutionMode<S: StorageEngine>: Clone + Copy + 'static {
-    type Transaction<'env>: Transaction<'env, S>;
+pub trait ExecutionMode<'env, S: StorageEngine>: private::Sealed + Clone + Copy + 'static {
+    type Transaction: Transaction<'env, S>;
+
+    type Ref<'a, T>
+    where
+        T: 'a,
+        'env: 'a;
 }
 
-struct ReadonlyExecutionMode<S>(std::marker::PhantomData<S>);
+mod private {
+    pub trait Sealed {}
+}
+
+pub struct ReadonlyExecutionMode<S>(std::marker::PhantomData<S>);
 
 impl<S> Clone for ReadonlyExecutionMode<S> {
+    #[inline]
     fn clone(&self) -> Self {
         Self(self.0)
     }
 }
 
+impl<S> private::Sealed for ReadonlyExecutionMode<S> {}
+
 impl<S> Copy for ReadonlyExecutionMode<S> {}
 
 impl<S: StorageEngine> ExecutionMode<S> for ReadonlyExecutionMode<S> {
     type Transaction<'env> = S::Transaction<'env>;
+
+    type Ref<'a, T> = &'a T where T: 'a;
 }
 
-struct ReadWriteExecutionMode<S>(std::marker::PhantomData<S>);
+pub struct ReadWriteExecutionMode<S>(std::marker::PhantomData<S>);
 
 impl<S> Clone for ReadWriteExecutionMode<S> {
+    #[inline]
     fn clone(&self) -> Self {
         Self(self.0)
     }
@@ -196,20 +215,24 @@ impl<S> Clone for ReadWriteExecutionMode<S> {
 
 impl<S> Copy for ReadWriteExecutionMode<S> {}
 
+impl<S> private::Sealed for ReadWriteExecutionMode<S> {}
+
 impl<S: StorageEngine> ExecutionMode<S> for ReadWriteExecutionMode<S> {
     type Transaction<'env> = S::WriteTransaction<'env>;
+
+    type Ref<'a, T> = &'a mut T where T: 'a;
 }
 
-pub struct ExecutionContext<'env, S: StorageEngine, M: ExecutionMode<S>> {
+pub struct ExecutionContext<'a, 'env, S: StorageEngine, M: ExecutionMode<S>> {
     storage: S,
     catalog: Arc<Catalog<S>>,
-    tx: RwLock<M::Transaction<'env>>,
+    tx: M::Ref<'a>,
 }
 
-impl<'env, S: StorageEngine, M: ExecutionMode<S>> ExecutionContext<'env, S, M> {
+impl<'a, 'env, S: StorageEngine, M: ExecutionMode<S>> ExecutionContext<'a, 'env, S, M> {
     #[inline]
-    pub fn new(storage: S, catalog: Arc<Catalog<S>>, tx: M::Transaction<'env>) -> Self {
-        Self { storage, catalog, tx: RwLock::new(tx) }
+    pub fn new(storage: S, catalog: Arc<Catalog<S>>, tx: M::Ref<'a>) -> Self {
+        Self { storage, catalog, tx }
     }
 
     #[inline]
@@ -218,13 +241,13 @@ impl<'env, S: StorageEngine, M: ExecutionMode<S>> ExecutionContext<'env, S, M> {
     }
 
     #[inline]
-    pub fn tx(&self) -> RwLockReadGuard<'_, M::Transaction<'env>> {
-        self.tx.read()
+    pub fn tx(&self) -> &M::Ref<'a> {
+        &self.tx
     }
 
     #[inline]
-    pub fn tx_mut(&self) -> RwLockWriteGuard<'_, M::Transaction<'env>> {
-        self.tx.write()
+    pub fn tx_mut(&mut self) -> &mut M::Ref<'a> {
+        &mut self.tx
     }
 
     #[inline]

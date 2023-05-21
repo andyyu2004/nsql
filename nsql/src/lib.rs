@@ -8,7 +8,9 @@ pub use anyhow::Error;
 use arc_swap::ArcSwapOption;
 use nsql_bind::Binder;
 use nsql_catalog::Catalog;
-use nsql_execution::{ExecutionContext, PhysicalPlanner};
+use nsql_execution::{
+    ExecutionContext, PhysicalPlanner, ReadWriteExecutionMode, ReadonlyExecutionMode,
+};
 use nsql_lmdb::LmdbStorageEngine;
 use nsql_opt::optimize;
 use nsql_plan::Planner;
@@ -121,9 +123,19 @@ impl<S: StorageEngine> Shared<S> {
 
         let plan = optimize(plan);
 
-        let physical_plan = PhysicalPlanner::new(Arc::clone(&catalog)).plan(tx, plan)?;
-        let ctx = ExecutionContext::new(self.storage.storage(), catalog, tx.clone());
-        let tuples = nsql_execution::execute(ctx, physical_plan)?;
+        let planner = PhysicalPlanner::new(Arc::clone(&catalog));
+        let tuples = match tx {
+            ReadOrWriteTransaction::Read(tx) => {
+                let physical_plan = planner.plan::<ReadonlyExecutionMode<S>>(tx, plan)?;
+                let ctx = ExecutionContext::new(self.storage.storage(), catalog, tx.clone());
+                nsql_execution::execute(ctx, physical_plan)?
+            }
+            ReadOrWriteTransaction::Write(tx) => {
+                let physical_plan = planner.plan::<ReadWriteExecutionMode<S>>(tx, plan)?;
+                let ctx = ExecutionContext::new(self.storage.storage(), catalog, tx);
+                nsql_execution::execute(ctx, physical_plan)?
+            }
+        };
 
         // FIXME need to get the types
         Ok(MaterializedQueryOutput { types: vec![], tuples })

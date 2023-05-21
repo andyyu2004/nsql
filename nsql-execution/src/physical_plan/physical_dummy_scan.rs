@@ -11,7 +11,7 @@ impl PhysicalDummyScan {
 
 #[async_trait::async_trait]
 impl<S: StorageEngine, M: ExecutionMode<S>> PhysicalSource<S, M> for PhysicalDummyScan {
-    fn source(&self, _ctx: &ExecutionContext<'_, S, M>) -> ExecutionResult<SourceState<Chunk>> {
+    fn source(&self, _ctx: &ExecutionContext<'_, '_, S, M>) -> ExecutionResult<SourceState<Chunk>> {
         Ok(SourceState::Final(Chunk::singleton(Tuple::empty())))
     }
 }

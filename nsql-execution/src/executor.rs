@@ -11,7 +11,7 @@ pub(crate) struct Executor<S, M> {
 impl<S: StorageEngine, M: ExecutionMode<S>> Executor<S, M> {
     fn execute(
         self: Arc<Self>,
-        ctx: &ExecutionContext<'_, S, M>,
+        ctx: &ExecutionContext<'_, '_, S, M>,
         root: Idx<MetaPipeline<S, M>>,
     ) -> ExecutionResult<()> {
         let root = &self.arena[root];
@@ -29,7 +29,7 @@ impl<S: StorageEngine, M: ExecutionMode<S>> Executor<S, M> {
 
     fn execute_pipeline(
         self: Arc<Self>,
-        ctx: &ExecutionContext<'_, S, M>,
+        ctx: &ExecutionContext<'_, '_, S, M>,
         pipeline: Idx<Pipeline<S, M>>,
     ) -> ExecutionResult<()> {
         let pipeline = &self.arena[pipeline];
@@ -64,7 +64,7 @@ impl<S: StorageEngine, M: ExecutionMode<S>> Executor<S, M> {
 }
 
 fn execute_root_pipeline<S: StorageEngine, M: ExecutionMode<S>>(
-    mut ctx: ExecutionContext<'_, S, M>,
+    mut ctx: ExecutionContext<'_, '_, S, M>,
     pipeline: RootPipeline<S, M>,
 ) -> ExecutionResult<()> {
     let root = pipeline.arena.root();
@@ -73,7 +73,7 @@ fn execute_root_pipeline<S: StorageEngine, M: ExecutionMode<S>>(
 }
 
 pub fn execute<S: StorageEngine, M: ExecutionMode<S>>(
-    ctx: ExecutionContext<'_, S, M>,
+    ctx: ExecutionContext<'_, '_, S, M>,
     plan: PhysicalPlan<S, M>,
 ) -> ExecutionResult<Vec<Tuple>> {
     let sink = Arc::new(OutputSink::default());
@@ -119,14 +119,14 @@ impl<S: StorageEngine, M: ExecutionMode<S>> PhysicalNode<S, M> for OutputSink {
 
 #[async_trait::async_trait]
 impl<S: StorageEngine, M: ExecutionMode<S>> PhysicalSource<S, M> for OutputSink {
-    fn source(&self, _ctx: &ExecutionContext<'_, S, M>) -> ExecutionResult<SourceState<Chunk>> {
+    fn source(&self, _ctx: &ExecutionContext<'_, '_, S, M>) -> ExecutionResult<SourceState<Chunk>> {
         todo!()
     }
 }
 
 #[async_trait::async_trait]
 impl<S: StorageEngine, M: ExecutionMode<S>> PhysicalSink<S, M> for OutputSink {
-    fn sink(&self, _ctx: &ExecutionContext<'_, S, M>, tuple: Tuple) -> ExecutionResult<()> {
+    fn sink(&self, _ctx: &ExecutionContext<'_, '_, S, M>, tuple: Tuple) -> ExecutionResult<()> {
         self.tuples.write().push(tuple);
         Ok(())
     }

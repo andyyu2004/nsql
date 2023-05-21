@@ -246,21 +246,6 @@ impl<'env> WriteTransaction<'env, LmdbStorageEngine> for ReadWriteTx<'env> {
     ) -> std::result::Result<bool, <LmdbStorageEngine as StorageEngine>::Error> {
         tree.delete(&mut self.0, key)
     }
-
-    // #[inline]
-    // fn put(
-    //     &mut self,
-    //     txn: &mut ReadWriteTx<'_>,
-    //     key: &[u8],
-    //     value: &[u8],
-    // ) -> Result<(), heed::Error> {
-    //     (*self).put(&mut txn.0, key, value)
-    // }
-    //
-    // #[inline]
-    // fn delete(&mut self, txn: &mut ReadWriteTx<'_>, key: &[u8]) -> Result<bool, heed::Error> {
-    //     (*self).delete(&mut txn.0, key)
-    // }
 }
 
 #[cfg(test)]
