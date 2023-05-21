@@ -139,7 +139,7 @@ impl<'env> nsql_storage_engine::Transaction<'env, RedbStorageEngine> for ReadTra
     fn range<'txn>(
         &'txn self,
         tree: &'txn <RedbStorageEngine as nsql_storage_engine::StorageEngine>::ReadTree<'env, 'txn>,
-        range: impl RangeBounds<[u8]>,
+        range: impl RangeBounds<[u8]> + 'txn,
     ) -> std::result::Result<
         impl Iterator<
             Item = std::result::Result<
@@ -160,7 +160,7 @@ impl<'env> nsql_storage_engine::Transaction<'env, RedbStorageEngine> for ReadTra
     fn rev_range<'txn>(
         &'txn self,
         tree: &'txn <RedbStorageEngine as nsql_storage_engine::StorageEngine>::ReadTree<'env, 'txn>,
-        range: impl RangeBounds<[u8]>,
+        range: impl RangeBounds<[u8]> + 'txn,
     ) -> std::result::Result<
         impl Iterator<
             Item = std::result::Result<
@@ -196,7 +196,7 @@ impl<'env> nsql_storage_engine::Transaction<'env, RedbStorageEngine> for Transac
     fn range<'txn>(
         &'txn self,
         tree: &'txn <RedbStorageEngine as nsql_storage_engine::StorageEngine>::ReadTree<'env, 'txn>,
-        range: impl RangeBounds<[u8]>,
+        range: impl RangeBounds<[u8]> + 'txn,
     ) -> std::result::Result<
         impl Iterator<
             Item = std::result::Result<
@@ -217,7 +217,7 @@ impl<'env> nsql_storage_engine::Transaction<'env, RedbStorageEngine> for Transac
     fn rev_range<'txn>(
         &'txn self,
         tree: &'txn <RedbStorageEngine as nsql_storage_engine::StorageEngine>::ReadTree<'env, 'txn>,
-        range: impl RangeBounds<[u8]>,
+        range: impl RangeBounds<[u8]> + 'txn,
     ) -> std::result::Result<
         impl Iterator<
             Item = std::result::Result<

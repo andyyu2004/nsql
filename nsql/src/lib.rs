@@ -1,5 +1,6 @@
 #![deny(rust_2018_idioms)]
 
+use std::ops::Deref;
 use std::path::Path;
 use std::sync::Arc;
 
@@ -14,7 +15,7 @@ use nsql_plan::Planner;
 pub use nsql_storage::schema::LogicalType;
 pub use nsql_storage::tuple::Tuple;
 use nsql_storage::Storage;
-use nsql_storage_engine::{StorageEngine, WriteTransaction};
+use nsql_storage_engine::{ReadOrWriteTransaction, StorageEngine, WriteTransaction};
 
 pub type Result<T, E = anyhow::Error> = std::result::Result<T, E>;
 
@@ -67,11 +68,6 @@ pub struct Connection<'env, S: StorageEngine> {
     current_tx: ArcSwapOption<S::Transaction<'env>>,
 }
 
-enum Transaction<'env, S: StorageEngine> {
-    Read(S::Transaction<'env>),
-    Write(S::WriteTransaction<'env>),
-}
-
 impl<S: StorageEngine> Connection<'_, S> {
     pub fn query(&self, query: &str) -> Result<MaterializedQueryOutput> {
         // let tx = match self.current_tx.load_full() {
@@ -103,7 +99,11 @@ impl<S: StorageEngine> Connection<'_, S> {
 }
 
 impl<S: StorageEngine> Shared<S> {
-    fn query(&self, tx: &Transaction<'_, S>, query: &str) -> Result<MaterializedQueryOutput> {
+    fn query(
+        &self,
+        tx: &ReadOrWriteTransaction<'_, S>,
+        query: &str,
+    ) -> Result<MaterializedQueryOutput> {
         let statements = nsql_parse::parse_statements(query)?;
         if statements.is_empty() {
             return Ok(MaterializedQueryOutput { types: vec![], tuples: vec![] });

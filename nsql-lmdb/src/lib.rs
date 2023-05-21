@@ -128,7 +128,7 @@ impl<'env> Transaction<'env, LmdbStorageEngine> for ReadonlyTx<'env> {
     fn range<'txn>(
         &'txn self,
         tree: &'txn <LmdbStorageEngine as StorageEngine>::ReadTree<'env, 'txn>,
-        range: impl RangeBounds<[u8]>,
+        range: impl RangeBounds<[u8]> + 'txn,
     ) -> std::result::Result<
         impl Iterator<
             Item = std::result::Result<
@@ -148,7 +148,7 @@ impl<'env> Transaction<'env, LmdbStorageEngine> for ReadonlyTx<'env> {
     fn rev_range<'txn>(
         &'txn self,
         tree: &'txn <LmdbStorageEngine as StorageEngine>::ReadTree<'env, 'txn>,
-        range: impl RangeBounds<[u8]>,
+        range: impl RangeBounds<[u8]> + 'txn,
     ) -> std::result::Result<
         impl Iterator<
             Item = std::result::Result<
@@ -182,7 +182,7 @@ impl<'env> Transaction<'env, LmdbStorageEngine> for ReadWriteTx<'env> {
     fn range<'txn>(
         &'txn self,
         tree: &'txn <LmdbStorageEngine as StorageEngine>::ReadTree<'env, 'txn>,
-        range: impl RangeBounds<[u8]>,
+        range: impl RangeBounds<[u8]> + 'txn,
     ) -> std::result::Result<
         impl Iterator<
             Item = std::result::Result<
@@ -202,7 +202,7 @@ impl<'env> Transaction<'env, LmdbStorageEngine> for ReadWriteTx<'env> {
     fn rev_range<'txn>(
         &'txn self,
         tree: &'txn <LmdbStorageEngine as StorageEngine>::ReadTree<'env, 'txn>,
-        range: impl RangeBounds<[u8]>,
+        range: impl RangeBounds<[u8]> + 'txn,
     ) -> std::result::Result<
         impl Iterator<
             Item = std::result::Result<
