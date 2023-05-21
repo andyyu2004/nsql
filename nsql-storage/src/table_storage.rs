@@ -17,7 +17,11 @@ impl<S: StorageEngine> TableStorage<S> {
     }
 
     #[inline]
-    pub fn append(&self, tx: &mut S::WriteTransaction<'_>, tuple: &Tuple) -> Result<(), S::Error> {
+    pub fn append(
+        &self,
+        _tx: &mut S::WriteTransaction<'_>,
+        _tuple: &Tuple,
+    ) -> Result<(), S::Error> {
         todo!();
         Ok(())
     }
@@ -25,9 +29,9 @@ impl<S: StorageEngine> TableStorage<S> {
     #[inline]
     pub fn update(
         &self,
-        tx: &S::Transaction<'_>,
-        id: &Tuple,
-        tuple: &Tuple,
+        _tx: &S::Transaction<'_>,
+        _id: &Tuple,
+        _tuple: &Tuple,
     ) -> Result<(), S::Error> {
         todo!();
         Ok(())
@@ -36,8 +40,8 @@ impl<S: StorageEngine> TableStorage<S> {
     #[inline]
     pub fn scan(
         &self,
-        tx: &impl Transaction<'_, S>,
-        projection: Option<Box<[TupleIndex]>>,
+        _tx: &impl Transaction<'_, S>,
+        _projection: Option<Box<[TupleIndex]>>,
     ) -> impl Iterator<Item = Result<Vec<Tuple>, S::Error>> + Send + 'static {
         [].into_iter()
         // self.heap

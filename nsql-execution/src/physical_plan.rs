@@ -27,7 +27,6 @@ use self::physical_create_namespace::PhysicalCreateNamespace;
 use self::physical_create_table::PhysicalCreateTable;
 use self::physical_drop::PhysicalDrop;
 use self::physical_dummy_scan::PhysicalDummyScan;
-use self::physical_explain::PhysicalExplain;
 use self::physical_filter::PhysicalFilter;
 use self::physical_insert::PhysicalInsert;
 use self::physical_limit::PhysicalLimit;
@@ -37,11 +36,10 @@ use self::physical_table_scan::PhysicalTableScan;
 use self::physical_transaction::PhysicalTransaction;
 use self::physical_update::PhysicalUpdate;
 use self::physical_values::PhysicalValues;
-use crate::executor::OutputSink;
 use crate::{
     Chunk, Evaluator, ExecutionContext, ExecutionMode, ExecutionResult, OperatorState,
     PhysicalNode, PhysicalOperator, PhysicalSink, PhysicalSource, ReadWriteExecutionMode,
-    ReadonlyExecutionMode, SourceState, Tuple,
+    SourceState, Tuple,
 };
 
 pub struct PhysicalPlanner<S> {
@@ -104,7 +102,7 @@ impl<'env, S: StorageEngine> PhysicalPlanner<S> {
             Plan::Transaction(kind) => PhysicalTransaction::plan(kind),
             Plan::Scan { table_ref, projection } => PhysicalTableScan::plan(table_ref, projection),
             Plan::Show(show) => PhysicalShow::plan(show),
-            Plan::Explain(kind, plan) => {
+            Plan::Explain(_kind, _plan) => {
                 todo!()
                 // let plan = self.plan_node(tx, plan)?;
                 // let stringified = match kind {

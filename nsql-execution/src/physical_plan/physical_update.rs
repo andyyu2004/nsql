@@ -82,9 +82,9 @@ impl<'env, S: StorageEngine> PhysicalSink<'env, S, ReadWriteExecutionMode<S>>
     ) -> ExecutionResult<()> {
         let tx = ctx.tx();
         let table = self.table_ref.get(&ctx.catalog(), &*tx);
-        let storage = table.storage();
+        let _storage = table.storage();
 
-        let (tuple, tid) = tuple.split_last().expect("expected tuple to be non-empty");
+        let (_tuple, _tid) = tuple.split_last().expect("expected tuple to be non-empty");
 
         todo!();
         // storage.update(&tx, tid, &tuple).map_err(|report| report.into_error())?;

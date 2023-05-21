@@ -44,7 +44,7 @@ impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSource<'env, S, 
     for PhysicalTransaction
 {
     fn source(&self, ctx: &ExecutionContext<'env, S, M>) -> ExecutionResult<SourceState<Chunk>> {
-        let tx = ctx.tx();
+        let _tx = ctx.tx();
         // match self.kind {
         //     ir::TransactionKind::Begin => {
         //         if tx.auto_commit() {

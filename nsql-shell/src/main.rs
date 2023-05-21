@@ -1,11 +1,11 @@
 use std::borrow::Cow;
 
-use nsql::{MaterializedQueryOutput, Nsql};
+use nsql::MaterializedQueryOutput;
 use nu_ansi_term::{Color, Style};
 use reedline::{
     default_vi_insert_keybindings, default_vi_normal_keybindings, DefaultHinter, FileBackedHistory,
     KeyCode, KeyModifiers, PromptEditMode, PromptHistorySearch, PromptHistorySearchStatus,
-    PromptViMode, Reedline, ReedlineEvent, Signal, Vi,
+    PromptViMode, Reedline, ReedlineEvent, Vi,
 };
 use tabled::builder::Builder;
 use tabled::Table;
@@ -15,7 +15,7 @@ async fn main() -> nsql::Result<()> {
     let mut ikb = default_vi_insert_keybindings();
     ikb.add_binding(KeyModifiers::CONTROL, KeyCode::Char('f'), ReedlineEvent::HistoryHintComplete);
 
-    let mut line_editor = Reedline::create()
+    let _line_editor = Reedline::create()
         .with_edit_mode(Box::new(Vi::new(ikb, default_vi_normal_keybindings())))
         .with_history(Box::new(FileBackedHistory::with_file(500, "/tmp/nsql-history.txt".into())?))
         .with_hinter(Box::new(

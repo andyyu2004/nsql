@@ -1,6 +1,5 @@
 #![deny(rust_2018_idioms)]
 
-use std::ops::Deref;
 use std::path::Path;
 use std::sync::Arc;
 
@@ -35,7 +34,7 @@ impl<S: StorageEngine> Nsql<S> {
     pub fn open(path: impl AsRef<Path>) -> Result<Self> {
         let storage = S::open(path)?;
         let mut tx = storage.begin()?;
-        let catalog = Arc::new(Catalog::<S>::create(&mut tx)?);
+        let _catalog = Arc::new(Catalog::<S>::create(&mut tx)?);
         tx.commit()?;
 
         todo!()
@@ -71,7 +70,7 @@ pub struct Connection<'env, S: StorageEngine> {
 }
 
 impl<S: StorageEngine> Connection<'_, S> {
-    pub fn query(&self, query: &str) -> Result<MaterializedQueryOutput> {
+    pub fn query(&self, _query: &str) -> Result<MaterializedQueryOutput> {
         // let tx = match self.current_tx.load_full() {
         //     Some(tx) => {
         //         tracing::debug!(xid = %tx.xid(), "continuing existing tx");

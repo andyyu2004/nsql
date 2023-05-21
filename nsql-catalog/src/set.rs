@@ -97,7 +97,7 @@ impl<S: StorageEngine, T> VersionedEntry<S, T> {
     /// Get the latest visible version for the given transaction.
     pub(crate) fn version_for_tx(
         &self,
-        tx: &S::Transaction<'_>,
+        _tx: &S::Transaction<'_>,
     ) -> Option<Arc<CatalogEntry<S, T>>> {
         todo!()
     }
@@ -113,7 +113,7 @@ impl<S: StorageEngine, T> VersionedEntry<S, T> {
         version.delete(tx);
     }
 
-    pub(crate) fn push_version(&mut self, version: CatalogEntry<S, T>) {
+    pub(crate) fn push_version(&mut self, _version: CatalogEntry<S, T>) {
         todo!()
     }
 }
@@ -129,7 +129,7 @@ impl<S: StorageEngine, T: CatalogEntity<S>> CatalogSet<S, T> {
         self.insert(tx, entity)
     }
 
-    pub(crate) fn entries(&self, tx: &impl Transaction<'_, S>) -> Vec<(Oid<T>, Arc<T>)> {
+    pub(crate) fn entries(&self, _tx: &impl Transaction<'_, S>) -> Vec<(Oid<T>, Arc<T>)> {
         todo!()
         // self.entries
         //     .iter()
@@ -140,7 +140,7 @@ impl<S: StorageEngine, T: CatalogEntity<S>> CatalogSet<S, T> {
         //     .collect()
     }
 
-    pub(crate) fn get(&self, tx: &impl Transaction<'_, S>, oid: Oid<T>) -> Option<Arc<T>> {
+    pub(crate) fn get(&self, _tx: &impl Transaction<'_, S>, _oid: Oid<T>) -> Option<Arc<T>> {
         todo!()
         // self.entries.get(&oid).unwrap().version_for_tx(tx).map(|entry| entry.value())
     }
@@ -159,8 +159,8 @@ impl<S: StorageEngine, T: CatalogEntity<S>> CatalogSet<S, T> {
 
     pub(crate) fn delete(
         &self,
-        tx: &mut S::WriteTransaction<'_>,
-        oid: Oid<T>,
+        _tx: &mut S::WriteTransaction<'_>,
+        _oid: Oid<T>,
     ) -> Result<(), Conflict<S, T>> {
         todo!();
         // self.entries.get_mut(&oid).expect("passed invalid `oid` somehow").delete(tx);
@@ -169,8 +169,8 @@ impl<S: StorageEngine, T: CatalogEntity<S>> CatalogSet<S, T> {
 
     pub(crate) fn insert(
         &self,
-        tx: &mut S::WriteTransaction<'_>,
-        value: T,
+        _tx: &mut S::WriteTransaction<'_>,
+        _value: T,
     ) -> Result<Oid<T>, Conflict<S, T>> {
         // NOTE: this function takes &self and not &mut self, so we need to be mindful of correctness under concurrent usage.
         todo!()
@@ -202,11 +202,11 @@ impl<S: StorageEngine, T> CatalogEntry<S, T> {
         Arc::clone(&self.value)
     }
 
-    pub(crate) fn new(tx: &S::Transaction<'_>, value: T) -> Self {
+    pub(crate) fn new(_tx: &S::Transaction<'_>, value: T) -> Self {
         Self { value: Arc::new(value), _marker: PhantomData }
     }
 
-    fn delete(&self, tx: &S::Transaction<'_>) {
+    fn delete(&self, _tx: &S::Transaction<'_>) {
         todo!()
     }
 }

@@ -2,8 +2,8 @@ use std::fmt;
 use std::ops::Index;
 use std::sync::Arc;
 
-use crate::schema::{PhysicalType, Schema};
-use crate::value::{Decimal, Value};
+use crate::schema::Schema;
+use crate::value::Value;
 
 pub struct TupleDeserializationContext {
     pub schema: Arc<Schema>,
