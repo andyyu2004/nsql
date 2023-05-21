@@ -1146,6 +1146,7 @@ dependencies = [
  "nsql-storage",
  "nsql-storage-engine",
  "nsql-test",
+ "nsql-util",
  "sqllogictest",
  "tempfile",
  "thiserror",

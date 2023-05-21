@@ -103,9 +103,10 @@ impl<S: StorageEngine> Connection<'_, S> {
 impl<S: StorageEngine> Shared<S> {
     fn query(
         &self,
-        tx: &ReadOrWriteTransaction<'_, S>,
+        tx: &mut Option<ReadOrWriteTransaction<'_, S>>,
         query: &str,
     ) -> Result<MaterializedQueryOutput> {
+        let tx = tx.take().unwrap();
         let statements = nsql_parse::parse_statements(query)?;
         if statements.is_empty() {
             return Ok(MaterializedQueryOutput { types: vec![], tuples: vec![] });
@@ -117,7 +118,7 @@ impl<S: StorageEngine> Shared<S> {
 
         let catalog = Arc::clone(&self.catalog);
         let stmt = &statements[0];
-        let stmt = Binder::new(Arc::clone(&catalog)).bind(tx, stmt)?;
+        let stmt = Binder::new(Arc::clone(&catalog)).bind(&tx, stmt)?;
 
         let plan = Planner::default().plan(stmt);
 
@@ -126,12 +127,12 @@ impl<S: StorageEngine> Shared<S> {
         let planner = PhysicalPlanner::new(Arc::clone(&catalog));
         let tuples = match tx {
             ReadOrWriteTransaction::Read(tx) => {
-                let physical_plan = planner.plan::<ReadonlyExecutionMode<S>>(tx, plan)?;
+                let physical_plan = planner.plan::<ReadonlyExecutionMode<S>>(&tx, plan)?;
                 let ctx = ExecutionContext::new(self.storage.storage(), catalog, tx.clone());
                 nsql_execution::execute(ctx, physical_plan)?
             }
             ReadOrWriteTransaction::Write(tx) => {
-                let physical_plan = planner.plan::<ReadWriteExecutionMode<S>>(tx, plan)?;
+                let physical_plan = planner.plan::<ReadWriteExecutionMode<S>>(&tx, plan)?;
                 let ctx = ExecutionContext::new(self.storage.storage(), catalog, tx);
                 nsql_execution::execute(ctx, physical_plan)?
             }
