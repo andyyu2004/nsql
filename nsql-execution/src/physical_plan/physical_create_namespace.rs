@@ -74,7 +74,7 @@ impl<'env, S: StorageEngine> PhysicalSource<'env, S, ReadWriteExecutionMode<S>>
     }
 }
 
-impl<'env, S: StorageEngine> Explain<S> for PhysicalCreateNamespace {
+impl<S: StorageEngine> Explain<S> for PhysicalCreateNamespace {
     fn explain(
         &self,
         _catalog: &Catalog<S>,

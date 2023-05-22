@@ -64,12 +64,12 @@ impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> Executor<'env, S, M> {
 }
 
 fn execute_root_pipeline<'env, S: StorageEngine, M: ExecutionMode<'env, S>>(
-    mut ctx: ExecutionContext<'env, S, M>,
+    ctx: ExecutionContext<'env, S, M>,
     pipeline: RootPipeline<'env, S, M>,
 ) -> ExecutionResult<()> {
     let root = pipeline.arena.root();
     let executor = Arc::new(Executor { arena: pipeline.arena, _marker: std::marker::PhantomData });
-    executor.execute(&mut ctx, root)
+    executor.execute(&ctx, root)
 }
 
 pub fn execute<'env, S: StorageEngine, M: ExecutionMode<'env, S>>(
@@ -133,7 +133,7 @@ impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSink<'env, S, M>
     }
 }
 
-impl<'env, S: StorageEngine> Explain<S> for OutputSink {
+impl<S: StorageEngine> Explain<S> for OutputSink {
     fn explain(
         &self,
         _catalog: &Catalog<S>,

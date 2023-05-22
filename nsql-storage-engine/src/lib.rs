@@ -33,9 +33,9 @@ pub trait StorageEngine: Clone + Send + Sync + Sized + 'static {
     where
         Self: Sized;
 
-    fn begin_readonly(&self) -> Result<Self::Transaction<'_>, Self::Error>;
+    fn begin(&self) -> Result<Self::Transaction<'_>, Self::Error>;
 
-    fn begin(&self) -> Result<Self::WriteTransaction<'_>, Self::Error>;
+    fn begin_write(&self) -> Result<Self::WriteTransaction<'_>, Self::Error>;
 
     fn open_tree_readonly<'env, 'txn>(
         &self,

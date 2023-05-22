@@ -71,13 +71,13 @@ impl StorageEngine for LmdbStorageEngine {
     }
 
     #[inline]
-    fn begin_readonly(&self) -> Result<Self::Transaction<'_>, Self::Error> {
+    fn begin(&self) -> Result<Self::Transaction<'_>, Self::Error> {
         let tx = self.env.read_txn()?;
         Ok(ReadonlyTx(Arc::new(SendRoTxnWrapper(tx))))
     }
 
     #[inline]
-    fn begin(&self) -> std::result::Result<Self::WriteTransaction<'_>, Self::Error> {
+    fn begin_write(&self) -> std::result::Result<Self::WriteTransaction<'_>, Self::Error> {
         let inner = self.env.write_txn()?;
         Ok(ReadWriteTx(inner))
     }
@@ -236,7 +236,7 @@ impl<'env> WriteTransaction<'env, LmdbStorageEngine> for ReadWriteTx<'env> {
         key: &[u8],
         value: &[u8],
     ) -> std::result::Result<bool, <LmdbStorageEngine as StorageEngine>::Error> {
-        tree.put(&mut self.0, key, value);
+        tree.put(&mut self.0, key, value)?;
         todo!("lmdb wrapper doesn't support MDB_NOOVERWRITE currently")
     }
 

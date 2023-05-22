@@ -60,16 +60,6 @@ pub struct CatalogSet<S, T> {
     _marker: std::marker::PhantomData<S>,
 }
 
-impl<S, T> CatalogSet<S, T> {
-    fn with_capacity(capacity: usize) -> Self {
-        Self {
-            entries: DashMap::with_capacity(capacity),
-            name_mapping: DashMap::with_capacity(capacity),
-            _marker: std::marker::PhantomData,
-        }
-    }
-}
-
 impl<S, T> Default for CatalogSet<S, T> {
     fn default() -> Self {
         Self {
@@ -85,12 +75,6 @@ impl<S, T> Default for CatalogSet<S, T> {
 #[derive(Debug)]
 struct VersionedEntry<S, T> {
     versions: Vec<Arc<CatalogEntry<S, T>>>,
-}
-
-impl<S: StorageEngine, T> VersionedEntry<S, T> {
-    pub(crate) fn new(entry: CatalogEntry<S, T>) -> Self {
-        Self { versions: vec![Arc::new(entry)] }
-    }
 }
 
 impl<S: StorageEngine, T: CatalogEntity<S>> CatalogSet<S, T> {
@@ -143,6 +127,9 @@ impl<S: StorageEngine, T: CatalogEntity<S>> CatalogSet<S, T> {
         value: T,
     ) -> Result<Oid<T>, Conflict<S, T>> {
         let oid = self.next_oid();
+        if self.name_mapping.contains_key(&value.name()) {
+            return Err(Conflict::AlreadyExists(PhantomData, value));
+        }
         self.name_mapping.insert(value.name(), oid);
         self.entries.insert(oid, Arc::new(CatalogEntry::new(tx, value)));
         Ok(oid)

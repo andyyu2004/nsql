@@ -39,7 +39,7 @@ use self::physical_values::PhysicalValues;
 use crate::{
     Chunk, Evaluator, ExecutionContext, ExecutionMode, ExecutionResult, OperatorState,
     PhysicalNode, PhysicalOperator, PhysicalSink, PhysicalSource, ReadWriteExecutionMode,
-    SourceState, Tuple,
+    ReadonlyExecutionMode, SourceState, Tuple,
 };
 
 pub struct PhysicalPlanner<S> {
@@ -60,15 +60,25 @@ impl<'env, S: StorageEngine> PhysicalPlanner<S> {
         Self { catalog }
     }
 
-    pub fn plan<M: ExecutionMode<'env, S>>(
+    #[inline]
+    pub fn plan(
         &self,
         tx: &impl Transaction<'_, S>,
         plan: Box<Plan<S>>,
-    ) -> Result<PhysicalPlan<'env, S, M>> {
+    ) -> Result<PhysicalPlan<'env, S, ReadonlyExecutionMode<S>>> {
         self.plan_node(tx, plan).map(PhysicalPlan)
     }
 
-    fn plan_node_write(
+    #[inline]
+    pub fn plan_write(
+        &self,
+        tx: &impl Transaction<'_, S>,
+        plan: Box<Plan<S>>,
+    ) -> Result<PhysicalPlan<'env, S, ReadWriteExecutionMode<S>>> {
+        self.plan_write_node(tx, plan).map(PhysicalPlan)
+    }
+
+    fn plan_write_node(
         &self,
         tx: &impl Transaction<'_, S>,
         plan: Box<Plan<S>>,

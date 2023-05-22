@@ -52,13 +52,13 @@ impl nsql_storage_engine::StorageEngine for RedbStorageEngine {
     }
 
     #[inline]
-    fn begin_readonly(&self) -> Result<Self::Transaction<'_>, Self::Error> {
+    fn begin(&self) -> Result<Self::Transaction<'_>, Self::Error> {
         let tx = self.db.begin_read()?;
         Ok(ReadTransaction(Arc::new(tx)))
     }
 
     #[inline]
-    fn begin(&self) -> std::result::Result<Self::WriteTransaction<'_>, Self::Error> {
+    fn begin_write(&self) -> std::result::Result<Self::WriteTransaction<'_>, Self::Error> {
         let tx = self.db.begin_write()?;
         Ok(Transaction(tx))
     }

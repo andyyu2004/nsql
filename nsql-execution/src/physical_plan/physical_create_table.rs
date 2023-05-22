@@ -86,16 +86,16 @@ impl<'env, S: StorageEngine> PhysicalSource<'env, S, ReadWriteExecutionMode<S>>
         };
 
         let catalog = ctx.catalog();
-        let tx = ctx.tx_mut();
+        let mut tx = ctx.tx_mut();
         let schema = catalog
             .get::<Namespace<S>>(&*tx, self.info.namespace)
             .expect("schema not found during execution");
 
-        let table_oid = schema.create::<Table<S>>(tx, info)?;
+        let table_oid = schema.create::<Table<S>>(&mut tx, info)?;
         let table =
             schema.get::<Table<S>>(&*tx, table_oid).expect("table not found during execution");
         for info in &self.info.columns {
-            table.create::<Column>(tx, info.clone())?;
+            table.create::<Column>(&mut tx, info.clone())?;
         }
 
         Ok(SourceState::Done)

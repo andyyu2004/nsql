@@ -17,6 +17,7 @@ use nsql_arena::Idx;
 use nsql_catalog::Catalog;
 use nsql_storage::tuple::Tuple;
 use nsql_storage_engine::{StorageEngine, Transaction};
+use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 pub use physical_plan::PhysicalPlanner;
 use smallvec::SmallVec;
 
@@ -219,13 +220,13 @@ impl<'env, S: StorageEngine> ExecutionMode<'env, S> for ReadWriteExecutionMode<S
 pub struct ExecutionContext<'env, S: StorageEngine, M: ExecutionMode<'env, S>> {
     storage: S,
     catalog: Arc<Catalog<S>>,
-    tx: M::Transaction,
+    tx: RwLock<M::Transaction>,
 }
 
 impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> ExecutionContext<'env, S, M> {
     #[inline]
     pub fn new(storage: S, catalog: Arc<Catalog<S>>, tx: M::Transaction) -> Self {
-        Self { storage, catalog, tx }
+        Self { storage, catalog, tx: RwLock::new(tx) }
     }
 
     #[inline]
@@ -234,14 +235,13 @@ impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> ExecutionContext<'env, S
     }
 
     #[inline]
-    pub fn tx(&self) -> &M::Transaction {
-        &self.tx
+    pub fn tx(&self) -> RwLockReadGuard<'_, M::Transaction> {
+        self.tx.read()
     }
 
     #[inline]
-    pub fn tx_mut(&self) -> &mut M::Transaction {
-        todo!()
-        // &mut self.tx
+    pub fn tx_mut(&self) -> RwLockWriteGuard<'_, M::Transaction> {
+        self.tx.write()
     }
 
     #[inline]

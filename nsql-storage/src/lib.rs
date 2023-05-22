@@ -22,7 +22,17 @@ pub struct Storage<S> {
 }
 
 impl<S: StorageEngine> Storage<S> {
-    pub async fn load(&self, _tx: &S::Transaction<'_>) -> Result<()> {
+    #[inline]
+    pub fn begin(&self) -> Result<S::Transaction<'_>, S::Error> {
+        self.storage.begin()
+    }
+
+    #[inline]
+    pub fn begin_write(&self) -> Result<S::WriteTransaction<'_>, S::Error> {
+        self.storage.begin_write()
+    }
+
+    pub fn load(&self, _tx: &S::Transaction<'_>) -> Result<()> {
         todo!()
         // let reader = self.pager.meta_page_reader();
         // let checkpointer = Checkpointer::new(self.pager.as_ref());
@@ -30,7 +40,7 @@ impl<S: StorageEngine> Storage<S> {
         // Ok(checkpoint)
     }
 
-    pub async fn checkpoint(&self) -> Result<()> {
+    pub fn checkpoint(&self) -> Result<()> {
         Ok(())
     }
 

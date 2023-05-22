@@ -2,8 +2,7 @@ use std::collections::BTreeMap;
 use std::error::Error;
 use std::path::Path;
 
-use async_trait::async_trait;
-use nsql::{Connection, Nsql};
+use nsql::{Connection, ConnectionState, Nsql};
 use nsql_lmdb::LmdbStorageEngine;
 use nsql_storage::schema::LogicalType;
 use nsql_storage_engine::StorageEngine;
@@ -57,7 +56,7 @@ impl ColumnType for TypeWrapper {
 
 pub struct TestDb<S: StorageEngine> {
     db: Nsql<S>,
-    connections: BTreeMap<Option<String>, Connection<'static, S>>,
+    connections: BTreeMap<Option<String>, (Connection<S>, ConnectionState<'static, S>)>,
 }
 
 impl<S: StorageEngine> TestDb<S> {
@@ -70,7 +69,6 @@ impl<S: StorageEngine> TestDb<S> {
 #[error(transparent)]
 pub struct ErrorWrapper(#[from] anyhow::Error);
 
-#[async_trait]
 impl<S: StorageEngine> DB for TestDb<S> {
     type Error = ErrorWrapper;
 
@@ -82,14 +80,18 @@ impl<S: StorageEngine> DB for TestDb<S> {
         connection_name: Option<&str>,
         sql: &str,
     ) -> Result<DBOutput<Self::ColumnType>, Self::Error> {
-        let conn = self
+        let (conn, state) = self
             .connections
             .entry(connection_name.map(Into::into))
             // Safety: We don't close the storage engine until the end of the test, so this
             // lifetime extension is ok.
-            .or_insert_with(|| unsafe { std::mem::transmute(self.db.connect()) });
+            .or_insert_with(|| {
+                let (conn, state) = self.db.connect();
+                (conn, unsafe { std::mem::transmute(state) })
+            });
 
-        let output = conn.query(sql)?;
+        // transmute the lifetime back to whatever we need, not sure about safety on this one but it's a test so we'll find out
+        let output = conn.query(unsafe { std::mem::transmute(state) }, sql)?;
         Ok(DBOutput::Rows {
             types: output.types.into_iter().map(TypeWrapper).collect(),
             rows: output

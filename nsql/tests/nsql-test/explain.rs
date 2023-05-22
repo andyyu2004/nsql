@@ -8,13 +8,13 @@ fn check_explain<'a>(
     expect: Expect,
 ) -> nsql::Result<()> {
     let nsql = Nsql::in_memory()?;
-    let conn = nsql.connect();
+    let (conn, state) = nsql.connect();
 
     for sql in setup {
-        conn.query(sql)?;
+        conn.query(&state, sql)?;
     }
 
-    let result = conn.query(query)?;
+    let result = conn.query(&state, query)?;
     assert_eq!(result.tuples.len(), 1);
     assert_eq!(result.tuples[0].len(), 1);
 

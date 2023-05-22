@@ -7,9 +7,7 @@ pub use anyhow::Error;
 use arc_swap::ArcSwapOption;
 use nsql_bind::Binder;
 use nsql_catalog::Catalog;
-use nsql_execution::{
-    ExecutionContext, PhysicalPlanner, ReadWriteExecutionMode, ReadonlyExecutionMode,
-};
+use nsql_execution::{ExecutionContext, PhysicalPlanner};
 use nsql_lmdb::LmdbStorageEngine;
 use nsql_opt::optimize;
 use nsql_plan::Planner;
@@ -33,17 +31,19 @@ pub struct MaterializedQueryOutput {
 impl<S: StorageEngine> Nsql<S> {
     pub fn open(path: impl AsRef<Path>) -> Result<Self> {
         let storage = S::open(path)?;
-        let mut tx = storage.begin()?;
+        let mut tx = storage.begin_write()?;
         let catalog = Arc::new(Catalog::<S>::create(&mut tx)?);
         tx.commit()?;
 
         Ok(Self::new(Shared { storage: Storage::new(storage), catalog }))
     }
 
-    pub fn connect(&self) -> Connection<'_, S> {
-        Connection { db: self.clone(), current_tx: Default::default() }
+    #[inline]
+    pub fn connect<'any>(&self) -> (Connection<S>, ConnectionState<'any, S>) {
+        (Connection { db: self.clone() }, ConnectionState::default())
     }
 
+    #[inline]
     fn new(inner: Shared<S>) -> Self {
         Self { shared: Arc::new(inner) }
     }
@@ -62,28 +62,36 @@ struct Shared<S> {
     catalog: Arc<Catalog<S>>,
 }
 
-pub struct Connection<'env, S: StorageEngine> {
+pub struct Connection<S: StorageEngine> {
     db: Nsql<S>,
-    current_tx: ArcSwapOption<S::Transaction<'env>>,
 }
 
-impl<S: StorageEngine> Connection<'_, S> {
-    pub fn query(&self, _query: &str) -> Result<MaterializedQueryOutput> {
-        // let tx = match self.current_tx.load_full() {
-        //     Some(tx) => {
-        //         tracing::debug!(xid = %tx.xid(), "continuing existing tx");
-        //         tx
-        //     }
-        //     None => {
-        //         let tx = self.db.shared.txm.begin();
-        //         tracing::debug!(xid = ?tx, "beginning new tx");
-        //         self.current_tx.store(Some(Arc::clone(&tx)));
-        //         tx
-        //     }
-        // };
+pub struct ConnectionState<'env, S: StorageEngine> {
+    current_tx: ArcSwapOption<ReadOrWriteTransaction<'env, S>>,
+}
 
-        todo!();
-        // let output = self.db.shared.query(Arc::clone(&tx), query).await?;
+impl<S: StorageEngine> Default for ConnectionState<'_, S> {
+    #[inline]
+    fn default() -> Self {
+        Self { current_tx: ArcSwapOption::default() }
+    }
+}
+
+impl<S: StorageEngine> Connection<S> {
+    pub fn query<'env>(
+        &'env self,
+        state: &ConnectionState<'env, S>,
+        query: &str,
+    ) -> Result<MaterializedQueryOutput> {
+        let tx = match state.current_tx.swap(None) {
+            // Some(tx) => tx,
+            Some(tx) => todo!(),
+            None => Arc::new(ReadOrWriteTransaction::Write(self.db.shared.storage.begin_write()?)),
+        };
+
+        // FIXME need to get the transaction back somehow if it wasn't used to either commit or abort
+        let tx = Arc::into_inner(tx).expect("unexpected outstanding references to transaction");
+        let output = self.db.shared.query(tx, query)?;
 
         // FIXME
         // if tx.auto_commit() {
@@ -93,17 +101,16 @@ impl<S: StorageEngine> Connection<'_, S> {
         //     self.current_tx.store(None);
         // }
 
-        // Ok(output)
+        Ok(output)
     }
 }
 
 impl<S: StorageEngine> Shared<S> {
     fn query(
         &self,
-        tx: &mut Option<ReadOrWriteTransaction<'_, S>>,
+        tx: ReadOrWriteTransaction<'_, S>,
         query: &str,
     ) -> Result<MaterializedQueryOutput> {
-        let tx = tx.take().unwrap();
         let statements = nsql_parse::parse_statements(query)?;
         if statements.is_empty() {
             return Ok(MaterializedQueryOutput { types: vec![], tuples: vec![] });
@@ -124,12 +131,12 @@ impl<S: StorageEngine> Shared<S> {
         let planner = PhysicalPlanner::new(Arc::clone(&catalog));
         let tuples = match tx {
             ReadOrWriteTransaction::Read(tx) => {
-                let physical_plan = planner.plan::<ReadonlyExecutionMode<S>>(&tx, plan)?;
-                let ctx = ExecutionContext::new(self.storage.storage(), catalog, tx.clone());
+                let physical_plan = planner.plan(&tx, plan)?;
+                let ctx = ExecutionContext::new(self.storage.storage(), catalog, tx);
                 nsql_execution::execute(ctx, physical_plan)?
             }
             ReadOrWriteTransaction::Write(tx) => {
-                let physical_plan = planner.plan::<ReadWriteExecutionMode<S>>(&tx, plan)?;
+                let physical_plan = planner.plan_write(&tx, plan)?;
                 let ctx = ExecutionContext::new(self.storage.storage(), catalog, tx);
                 nsql_execution::execute(ctx, physical_plan)?
             }

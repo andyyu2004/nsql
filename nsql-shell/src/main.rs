@@ -1,44 +1,42 @@
 use std::borrow::Cow;
 
-use nsql::MaterializedQueryOutput;
+use nsql::{MaterializedQueryOutput, Nsql};
 use nu_ansi_term::{Color, Style};
 use reedline::{
     default_vi_insert_keybindings, default_vi_normal_keybindings, DefaultHinter, FileBackedHistory,
     KeyCode, KeyModifiers, PromptEditMode, PromptHistorySearch, PromptHistorySearchStatus,
-    PromptViMode, Reedline, ReedlineEvent, Vi,
+    PromptViMode, Reedline, ReedlineEvent, Signal, Vi,
 };
 use tabled::builder::Builder;
 use tabled::Table;
 
-#[tokio::main]
-async fn main() -> nsql::Result<()> {
+fn main() -> nsql::Result<()> {
     let mut ikb = default_vi_insert_keybindings();
     ikb.add_binding(KeyModifiers::CONTROL, KeyCode::Char('f'), ReedlineEvent::HistoryHintComplete);
 
-    let _line_editor = Reedline::create()
+    let mut line_editor = Reedline::create()
         .with_edit_mode(Box::new(Vi::new(ikb, default_vi_normal_keybindings())))
         .with_history(Box::new(FileBackedHistory::with_file(500, "/tmp/nsql-history.txt".into())?))
         .with_hinter(Box::new(
             DefaultHinter::default().with_style(Style::new().italic().fg(Color::DarkGray)),
         ));
 
-    // let prompt = NsqlPrompt {};
+    let prompt = NsqlPrompt {};
 
-    todo!();
-    // let nsql = Nsql::mem().await?;
-    // let conn = nsql.connect();
+    let nsql = Nsql::in_memory()?;
+    let (conn, state) = nsql.connect();
 
-    // loop {
-    //     let sig = line_editor.read_line(&prompt)?;
-    //     match sig {
-    //         Signal::Success(buffer) => match conn.query(&buffer).await {
-    //             Ok(output) => println!("{}", tabulate(output)),
-    //             Err(e) => println!("{}", e),
-    //         },
-    //         Signal::CtrlC => continue,
-    //         Signal::CtrlD => break Ok(()),
-    //     }
-    // }
+    loop {
+        let sig = line_editor.read_line(&prompt)?;
+        match sig {
+            Signal::Success(buffer) => match conn.query(&state, &buffer) {
+                Ok(output) => println!("{}", tabulate(output)),
+                Err(e) => println!("{}", e),
+            },
+            Signal::CtrlC => continue,
+            Signal::CtrlD => break Ok(()),
+        }
+    }
 }
 
 fn tabulate(output: MaterializedQueryOutput) -> Table {
