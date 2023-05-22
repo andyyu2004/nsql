@@ -235,8 +235,9 @@ impl<'env> WriteTransaction<'env, LmdbStorageEngine> for ReadWriteTx<'env> {
         tree: &mut <LmdbStorageEngine as StorageEngine>::WriteTree<'env, 'txn>,
         key: &[u8],
         value: &[u8],
-    ) -> std::result::Result<(), <LmdbStorageEngine as StorageEngine>::Error> {
-        tree.put(&mut self.0, key, value)
+    ) -> std::result::Result<bool, <LmdbStorageEngine as StorageEngine>::Error> {
+        tree.put(&mut self.0, key, value);
+        todo!("lmdb wrapper doesn't support MDB_NOOVERWRITE currently")
     }
 
     fn delete<'txn>(

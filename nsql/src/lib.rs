@@ -34,12 +34,10 @@ impl<S: StorageEngine> Nsql<S> {
     pub fn open(path: impl AsRef<Path>) -> Result<Self> {
         let storage = S::open(path)?;
         let mut tx = storage.begin()?;
-        let _catalog = Arc::new(Catalog::<S>::create(&mut tx)?);
+        let catalog = Arc::new(Catalog::<S>::create(&mut tx)?);
         tx.commit()?;
 
-        todo!()
-
-        // Ok(Self::new(Shared { storage, buffer_pool, txm, catalog }))
+        Ok(Self::new(Shared { storage: Storage::new(storage), catalog }))
     }
 
     pub fn connect(&self) -> Connection<'_, S> {

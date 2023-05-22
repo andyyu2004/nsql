@@ -17,6 +17,15 @@ pub struct Name {
     name: SmolStr,
 }
 
+impl rkyv::Archive for Name {
+    type Archived = rkyv::string::ArchivedString;
+    type Resolver = rkyv::string::StringResolver;
+
+    unsafe fn resolve(&self, pos: usize, resolver: Self::Resolver, out: *mut Self::Archived) {
+        self.name.to_string().resolve(pos, resolver, out);
+    }
+}
+
 impl Name {
     #[inline]
     pub fn as_str(&self) -> &str {

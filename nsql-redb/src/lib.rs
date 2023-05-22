@@ -247,15 +247,14 @@ impl<'env> nsql_storage_engine::WriteTransaction<'env, RedbStorageEngine> for Tr
         self.0.abort()
     }
 
+    #[inline]
     fn put<'txn>(
         &'txn mut self,
         tree: &mut <RedbStorageEngine as nsql_storage_engine::StorageEngine>::WriteTree<'env, 'txn>,
         key: &[u8],
         value: &[u8],
-    ) -> std::result::Result<(), <RedbStorageEngine as nsql_storage_engine::StorageEngine>::Error>
-    {
-        tree.insert(key, value)?;
-        Ok(())
+    ) -> Result<bool, <RedbStorageEngine as nsql_storage_engine::StorageEngine>::Error> {
+        tree.insert(key, value).map(|prev| prev.is_none())
     }
 
     fn delete<'txn>(

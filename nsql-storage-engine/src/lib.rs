@@ -85,7 +85,7 @@ pub trait WriteTransaction<'env, S: StorageEngine>: Transaction<'env, S> {
         tree: &mut S::WriteTree<'env, 'txn>,
         key: &[u8],
         value: &[u8],
-    ) -> Result<(), S::Error>;
+    ) -> Result<bool, S::Error>;
 
     fn delete<'txn>(
         &mut self,

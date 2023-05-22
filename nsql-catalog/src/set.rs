@@ -55,7 +55,7 @@ impl<S: StorageEngine, T: CatalogEntity<S>> fmt::Display for Conflict<S, T> {
 
 #[derive(Debug)]
 pub struct CatalogSet<S, T> {
-    entries: DashMap<Oid<T>, VersionedEntry<S, T>>,
+    entries: DashMap<Oid<T>, Arc<CatalogEntry<S, T>>>,
     name_mapping: DashMap<Name, Oid<T>>,
     _marker: std::marker::PhantomData<S>,
 }
@@ -93,31 +93,6 @@ impl<S: StorageEngine, T> VersionedEntry<S, T> {
     }
 }
 
-impl<S: StorageEngine, T> VersionedEntry<S, T> {
-    /// Get the latest visible version for the given transaction.
-    pub(crate) fn version_for_tx(
-        &self,
-        _tx: &S::Transaction<'_>,
-    ) -> Option<Arc<CatalogEntry<S, T>>> {
-        todo!()
-    }
-
-    pub(crate) fn latest(&self) -> Arc<CatalogEntry<S, T>> {
-        Arc::clone(self.versions.last().expect("must have at least one version"))
-    }
-
-    pub(crate) fn delete(&mut self, tx: &S::Transaction<'_>) {
-        let version = self
-            .version_for_tx(tx)
-            .expect("caller must ensure there is a visible version for the given transaction");
-        version.delete(tx);
-    }
-
-    pub(crate) fn push_version(&mut self, _version: CatalogEntry<S, T>) {
-        todo!()
-    }
-}
-
 impl<S: StorageEngine, T: CatalogEntity<S>> CatalogSet<S, T> {
     #[inline]
     pub fn create(
@@ -130,19 +105,15 @@ impl<S: StorageEngine, T: CatalogEntity<S>> CatalogSet<S, T> {
     }
 
     pub(crate) fn entries(&self, _tx: &impl Transaction<'_, S>) -> Vec<(Oid<T>, Arc<T>)> {
-        todo!()
-        // self.entries
-        //     .iter()
-        //     .enumerate()
-        //     .flat_map(|(idx, entry)| {
-        //         entry.version_for_tx(tx).map(|entry| (Oid::new(idx as u64), entry.value()))
-        //     })
-        //     .collect()
+        self.entries
+            .iter()
+            .enumerate()
+            .map(|(idx, entry)| (Oid::new(idx as u64), entry.value().value()))
+            .collect()
     }
 
-    pub(crate) fn get(&self, _tx: &impl Transaction<'_, S>, _oid: Oid<T>) -> Option<Arc<T>> {
-        todo!()
-        // self.entries.get(&oid).unwrap().version_for_tx(tx).map(|entry| entry.value())
+    pub(crate) fn get(&self, _tx: &impl Transaction<'_, S>, oid: Oid<T>) -> Option<Arc<T>> {
+        self.entries.get(&oid).map(|entry| entry.value().value())
     }
 
     pub(crate) fn get_by_name(
@@ -160,24 +131,21 @@ impl<S: StorageEngine, T: CatalogEntity<S>> CatalogSet<S, T> {
     pub(crate) fn delete(
         &self,
         _tx: &mut S::WriteTransaction<'_>,
-        _oid: Oid<T>,
+        oid: Oid<T>,
     ) -> Result<(), Conflict<S, T>> {
-        todo!();
-        // self.entries.get_mut(&oid).expect("passed invalid `oid` somehow").delete(tx);
+        self.entries.remove(&oid);
         Ok(())
     }
 
     pub(crate) fn insert(
         &self,
-        _tx: &mut S::WriteTransaction<'_>,
-        _value: T,
+        tx: &mut S::WriteTransaction<'_>,
+        value: T,
     ) -> Result<Oid<T>, Conflict<S, T>> {
-        // NOTE: this function takes &self and not &mut self, so we need to be mindful of correctness under concurrent usage.
-        todo!()
-    }
-
-    fn latest(&self, oid: Oid<T>) -> Arc<CatalogEntry<S, T>> {
-        self.entries.get(&oid).unwrap().latest()
+        let oid = self.next_oid();
+        self.name_mapping.insert(value.name(), oid);
+        self.entries.insert(oid, Arc::new(CatalogEntry::new(tx, value)));
+        Ok(oid)
     }
 
     pub fn len(&self) -> usize {
@@ -202,11 +170,7 @@ impl<S: StorageEngine, T> CatalogEntry<S, T> {
         Arc::clone(&self.value)
     }
 
-    pub(crate) fn new(_tx: &S::Transaction<'_>, value: T) -> Self {
+    pub(crate) fn new(_tx: &mut S::WriteTransaction<'_>, value: T) -> Self {
         Self { value: Arc::new(value), _marker: PhantomData }
-    }
-
-    fn delete(&self, _tx: &S::Transaction<'_>) {
-        todo!()
     }
 }
