@@ -45,7 +45,7 @@ pub trait StorageEngine: Clone + Send + Sync + Sized + 'static {
     where
         'env: 'txn;
 
-    /// Open a tree for read/write access, creating it if it doesn't exist.
+    /// Open a tree for read/write access
     fn open_write_tree<'env, 'txn>(
         &self,
         txn: &'txn mut Self::WriteTransaction<'env>,
@@ -58,13 +58,21 @@ pub trait StorageEngine: Clone + Send + Sync + Sized + 'static {
     /// Prefer the other open methods if you have a read or write transaction as they are more efficient.
     fn open_read_or_write_tree<'env, 'txn>(
         &self,
-        txn: &'txn impl Transaction<'env, Self>,
+        txn: &'txn ReadOrWriteTransaction<'env, Self>,
         name: &str,
     ) -> Result<Option<ReadOrWriteTree<'env, 'txn, Self>>, Self::Error>
     where
         'env: 'txn,
     {
-        todo!()
+        match txn {
+            ReadOrWriteTransaction::Read(tx) => {
+                Ok(self.open_tree(tx, name)?.map(ReadOrWriteTree::Read))
+            }
+            ReadOrWriteTransaction::Write(tx) => {
+                // FIXME need a method to open a readtree given a write tx
+                Ok(Some(ReadOrWriteTree::Write(self.open_tree(tx, name)?)))
+            }
+        }
     }
 }
 
