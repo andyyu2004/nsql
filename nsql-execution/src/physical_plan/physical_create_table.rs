@@ -1,4 +1,4 @@
-use nsql_catalog::{Column, Container, CreateTableInfo, Namespace, Table};
+use nsql_catalog::{Column, Container, CreateTableInfo, Entity, Namespace, Table};
 use nsql_storage::{ColumnStorageInfo, TableStorage, TableStorageInfo};
 
 use super::*;
@@ -85,7 +85,7 @@ impl<'env, S: StorageEngine> PhysicalSource<'env, S, ReadWriteExecutionMode<S>>
             name: self.info.name.clone(),
             storage: Arc::new(TableStorage::initialize(
                 ctx.storage(),
-                TableStorageInfo::create(columns),
+                TableStorageInfo::create(&namespace.name(), &self.info.name, columns),
             )?),
         };
 

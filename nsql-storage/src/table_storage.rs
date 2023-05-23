@@ -1,5 +1,5 @@
 use nsql_core::Name;
-use nsql_storage_engine::{StorageEngine, Transaction, WriteTransaction};
+use nsql_storage_engine::{StorageEngine, Transaction, WriteTree};
 
 use crate::schema::LogicalType;
 use crate::tuple::{Tuple, TupleIndex};
@@ -29,6 +29,14 @@ impl<S: StorageEngine> TableStorage<S> {
         let mut non_pk_tuple = vec![];
 
         for (value, col) in tuple.values().zip(&self.info.columns) {
+            assert_eq!(
+                value.ty(),
+                col.ty,
+                "expected column type {:?}, got {:?}",
+                col.ty,
+                value.ty()
+            );
+
             if col.is_primary_key {
                 pk_tuple.push(value);
             } else {
@@ -39,7 +47,7 @@ impl<S: StorageEngine> TableStorage<S> {
         let mut tree = self.storage.open_write_tree(tx, &self.info.storage_tree_name)?;
         let pk_bytes = nsql_rkyv::to_bytes(&pk_tuple);
         let non_pk_bytes = nsql_rkyv::to_bytes(&non_pk_tuple);
-        tx.put(&mut tree, &pk_bytes, &non_pk_bytes)?;
+        tree.put(&pk_bytes, &non_pk_bytes)?;
 
         Ok(())
     }
@@ -61,6 +69,7 @@ impl<S: StorageEngine> TableStorage<S> {
         _tx: &impl Transaction<'_, S>,
         _projection: Option<Box<[TupleIndex]>>,
     ) -> impl Iterator<Item = Result<Vec<Tuple>, S::Error>> + Send + 'static {
+        todo!();
         [].into_iter()
         // self.heap
         //     .scan(tx, move |tid, tuple| {

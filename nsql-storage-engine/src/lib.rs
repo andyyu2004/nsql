@@ -55,44 +55,29 @@ pub trait StorageEngine: Clone + Send + Sync + Sized + 'static {
         'env: 'txn;
 }
 
-pub trait ReadTree<'env, 'txn, S: StorageEngine> {}
+pub trait ReadTree<'env, 'txn, S: StorageEngine> {
+    fn get(&'txn self, key: &[u8]) -> Result<Option<S::Bytes<'txn>>, S::Error>;
 
-pub trait WriteTree<'env, 'txn, S: StorageEngine>: ReadTree<'env, 'txn, S> {}
-
-pub trait Transaction<'env, S: StorageEngine> {
-    fn get<'txn>(
+    fn range(
         &'txn self,
-        tree: &'txn S::ReadTree<'env, 'txn>,
-        key: &[u8],
-    ) -> Result<Option<S::Bytes<'txn>>, S::Error>;
-
-    fn range<'txn>(
-        &'txn self,
-        tree: &'txn S::ReadTree<'env, 'txn>,
         range: impl RangeBounds<[u8]> + 'txn,
     ) -> Result<impl Iterator<Item = Result<(S::Bytes<'txn>, S::Bytes<'txn>), S::Error>>, S::Error>;
 
-    fn rev_range<'txn>(
+    fn rev_range(
         &'txn self,
-        tree: &'txn S::ReadTree<'env, 'txn>,
         range: impl RangeBounds<[u8]> + 'txn,
     ) -> Result<impl Iterator<Item = Result<(S::Bytes<'txn>, S::Bytes<'txn>), S::Error>>, S::Error>;
 }
 
+pub trait WriteTree<'env, 'txn, S: StorageEngine>: ReadTree<'env, 'txn, S> {
+    fn put(&mut self, key: &[u8], value: &[u8]) -> Result<(), S::Error>;
+
+    fn delete(&mut self, key: &[u8]) -> std::result::Result<bool, S::Error>;
+}
+
+pub trait Transaction<'env, S: StorageEngine> {}
+
 pub trait WriteTransaction<'env, S: StorageEngine>: Transaction<'env, S> {
-    fn put<'txn>(
-        &'txn mut self,
-        tree: &mut S::WriteTree<'env, 'txn>,
-        key: &[u8],
-        value: &[u8],
-    ) -> Result<bool, S::Error>;
-
-    fn delete<'txn>(
-        &mut self,
-        tree: &mut S::WriteTree<'env, 'txn>,
-        key: &[u8],
-    ) -> Result<bool, S::Error>;
-
     fn commit(self) -> Result<(), S::Error>;
 
     fn rollback(self) -> Result<(), S::Error>;
@@ -103,60 +88,4 @@ pub enum ReadOrWriteTransaction<'env, S: StorageEngine> {
     Write(S::WriteTransaction<'env>),
 }
 
-impl<'env, S: StorageEngine> Transaction<'env, S> for ReadOrWriteTransaction<'env, S> {
-    #[inline]
-    fn get<'txn>(
-        &'txn self,
-        tree: &'txn <S as StorageEngine>::ReadTree<'env, 'txn>,
-        key: &[u8],
-    ) -> Result<Option<<S as StorageEngine>::Bytes<'txn>>, <S as StorageEngine>::Error> {
-        match self {
-            ReadOrWriteTransaction::Read(txn) => txn.get(tree, key),
-            ReadOrWriteTransaction::Write(txn) => txn.get(tree, key),
-        }
-    }
-
-    #[inline]
-    fn range<'txn>(
-        &'txn self,
-        tree: &'txn <S as StorageEngine>::ReadTree<'env, 'txn>,
-        range: impl RangeBounds<[u8]> + 'txn,
-    ) -> Result<
-        impl Iterator<
-            Item = Result<
-                (<S as StorageEngine>::Bytes<'txn>, <S as StorageEngine>::Bytes<'txn>),
-                <S as StorageEngine>::Error,
-            >,
-        >,
-        <S as StorageEngine>::Error,
-    > {
-        match self {
-            ReadOrWriteTransaction::Read(txn) => {
-                Ok(Box::new(txn.range(tree, range)?) as Box<dyn Iterator<Item = _>>)
-            }
-            ReadOrWriteTransaction::Write(txn) => Ok(Box::new(txn.range(tree, range)?) as _),
-        }
-    }
-
-    #[inline]
-    fn rev_range<'txn>(
-        &'txn self,
-        tree: &'txn <S as StorageEngine>::ReadTree<'env, 'txn>,
-        range: impl RangeBounds<[u8]> + 'txn,
-    ) -> Result<
-        impl Iterator<
-            Item = Result<
-                (<S as StorageEngine>::Bytes<'txn>, <S as StorageEngine>::Bytes<'txn>),
-                <S as StorageEngine>::Error,
-            >,
-        >,
-        <S as StorageEngine>::Error,
-    > {
-        match self {
-            ReadOrWriteTransaction::Read(txn) => {
-                Ok(Box::new(txn.rev_range(tree, range)?) as Box<dyn Iterator<Item = _>>)
-            }
-            ReadOrWriteTransaction::Write(txn) => Ok(Box::new(txn.rev_range(tree, range)?) as _),
-        }
-    }
-}
+impl<'env, S: StorageEngine> Transaction<'env, S> for ReadOrWriteTransaction<'env, S> {}

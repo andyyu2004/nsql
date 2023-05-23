@@ -51,9 +51,9 @@ impl StorageEngine for LmdbStorageEngine {
 
     type WriteTransaction<'env> = ReadWriteTx<'env>;
 
-    type ReadTree<'env, 'txn> = UntypedDatabase where 'env: 'txn;
+    type ReadTree<'env, 'txn> = LmdbReadTree<'env, 'txn> where 'env: 'txn;
 
-    type WriteTree<'env, 'txn> = UntypedDatabase where 'env: 'txn;
+    type WriteTree<'env, 'txn> = LmdbWriteTree<'env, 'txn> where 'env: 'txn;
 
     #[inline]
     fn open(path: impl AsRef<Path>) -> Result<Self, Self::Error>
@@ -64,6 +64,7 @@ impl StorageEngine for LmdbStorageEngine {
         // Perhaps we can do a lmdb database per schema and have a reasonable limit on it (say ~100)
         std::fs::OpenOptions::new().create(true).write(true).truncate(false).open(&path)?;
         let env = unsafe { heed::EnvOpenOptions::new().flag(Flag::NoSubDir).flag(Flag::NoTls) }
+            .max_dbs(100)
             .open(path)?;
         let main_db =
             env.open_database(&env.read_txn()?, None)?.expect("main database should exist");
@@ -91,7 +92,7 @@ impl StorageEngine for LmdbStorageEngine {
     where
         'env: 'txn,
     {
-        self.env.open_database(&txn.0, Some(name))
+        Ok(self.env.open_database(&txn.0, Some(name))?.map(|db| LmdbReadTree { db, txn }))
     }
 
     #[inline]
@@ -103,31 +104,34 @@ impl StorageEngine for LmdbStorageEngine {
     where
         'env: 'txn,
     {
-        self.env.create_database(&mut txn.0, Some(name))
+        let db = self.env.create_database(&mut txn.0, Some(name))?;
+        Ok(LmdbWriteTree { db, txn })
     }
 }
 
-impl<'txn> ReadTree<'_, 'txn, LmdbStorageEngine> for UntypedDatabase {}
+pub struct LmdbReadTree<'env, 'txn> {
+    db: UntypedDatabase,
+    txn: &'txn ReadonlyTx<'env>,
+}
 
-impl WriteTree<'_, '_, LmdbStorageEngine> for UntypedDatabase {}
+pub struct LmdbWriteTree<'env, 'txn> {
+    db: UntypedDatabase,
+    txn: &'txn mut ReadWriteTx<'env>,
+}
 
-impl<'env> Transaction<'env, LmdbStorageEngine> for ReadonlyTx<'env> {
-    #[inline]
-    fn get<'txn>(
+impl<'env, 'txn> ReadTree<'env, 'txn, LmdbStorageEngine> for LmdbReadTree<'env, 'txn> {
+    fn get(
         &'txn self,
-        tree: &<LmdbStorageEngine as StorageEngine>::ReadTree<'env, 'txn>,
         key: &[u8],
     ) -> std::result::Result<
         Option<<LmdbStorageEngine as StorageEngine>::Bytes<'txn>>,
         <LmdbStorageEngine as StorageEngine>::Error,
     > {
-        tree.get(&self.0, key)
+        self.db.get(&self.txn.0, key)
     }
 
-    #[inline]
-    fn range<'txn>(
+    fn range(
         &'txn self,
-        tree: &'txn <LmdbStorageEngine as StorageEngine>::ReadTree<'env, 'txn>,
         range: impl RangeBounds<[u8]> + 'txn,
     ) -> std::result::Result<
         impl Iterator<
@@ -141,13 +145,11 @@ impl<'env> Transaction<'env, LmdbStorageEngine> for ReadonlyTx<'env> {
         >,
         <LmdbStorageEngine as StorageEngine>::Error,
     > {
-        tree.range(&self.0, &range)
+        self.db.range(&self.txn.0, &range)
     }
 
-    #[inline]
-    fn rev_range<'txn>(
+    fn rev_range(
         &'txn self,
-        tree: &'txn <LmdbStorageEngine as StorageEngine>::ReadTree<'env, 'txn>,
         range: impl RangeBounds<[u8]> + 'txn,
     ) -> std::result::Result<
         impl Iterator<
@@ -161,27 +163,23 @@ impl<'env> Transaction<'env, LmdbStorageEngine> for ReadonlyTx<'env> {
         >,
         <LmdbStorageEngine as StorageEngine>::Error,
     > {
-        tree.rev_range(&self.0, &range)
+        self.db.rev_range(&self.txn.0, &range)
     }
 }
 
-impl<'env> Transaction<'env, LmdbStorageEngine> for ReadWriteTx<'env> {
-    #[inline]
-    fn get<'txn>(
+impl<'env, 'txn> ReadTree<'env, 'txn, LmdbStorageEngine> for LmdbWriteTree<'env, 'txn> {
+    fn get(
         &'txn self,
-        tree: &<LmdbStorageEngine as StorageEngine>::ReadTree<'env, 'txn>,
         key: &[u8],
     ) -> std::result::Result<
         Option<<LmdbStorageEngine as StorageEngine>::Bytes<'txn>>,
         <LmdbStorageEngine as StorageEngine>::Error,
     > {
-        tree.get(&self.0, key)
+        self.db.get(&self.txn.0, key)
     }
 
-    #[inline]
-    fn range<'txn>(
+    fn range(
         &'txn self,
-        tree: &'txn <LmdbStorageEngine as StorageEngine>::ReadTree<'env, 'txn>,
         range: impl RangeBounds<[u8]> + 'txn,
     ) -> std::result::Result<
         impl Iterator<
@@ -195,13 +193,11 @@ impl<'env> Transaction<'env, LmdbStorageEngine> for ReadWriteTx<'env> {
         >,
         <LmdbStorageEngine as StorageEngine>::Error,
     > {
-        tree.range(&self.0, &range)
+        self.db.range(&self.txn.0, &range)
     }
 
-    #[inline]
-    fn rev_range<'txn>(
+    fn rev_range(
         &'txn self,
-        tree: &'txn <LmdbStorageEngine as StorageEngine>::ReadTree<'env, 'txn>,
         range: impl RangeBounds<[u8]> + 'txn,
     ) -> std::result::Result<
         impl Iterator<
@@ -215,9 +211,30 @@ impl<'env> Transaction<'env, LmdbStorageEngine> for ReadWriteTx<'env> {
         >,
         <LmdbStorageEngine as StorageEngine>::Error,
     > {
-        tree.rev_range(&self.0, &range)
+        self.db.rev_range(&self.txn.0, &range)
     }
 }
+
+impl<'env, 'txn> WriteTree<'env, 'txn, LmdbStorageEngine> for LmdbWriteTree<'env, 'txn> {
+    fn put(
+        &mut self,
+        key: &[u8],
+        value: &[u8],
+    ) -> std::result::Result<(), <LmdbStorageEngine as StorageEngine>::Error> {
+        self.db.put(&mut self.txn.0, key, value)
+    }
+
+    fn delete(
+        &mut self,
+        key: &[u8],
+    ) -> std::result::Result<bool, <LmdbStorageEngine as StorageEngine>::Error> {
+        self.db.delete(&mut self.txn.0, key)
+    }
+}
+
+impl<'env> Transaction<'env, LmdbStorageEngine> for ReadonlyTx<'env> {}
+
+impl<'env> Transaction<'env, LmdbStorageEngine> for ReadWriteTx<'env> {}
 
 impl<'env> WriteTransaction<'env, LmdbStorageEngine> for ReadWriteTx<'env> {
     fn commit(self) -> Result<(), heed::Error> {
@@ -228,24 +245,6 @@ impl<'env> WriteTransaction<'env, LmdbStorageEngine> for ReadWriteTx<'env> {
     fn rollback(self) -> Result<(), heed::Error> {
         self.0.abort();
         Ok(())
-    }
-
-    fn put<'txn>(
-        &'txn mut self,
-        tree: &mut <LmdbStorageEngine as StorageEngine>::WriteTree<'env, 'txn>,
-        key: &[u8],
-        value: &[u8],
-    ) -> std::result::Result<bool, <LmdbStorageEngine as StorageEngine>::Error> {
-        tree.put(&mut self.0, key, value)?;
-        todo!("lmdb wrapper doesn't support MDB_NOOVERWRITE currently")
-    }
-
-    fn delete<'txn>(
-        &'txn mut self,
-        tree: &mut <LmdbStorageEngine as StorageEngine>::WriteTree<'env, 'txn>,
-        key: &[u8],
-    ) -> std::result::Result<bool, <LmdbStorageEngine as StorageEngine>::Error> {
-        tree.delete(&mut self.0, key)
     }
 }
 
