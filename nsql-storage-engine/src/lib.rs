@@ -53,6 +53,19 @@ pub trait StorageEngine: Clone + Send + Sync + Sized + 'static {
     ) -> Result<Self::WriteTree<'env, 'txn>, Self::Error>
     where
         'env: 'txn;
+
+    /// Open a tree for read-only access given either a read or write transaction, creating it if it doesn't exist.
+    /// Prefer the other open methods if you have a read or write transaction as they are more efficient.
+    fn open_read_or_write_tree<'env, 'txn>(
+        &self,
+        txn: &'txn impl Transaction<'env, Self>,
+        name: &str,
+    ) -> Result<Option<ReadOrWriteTree<'env, 'txn, Self>>, Self::Error>
+    where
+        'env: 'txn,
+    {
+        todo!()
+    }
 }
 
 pub trait ReadTree<'env, 'txn, S: StorageEngine> {
@@ -89,3 +102,60 @@ pub enum ReadOrWriteTransaction<'env, S: StorageEngine> {
 }
 
 impl<'env, S: StorageEngine> Transaction<'env, S> for ReadOrWriteTransaction<'env, S> {}
+
+pub enum ReadOrWriteTree<'env: 'txn, 'txn, S: StorageEngine> {
+    Read(S::ReadTree<'env, 'txn>),
+    Write(S::WriteTree<'env, 'txn>),
+}
+
+impl<'env, 'txn, S: StorageEngine> ReadTree<'env, 'txn, S> for ReadOrWriteTree<'env, 'txn, S> {
+    fn get(
+        &'txn self,
+        key: &[u8],
+    ) -> Result<Option<<S as StorageEngine>::Bytes<'txn>>, <S as StorageEngine>::Error> {
+        match self {
+            ReadOrWriteTree::Read(tree) => tree.get(key),
+            ReadOrWriteTree::Write(tree) => tree.get(key),
+        }
+    }
+
+    fn range(
+        &'txn self,
+        range: impl RangeBounds<[u8]> + 'txn,
+    ) -> Result<
+        Box<
+            dyn Iterator<
+                    Item = Result<
+                        (<S as StorageEngine>::Bytes<'txn>, <S as StorageEngine>::Bytes<'txn>),
+                        <S as StorageEngine>::Error,
+                    >,
+                > + 'txn,
+        >,
+        <S as StorageEngine>::Error,
+    > {
+        match self {
+            ReadOrWriteTree::Read(tree) => Ok(Box::new(tree.range(range)?)),
+            ReadOrWriteTree::Write(tree) => Ok(Box::new(tree.range(range)?)),
+        }
+    }
+
+    fn rev_range(
+        &'txn self,
+        range: impl RangeBounds<[u8]> + 'txn,
+    ) -> Result<
+        Box<
+            dyn Iterator<
+                    Item = Result<
+                        (<S as StorageEngine>::Bytes<'txn>, <S as StorageEngine>::Bytes<'txn>),
+                        <S as StorageEngine>::Error,
+                    >,
+                > + 'txn,
+        >,
+        <S as StorageEngine>::Error,
+    > {
+        match self {
+            ReadOrWriteTree::Read(tree) => Ok(Box::new(tree.rev_range(range)?)),
+            ReadOrWriteTree::Write(tree) => Ok(Box::new(tree.rev_range(range)?)),
+        }
+    }
+}
