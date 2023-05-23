@@ -12,6 +12,7 @@ pub struct Column {
     name: Name,
     index: ColumnIndex,
     ty: LogicalType,
+    is_primary_key: bool,
 }
 
 impl Column {
@@ -23,6 +24,11 @@ impl Column {
     #[inline]
     pub fn logical_type(&self) -> LogicalType {
         self.ty.clone()
+    }
+
+    #[inline]
+    pub fn is_primary_key(&self) -> bool {
+        self.is_primary_key
     }
 }
 
@@ -56,6 +62,7 @@ pub struct CreateColumnInfo {
     /// The index of the column in the table.
     pub index: u8,
     pub ty: LogicalType,
+    pub is_primary_key: bool,
 }
 
 impl Entity for Column {
@@ -80,6 +87,11 @@ impl<S: StorageEngine> CatalogEntity<S> for Column {
     }
 
     fn create(_tx: &mut S::WriteTransaction<'_>, info: Self::CreateInfo) -> Self {
-        Self { name: info.name, index: ColumnIndex::new(info.index), ty: info.ty }
+        Self {
+            name: info.name,
+            index: ColumnIndex::new(info.index),
+            ty: info.ty,
+            is_primary_key: info.is_primary_key,
+        }
     }
 }

@@ -1,6 +1,5 @@
 use nsql_catalog::{Column, Container, CreateTableInfo, Namespace, Table};
-use nsql_storage::schema::{Attribute, Schema};
-use nsql_storage::{TableStorage, TableStorageInfo};
+use nsql_storage::{ColumnStorageInfo, TableStorage, TableStorageInfo};
 
 use super::*;
 use crate::ReadWriteExecutionMode;
@@ -69,31 +68,31 @@ impl<'env, S: StorageEngine> PhysicalSource<'env, S, ReadWriteExecutionMode<S>>
         &self,
         ctx: &ExecutionContext<'env, S, ReadWriteExecutionMode<S>>,
     ) -> ExecutionResult<SourceState<Chunk>> {
-        let attrs = self
+        let columns = self
             .info
             .columns
             .iter()
-            .map(|c| Attribute::new(c.name.clone(), c.ty.clone()))
+            .map(|c| ColumnStorageInfo::new(c.ty.clone(), c.is_primary_key))
             .collect::<Vec<_>>();
-        let schema = Arc::new(Schema::new(attrs));
+
+        let catalog = ctx.catalog();
+        let mut tx = ctx.tx_mut();
+        let namespace = catalog
+            .get::<Namespace<S>>(&*tx, self.info.namespace)
+            .expect("schema not found during execution");
 
         let info = CreateTableInfo {
             name: self.info.name.clone(),
             storage: Arc::new(TableStorage::initialize(
                 ctx.storage(),
-                TableStorageInfo::create(schema),
+                TableStorageInfo::create(columns),
             )?),
         };
 
-        let catalog = ctx.catalog();
-        let mut tx = ctx.tx_mut();
-        let schema = catalog
-            .get::<Namespace<S>>(&*tx, self.info.namespace)
-            .expect("schema not found during execution");
-
-        let table_oid = schema.create::<Table<S>>(&mut tx, info)?;
+        let table_oid = namespace.create::<Table<S>>(&mut tx, info)?;
         let table =
-            schema.get::<Table<S>>(&*tx, table_oid).expect("table not found during execution");
+            namespace.get::<Table<S>>(&*tx, table_oid).expect("table not found during execution");
+
         for info in &self.info.columns {
             table.create::<Column>(&mut tx, info.clone())?;
         }

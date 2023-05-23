@@ -1,5 +1,3 @@
-// FIXME this file is a logical mess
-
 use anyhow::bail;
 use nsql_catalog::{Column, Container, Entity, EntityRef};
 use nsql_core::Name;

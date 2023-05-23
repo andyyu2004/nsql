@@ -15,12 +15,10 @@ rkyv = { version = "0.7.40", default-features = false, features = [
     "archive_be",
     "size_32",
 ] }
-atomic = { version = "0.5.1", default-features = false }
 tracing = "0.1.37"
 dashmap = "5.4.0"
 anyhow = "1.0.71"
 parking_lot = "0.12.1"
-crossbeam-skiplist = "0.1.1"
 itertools = "0.10.5"
 nsql-storage-engine = { version = "0.1.0", path = "../nsql-storage-engine" }
 

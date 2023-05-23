@@ -108,6 +108,9 @@ impl<S: StorageEngine> Binder<S> {
                 let path = self.lower_path(&name.0)?;
                 let namespace = self.bind_namespace(&path)?;
                 let columns = self.lower_columns(columns)?;
+                if columns.iter().all(|c| !c.is_primary_key) {
+                    bail!("table must have a primary key defined")
+                }
                 let info = ir::CreateTableInfo { name: path.name(), namespace, columns };
                 ir::Stmt::CreateTable(info)
             }
@@ -353,12 +356,22 @@ impl<S: StorageEngine> Binder<S> {
     }
 
     fn lower_column(&self, idx: usize, column: &ast::ColumnDef) -> Result<CreateColumnInfo> {
+        not_implemented!(column.collation.is_some());
         ensure!(idx < u8::MAX as usize, "too many columns (max 256)");
+
+        let mut is_primary_key = false;
+        for option in &column.options {
+            match &option.option {
+                ast::ColumnOption::Unique { is_primary } if *is_primary => is_primary_key = true,
+                _ => not_implemented!("column option"),
+            }
+        }
 
         Ok(CreateColumnInfo {
             name: self.lower_name(&column.name),
             index: idx as u8,
             ty: self.lower_ty(&column.data_type)?,
+            is_primary_key,
         })
     }
 

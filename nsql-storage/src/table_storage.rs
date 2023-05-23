@@ -1,8 +1,7 @@
-use std::sync::Arc;
+use nsql_core::Name;
+use nsql_storage_engine::{StorageEngine, Transaction, WriteTransaction};
 
-use nsql_storage_engine::{StorageEngine, Transaction};
-
-use crate::schema::Schema;
+use crate::schema::LogicalType;
 use crate::tuple::{Tuple, TupleIndex};
 
 pub struct TableStorage<S> {
@@ -17,12 +16,31 @@ impl<S: StorageEngine> TableStorage<S> {
     }
 
     #[inline]
-    pub fn append(
-        &self,
-        _tx: &mut S::WriteTransaction<'_>,
-        _tuple: &Tuple,
-    ) -> Result<(), S::Error> {
-        todo!();
+    pub fn append(&self, tx: &mut S::WriteTransaction<'_>, tuple: &Tuple) -> Result<(), S::Error> {
+        assert_eq!(
+            tuple.len(),
+            self.info.columns.len(),
+            "tuple length did not match the expected number of columns, expected {}, got {}",
+            self.info.columns.len(),
+            tuple.len()
+        );
+
+        let mut pk_tuple = vec![];
+        let mut non_pk_tuple = vec![];
+
+        for (value, col) in tuple.values().zip(&self.info.columns) {
+            if col.is_primary_key {
+                pk_tuple.push(value);
+            } else {
+                non_pk_tuple.push(value);
+            }
+        }
+
+        let mut tree = self.storage.open_write_tree(tx, &self.info.storage_tree_name)?;
+        let pk_bytes = nsql_rkyv::to_bytes(&pk_tuple);
+        let non_pk_bytes = nsql_rkyv::to_bytes(&non_pk_tuple);
+        tx.put(&mut tree, &pk_bytes, &non_pk_bytes)?;
+
         Ok(())
     }
 
@@ -58,13 +76,32 @@ impl<S: StorageEngine> TableStorage<S> {
 }
 
 pub struct TableStorageInfo {
-    schema: Arc<Schema>,
+    columns: Vec<ColumnStorageInfo>,
+    storage_tree_name: String,
+}
+
+#[derive(Clone)]
+pub struct ColumnStorageInfo {
+    ty: LogicalType,
+    is_primary_key: bool,
+}
+
+impl ColumnStorageInfo {
+    #[inline]
+    pub fn new(ty: LogicalType, is_primary_key: bool) -> Self {
+        Self { ty, is_primary_key }
+    }
 }
 
 impl TableStorageInfo {
     #[inline]
-    pub fn create(schema: Arc<Schema>) -> Self {
-        Self { schema }
+    pub fn create(namespace: &Name, table: &Name, columns: Vec<ColumnStorageInfo>) -> Self {
+        assert!(
+            columns.iter().any(|c| c.is_primary_key),
+            "expected at least one primary key column (this should be checked in the binder)"
+        );
+
+        Self { columns, storage_tree_name: format!("{}.{}", namespace, table) }
     }
 }
 

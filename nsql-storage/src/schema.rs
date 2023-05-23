@@ -33,7 +33,7 @@ impl Attribute {
 
     #[inline]
     pub fn physical_type(&self) -> &PhysicalType {
-        self.cached_physical_type.get_or_init(|| (&self.logical_type).into())
+        self.cached_physical_type.get_or_init(|| self.logical_type.physical_type())
     }
 }
 
@@ -45,6 +45,19 @@ pub enum LogicalType {
     Decimal,
     Text,
     Tid,
+}
+
+impl LogicalType {
+    pub fn physical_type(&self) -> PhysicalType {
+        match self {
+            LogicalType::Bool => PhysicalType::Bool,
+            LogicalType::Int => PhysicalType::Int32,
+            LogicalType::Decimal => PhysicalType::Decimal,
+            LogicalType::Text => todo!(),
+            LogicalType::Null => todo!(),
+            LogicalType::Tid => todo!(),
+        }
+    }
 }
 
 impl fmt::Display for LogicalType {
@@ -68,17 +81,4 @@ pub enum PhysicalType {
     Int32,
     /// 128-bit fixed-size decimal
     Decimal,
-}
-
-impl<'a> From<&'a LogicalType> for PhysicalType {
-    fn from(val: &'a LogicalType) -> Self {
-        match val {
-            LogicalType::Bool => PhysicalType::Bool,
-            LogicalType::Int => PhysicalType::Int32,
-            LogicalType::Decimal => PhysicalType::Decimal,
-            LogicalType::Text => todo!(),
-            LogicalType::Null => todo!(),
-            LogicalType::Tid => todo!(),
-        }
-    }
 }

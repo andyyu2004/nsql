@@ -83,7 +83,7 @@ impl StorageEngine for LmdbStorageEngine {
     }
 
     #[inline]
-    fn open_tree_readonly<'env, 'txn>(
+    fn open_tree<'env, 'txn>(
         &self,
         txn: &'txn Self::Transaction<'env>,
         name: &str,
@@ -95,7 +95,7 @@ impl StorageEngine for LmdbStorageEngine {
     }
 
     #[inline]
-    fn open_tree<'env, 'txn>(
+    fn open_write_tree<'env, 'txn>(
         &self,
         txn: &'txn mut Self::WriteTransaction<'env>,
         name: &str,

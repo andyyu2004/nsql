@@ -37,7 +37,7 @@ pub trait StorageEngine: Clone + Send + Sync + Sized + 'static {
 
     fn begin_write(&self) -> Result<Self::WriteTransaction<'_>, Self::Error>;
 
-    fn open_tree_readonly<'env, 'txn>(
+    fn open_tree<'env, 'txn>(
         &self,
         txn: &'txn Self::Transaction<'env>,
         name: &str,
@@ -46,7 +46,7 @@ pub trait StorageEngine: Clone + Send + Sync + Sized + 'static {
         'env: 'txn;
 
     /// Open a tree for read/write access, creating it if it doesn't exist.
-    fn open_tree<'env, 'txn>(
+    fn open_write_tree<'env, 'txn>(
         &self,
         txn: &'txn mut Self::WriteTransaction<'env>,
         name: &str,

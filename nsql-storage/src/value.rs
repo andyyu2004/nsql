@@ -49,6 +49,24 @@ pub enum Value {
     Text(String),
 }
 
+impl<'a> rkyv::Archive for &'a Value {
+    type Archived = <Value as rkyv::Archive>::Archived;
+
+    type Resolver = <Value as rkyv::Archive>::Resolver;
+
+    #[inline]
+    unsafe fn resolve(&self, pos: usize, resolver: Self::Resolver, out: *mut Self::Archived) {
+        (**self).resolve(pos, resolver, out)
+    }
+}
+
+impl<'a, S: rkyv::ser::Serializer> rkyv::Serialize<S> for &'a Value {
+    #[inline]
+    fn serialize(&self, serializer: &mut S) -> Result<Self::Resolver, S::Error> {
+        (**self).serialize(serializer)
+    }
+}
+
 impl Value {
     #[inline]
     pub fn cast<T: Cast>(self, default: T) -> Result<T, CastError<T>> {
