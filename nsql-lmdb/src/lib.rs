@@ -8,7 +8,9 @@ use std::sync::Arc;
 
 use heed::types::ByteSlice;
 use heed::Flag;
-use nsql_storage_engine::{ReadTree, StorageEngine, Transaction, WriteTransaction, WriteTree};
+use nsql_storage_engine::{
+    ReadOrWriteTransaction, ReadTree, StorageEngine, Transaction, WriteTransaction, WriteTree,
+};
 
 type Result<T, E = heed::Error> = std::result::Result<T, E>;
 
@@ -86,13 +88,17 @@ impl StorageEngine for LmdbStorageEngine {
     #[inline]
     fn open_tree<'env, 'txn>(
         &self,
-        txn: &'txn impl Transaction<'env, Self>,
+        txn: &'txn ReadOrWriteTransaction<'env, Self>,
         name: &str,
     ) -> Result<Option<Self::ReadTree<'env, 'txn>>, Self::Error>
     where
         'env: 'txn,
     {
-        Ok(self.env.open_database(&txn.0, Some(name))?.map(|db| LmdbReadTree { db, txn }))
+        let txn = match txn {
+            ReadOrWriteTransaction::Read(txn) => &*txn.0,
+            ReadOrWriteTransaction::Write(txn) => &*txn.0,
+        };
+        Ok(self.env.open_database(txn, Some(name))?.map(|db| LmdbReadTree { db, txn }))
     }
 
     #[inline]
@@ -111,7 +117,7 @@ impl StorageEngine for LmdbStorageEngine {
 
 pub struct LmdbReadTree<'env, 'txn> {
     db: UntypedDatabase,
-    txn: &'txn ReadonlyTx<'env>,
+    txn: &'txn heed::RoTxn<'env>,
 }
 
 pub struct LmdbWriteTree<'env, 'txn> {
@@ -127,7 +133,7 @@ impl<'env, 'txn> ReadTree<'env, 'txn, LmdbStorageEngine> for LmdbReadTree<'env, 
         Option<<LmdbStorageEngine as StorageEngine>::Bytes<'txn>>,
         <LmdbStorageEngine as StorageEngine>::Error,
     > {
-        self.db.get(&self.txn.0, key)
+        self.db.get(self.txn, key)
     }
 
     fn range(
@@ -145,7 +151,7 @@ impl<'env, 'txn> ReadTree<'env, 'txn, LmdbStorageEngine> for LmdbReadTree<'env, 
         >,
         <LmdbStorageEngine as StorageEngine>::Error,
     > {
-        self.db.range(&self.txn.0, &range)
+        self.db.range(self.txn, &range)
     }
 
     fn rev_range(
@@ -163,7 +169,7 @@ impl<'env, 'txn> ReadTree<'env, 'txn, LmdbStorageEngine> for LmdbReadTree<'env, 
         >,
         <LmdbStorageEngine as StorageEngine>::Error,
     > {
-        self.db.rev_range(&self.txn.0, &range)
+        self.db.rev_range(self.txn, &range)
     }
 }
 

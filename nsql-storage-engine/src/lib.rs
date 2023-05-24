@@ -39,7 +39,7 @@ pub trait StorageEngine: Clone + Send + Sync + Sized + 'static {
 
     fn open_tree<'env, 'txn>(
         &self,
-        txn: &'txn Self::Transaction<'env>,
+        txn: &'txn ReadOrWriteTransaction<'env, Self>,
         name: &str,
     ) -> Result<Option<Self::ReadTree<'env, 'txn>>, Self::Error>
     where
@@ -53,27 +53,6 @@ pub trait StorageEngine: Clone + Send + Sync + Sized + 'static {
     ) -> Result<Self::WriteTree<'env, 'txn>, Self::Error>
     where
         'env: 'txn;
-
-    /// Open a tree for read-only access given either a read or write transaction, creating it if it doesn't exist.
-    /// Prefer the other open methods if you have a read or write transaction as they are more efficient.
-    fn open_read_or_write_tree<'env, 'txn>(
-        &self,
-        txn: &'txn ReadOrWriteTransaction<'env, Self>,
-        name: &str,
-    ) -> Result<Option<ReadOrWriteTree<'env, 'txn, Self>>, Self::Error>
-    where
-        'env: 'txn,
-    {
-        match txn {
-            ReadOrWriteTransaction::Read(tx) => {
-                Ok(self.open_tree(tx, name)?.map(ReadOrWriteTree::Read))
-            }
-            ReadOrWriteTransaction::Write(tx) => {
-                // FIXME need a method to open a readtree given a write tx
-                Ok(Some(ReadOrWriteTree::Write(self.open_tree(tx, name)?)))
-            }
-        }
-    }
 }
 
 pub trait ReadTree<'env, 'txn, S: StorageEngine> {
