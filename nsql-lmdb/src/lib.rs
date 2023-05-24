@@ -126,25 +126,25 @@ pub struct LmdbWriteTree<'env, 'txn> {
 }
 
 impl<'env, 'txn> ReadTree<'env, 'txn, LmdbStorageEngine> for LmdbReadTree<'env, 'txn> {
-    fn get(
-        &'txn self,
+    fn get<'a>(
+        &'a self,
         key: &[u8],
     ) -> std::result::Result<
-        Option<<LmdbStorageEngine as StorageEngine>::Bytes<'txn>>,
+        Option<<LmdbStorageEngine as StorageEngine>::Bytes<'a>>,
         <LmdbStorageEngine as StorageEngine>::Error,
     > {
         self.db.get(self.txn, key)
     }
 
-    fn range(
-        &'txn self,
-        range: impl RangeBounds<[u8]> + 'txn,
+    fn range<'a>(
+        &'a self,
+        range: impl RangeBounds<[u8]> + 'a,
     ) -> std::result::Result<
         impl Iterator<
             Item = std::result::Result<
                 (
-                    <LmdbStorageEngine as StorageEngine>::Bytes<'txn>,
-                    <LmdbStorageEngine as StorageEngine>::Bytes<'txn>,
+                    <LmdbStorageEngine as StorageEngine>::Bytes<'a>,
+                    <LmdbStorageEngine as StorageEngine>::Bytes<'a>,
                 ),
                 <LmdbStorageEngine as StorageEngine>::Error,
             >,
@@ -154,15 +154,15 @@ impl<'env, 'txn> ReadTree<'env, 'txn, LmdbStorageEngine> for LmdbReadTree<'env, 
         self.db.range(self.txn, &range)
     }
 
-    fn rev_range(
-        &'txn self,
-        range: impl RangeBounds<[u8]> + 'txn,
+    fn rev_range<'a>(
+        &'a self,
+        range: impl RangeBounds<[u8]> + 'a,
     ) -> std::result::Result<
         impl Iterator<
             Item = std::result::Result<
                 (
-                    <LmdbStorageEngine as StorageEngine>::Bytes<'txn>,
-                    <LmdbStorageEngine as StorageEngine>::Bytes<'txn>,
+                    <LmdbStorageEngine as StorageEngine>::Bytes<'a>,
+                    <LmdbStorageEngine as StorageEngine>::Bytes<'a>,
                 ),
                 <LmdbStorageEngine as StorageEngine>::Error,
             >,
@@ -174,25 +174,25 @@ impl<'env, 'txn> ReadTree<'env, 'txn, LmdbStorageEngine> for LmdbReadTree<'env, 
 }
 
 impl<'env, 'txn> ReadTree<'env, 'txn, LmdbStorageEngine> for LmdbWriteTree<'env, 'txn> {
-    fn get(
-        &'txn self,
+    fn get<'a>(
+        &'a self,
         key: &[u8],
     ) -> std::result::Result<
-        Option<<LmdbStorageEngine as StorageEngine>::Bytes<'txn>>,
+        Option<<LmdbStorageEngine as StorageEngine>::Bytes<'a>>,
         <LmdbStorageEngine as StorageEngine>::Error,
     > {
         self.db.get(&self.txn.0, key)
     }
 
-    fn range(
-        &'txn self,
-        range: impl RangeBounds<[u8]> + 'txn,
+    fn range<'a>(
+        &'a self,
+        range: impl RangeBounds<[u8]> + 'a,
     ) -> std::result::Result<
         impl Iterator<
             Item = std::result::Result<
                 (
-                    <LmdbStorageEngine as StorageEngine>::Bytes<'txn>,
-                    <LmdbStorageEngine as StorageEngine>::Bytes<'txn>,
+                    <LmdbStorageEngine as StorageEngine>::Bytes<'a>,
+                    <LmdbStorageEngine as StorageEngine>::Bytes<'a>,
                 ),
                 <LmdbStorageEngine as StorageEngine>::Error,
             >,
@@ -202,15 +202,15 @@ impl<'env, 'txn> ReadTree<'env, 'txn, LmdbStorageEngine> for LmdbWriteTree<'env,
         self.db.range(&self.txn.0, &range)
     }
 
-    fn rev_range(
-        &'txn self,
-        range: impl RangeBounds<[u8]> + 'txn,
+    fn rev_range<'a>(
+        &'a self,
+        range: impl RangeBounds<[u8]> + 'a,
     ) -> std::result::Result<
         impl Iterator<
             Item = std::result::Result<
                 (
-                    <LmdbStorageEngine as StorageEngine>::Bytes<'txn>,
-                    <LmdbStorageEngine as StorageEngine>::Bytes<'txn>,
+                    <LmdbStorageEngine as StorageEngine>::Bytes<'a>,
+                    <LmdbStorageEngine as StorageEngine>::Bytes<'a>,
                 ),
                 <LmdbStorageEngine as StorageEngine>::Error,
             >,

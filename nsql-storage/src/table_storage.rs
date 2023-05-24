@@ -1,5 +1,7 @@
 use nsql_core::Name;
-use nsql_storage_engine::{StorageEngine, Transaction, WriteTree};
+use nsql_storage_engine::{
+    ReadOrWriteTransaction, ReadTree, StorageEngine, Transaction, WriteTree,
+};
 
 use crate::schema::LogicalType;
 use crate::tuple::{Tuple, TupleIndex};
@@ -66,11 +68,12 @@ impl<S: StorageEngine> TableStorage<S> {
     #[inline]
     pub fn scan(
         &self,
-        _tx: &impl Transaction<'_, S>,
+        tx: &ReadOrWriteTransaction<'_, S>,
         _projection: Option<Box<[TupleIndex]>>,
-    ) -> impl Iterator<Item = Result<Vec<Tuple>, S::Error>> + Send + 'static {
-        todo!();
-        [].into_iter()
+    ) -> Result<impl Iterator<Item = Result<Vec<Tuple>, S::Error>> + Send + 'static, S::Error> {
+        let tree = self.storage.open_tree(tx, &self.info.storage_tree_name)?.unwrap();
+        // tree.range(..);
+        Ok([].into_iter())
         // self.heap
         //     .scan(tx, move |tid, tuple| {
         //         let mut tuple = match &projection {

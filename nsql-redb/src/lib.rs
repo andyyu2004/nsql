@@ -102,59 +102,6 @@ impl nsql_storage_engine::StorageEngine for RedbStorageEngine {
     }
 }
 
-impl<'env, 'txn> nsql_storage_engine::ReadTree<'env, 'txn, RedbStorageEngine>
-    for redb::ReadOnlyTable<'txn, &[u8], &[u8]>
-{
-    fn get(
-        &'txn self,
-        key: &[u8],
-    ) -> std::result::Result<
-        Option<<RedbStorageEngine as nsql_storage_engine::StorageEngine>::Bytes<'txn>>,
-        <RedbStorageEngine as nsql_storage_engine::StorageEngine>::Error,
-    > {
-        ReadableTable::get(self, key).map(|v| v.map(AccessGuardDerefWrapper))
-    }
-
-    fn range(
-        &'txn self,
-        range: impl RangeBounds<[u8]> + 'txn,
-    ) -> std::result::Result<
-        impl Iterator<
-            Item = std::result::Result<
-                (
-                    <RedbStorageEngine as nsql_storage_engine::StorageEngine>::Bytes<'txn>,
-                    <RedbStorageEngine as nsql_storage_engine::StorageEngine>::Bytes<'txn>,
-                ),
-                <RedbStorageEngine as nsql_storage_engine::StorageEngine>::Error,
-            >,
-        >,
-        <RedbStorageEngine as nsql_storage_engine::StorageEngine>::Error,
-    > {
-        Ok(ReadableTable::range::<&[u8]>(self, (range.start_bound(), range.end_bound()))?
-            .map(|kv| kv.map(|(k, v)| (AccessGuardDerefWrapper(k), AccessGuardDerefWrapper(v))))
-            .rev())
-    }
-
-    fn rev_range(
-        &'txn self,
-        range: impl RangeBounds<[u8]> + 'txn,
-    ) -> std::result::Result<
-        impl Iterator<
-            Item = std::result::Result<
-                (
-                    <RedbStorageEngine as nsql_storage_engine::StorageEngine>::Bytes<'txn>,
-                    <RedbStorageEngine as nsql_storage_engine::StorageEngine>::Bytes<'txn>,
-                ),
-                <RedbStorageEngine as nsql_storage_engine::StorageEngine>::Error,
-            >,
-        >,
-        <RedbStorageEngine as nsql_storage_engine::StorageEngine>::Error,
-    > {
-        Ok(ReadableTable::range::<&[u8]>(self, (range.start_bound(), range.end_bound()))?
-            .map(|kv| kv.map(|(k, v)| (AccessGuardDerefWrapper(k), AccessGuardDerefWrapper(v)))))
-    }
-}
-
 pub struct AccessGuardDerefWrapper<'a>(AccessGuard<'a, &'a [u8]>);
 
 impl<'a> Deref for AccessGuardDerefWrapper<'a> {
@@ -169,25 +116,25 @@ impl<'a> Deref for AccessGuardDerefWrapper<'a> {
 impl<'env, 'txn> nsql_storage_engine::ReadTree<'env, 'txn, RedbStorageEngine>
     for redb::Table<'env, 'txn, &[u8], &[u8]>
 {
-    fn get(
-        &'txn self,
+    fn get<'a>(
+        &'a self,
         key: &[u8],
     ) -> std::result::Result<
-        Option<<RedbStorageEngine as nsql_storage_engine::StorageEngine>::Bytes<'txn>>,
+        Option<<RedbStorageEngine as nsql_storage_engine::StorageEngine>::Bytes<'a>>,
         <RedbStorageEngine as nsql_storage_engine::StorageEngine>::Error,
     > {
         ReadableTable::get(self, key).map(|v| v.map(AccessGuardDerefWrapper))
     }
 
-    fn range(
-        &'txn self,
-        range: impl RangeBounds<[u8]> + 'txn,
+    fn range<'a>(
+        &'a self,
+        range: impl RangeBounds<[u8]> + 'a,
     ) -> std::result::Result<
         impl Iterator<
             Item = std::result::Result<
                 (
-                    <RedbStorageEngine as nsql_storage_engine::StorageEngine>::Bytes<'txn>,
-                    <RedbStorageEngine as nsql_storage_engine::StorageEngine>::Bytes<'txn>,
+                    <RedbStorageEngine as nsql_storage_engine::StorageEngine>::Bytes<'a>,
+                    <RedbStorageEngine as nsql_storage_engine::StorageEngine>::Bytes<'a>,
                 ),
                 <RedbStorageEngine as nsql_storage_engine::StorageEngine>::Error,
             >,
@@ -199,15 +146,15 @@ impl<'env, 'txn> nsql_storage_engine::ReadTree<'env, 'txn, RedbStorageEngine>
             .rev())
     }
 
-    fn rev_range(
-        &'txn self,
-        range: impl RangeBounds<[u8]> + 'txn,
+    fn rev_range<'a>(
+        &'a self,
+        range: impl RangeBounds<[u8]> + 'a,
     ) -> std::result::Result<
         impl Iterator<
             Item = std::result::Result<
                 (
-                    <RedbStorageEngine as nsql_storage_engine::StorageEngine>::Bytes<'txn>,
-                    <RedbStorageEngine as nsql_storage_engine::StorageEngine>::Bytes<'txn>,
+                    <RedbStorageEngine as nsql_storage_engine::StorageEngine>::Bytes<'a>,
+                    <RedbStorageEngine as nsql_storage_engine::StorageEngine>::Bytes<'a>,
                 ),
                 <RedbStorageEngine as nsql_storage_engine::StorageEngine>::Error,
             >,
@@ -307,26 +254,26 @@ impl<'env, 'txn> nsql_storage_engine::ReadTree<'env, 'txn, RedbStorageEngine>
     for Box<dyn ReadableTableDyn + 'txn>
 {
     #[inline]
-    fn get(
-        &'txn self,
+    fn get<'a>(
+        &'a self,
         key: &[u8],
     ) -> std::result::Result<
-        Option<<RedbStorageEngine as nsql_storage_engine::StorageEngine>::Bytes<'txn>>,
+        Option<<RedbStorageEngine as nsql_storage_engine::StorageEngine>::Bytes<'a>>,
         <RedbStorageEngine as nsql_storage_engine::StorageEngine>::Error,
     > {
         (**self).get(key).map(|v| v.map(AccessGuardDerefWrapper))
     }
 
     #[inline]
-    fn range(
-        &'txn self,
-        range: impl RangeBounds<[u8]> + 'txn,
+    fn range<'a>(
+        &'a self,
+        range: impl RangeBounds<[u8]> + 'a,
     ) -> std::result::Result<
         impl Iterator<
             Item = std::result::Result<
                 (
-                    <RedbStorageEngine as nsql_storage_engine::StorageEngine>::Bytes<'txn>,
-                    <RedbStorageEngine as nsql_storage_engine::StorageEngine>::Bytes<'txn>,
+                    <RedbStorageEngine as nsql_storage_engine::StorageEngine>::Bytes<'a>,
+                    <RedbStorageEngine as nsql_storage_engine::StorageEngine>::Bytes<'a>,
                 ),
                 <RedbStorageEngine as nsql_storage_engine::StorageEngine>::Error,
             >,
@@ -339,15 +286,15 @@ impl<'env, 'txn> nsql_storage_engine::ReadTree<'env, 'txn, RedbStorageEngine>
     }
 
     #[inline]
-    fn rev_range(
-        &'txn self,
-        range: impl RangeBounds<[u8]> + 'txn,
+    fn rev_range<'a>(
+        &'a self,
+        range: impl RangeBounds<[u8]> + 'a,
     ) -> std::result::Result<
         impl Iterator<
             Item = std::result::Result<
                 (
-                    <RedbStorageEngine as nsql_storage_engine::StorageEngine>::Bytes<'txn>,
-                    <RedbStorageEngine as nsql_storage_engine::StorageEngine>::Bytes<'txn>,
+                    <RedbStorageEngine as nsql_storage_engine::StorageEngine>::Bytes<'a>,
+                    <RedbStorageEngine as nsql_storage_engine::StorageEngine>::Bytes<'a>,
                 ),
                 <RedbStorageEngine as nsql_storage_engine::StorageEngine>::Error,
             >,

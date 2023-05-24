@@ -67,14 +67,14 @@ impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSource<'env, S, 
                 tracing::debug!(%tuple, "returning tuple");
                 return Ok(SourceState::Yield(Chunk::singleton(tuple)));
             } else {
-                let stream = self.stream.get_or_init(|| {
+                let stream = self.stream.get_or_try_init(|| {
                     let storage = table.storage();
                     let projection = self
                         .projection
                         .as_ref()
                         .map(|p| p.iter().map(|&idx| TupleIndex::new(idx.as_usize())).collect());
-                    Mutex::new(Box::new(storage.scan(&*ctx.tx(), projection)))
-                });
+                    Ok(Mutex::new(Box::new(storage.scan(&*ctx.tx(), projection)?)))
+                })?;
 
                 match stream.lock().next() {
                     Some(batch) => {

@@ -56,17 +56,17 @@ pub trait StorageEngine: Clone + Send + Sync + Sized + 'static {
 }
 
 pub trait ReadTree<'env, 'txn, S: StorageEngine> {
-    fn get(&'txn self, key: &[u8]) -> Result<Option<S::Bytes<'txn>>, S::Error>;
+    fn get<'a>(&'a self, key: &[u8]) -> Result<Option<S::Bytes<'a>>, S::Error>;
 
-    fn range(
-        &'txn self,
-        range: impl RangeBounds<[u8]> + 'txn,
-    ) -> Result<impl Iterator<Item = Result<(S::Bytes<'txn>, S::Bytes<'txn>), S::Error>>, S::Error>;
+    fn range<'a>(
+        &'a self,
+        range: impl RangeBounds<[u8]> + 'a,
+    ) -> Result<impl Iterator<Item = Result<(S::Bytes<'a>, S::Bytes<'a>), S::Error>>, S::Error>;
 
-    fn rev_range(
-        &'txn self,
-        range: impl RangeBounds<[u8]> + 'txn,
-    ) -> Result<impl Iterator<Item = Result<(S::Bytes<'txn>, S::Bytes<'txn>), S::Error>>, S::Error>;
+    fn rev_range<'a>(
+        &'a self,
+        range: impl RangeBounds<[u8]> + 'a,
+    ) -> Result<impl Iterator<Item = Result<(S::Bytes<'a>, S::Bytes<'a>), S::Error>>, S::Error>;
 }
 
 pub trait WriteTree<'env, 'txn, S: StorageEngine>: ReadTree<'env, 'txn, S> {
@@ -96,27 +96,27 @@ pub enum ReadOrWriteTree<'env: 'txn, 'txn, S: StorageEngine> {
 }
 
 impl<'env, 'txn, S: StorageEngine> ReadTree<'env, 'txn, S> for ReadOrWriteTree<'env, 'txn, S> {
-    fn get(
-        &'txn self,
+    fn get<'a>(
+        &'a self,
         key: &[u8],
-    ) -> Result<Option<<S as StorageEngine>::Bytes<'txn>>, <S as StorageEngine>::Error> {
+    ) -> Result<Option<<S as StorageEngine>::Bytes<'a>>, <S as StorageEngine>::Error> {
         match self {
             ReadOrWriteTree::Read(tree) => tree.get(key),
             ReadOrWriteTree::Write(tree) => tree.get(key),
         }
     }
 
-    fn range(
-        &'txn self,
-        range: impl RangeBounds<[u8]> + 'txn,
+    fn range<'a>(
+        &'a self,
+        range: impl RangeBounds<[u8]> + 'a,
     ) -> Result<
         Box<
             dyn Iterator<
                     Item = Result<
-                        (<S as StorageEngine>::Bytes<'txn>, <S as StorageEngine>::Bytes<'txn>),
+                        (<S as StorageEngine>::Bytes<'a>, <S as StorageEngine>::Bytes<'a>),
                         <S as StorageEngine>::Error,
                     >,
-                > + 'txn,
+                > + 'a,
         >,
         <S as StorageEngine>::Error,
     > {
@@ -126,17 +126,17 @@ impl<'env, 'txn, S: StorageEngine> ReadTree<'env, 'txn, S> for ReadOrWriteTree<'
         }
     }
 
-    fn rev_range(
-        &'txn self,
-        range: impl RangeBounds<[u8]> + 'txn,
+    fn rev_range<'a>(
+        &'a self,
+        range: impl RangeBounds<[u8]> + 'a,
     ) -> Result<
         Box<
             dyn Iterator<
                     Item = Result<
-                        (<S as StorageEngine>::Bytes<'txn>, <S as StorageEngine>::Bytes<'txn>),
+                        (<S as StorageEngine>::Bytes<'a>, <S as StorageEngine>::Bytes<'a>),
                         <S as StorageEngine>::Error,
                     >,
-                > + 'txn,
+                > + 'a,
         >,
         <S as StorageEngine>::Error,
     > {
