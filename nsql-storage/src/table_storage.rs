@@ -1,6 +1,6 @@
 use nsql_core::Name;
 use nsql_storage_engine::{
-    ReadOrWriteTransaction, ReadTree, StorageEngine, Transaction, WriteTree,
+    ReadOrWriteTransactionRef, ReadTree, StorageEngine, Transaction, WriteTree,
 };
 
 use crate::schema::LogicalType;
@@ -66,13 +66,13 @@ impl<S: StorageEngine> TableStorage<S> {
     }
 
     #[inline]
-    pub fn scan(
+    pub fn scan<'env, 'txn>(
         &self,
-        tx: &ReadOrWriteTransaction<'_, S>,
+        tx: ReadOrWriteTransactionRef<'env, 'txn, S>,
         _projection: Option<Box<[TupleIndex]>>,
     ) -> Result<impl Iterator<Item = Result<Vec<Tuple>, S::Error>> + Send + 'static, S::Error> {
         let tree = self.storage.open_tree(tx, &self.info.storage_tree_name)?.unwrap();
-        // tree.range(..);
+        tree.range(..);
         Ok([].into_iter())
         // self.heap
         //     .scan(tx, move |tid, tuple| {

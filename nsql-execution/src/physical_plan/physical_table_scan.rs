@@ -73,7 +73,11 @@ impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSource<'env, S, 
                         .projection
                         .as_ref()
                         .map(|p| p.iter().map(|&idx| TupleIndex::new(idx.as_usize())).collect());
-                    Ok(Mutex::new(Box::new(storage.scan(&*ctx.tx(), projection)?)))
+
+                    storage
+                        .scan(ctx.tx().as_read_or_write(), projection)
+                        .map(|iter| Box::new(iter) as _)
+                        .map(Mutex::new)
                 })?;
 
                 match stream.lock().next() {

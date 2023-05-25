@@ -9,7 +9,7 @@ use std::sync::Arc;
 use heed::types::ByteSlice;
 use heed::Flag;
 use nsql_storage_engine::{
-    ReadOrWriteTransaction, ReadTree, StorageEngine, Transaction, WriteTransaction, WriteTree,
+    ReadOrWriteTransactionRef, ReadTree, StorageEngine, Transaction, WriteTransaction, WriteTree,
 };
 
 type Result<T, E = heed::Error> = std::result::Result<T, E>;
@@ -88,15 +88,15 @@ impl StorageEngine for LmdbStorageEngine {
     #[inline]
     fn open_tree<'env, 'txn>(
         &self,
-        txn: &'txn ReadOrWriteTransaction<'env, Self>,
+        txn: ReadOrWriteTransactionRef<'env, 'txn, Self>,
         name: &str,
     ) -> Result<Option<Self::ReadTree<'env, 'txn>>, Self::Error>
     where
         'env: 'txn,
     {
         let txn = match txn {
-            ReadOrWriteTransaction::Read(txn) => &*txn.0,
-            ReadOrWriteTransaction::Write(txn) => &*txn.0,
+            ReadOrWriteTransactionRef::Read(txn) => &*txn.0,
+            ReadOrWriteTransactionRef::Write(txn) => &*txn.0,
         };
         Ok(self.env.open_database(txn, Some(name))?.map(|db| LmdbReadTree { db, txn }))
     }
@@ -238,9 +238,17 @@ impl<'env, 'txn> WriteTree<'env, 'txn, LmdbStorageEngine> for LmdbWriteTree<'env
     }
 }
 
-impl<'env> Transaction<'env, LmdbStorageEngine> for ReadonlyTx<'env> {}
+impl<'env> Transaction<'env, LmdbStorageEngine> for ReadonlyTx<'env> {
+    fn as_read_or_write(&self) -> ReadOrWriteTransactionRef<'env, '_, LmdbStorageEngine> {
+        ReadOrWriteTransactionRef::Read(self)
+    }
+}
 
-impl<'env> Transaction<'env, LmdbStorageEngine> for ReadWriteTx<'env> {}
+impl<'env> Transaction<'env, LmdbStorageEngine> for ReadWriteTx<'env> {
+    fn as_read_or_write(&self) -> ReadOrWriteTransactionRef<'env, '_, LmdbStorageEngine> {
+        ReadOrWriteTransactionRef::Write(self)
+    }
+}
 
 impl<'env> WriteTransaction<'env, LmdbStorageEngine> for ReadWriteTx<'env> {
     fn commit(self) -> Result<(), heed::Error> {

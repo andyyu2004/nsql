@@ -39,7 +39,7 @@ pub trait StorageEngine: Clone + Send + Sync + Sized + 'static {
 
     fn open_tree<'env, 'txn>(
         &self,
-        txn: &'txn ReadOrWriteTransaction<'env, Self>,
+        txn: ReadOrWriteTransactionRef<'env, 'txn, Self>,
         name: &str,
     ) -> Result<Option<Self::ReadTree<'env, 'txn>>, Self::Error>
     where
@@ -75,7 +75,9 @@ pub trait WriteTree<'env, 'txn, S: StorageEngine>: ReadTree<'env, 'txn, S> {
     fn delete(&mut self, key: &[u8]) -> std::result::Result<bool, S::Error>;
 }
 
-pub trait Transaction<'env, S: StorageEngine> {}
+pub trait Transaction<'env, S: StorageEngine> {
+    fn as_read_or_write(&self) -> ReadOrWriteTransactionRef<'env, '_, S>;
+}
 
 pub trait WriteTransaction<'env, S: StorageEngine>: Transaction<'env, S> {
     fn commit(self) -> Result<(), S::Error>;
@@ -88,7 +90,37 @@ pub enum ReadOrWriteTransaction<'env, S: StorageEngine> {
     Write(S::WriteTransaction<'env>),
 }
 
-impl<'env, S: StorageEngine> Transaction<'env, S> for ReadOrWriteTransaction<'env, S> {}
+impl<'env, S: StorageEngine> Transaction<'env, S> for ReadOrWriteTransaction<'env, S> {
+    #[inline]
+    fn as_read_or_write(&self) -> ReadOrWriteTransactionRef<'env, '_, S> {
+        match self {
+            ReadOrWriteTransaction::Read(tx) => ReadOrWriteTransactionRef::Read(tx),
+            ReadOrWriteTransaction::Write(tx) => ReadOrWriteTransactionRef::Write(tx),
+        }
+    }
+}
+
+pub enum ReadOrWriteTransactionRef<'env, 'txn, S: StorageEngine> {
+    Read(&'txn S::Transaction<'env>),
+    Write(&'txn S::WriteTransaction<'env>),
+}
+
+impl<'env, 'txn, S: StorageEngine> Clone for ReadOrWriteTransactionRef<'env, 'txn, S> {
+    #[inline]
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<'env, 'txn, S: StorageEngine> Copy for ReadOrWriteTransactionRef<'env, 'txn, S> {}
+
+impl<'env, 'txn, S: StorageEngine> Transaction<'env, S>
+    for ReadOrWriteTransactionRef<'env, 'txn, S>
+{
+    fn as_read_or_write(&self) -> ReadOrWriteTransactionRef<'env, '_, S> {
+        *self
+    }
+}
 
 pub enum ReadOrWriteTree<'env: 'txn, 'txn, S: StorageEngine> {
     Read(S::ReadTree<'env, 'txn>),

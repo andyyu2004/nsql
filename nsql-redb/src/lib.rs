@@ -8,7 +8,7 @@ use std::ops::{Bound, Deref, RangeBounds};
 use std::path::Path;
 use std::sync::Arc;
 
-use nsql_storage_engine::ReadOrWriteTransaction;
+use nsql_storage_engine::ReadOrWriteTransactionRef;
 use redb::{AccessGuard, Range, ReadableTable};
 
 type Result<T, E = redb::Error> = std::result::Result<T, E>;
@@ -67,21 +67,21 @@ impl nsql_storage_engine::StorageEngine for RedbStorageEngine {
     #[inline]
     fn open_tree<'env, 'txn>(
         &self,
-        txn: &'txn ReadOrWriteTransaction<'env, Self>,
+        txn: ReadOrWriteTransactionRef<'env, 'txn, Self>,
         name: &str,
     ) -> Result<Option<Self::ReadTree<'env, 'txn>>, Self::Error>
     where
         'env: 'txn,
     {
         match txn {
-            ReadOrWriteTransaction::Read(txn) => {
+            ReadOrWriteTransactionRef::Read(txn) => {
                 match txn.0.open_table(redb::TableDefinition::new(name)) {
                     Ok(table) => Ok(Some(Box::new(table))),
                     Err(redb::Error::TableDoesNotExist(_)) => unreachable!(),
                     Err(e) => Err(e),
                 }
             }
-            ReadOrWriteTransaction::Write(_) => todo!(),
+            ReadOrWriteTransactionRef::Write(_) => todo!(),
         }
     }
 
@@ -116,6 +116,7 @@ impl<'a> Deref for AccessGuardDerefWrapper<'a> {
 impl<'env, 'txn> nsql_storage_engine::ReadTree<'env, 'txn, RedbStorageEngine>
     for redb::Table<'env, 'txn, &[u8], &[u8]>
 {
+    #[inline]
     fn get<'a>(
         &'a self,
         key: &[u8],
@@ -126,6 +127,7 @@ impl<'env, 'txn> nsql_storage_engine::ReadTree<'env, 'txn, RedbStorageEngine>
         ReadableTable::get(self, key).map(|v| v.map(AccessGuardDerefWrapper))
     }
 
+    #[inline]
     fn range<'a>(
         &'a self,
         range: impl RangeBounds<[u8]> + 'a,
@@ -146,6 +148,7 @@ impl<'env, 'txn> nsql_storage_engine::ReadTree<'env, 'txn, RedbStorageEngine>
             .rev())
     }
 
+    #[inline]
     fn rev_range<'a>(
         &'a self,
         range: impl RangeBounds<[u8]> + 'a,
@@ -180,6 +183,7 @@ impl<'env, 'txn> nsql_storage_engine::WriteTree<'env, 'txn, RedbStorageEngine>
         Ok(())
     }
 
+    #[inline]
     fn delete(
         &mut self,
         key: &[u8],
@@ -189,9 +193,19 @@ impl<'env, 'txn> nsql_storage_engine::WriteTree<'env, 'txn, RedbStorageEngine>
     }
 }
 
-impl<'env> nsql_storage_engine::Transaction<'env, RedbStorageEngine> for ReadTransaction<'env> {}
+impl<'env> nsql_storage_engine::Transaction<'env, RedbStorageEngine> for ReadTransaction<'env> {
+    #[inline]
+    fn as_read_or_write(&self) -> ReadOrWriteTransactionRef<'env, '_, RedbStorageEngine> {
+        ReadOrWriteTransactionRef::Read(self)
+    }
+}
 
-impl<'env> nsql_storage_engine::Transaction<'env, RedbStorageEngine> for Transaction<'env> {}
+impl<'env> nsql_storage_engine::Transaction<'env, RedbStorageEngine> for Transaction<'env> {
+    #[inline]
+    fn as_read_or_write(&self) -> ReadOrWriteTransactionRef<'env, '_, RedbStorageEngine> {
+        ReadOrWriteTransactionRef::Write(self)
+    }
+}
 
 impl<'env> nsql_storage_engine::WriteTransaction<'env, RedbStorageEngine> for Transaction<'env> {
     #[inline]

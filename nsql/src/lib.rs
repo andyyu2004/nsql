@@ -14,7 +14,9 @@ use nsql_plan::Planner;
 pub use nsql_storage::schema::LogicalType;
 pub use nsql_storage::tuple::Tuple;
 use nsql_storage::Storage;
-use nsql_storage_engine::{ReadOrWriteTransaction, StorageEngine, WriteTransaction};
+use nsql_storage_engine::{
+    ReadOrWriteTransaction, ReadOrWriteTransactionRef, StorageEngine, WriteTransaction,
+};
 
 pub type Result<T, E = anyhow::Error> = std::result::Result<T, E>;
 
