@@ -6,6 +6,9 @@ use std::error::Error;
 use std::ops::{Deref, RangeBounds};
 use std::path::Path;
 
+pub use fallible_iterator;
+pub use fallible_iterator::FallibleIterator;
+
 pub trait StorageEngine: Clone + Send + Sync + Sized + 'static {
     type Error: Send + Sync + Error + 'static;
 
@@ -61,12 +64,18 @@ pub trait ReadTree<'env, 'txn, S: StorageEngine> {
     fn range<'a>(
         &'a self,
         range: impl RangeBounds<[u8]> + 'a,
-    ) -> Result<impl Iterator<Item = Result<(S::Bytes<'a>, S::Bytes<'a>), S::Error>>, S::Error>;
+    ) -> Result<
+        impl FallibleIterator<Item = (S::Bytes<'a>, S::Bytes<'a>), Error = S::Error>,
+        S::Error,
+    >;
 
     fn rev_range<'a>(
         &'a self,
         range: impl RangeBounds<[u8]> + 'a,
-    ) -> Result<impl Iterator<Item = Result<(S::Bytes<'a>, S::Bytes<'a>), S::Error>>, S::Error>;
+    ) -> Result<
+        impl FallibleIterator<Item = (S::Bytes<'a>, S::Bytes<'a>), Error = S::Error>,
+        S::Error,
+    >;
 }
 
 pub trait WriteTree<'env, 'txn, S: StorageEngine>: ReadTree<'env, 'txn, S> {
@@ -143,11 +152,9 @@ impl<'env, 'txn, S: StorageEngine> ReadTree<'env, 'txn, S> for ReadOrWriteTree<'
         range: impl RangeBounds<[u8]> + 'a,
     ) -> Result<
         Box<
-            dyn Iterator<
-                    Item = Result<
-                        (<S as StorageEngine>::Bytes<'a>, <S as StorageEngine>::Bytes<'a>),
-                        <S as StorageEngine>::Error,
-                    >,
+            dyn FallibleIterator<
+                    Item = (<S as StorageEngine>::Bytes<'a>, <S as StorageEngine>::Bytes<'a>),
+                    Error = <S as StorageEngine>::Error,
                 > + 'a,
         >,
         <S as StorageEngine>::Error,
@@ -163,11 +170,9 @@ impl<'env, 'txn, S: StorageEngine> ReadTree<'env, 'txn, S> for ReadOrWriteTree<'
         range: impl RangeBounds<[u8]> + 'a,
     ) -> Result<
         Box<
-            dyn Iterator<
-                    Item = Result<
-                        (<S as StorageEngine>::Bytes<'a>, <S as StorageEngine>::Bytes<'a>),
-                        <S as StorageEngine>::Error,
-                    >,
+            dyn FallibleIterator<
+                    Item = (<S as StorageEngine>::Bytes<'a>, <S as StorageEngine>::Bytes<'a>),
+                    Error = <S as StorageEngine>::Error,
                 > + 'a,
         >,
         <S as StorageEngine>::Error,

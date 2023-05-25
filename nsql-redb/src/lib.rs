@@ -8,7 +8,7 @@ use std::ops::{Bound, Deref, RangeBounds};
 use std::path::Path;
 use std::sync::Arc;
 
-use nsql_storage_engine::ReadOrWriteTransactionRef;
+use nsql_storage_engine::{fallible_iterator, FallibleIterator, ReadOrWriteTransactionRef};
 use redb::{AccessGuard, Range, ReadableTable};
 
 type Result<T, E = redb::Error> = std::result::Result<T, E>;
@@ -132,20 +132,20 @@ impl<'env, 'txn> nsql_storage_engine::ReadTree<'env, 'txn, RedbStorageEngine>
         &'a self,
         range: impl RangeBounds<[u8]> + 'a,
     ) -> std::result::Result<
-        impl Iterator<
-            Item = std::result::Result<
-                (
-                    <RedbStorageEngine as nsql_storage_engine::StorageEngine>::Bytes<'a>,
-                    <RedbStorageEngine as nsql_storage_engine::StorageEngine>::Bytes<'a>,
-                ),
-                <RedbStorageEngine as nsql_storage_engine::StorageEngine>::Error,
-            >,
+        impl FallibleIterator<
+            Item = (
+                <RedbStorageEngine as nsql_storage_engine::StorageEngine>::Bytes<'a>,
+                <RedbStorageEngine as nsql_storage_engine::StorageEngine>::Bytes<'a>,
+            ),
+            Error = <RedbStorageEngine as nsql_storage_engine::StorageEngine>::Error,
         >,
         <RedbStorageEngine as nsql_storage_engine::StorageEngine>::Error,
     > {
-        Ok(ReadableTable::range::<&[u8]>(self, (range.start_bound(), range.end_bound()))?
-            .map(|kv| kv.map(|(k, v)| (AccessGuardDerefWrapper(k), AccessGuardDerefWrapper(v))))
-            .rev())
+        Ok(fallible_iterator::convert(
+            ReadableTable::range::<&[u8]>(self, (range.start_bound(), range.end_bound()))?
+                .map(|kv| kv.map(|(k, v)| (AccessGuardDerefWrapper(k), AccessGuardDerefWrapper(v))))
+                .rev(),
+        ))
     }
 
     #[inline]
@@ -153,31 +153,32 @@ impl<'env, 'txn> nsql_storage_engine::ReadTree<'env, 'txn, RedbStorageEngine>
         &'a self,
         range: impl RangeBounds<[u8]> + 'a,
     ) -> std::result::Result<
-        impl Iterator<
-            Item = std::result::Result<
-                (
-                    <RedbStorageEngine as nsql_storage_engine::StorageEngine>::Bytes<'a>,
-                    <RedbStorageEngine as nsql_storage_engine::StorageEngine>::Bytes<'a>,
-                ),
-                <RedbStorageEngine as nsql_storage_engine::StorageEngine>::Error,
-            >,
+        impl FallibleIterator<
+            Item = (
+                <RedbStorageEngine as nsql_storage_engine::StorageEngine>::Bytes<'a>,
+                <RedbStorageEngine as nsql_storage_engine::StorageEngine>::Bytes<'a>,
+            ),
+            Error = <RedbStorageEngine as nsql_storage_engine::StorageEngine>::Error,
         >,
         <RedbStorageEngine as nsql_storage_engine::StorageEngine>::Error,
     > {
-        Ok(ReadableTable::range::<&[u8]>(self, (range.start_bound(), range.end_bound()))?
-            .map(|kv| kv.map(|(k, v)| (AccessGuardDerefWrapper(k), AccessGuardDerefWrapper(v)))))
+        Ok(fallible_iterator::convert(
+            ReadableTable::range::<&[u8]>(self, (range.start_bound(), range.end_bound()))?.map(
+                |kv| kv.map(|(k, v)| (AccessGuardDerefWrapper(k), AccessGuardDerefWrapper(v))),
+            ),
+        ))
     }
 }
 
 impl<'env, 'txn> nsql_storage_engine::WriteTree<'env, 'txn, RedbStorageEngine>
     for redb::Table<'env, 'txn, &[u8], &[u8]>
 {
+    #[inline]
     fn put(
         &mut self,
         key: &[u8],
         value: &[u8],
-    ) -> std::result::Result<(), <RedbStorageEngine as nsql_storage_engine::StorageEngine>::Error>
-    {
+    ) -> Result<(), <RedbStorageEngine as nsql_storage_engine::StorageEngine>::Error> {
         // can return a bool if we need to know if the key was already present
         self.insert(key, value).map(|prev| prev.is_none())?;
         Ok(())
@@ -187,8 +188,7 @@ impl<'env, 'txn> nsql_storage_engine::WriteTree<'env, 'txn, RedbStorageEngine>
     fn delete(
         &mut self,
         key: &[u8],
-    ) -> std::result::Result<bool, <RedbStorageEngine as nsql_storage_engine::StorageEngine>::Error>
-    {
+    ) -> Result<bool, <RedbStorageEngine as nsql_storage_engine::StorageEngine>::Error> {
         Ok(self.remove(key)?.is_some())
     }
 }
@@ -283,20 +283,20 @@ impl<'env, 'txn> nsql_storage_engine::ReadTree<'env, 'txn, RedbStorageEngine>
         &'a self,
         range: impl RangeBounds<[u8]> + 'a,
     ) -> std::result::Result<
-        impl Iterator<
-            Item = std::result::Result<
-                (
-                    <RedbStorageEngine as nsql_storage_engine::StorageEngine>::Bytes<'a>,
-                    <RedbStorageEngine as nsql_storage_engine::StorageEngine>::Bytes<'a>,
-                ),
-                <RedbStorageEngine as nsql_storage_engine::StorageEngine>::Error,
-            >,
+        impl FallibleIterator<
+            Item = (
+                <RedbStorageEngine as nsql_storage_engine::StorageEngine>::Bytes<'a>,
+                <RedbStorageEngine as nsql_storage_engine::StorageEngine>::Bytes<'a>,
+            ),
+            Error = <RedbStorageEngine as nsql_storage_engine::StorageEngine>::Error,
         >,
         <RedbStorageEngine as nsql_storage_engine::StorageEngine>::Error,
     > {
-        Ok((**self)
-            .range((range.start_bound(), range.end_bound()))?
-            .map(|kv| kv.map(|(k, v)| (AccessGuardDerefWrapper(k), AccessGuardDerefWrapper(v)))))
+        Ok(fallible_iterator::convert(
+            (**self).range((range.start_bound(), range.end_bound()))?.map(|kv| {
+                kv.map(|(k, v)| (AccessGuardDerefWrapper(k), AccessGuardDerefWrapper(v)))
+            }),
+        ))
     }
 
     #[inline]
@@ -304,19 +304,19 @@ impl<'env, 'txn> nsql_storage_engine::ReadTree<'env, 'txn, RedbStorageEngine>
         &'a self,
         range: impl RangeBounds<[u8]> + 'a,
     ) -> std::result::Result<
-        impl Iterator<
-            Item = std::result::Result<
-                (
-                    <RedbStorageEngine as nsql_storage_engine::StorageEngine>::Bytes<'a>,
-                    <RedbStorageEngine as nsql_storage_engine::StorageEngine>::Bytes<'a>,
-                ),
-                <RedbStorageEngine as nsql_storage_engine::StorageEngine>::Error,
-            >,
+        impl FallibleIterator<
+            Item = (
+                <RedbStorageEngine as nsql_storage_engine::StorageEngine>::Bytes<'a>,
+                <RedbStorageEngine as nsql_storage_engine::StorageEngine>::Bytes<'a>,
+            ),
+            Error = <RedbStorageEngine as nsql_storage_engine::StorageEngine>::Error,
         >,
         <RedbStorageEngine as nsql_storage_engine::StorageEngine>::Error,
     > {
-        Ok((**self)
-            .range((range.start_bound(), range.end_bound()))?
-            .map(|kv| kv.map(|(k, v)| (AccessGuardDerefWrapper(k), AccessGuardDerefWrapper(v)))))
+        Ok(fallible_iterator::convert(
+            (**self).range((range.start_bound(), range.end_bound()))?.map(|kv| {
+                kv.map(|(k, v)| (AccessGuardDerefWrapper(k), AccessGuardDerefWrapper(v)))
+            }),
+        ))
     }
 }

@@ -72,7 +72,9 @@ impl<S: StorageEngine> TableStorage<S> {
         _projection: Option<Box<[TupleIndex]>>,
     ) -> Result<impl Iterator<Item = Result<Vec<Tuple>, S::Error>> + Send + 'static, S::Error> {
         let tree = self.storage.open_tree(tx, &self.info.storage_tree_name)?.unwrap();
-        tree.range(..);
+        // tree.range(..)?.map(|kv| {
+        //     todo!();
+        // });
         Ok([].into_iter())
         // self.heap
         //     .scan(tx, move |tid, tuple| {
