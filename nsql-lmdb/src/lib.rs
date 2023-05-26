@@ -89,13 +89,13 @@ impl StorageEngine for LmdbStorageEngine {
     #[inline]
     fn open_tree<'env, 'txn>(
         &self,
-        txn: ReadOrWriteTransactionRef<'env, 'txn, Self>,
+        txn: &'txn impl Transaction<'env, Self>,
         name: &str,
     ) -> Result<Option<Self::ReadTree<'env, 'txn>>, Self::Error>
     where
         'env: 'txn,
     {
-        let txn = match txn {
+        let txn = match txn.as_read_or_write() {
             ReadOrWriteTransactionRef::Read(txn) => &*txn.0,
             ReadOrWriteTransactionRef::Write(txn) => &*txn.0,
         };

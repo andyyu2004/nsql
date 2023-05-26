@@ -1,10 +1,11 @@
 use nsql_core::Name;
 use nsql_storage_engine::{
-    ReadOrWriteTransactionRef, ReadTree, StorageEngine, Transaction, WriteTree,
+    FallibleIterator, ReadOrWriteTransactionRef, ReadTree, StorageEngine, Transaction, WriteTree,
 };
 
 use crate::schema::LogicalType;
 use crate::tuple::{Tuple, TupleIndex};
+use crate::value::Value;
 
 pub struct TableStorage<S> {
     storage: S,
@@ -13,7 +14,12 @@ pub struct TableStorage<S> {
 
 impl<S: StorageEngine> TableStorage<S> {
     #[inline]
-    pub fn initialize(storage: S, info: TableStorageInfo) -> Result<Self, S::Error> {
+    pub fn initialize(
+        storage: S,
+        tx: &mut S::WriteTransaction<'_>,
+        info: TableStorageInfo,
+    ) -> Result<Self, S::Error> {
+        storage.open_write_tree(tx, &info.storage_tree_name)?;
         Ok(Self { storage, info })
     }
 
@@ -68,13 +74,22 @@ impl<S: StorageEngine> TableStorage<S> {
     #[inline]
     pub fn scan<'env, 'txn>(
         &self,
-        tx: ReadOrWriteTransactionRef<'env, 'txn, S>,
-        _projection: Option<Box<[TupleIndex]>>,
+        tx: &'txn impl Transaction<'env, S>,
+        projection: Option<Box<[TupleIndex]>>,
     ) -> Result<impl Iterator<Item = Result<Vec<Tuple>, S::Error>> + Send + 'static, S::Error> {
-        let tree = self.storage.open_tree(tx, &self.info.storage_tree_name)?.unwrap();
-        // tree.range(..)?.map(|kv| {
-        //     todo!();
-        // });
+        let tree = self
+            .storage
+            .open_tree(tx, &self.info.storage_tree_name)?
+            .expect("expected tree to exist");
+        tree.range(..)?
+            .map(|(k, v)| {
+                let k = unsafe { rkyv::archived_root::<Vec<Value>>(&k) };
+                let v = unsafe { rkyv::archived_root::<Vec<Value>>(&v) };
+                dbg!(k, v);
+                todo!();
+                Ok(())
+            })
+            .count()?;
         Ok([].into_iter())
         // self.heap
         //     .scan(tx, move |tid, tuple| {

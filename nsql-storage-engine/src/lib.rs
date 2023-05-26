@@ -42,7 +42,7 @@ pub trait StorageEngine: Clone + Send + Sync + Sized + 'static {
 
     fn open_tree<'env, 'txn>(
         &self,
-        txn: ReadOrWriteTransactionRef<'env, 'txn, Self>,
+        txn: &'txn impl Transaction<'env, Self>,
         name: &str,
     ) -> Result<Option<Self::ReadTree<'env, 'txn>>, Self::Error>
     where

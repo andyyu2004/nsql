@@ -67,13 +67,13 @@ impl nsql_storage_engine::StorageEngine for RedbStorageEngine {
     #[inline]
     fn open_tree<'env, 'txn>(
         &self,
-        txn: ReadOrWriteTransactionRef<'env, 'txn, Self>,
+        txn: &'txn impl nsql_storage_engine::Transaction<'env, Self>,
         name: &str,
     ) -> Result<Option<Self::ReadTree<'env, 'txn>>, Self::Error>
     where
         'env: 'txn,
     {
-        match txn {
+        match txn.as_read_or_write() {
             ReadOrWriteTransactionRef::Read(txn) => {
                 match txn.0.open_table(redb::TableDefinition::new(name)) {
                     Ok(table) => Ok(Some(Box::new(table))),

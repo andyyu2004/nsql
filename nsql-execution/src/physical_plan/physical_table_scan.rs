@@ -75,7 +75,7 @@ impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSource<'env, S, 
                         .map(|p| p.iter().map(|&idx| TupleIndex::new(idx.as_usize())).collect());
 
                     storage
-                        .scan(ctx.tx().as_read_or_write(), projection)
+                        .scan(&*ctx.tx(), projection)
                         .map(|iter| Box::new(iter) as _)
                         .map(Mutex::new)
                 })?;

@@ -41,6 +41,7 @@ impl<T> Error for CastError<T> {}
 /// An nsql value
 // FIXME write a custom archive impl that has a schema in scope to avoid needing to archive a disriminant
 #[derive(Debug, Clone, PartialEq, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
+#[archive_attr(derive(Debug))]
 pub enum Value {
     Null,
     Int(i32),
