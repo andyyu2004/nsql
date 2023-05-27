@@ -214,7 +214,7 @@ impl<'env> nsql_storage_engine::WriteTransaction<'env, RedbStorageEngine> for Tr
     }
 
     #[inline]
-    fn rollback(self) -> Result<(), redb::Error> {
+    fn abort(self) -> Result<(), redb::Error> {
         self.0.abort()
     }
 }

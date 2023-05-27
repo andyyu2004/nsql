@@ -257,7 +257,7 @@ impl<'env> WriteTransaction<'env, LmdbStorageEngine> for ReadWriteTx<'env> {
     }
 
     #[inline]
-    fn rollback(self) -> Result<(), heed::Error> {
+    fn abort(self) -> Result<(), heed::Error> {
         self.0.abort();
         Ok(())
     }

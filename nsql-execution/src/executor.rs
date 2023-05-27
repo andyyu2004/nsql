@@ -64,7 +64,7 @@ impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> Executor<'env, S, M> {
 }
 
 fn execute_root_pipeline<'env, S: StorageEngine, M: ExecutionMode<'env, S>>(
-    ctx: ExecutionContext<'env, S, M>,
+    ctx: &ExecutionContext<'env, S, M>,
     pipeline: RootPipeline<'env, S, M>,
 ) -> ExecutionResult<()> {
     let root = pipeline.arena.root();
@@ -73,7 +73,7 @@ fn execute_root_pipeline<'env, S: StorageEngine, M: ExecutionMode<'env, S>>(
 }
 
 pub fn execute<'env, S: StorageEngine, M: ExecutionMode<'env, S>>(
-    ctx: ExecutionContext<'env, S, M>,
+    ctx: &ExecutionContext<'env, S, M>,
     plan: PhysicalPlan<'env, S, M>,
 ) -> ExecutionResult<Vec<Tuple>> {
     let sink = Arc::new(OutputSink::default());

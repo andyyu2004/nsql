@@ -93,29 +93,26 @@ impl<S: StorageEngine> Connection<S> {
 
         // FIXME need to get the transaction back somehow if it wasn't used to either commit or abort
         let tx = Arc::into_inner(tx).expect("unexpected outstanding references to transaction");
-        let output = self.db.shared.query(tx, query)?;
+        let (tx, output) = self.db.shared.query(tx, query)?;
 
-        // FIXME
-        // if tx.auto_commit() {
-        //     self.current_tx.store(None);
-        //     tx.commit().await?;
-        // } else if matches!(tx.state(), TransactionState::Committed | TransactionState::RolledBack) {
-        //     self.current_tx.store(None);
-        // }
+        // `tx` was not committed or aborted (including autocommits), so we need to put it back
+        if let Some(tx) = tx {
+            state.current_tx.store(Some(Arc::new(tx)));
+        }
 
         Ok(output)
     }
 }
 
 impl<S: StorageEngine> Shared<S> {
-    fn query(
+    fn query<'env>(
         &self,
-        tx: ReadOrWriteTransaction<'_, S>,
+        tx: ReadOrWriteTransaction<'env, S>,
         query: &str,
-    ) -> Result<MaterializedQueryOutput> {
+    ) -> Result<(Option<ReadOrWriteTransaction<'env, S>>, MaterializedQueryOutput)> {
         let statements = nsql_parse::parse_statements(query)?;
         if statements.is_empty() {
-            return Ok(MaterializedQueryOutput { types: vec![], tuples: vec![] });
+            return Ok((Some(tx), MaterializedQueryOutput { types: vec![], tuples: vec![] }));
         }
 
         if statements.len() > 1 {
@@ -131,20 +128,30 @@ impl<S: StorageEngine> Shared<S> {
         let plan = optimize(plan);
 
         let planner = PhysicalPlanner::new(Arc::clone(&catalog));
-        let tuples = match tx {
+        let (tx, tuples) = match tx {
             ReadOrWriteTransaction::Read(tx) => {
                 let physical_plan = planner.plan(&tx, plan)?;
                 let ctx = ExecutionContext::new(self.storage.storage(), catalog, tx);
-                nsql_execution::execute(ctx, physical_plan)?
+                let tuples = nsql_execution::execute(&ctx, physical_plan)?;
+                let (_auto_commit, txn) = ctx.take_txn();
+                (txn.map(ReadOrWriteTransaction::<S>::Read), tuples)
             }
             ReadOrWriteTransaction::Write(tx) => {
                 let physical_plan = planner.plan_write(&tx, plan)?;
                 let ctx = ExecutionContext::new(self.storage.storage(), catalog, tx);
-                nsql_execution::execute(ctx, physical_plan)?
+                let tuples = nsql_execution::execute(&ctx, physical_plan)?;
+                let (auto_commit, mut txn) = ctx.take_txn();
+                // FIXME need to remember `auto_commit` the next call
+                if let Some(txn) = txn.take() {
+                    if auto_commit {
+                        txn.commit()?;
+                    }
+                }
+                (txn.map(ReadOrWriteTransaction::<S>::Write), tuples)
             }
         };
 
         // FIXME need to get the types
-        Ok(MaterializedQueryOutput { types: vec![], tuples })
+        Ok((tx, MaterializedQueryOutput { types: vec![], tuples }))
     }
 }

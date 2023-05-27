@@ -23,6 +23,13 @@ impl<S: StorageEngine> TableStorage<S> {
         Ok(Self { storage, info })
     }
 
+    pub fn open_tree<'env, 'txn>(
+        &self,
+        tx: &'txn S::Transaction<'env>,
+    ) -> Result<S::ReadTree<'env, 'txn>, S::Error> {
+        Ok(self.storage.open_tree(tx, &self.info.storage_tree_name)?.unwrap())
+    }
+
     #[inline]
     pub fn append(&self, tx: &mut S::WriteTransaction<'_>, tuple: &Tuple) -> Result<(), S::Error> {
         assert_eq!(
@@ -72,25 +79,25 @@ impl<S: StorageEngine> TableStorage<S> {
     }
 
     #[inline]
-    pub fn scan<'env, 'txn>(
+    pub fn scan<'txn: 'env, 'env>(
         &self,
-        tx: &'txn impl Transaction<'env, S>,
+        tree: &'txn S::ReadTree<'env, 'txn>,
         projection: Option<Box<[TupleIndex]>>,
-    ) -> Result<impl Iterator<Item = Result<Vec<Tuple>, S::Error>> + Send + 'static, S::Error> {
-        let tree = self
-            .storage
-            .open_tree(tx, &self.info.storage_tree_name)?
-            .expect("expected tree to exist");
-        tree.range(..)?
-            .map(|(k, v)| {
-                let k = unsafe { rkyv::archived_root::<Vec<Value>>(&k) };
-                let v = unsafe { rkyv::archived_root::<Vec<Value>>(&v) };
-                dbg!(k, v);
-                todo!();
-                Ok(())
-            })
-            .count()?;
-        Ok([].into_iter())
+    ) -> Result<impl FallibleIterator<Item = Tuple, Error = S::Error> + 'txn, S::Error> {
+        Ok(tree.range(..)?.map(move |(k, v)| {
+            // let k = unsafe { rkyv::archived_root::<Vec<Value>>(&k) };
+            // let v = unsafe { rkyv::archived_root::<Vec<Value>>(&v) };
+            // dbg!(k, v);
+            // todo!();
+            Ok(Tuple::new(Box::new([])))
+        }))
+        // Ok(tree.range(..)?.map(|(k, v)| {
+        //     // let k = unsafe { rkyv::archived_root::<Vec<Value>>(&k) };
+        //     // let v = unsafe { rkyv::archived_root::<Vec<Value>>(&v) };
+        //     // dbg!(k, v);
+        //     todo!();
+        //     Ok(Tuple::new(Box::new([])))
+        // }))
         // self.heap
         //     .scan(tx, move |tid, tuple| {
         //         let mut tuple = match &projection {

@@ -43,11 +43,11 @@ impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSource<'env, S, 
     for PhysicalTransaction
 {
     fn source(&self, ctx: &ExecutionContext<'env, S, M>) -> ExecutionResult<SourceState<Chunk>> {
-        let tx = ctx.tx();
+        let mut tx = ctx.tx_mut();
         match self.kind {
             ir::TransactionStmtKind::Begin => {
                 if tx.auto_commit() {
-                    tx.set_auto_commit(false);
+                    tx.unset_auto_commit();
                 } else {
                     todo!()
                 }
@@ -64,7 +64,7 @@ impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSource<'env, S, 
                     todo!()
                     // return Err(nsql_storage::TransactionError::RollbackWithoutTransaction)?;
                 } else {
-                    tx.abort();
+                    tx.abort()?;
                 }
             }
         }
@@ -73,7 +73,7 @@ impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSource<'env, S, 
     }
 }
 
-impl<'env, S: StorageEngine> Explain<S> for PhysicalTransaction {
+impl<S: StorageEngine> Explain<S> for PhysicalTransaction {
     fn explain(
         &self,
         _catalog: &Catalog<S>,

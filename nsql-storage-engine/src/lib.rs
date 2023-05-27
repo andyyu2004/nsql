@@ -91,7 +91,7 @@ pub trait Transaction<'env, S: StorageEngine> {
 pub trait WriteTransaction<'env, S: StorageEngine>: Transaction<'env, S> {
     fn commit(self) -> Result<(), S::Error>;
 
-    fn rollback(self) -> Result<(), S::Error>;
+    fn abort(self) -> Result<(), S::Error>;
 }
 
 pub enum ReadOrWriteTransaction<'env, S: StorageEngine> {

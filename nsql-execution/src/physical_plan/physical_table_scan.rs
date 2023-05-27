@@ -4,6 +4,7 @@ use std::sync::OnceLock;
 use itertools::Itertools;
 use nsql_catalog::{Column, ColumnIndex, Container, Entity, Table};
 use nsql_storage::tuple::TupleIndex;
+use nsql_storage_engine::FallibleIterator;
 use parking_lot::Mutex;
 
 use super::*;
@@ -19,7 +20,7 @@ pub struct PhysicalTableScan<S: StorageEngine> {
 }
 
 type TupleStream<S> =
-    Box<dyn Iterator<Item = Result<Vec<Tuple>, <S as StorageEngine>::Error>> + Send + Sync>;
+    Box<dyn FallibleIterator<Item = Tuple, Error = <S as StorageEngine>::Error> + Send + Sync>;
 
 impl<'env, S: StorageEngine> fmt::Debug for PhysicalTableScan<S> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -58,36 +59,19 @@ impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSource<'env, S, 
             Ok::<_, nsql_catalog::Error>(namespace.get(&**tx, self.table_ref.table).unwrap())
         })?;
 
-        // FIXME we can return an entire chunk at a time instead now
-        loop {
-            let mut next_batch = self.current_batch.lock();
-            let idx = self.current_batch_index.fetch_add(1, atomic::Ordering::AcqRel);
-            if idx < next_batch.len() {
-                let tuple = next_batch[idx].clone();
-                tracing::debug!(%tuple, "returning tuple");
-                return Ok(SourceState::Yield(Chunk::singleton(tuple)));
-            } else {
-                let stream = self.stream.get_or_try_init(|| {
-                    let storage = table.storage();
-                    let projection = self
-                        .projection
-                        .as_ref()
-                        .map(|p| p.iter().map(|&idx| TupleIndex::new(idx.as_usize())).collect());
+        let stream = self.stream.get_or_try_init(|| {
+            let storage = table.storage();
+            let projection = self
+                .projection
+                .as_ref()
+                .map(|p| p.iter().map(|&idx| TupleIndex::new(idx.as_usize())).collect());
 
-                    storage
-                        .scan(&**ctx.tx(), projection)
-                        .map(|iter| Box::new(iter) as _)
-                        .map(Mutex::new)
-                })?;
+            storage.scan(&**ctx.tx(), projection).map(|iter| Box::new(iter) as _).map(Mutex::new)
+        })?;
 
-                match stream.lock().next() {
-                    Some(batch) => {
-                        *next_batch = batch?;
-                        self.current_batch_index.store(0, atomic::Ordering::Release);
-                    }
-                    None => return Ok(SourceState::Done),
-                }
-            }
+        match stream.lock().next()? {
+            Some(tuple) => return Ok(SourceState::Yield(Chunk::singleton(tuple))),
+            None => return Ok(SourceState::Done),
         }
     }
 }
