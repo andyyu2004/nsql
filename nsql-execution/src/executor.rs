@@ -82,7 +82,7 @@ pub fn execute<'env, S: StorageEngine, M: ExecutionMode<'env, S>>(
 
     execute_root_pipeline(ctx, root_pipeline)?;
 
-    Ok(Arc::try_unwrap(sink).expect("should be last reference").tuples.into_inner())
+    Ok(Arc::try_unwrap(sink).expect("should be last reference to output sink").tuples.into_inner())
 }
 
 #[derive(Debug, Default)]

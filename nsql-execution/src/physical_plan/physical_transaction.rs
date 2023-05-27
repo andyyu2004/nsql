@@ -2,12 +2,12 @@ use super::*;
 
 #[derive(Debug)]
 pub struct PhysicalTransaction {
-    kind: ir::TransactionKind,
+    kind: ir::TransactionStmtKind,
 }
 
 impl PhysicalTransaction {
     pub(crate) fn plan<'env, S: StorageEngine, M: ExecutionMode<'env, S>>(
-        kind: ir::TransactionKind,
+        kind: ir::TransactionStmtKind,
     ) -> Arc<dyn PhysicalNode<'env, S, M>> {
         Arc::new(Self { kind })
     }
@@ -39,36 +39,35 @@ impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode<'env, S, M>
     }
 }
 
-#[async_trait::async_trait]
 impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSource<'env, S, M>
     for PhysicalTransaction
 {
     fn source(&self, ctx: &ExecutionContext<'env, S, M>) -> ExecutionResult<SourceState<Chunk>> {
-        let _tx = ctx.tx();
-        // match self.kind {
-        //     ir::TransactionKind::Begin => {
-        //         if tx.auto_commit() {
-        //             tx.set_auto_commit(false);
-        //         } else {
-        //             return Err(nsql_storage::TransactionError::TransactionAlreadyStarted)?;
-        //         }
-        //     }
-        //     ir::TransactionKind::Commit => {
-        //         if tx.auto_commit() {
-        //             return Err(nsql_storage::TransactionError::CommitWithoutTransaction)?;
-        //         } else {
-        //             tx.commit()?;
-        //         }
-        //     }
-        //     ir::TransactionKind::Rollback => {
-        //         if tx.auto_commit() {
-        //             return Err(nsql_storage::TransactionError::RollbackWithoutTransaction)?;
-        //         } else {
-        //             tx.rollback();
-        //         }
-        //     }
-        // }
-        todo!();
+        let tx = ctx.tx();
+        match self.kind {
+            ir::TransactionStmtKind::Begin => {
+                if tx.auto_commit() {
+                    tx.set_auto_commit(false);
+                } else {
+                    todo!()
+                }
+            }
+            ir::TransactionStmtKind::Commit => {
+                if tx.auto_commit() {
+                    todo!()
+                } else {
+                    tx.commit()?;
+                }
+            }
+            ir::TransactionStmtKind::Abort => {
+                if tx.auto_commit() {
+                    todo!()
+                    // return Err(nsql_storage::TransactionError::RollbackWithoutTransaction)?;
+                } else {
+                    tx.abort();
+                }
+            }
+        }
 
         Ok(SourceState::Done)
     }
@@ -82,9 +81,9 @@ impl<'env, S: StorageEngine> Explain<S> for PhysicalTransaction {
         f: &mut fmt::Formatter<'_>,
     ) -> explain::Result {
         match self.kind {
-            ir::TransactionKind::Begin => write!(f, "begin transaction")?,
-            ir::TransactionKind::Commit => write!(f, "commit")?,
-            ir::TransactionKind::Rollback => write!(f, "rollback")?,
+            ir::TransactionStmtKind::Begin => write!(f, "begin transaction")?,
+            ir::TransactionStmtKind::Commit => write!(f, "commit")?,
+            ir::TransactionStmtKind::Abort => write!(f, "rollback")?,
         }
         Ok(())
     }

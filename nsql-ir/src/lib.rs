@@ -35,10 +35,10 @@ pub struct CreateNamespaceInfo {
 }
 
 #[derive(Debug, Clone)]
-pub enum TransactionKind {
+pub enum TransactionStmtKind {
     Begin,
     Commit,
-    Rollback,
+    Abort,
 }
 
 #[derive(Debug, Clone)]
@@ -71,7 +71,7 @@ impl<S> fmt::Debug for EntityRef<S> {
 pub enum Stmt<S> {
     Show(ObjectType),
     Drop(Vec<EntityRef<S>>),
-    Transaction(TransactionKind),
+    Transaction(TransactionStmtKind),
     CreateNamespace(CreateNamespaceInfo),
     CreateTable(CreateTableInfo<S>),
     Query(Box<QueryPlan<S>>),

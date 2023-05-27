@@ -78,7 +78,7 @@ impl<'env, S: StorageEngine> PhysicalSource<'env, S, ReadWriteExecutionMode<S>>
         let catalog = ctx.catalog();
         let mut tx = ctx.tx_mut();
         let namespace = catalog
-            .get::<Namespace<S>>(&*tx, self.info.namespace)
+            .get::<Namespace<S>>(&**tx, self.info.namespace)
             .expect("schema not found during execution");
 
         // FIXME need to commit the transaction somewhere
@@ -93,7 +93,7 @@ impl<'env, S: StorageEngine> PhysicalSource<'env, S, ReadWriteExecutionMode<S>>
 
         let table_oid = namespace.create::<Table<S>>(&mut tx, info)?;
         let table =
-            namespace.get::<Table<S>>(&*tx, table_oid).expect("table not found during execution");
+            namespace.get::<Table<S>>(&**tx, table_oid).expect("table not found during execution");
 
         for info in &self.info.columns {
             table.create::<Column>(&mut tx, info.clone())?;

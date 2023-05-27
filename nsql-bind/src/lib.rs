@@ -181,15 +181,15 @@ impl<S: StorageEngine> Binder<S> {
             }
             ast::Statement::StartTransaction { modes } => {
                 not_implemented!(!modes.is_empty());
-                ir::Stmt::Transaction(ir::TransactionKind::Begin)
+                ir::Stmt::Transaction(ir::TransactionStmtKind::Begin)
             }
             ast::Statement::Rollback { chain } => {
                 not_implemented!(*chain);
-                ir::Stmt::Transaction(ir::TransactionKind::Rollback)
+                ir::Stmt::Transaction(ir::TransactionStmtKind::Abort)
             }
             ast::Statement::Commit { chain } => {
                 not_implemented!(*chain);
-                ir::Stmt::Transaction(ir::TransactionKind::Commit)
+                ir::Stmt::Transaction(ir::TransactionStmtKind::Commit)
             }
             ast::Statement::ShowTables { extended, full, db_name, filter } => {
                 not_implemented!(*extended);

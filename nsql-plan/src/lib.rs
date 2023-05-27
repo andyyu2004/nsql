@@ -6,7 +6,7 @@ use nsql_storage_engine::StorageEngine;
 #[derive(Debug)]
 pub enum Plan<S> {
     Empty,
-    Transaction(ir::TransactionKind),
+    Transaction(ir::TransactionStmtKind),
     CreateTable(ir::CreateTableInfo<S>),
     CreateNamespace(ir::CreateNamespaceInfo),
     Drop(Vec<ir::EntityRef<S>>),

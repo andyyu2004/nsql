@@ -48,11 +48,11 @@ impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSource<'env, S, 
         let catalog = ctx.catalog();
         let tx = ctx.tx();
         let mut tuples = vec![];
-        let namespaces = catalog.all::<Namespace<S>>(&*tx);
+        let namespaces = catalog.all::<Namespace<S>>(&**tx);
         for (_, namespace) in namespaces {
             match self.show {
                 ir::ObjectType::Table => {
-                    for (_, table) in namespace.all::<Table<S>>(&*tx) {
+                    for (_, table) in namespace.all::<Table<S>>(&**tx) {
                         tuples.push(Tuple::from(vec![Value::Text(table.name().to_string())]));
                     }
                 }

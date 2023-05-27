@@ -54,8 +54,8 @@ impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSource<'env, S, 
     fn source(&self, ctx: &ExecutionContext<'env, S, M>) -> ExecutionResult<SourceState<Chunk>> {
         let table = self.table.get_or_try_init(|| {
             let tx = ctx.tx();
-            let namespace = ctx.catalog.get(&*tx, self.table_ref.namespace).unwrap();
-            Ok::<_, nsql_catalog::Error>(namespace.get(&*tx, self.table_ref.table).unwrap())
+            let namespace = ctx.catalog.get(&**tx, self.table_ref.namespace).unwrap();
+            Ok::<_, nsql_catalog::Error>(namespace.get(&**tx, self.table_ref.table).unwrap())
         })?;
 
         // FIXME we can return an entire chunk at a time instead now
@@ -75,7 +75,7 @@ impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSource<'env, S, 
                         .map(|p| p.iter().map(|&idx| TupleIndex::new(idx.as_usize())).collect());
 
                     storage
-                        .scan(&*ctx.tx(), projection)
+                        .scan(&**ctx.tx(), projection)
                         .map(|iter| Box::new(iter) as _)
                         .map(Mutex::new)
                 })?;

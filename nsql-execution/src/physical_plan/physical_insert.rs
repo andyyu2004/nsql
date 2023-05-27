@@ -74,7 +74,7 @@ impl<'env, S: StorageEngine> PhysicalSink<'env, S, ReadWriteExecutionMode<S>>
         tuple: Tuple,
     ) -> ExecutionResult<()> {
         let mut tx = ctx.tx_mut();
-        let table = self.table_ref.get(&ctx.catalog(), &*tx);
+        let table = self.table_ref.get(&ctx.catalog(), &**tx);
         let storage = table.storage();
         storage.append(&mut tx, &tuple)?;
 

@@ -70,13 +70,6 @@ impl<S, T> Default for CatalogSet<S, T> {
     }
 }
 
-// FIXME hack implementation that will get by for now
-// This should eventually maybe share code with the heap tuple versioning
-#[derive(Debug)]
-struct VersionedEntry<S, T> {
-    versions: Vec<Arc<CatalogEntry<S, T>>>,
-}
-
 impl<S: StorageEngine, T: CatalogEntity<S>> CatalogSet<S, T> {
     #[inline]
     pub fn create(
