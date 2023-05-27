@@ -1,6 +1,9 @@
-#![feature(return_position_impl_trait_in_trait)]
-#![feature(impl_trait_projections)]
+// #![feature(return_position_impl_trait_in_trait)]
+// #![feature(impl_trait_projections)]
 //! This crate defines the storage engine interfaces
+
+#[cfg(test)]
+mod example;
 
 use std::error::Error;
 use std::ops::{Deref, RangeBounds};
@@ -58,24 +61,22 @@ pub trait StorageEngine: Clone + Send + Sync + Sized + 'static {
         'env: 'txn;
 }
 
+pub type Range<'a, S> = Box<
+    dyn FallibleIterator<
+            Item = (<S as StorageEngine>::Bytes<'a>, <S as StorageEngine>::Bytes<'a>),
+            Error = <S as StorageEngine>::Error,
+        > + 'a,
+>;
+
 pub trait ReadTree<'env, 'txn, S: StorageEngine> {
     fn get<'a>(&'a self, key: &[u8]) -> Result<Option<S::Bytes<'a>>, S::Error>;
 
-    fn range<'a>(
-        &'a self,
-        range: impl RangeBounds<[u8]> + 'a,
-    ) -> Result<
-        impl FallibleIterator<Item = (S::Bytes<'a>, S::Bytes<'a>), Error = S::Error>,
-        S::Error,
-    >;
+    fn range<'a>(&'a self, range: impl RangeBounds<[u8]> + 'a) -> Result<Range<'a, S>, S::Error>;
 
     fn rev_range<'a>(
         &'a self,
         range: impl RangeBounds<[u8]> + 'a,
-    ) -> Result<
-        impl FallibleIterator<Item = (S::Bytes<'a>, S::Bytes<'a>), Error = S::Error>,
-        S::Error,
-    >;
+    ) -> Result<Range<'a, S>, S::Error>;
 }
 
 pub trait WriteTree<'env, 'txn, S: StorageEngine>: ReadTree<'env, 'txn, S> {
@@ -137,28 +138,14 @@ pub enum ReadOrWriteTree<'env: 'txn, 'txn, S: StorageEngine> {
 }
 
 impl<'env, 'txn, S: StorageEngine> ReadTree<'env, 'txn, S> for ReadOrWriteTree<'env, 'txn, S> {
-    fn get<'a>(
-        &'a self,
-        key: &[u8],
-    ) -> Result<Option<<S as StorageEngine>::Bytes<'a>>, <S as StorageEngine>::Error> {
+    fn get<'a>(&'a self, key: &[u8]) -> Result<Option<S::Bytes<'a>>, S::Error> {
         match self {
             ReadOrWriteTree::Read(tree) => tree.get(key),
             ReadOrWriteTree::Write(tree) => tree.get(key),
         }
     }
 
-    fn range<'a>(
-        &'a self,
-        range: impl RangeBounds<[u8]> + 'a,
-    ) -> Result<
-        Box<
-            dyn FallibleIterator<
-                    Item = (<S as StorageEngine>::Bytes<'a>, <S as StorageEngine>::Bytes<'a>),
-                    Error = <S as StorageEngine>::Error,
-                > + 'a,
-        >,
-        <S as StorageEngine>::Error,
-    > {
+    fn range<'a>(&'a self, range: impl RangeBounds<[u8]> + 'a) -> Result<Range<'a, S>, S::Error> {
         match self {
             ReadOrWriteTree::Read(tree) => Ok(Box::new(tree.range(range)?)),
             ReadOrWriteTree::Write(tree) => Ok(Box::new(tree.range(range)?)),
@@ -168,15 +155,7 @@ impl<'env, 'txn, S: StorageEngine> ReadTree<'env, 'txn, S> for ReadOrWriteTree<'
     fn rev_range<'a>(
         &'a self,
         range: impl RangeBounds<[u8]> + 'a,
-    ) -> Result<
-        Box<
-            dyn FallibleIterator<
-                    Item = (<S as StorageEngine>::Bytes<'a>, <S as StorageEngine>::Bytes<'a>),
-                    Error = <S as StorageEngine>::Error,
-                > + 'a,
-        >,
-        <S as StorageEngine>::Error,
-    > {
+    ) -> Result<Range<'a, S>, S::Error> {
         match self {
             ReadOrWriteTree::Read(tree) => Ok(Box::new(tree.rev_range(range)?)),
             ReadOrWriteTree::Write(tree) => Ok(Box::new(tree.rev_range(range)?)),

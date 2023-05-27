@@ -14,7 +14,7 @@ use crate::{Container, Entity, Name, Namespace};
 pub struct Table<S> {
     name: Name,
     columns: CatalogSet<S, Column>,
-    storage: Arc<TableStorage<S>>,
+    // storage: Arc<TableStorage<S>>,
 }
 
 impl<S: StorageEngine> Table<S> {
@@ -23,10 +23,10 @@ impl<S: StorageEngine> Table<S> {
         &self.name
     }
 
-    #[inline]
-    pub fn storage(&self) -> &Arc<TableStorage<S>> {
-        &self.storage
-    }
+    // #[inline]
+    // pub fn storage(&self) -> &Arc<TableStorage<S>> {
+    //     &self.storage
+    // }
 
     #[inline]
     /// Returns the index of the special `tid` column
@@ -41,12 +41,11 @@ impl<S> fmt::Debug for Table<S> {
     }
 }
 
-pub struct CreateTableInfo<S> {
+pub struct CreateTableInfo {
     pub name: Name,
-    pub storage: Arc<TableStorage<S>>,
 }
 
-impl<S: StorageEngine> fmt::Debug for CreateTableInfo<S> {
+impl fmt::Debug for CreateTableInfo {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("CreateTableInfo").field("name", &self.name).finish_non_exhaustive()
     }
@@ -67,14 +66,14 @@ impl<S: StorageEngine> Entity for Table<S> {
 impl<S: StorageEngine> CatalogEntity<S> for Table<S> {
     type Container = Namespace<S>;
 
-    type CreateInfo = CreateTableInfo<S>;
+    type CreateInfo = CreateTableInfo;
 
     fn catalog_set(container: &Self::Container) -> &CatalogSet<S, Self> {
         &container.tables
     }
 
     fn create(_tx: &mut S::WriteTransaction<'_>, info: Self::CreateInfo) -> Self {
-        Self { name: info.name, storage: info.storage, columns: Default::default() }
+        Self { name: info.name, columns: Default::default() }
     }
 }
 

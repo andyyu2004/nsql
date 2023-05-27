@@ -1,3 +1,5 @@
+use nsql_storage_engine::StorageEngine;
+
 use crate::*;
 
 #[test]

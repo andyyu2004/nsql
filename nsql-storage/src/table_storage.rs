@@ -1,29 +1,33 @@
 use nsql_core::Name;
 use nsql_storage_engine::{
-    FallibleIterator, ReadOrWriteTransactionRef, ReadTree, StorageEngine, Transaction, WriteTree,
+    fallible_iterator, FallibleIterator, ReadOrWriteTransactionRef, ReadTree, StorageEngine,
+    Transaction, WriteTree,
 };
 
 use crate::schema::LogicalType;
 use crate::tuple::{Tuple, TupleIndex};
 use crate::value::Value;
 
-pub struct TableStorage<S> {
+pub struct TableStorage<'env: 'txn, 'txn, S: StorageEngine> {
     storage: S,
+    tree: S::ReadTree<'env, 'txn>,
     info: TableStorageInfo,
 }
 
-impl<S: StorageEngine> TableStorage<S> {
+impl<'env, 'txn, S: StorageEngine> TableStorage<'env, 'txn, S> {
     #[inline]
     pub fn initialize(
         storage: S,
-        tx: &mut S::WriteTransaction<'_>,
+        tx: &'txn mut S::WriteTransaction<'env>,
         info: TableStorageInfo,
     ) -> Result<Self, S::Error> {
+        // create the tree
         storage.open_write_tree(tx, &info.storage_tree_name)?;
-        Ok(Self { storage, info })
+        let tree = storage.open_tree(tx, &info.storage_tree_name)?.unwrap();
+        Ok(Self { storage, info, tree })
     }
 
-    pub fn open_tree<'env, 'txn>(
+    pub fn open_tree(
         &self,
         tx: &'txn S::Transaction<'env>,
     ) -> Result<S::ReadTree<'env, 'txn>, S::Error> {
@@ -79,18 +83,20 @@ impl<S: StorageEngine> TableStorage<S> {
     }
 
     #[inline]
-    pub fn scan<'txn: 'env, 'env>(
+    pub fn scan(
         &self,
-        tree: &'txn S::ReadTree<'env, 'txn>,
         projection: Option<Box<[TupleIndex]>>,
-    ) -> Result<impl FallibleIterator<Item = Tuple, Error = S::Error> + 'txn, S::Error> {
-        Ok(tree.range(..)?.map(move |(k, v)| {
+    ) -> Result<impl FallibleIterator<Item = Tuple, Error = S::Error> + '_, S::Error> {
+        let iter = self.tree.range(..)?;
+        // Ok(fallible_iterator::convert([].into_iter()))
+        Ok(iter.map(move |(k, v)| {
             // let k = unsafe { rkyv::archived_root::<Vec<Value>>(&k) };
             // let v = unsafe { rkyv::archived_root::<Vec<Value>>(&v) };
             // dbg!(k, v);
             // todo!();
             Ok(Tuple::new(Box::new([])))
         }))
+        //
         // Ok(tree.range(..)?.map(|(k, v)| {
         //     // let k = unsafe { rkyv::archived_root::<Vec<Value>>(&k) };
         //     // let v = unsafe { rkyv::archived_root::<Vec<Value>>(&v) };

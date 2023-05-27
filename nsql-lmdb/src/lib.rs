@@ -9,7 +9,7 @@ use std::sync::Arc;
 use heed::types::ByteSlice;
 use heed::Flag;
 use nsql_storage_engine::{
-    fallible_iterator, FallibleIterator, ReadOrWriteTransactionRef, ReadTree, StorageEngine,
+    fallible_iterator, FallibleIterator, Range, ReadOrWriteTransactionRef, ReadTree, StorageEngine,
     Transaction, WriteTransaction, WriteTree,
 };
 
@@ -137,36 +137,26 @@ impl<'env, 'txn> ReadTree<'env, 'txn, LmdbStorageEngine> for LmdbReadTree<'env, 
         self.db.get(self.txn, key)
     }
 
+    #[inline]
     fn range<'a>(
         &'a self,
         range: impl RangeBounds<[u8]> + 'a,
-    ) -> std::result::Result<
-        impl FallibleIterator<
-            Item = (
-                <LmdbStorageEngine as StorageEngine>::Bytes<'a>,
-                <LmdbStorageEngine as StorageEngine>::Bytes<'a>,
-            ),
-            Error = <LmdbStorageEngine as StorageEngine>::Error,
-        >,
-        <LmdbStorageEngine as StorageEngine>::Error,
-    > {
-        self.db.range(self.txn, &range).map(fallible_iterator::convert)
+    ) -> Result<Range<'a, LmdbStorageEngine>, heed::Error> {
+        self.db
+            .range(self.txn, &range)
+            .map(fallible_iterator::convert)
+            .map(|iter| Box::new(iter) as _)
     }
 
+    #[inline]
     fn rev_range<'a>(
         &'a self,
         range: impl RangeBounds<[u8]> + 'a,
-    ) -> std::result::Result<
-        impl FallibleIterator<
-            Item = (
-                <LmdbStorageEngine as StorageEngine>::Bytes<'a>,
-                <LmdbStorageEngine as StorageEngine>::Bytes<'a>,
-            ),
-            Error = <LmdbStorageEngine as StorageEngine>::Error,
-        >,
-        <LmdbStorageEngine as StorageEngine>::Error,
-    > {
-        self.db.rev_range(self.txn, &range).map(fallible_iterator::convert)
+    ) -> Result<Range<'a, LmdbStorageEngine>, heed::Error> {
+        self.db
+            .rev_range(self.txn, &range)
+            .map(fallible_iterator::convert)
+            .map(|iter| Box::new(iter) as _)
     }
 }
 
@@ -175,7 +165,7 @@ impl<'env, 'txn> ReadTree<'env, 'txn, LmdbStorageEngine> for LmdbWriteTree<'env,
     fn get<'a>(
         &'a self,
         key: &[u8],
-    ) -> std::result::Result<
+    ) -> Result<
         Option<<LmdbStorageEngine as StorageEngine>::Bytes<'a>>,
         <LmdbStorageEngine as StorageEngine>::Error,
     > {
@@ -186,34 +176,22 @@ impl<'env, 'txn> ReadTree<'env, 'txn, LmdbStorageEngine> for LmdbWriteTree<'env,
     fn range<'a>(
         &'a self,
         range: impl RangeBounds<[u8]> + 'a,
-    ) -> std::result::Result<
-        impl FallibleIterator<
-            Item = (
-                <LmdbStorageEngine as StorageEngine>::Bytes<'a>,
-                <LmdbStorageEngine as StorageEngine>::Bytes<'a>,
-            ),
-            Error = <LmdbStorageEngine as StorageEngine>::Error,
-        >,
-        <LmdbStorageEngine as StorageEngine>::Error,
-    > {
-        self.db.range(&self.txn.0, &range).map(fallible_iterator::convert)
+    ) -> Result<Range<'a, LmdbStorageEngine>, heed::Error> {
+        self.db
+            .range(&self.txn.0, &range)
+            .map(fallible_iterator::convert)
+            .map(|iter| Box::new(iter) as _)
     }
 
     #[inline]
     fn rev_range<'a>(
         &'a self,
         range: impl RangeBounds<[u8]> + 'a,
-    ) -> std::result::Result<
-        impl FallibleIterator<
-            Item = (
-                <LmdbStorageEngine as StorageEngine>::Bytes<'a>,
-                <LmdbStorageEngine as StorageEngine>::Bytes<'a>,
-            ),
-            Error = <LmdbStorageEngine as StorageEngine>::Error,
-        >,
-        <LmdbStorageEngine as StorageEngine>::Error,
-    > {
-        self.db.rev_range(&self.txn.0, &range).map(fallible_iterator::convert)
+    ) -> Result<Range<'a, LmdbStorageEngine>, heed::Error> {
+        self.db
+            .rev_range(&self.txn.0, &range)
+            .map(fallible_iterator::convert)
+            .map(|iter| Box::new(iter) as _)
     }
 }
 

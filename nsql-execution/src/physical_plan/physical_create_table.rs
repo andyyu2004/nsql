@@ -84,11 +84,11 @@ impl<'env, S: StorageEngine> PhysicalSource<'env, S, ReadWriteExecutionMode<S>>
         // FIXME need to commit the transaction somewhere
         let info = CreateTableInfo {
             name: self.info.name.clone(),
-            storage: Arc::new(TableStorage::initialize(
-                ctx.storage(),
-                &mut tx,
-                TableStorageInfo::create(&namespace.name(), &self.info.name, columns),
-            )?),
+            // storage: Arc::new(TableStorage::initialize(
+            //     ctx.storage(),
+            //     &mut tx,
+            //     TableStorageInfo::create(&namespace.name(), &self.info.name, columns),
+            // )?),
         };
 
         let table_oid = namespace.create::<Table<S>>(&mut tx, info)?;

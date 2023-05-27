@@ -75,8 +75,8 @@ impl<'env, S: StorageEngine> PhysicalSink<'env, S, ReadWriteExecutionMode<S>>
     ) -> ExecutionResult<()> {
         let mut tx = ctx.tx_mut();
         let table = self.table_ref.get(&ctx.catalog(), &**tx);
-        let storage = table.storage();
-        storage.append(&mut tx, &tuple)?;
+        // let storage = table.storage();
+        // storage.append(&mut tx, &tuple)?;
 
         // FIXME just do the return evaluation here
         if self.returning.is_some() {
