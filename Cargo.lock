@@ -1096,7 +1096,6 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "arc-swap",
- "async-trait",
  "datatest-stable",
  "error-stack",
  "expect-test",
@@ -1178,7 +1177,6 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-recursion",
- "async-trait",
  "atomic-take",
  "dot-structures",
  "itertools",
@@ -1258,7 +1256,6 @@ dependencies = [
  "nu-ansi-term 0.47.0",
  "reedline",
  "tabled",
- "tokio",
 ]
 
 [[package]]
@@ -2323,21 +2320,8 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0aa32867d44e6f2ce3385e89dceb990188b8bb0fb25b0cf576647a6f98ac5105"
 dependencies = [
  "autocfg",
- "num_cpus",
  "pin-project-lite",
- "tokio-macros",
  "windows-sys 0.48.0",
-]
-
-[[package]]
-name = "tokio-macros"
-version = "2.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "630bdcf245f78637c13ec01ffae6187cca34625e8c63150d424b59e55af2675e"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.16",
 ]
 
 [[package]]

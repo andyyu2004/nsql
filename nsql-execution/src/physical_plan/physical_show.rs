@@ -40,7 +40,6 @@ impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode<'env, S, M>
     }
 }
 
-#[async_trait::async_trait]
 impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSource<'env, S, M>
     for PhysicalShow
 {

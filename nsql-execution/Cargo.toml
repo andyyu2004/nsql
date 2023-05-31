@@ -5,7 +5,6 @@ edition = "2021"
 
 [dependencies]
 async-recursion = "1.0.2"
-async-trait = "0.1.64"
 nsql-arena = { path = "../nsql-arena" }
 nsql-catalog = { path = "../nsql-catalog" }
 nsql-core = { path = "../nsql-core" }
