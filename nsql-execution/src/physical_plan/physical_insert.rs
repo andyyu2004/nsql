@@ -92,10 +92,10 @@ impl<'env, S: StorageEngine> PhysicalSource<'env, S, ReadWriteExecutionMode<S>>
     for PhysicalInsert<'env, S>
 {
     #[inline]
-    fn source(
+    fn source<'txn>(
         self: Arc<Self>,
-        _ctx: &ExecutionContext<'env, S, ReadWriteExecutionMode<S>>,
-    ) -> ExecutionResult<TupleStream<S>> {
+        _ctx: &'txn ExecutionContext<'env, S, ReadWriteExecutionMode<S>>,
+    ) -> ExecutionResult<TupleStream<'txn, S>> {
         let returning = match &self.returning {
             Some(returning) => returning,
             None => return Ok(Box::new(fallible_iterator::empty())),

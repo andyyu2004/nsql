@@ -59,10 +59,10 @@ impl<'env, S: StorageEngine> PhysicalNode<'env, S, ReadWriteExecutionMode<S>> fo
 impl<'env, S: StorageEngine> PhysicalSource<'env, S, ReadWriteExecutionMode<S>>
     for PhysicalDrop<S>
 {
-    fn source(
+    fn source<'txn>(
         self: Arc<Self>,
-        ctx: &ExecutionContext<'env, S, ReadWriteExecutionMode<S>>,
-    ) -> ExecutionResult<TupleStream<S>> {
+        ctx: &'txn ExecutionContext<'env, S, ReadWriteExecutionMode<S>>,
+    ) -> ExecutionResult<TupleStream<'txn, S>> {
         let mut tx = ctx.tx_mut();
         let catalog = ctx.catalog();
         for entity_ref in &self.refs {

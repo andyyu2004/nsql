@@ -20,10 +20,10 @@ impl PhysicalValues {
 impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSource<'env, S, M>
     for PhysicalValues
 {
-    fn source(
+    fn source<'txn>(
         self: Arc<Self>,
-        _ctx: &ExecutionContext<'env, S, M>,
-    ) -> ExecutionResult<TupleStream<S>> {
+        _ctx: &'txn ExecutionContext<'env, S, M>,
+    ) -> ExecutionResult<TupleStream<'txn, S>> {
         let mut index = 0;
         let iter = fallible_iterator::from_fn(move || {
             if index >= self.values.len() {

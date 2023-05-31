@@ -44,10 +44,10 @@ impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode<'env, S, M>
 impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSource<'env, S, M>
     for PhysicalTransaction
 {
-    fn source(
+    fn source<'txn>(
         self: Arc<Self>,
-        ctx: &ExecutionContext<'env, S, M>,
-    ) -> ExecutionResult<TupleStream<S>> {
+        ctx: &'txn ExecutionContext<'env, S, M>,
+    ) -> ExecutionResult<TupleStream<'txn, S>> {
         let mut tx = ctx.tx_mut();
         match self.kind {
             ir::TransactionStmtKind::Begin => {

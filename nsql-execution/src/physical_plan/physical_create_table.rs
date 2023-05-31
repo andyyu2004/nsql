@@ -65,10 +65,10 @@ impl<'env, S: StorageEngine> PhysicalNode<'env, S, ReadWriteExecutionMode<S>>
 impl<'env, S: StorageEngine> PhysicalSource<'env, S, ReadWriteExecutionMode<S>>
     for PhysicalCreateTable<S>
 {
-    fn source(
+    fn source<'txn>(
         self: Arc<Self>,
-        ctx: &ExecutionContext<'env, S, ReadWriteExecutionMode<S>>,
-    ) -> ExecutionResult<TupleStream<S>> {
+        ctx: &'txn ExecutionContext<'env, S, ReadWriteExecutionMode<S>>,
+    ) -> ExecutionResult<TupleStream<'txn, S>> {
         let columns = self
             .info
             .columns

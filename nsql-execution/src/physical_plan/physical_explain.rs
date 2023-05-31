@@ -57,10 +57,10 @@ impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode<'env, S, M>
 impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSource<'env, S, M>
     for PhysicalExplain<'env, S, M>
 {
-    fn source(
+    fn source<'txn>(
         self: Arc<Self>,
-        _ctx: &ExecutionContext<'env, S, M>,
-    ) -> ExecutionResult<TupleStream<S>> {
+        _ctx: &'txn ExecutionContext<'env, S, M>,
+    ) -> ExecutionResult<TupleStream<'txn, S>> {
         let plan = self.stringified_plan.take().expect("should not be called again");
         Ok(Box::new(fallible_iterator::once(Tuple::from(vec![Value::Text(plan)]))))
     }

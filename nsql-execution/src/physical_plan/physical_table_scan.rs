@@ -47,10 +47,10 @@ impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSource<'env, S, 
     for PhysicalTableScan<S>
 {
     #[tracing::instrument(skip(self, ctx))]
-    fn source(
+    fn source<'txn>(
         self: Arc<Self>,
-        ctx: &ExecutionContext<'env, S, M>,
-    ) -> ExecutionResult<TupleStream<S>> {
+        ctx: &'txn ExecutionContext<'env, S, M>,
+    ) -> ExecutionResult<TupleStream<'txn, S>> {
         let table = self.table.get_or_try_init(|| {
             let tx = ctx.tx();
             let namespace = ctx.catalog.get(&**tx, self.table_ref.namespace).unwrap();

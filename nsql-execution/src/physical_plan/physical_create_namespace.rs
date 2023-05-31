@@ -57,10 +57,10 @@ impl<'env, S: StorageEngine> PhysicalNode<'env, S, ReadWriteExecutionMode<S>>
 impl<'env, S: StorageEngine> PhysicalSource<'env, S, ReadWriteExecutionMode<S>>
     for PhysicalCreateNamespace
 {
-    fn source(
+    fn source<'txn>(
         self: Arc<Self>,
-        ctx: &ExecutionContext<'env, S, ReadWriteExecutionMode<S>>,
-    ) -> ExecutionResult<TupleStream<S>> {
+        ctx: &'txn ExecutionContext<'env, S, ReadWriteExecutionMode<S>>,
+    ) -> ExecutionResult<TupleStream<'txn, S>> {
         let mut tx = ctx.tx_mut();
         let info = CreateNamespaceInfo { name: self.info.name.clone() };
 

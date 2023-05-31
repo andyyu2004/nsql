@@ -107,10 +107,10 @@ impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode<'env, S, M>
 }
 
 impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSource<'env, S, M> for OutputSink {
-    fn source(
+    fn source<'txn>(
         self: Arc<Self>,
-        _ctx: &ExecutionContext<'env, S, M>,
-    ) -> ExecutionResult<TupleStream<S>> {
+        _ctx: &'txn ExecutionContext<'env, S, M>,
+    ) -> ExecutionResult<TupleStream<'txn, S>> {
         todo!()
     }
 }
