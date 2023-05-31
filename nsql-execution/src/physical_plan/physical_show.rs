@@ -46,7 +46,7 @@ impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSource<'env, S, 
 {
     fn source<'txn>(
         self: Arc<Self>,
-        ctx: &'txn ExecutionContext<'env, S, M>,
+        ctx: M::Ref<'txn, ExecutionContext<'env, S, M>>,
     ) -> ExecutionResult<TupleStream<'txn, S>> {
         let catalog = ctx.catalog();
         let tx = ctx.tx();

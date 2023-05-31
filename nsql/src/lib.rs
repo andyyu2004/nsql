@@ -138,8 +138,8 @@ impl<S: StorageEngine> Shared<S> {
             }
             ReadOrWriteTransaction::Write(tx) => {
                 let physical_plan = planner.plan_write(&tx, plan)?;
-                let ctx = ExecutionContext::new(self.storage.storage(), catalog, tx);
-                let tuples = nsql_execution::execute(&ctx, physical_plan)?;
+                let mut ctx = ExecutionContext::new(self.storage.storage(), catalog, tx);
+                let tuples = nsql_execution::execute(&mut ctx, physical_plan)?;
                 let (auto_commit, mut txn) = ctx.take_txn();
                 // FIXME need to remember `auto_commit` the next call
                 if let Some(txn) = txn.take() {

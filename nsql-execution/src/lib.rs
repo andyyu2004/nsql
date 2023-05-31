@@ -19,7 +19,6 @@ use nsql_arena::Idx;
 use nsql_catalog::Catalog;
 use nsql_storage::tuple::Tuple;
 use nsql_storage_engine::{FallibleIterator, StorageEngine, WriteTransaction};
-use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 pub use physical_plan::PhysicalPlanner;
 use smallvec::SmallVec;
 
@@ -147,9 +146,9 @@ enum OperatorState<T> {
 trait PhysicalOperator<'env, S: StorageEngine, M: ExecutionMode<'env, S>, T = Tuple>:
     PhysicalNode<'env, S, M>
 {
-    fn execute(
+    fn execute<'txn>(
         &self,
-        ctx: &ExecutionContext<'env, S, M>,
+        ctx: M::Ref<'txn, ExecutionContext<'env, S, M>>,
         input: T,
     ) -> ExecutionResult<OperatorState<T>>;
 }
@@ -163,18 +162,51 @@ trait PhysicalSource<'env, S: StorageEngine, M: ExecutionMode<'env, S>, T = Tupl
     /// Return the next chunk from the source. An empty chunk indicates that the source is exhausted.
     fn source<'txn>(
         self: Arc<Self>,
-        ctx: &'txn ExecutionContext<'env, S, M>,
+        ctx: M::Ref<'txn, ExecutionContext<'env, S, M>>,
     ) -> ExecutionResult<TupleStream<'txn, S>>;
 }
 
 trait PhysicalSink<'env, S: StorageEngine, M: ExecutionMode<'env, S>>:
     PhysicalSource<'env, S, M>
 {
-    fn sink(&self, ctx: &ExecutionContext<'env, S, M>, tuple: Tuple) -> ExecutionResult<()>;
+    fn sink<'txn>(
+        &self,
+        ctx: M::Ref<'txn, ExecutionContext<'env, S, M>>,
+        tuple: Tuple,
+    ) -> ExecutionResult<()>;
+}
+
+
+trait Reborrow<'short, _Outlives = &'short Self> {
+    type Target;
+
+    fn rb(&'short self) -> &'short Self::Target;
+}
+
+impl<'short, 'a, T> Reborrow<'short> for &'a T {
+    type Target = T;
+
+    #[inline]
+    fn rb(&'short self) -> &'short Self::Target {
+        self
+    }
+}
+
+impl<'short, 'a, T> Reborrow<'short> for &'a mut T {
+    type Target = T;
+
+    #[inline]
+    fn rb(&'short self) -> &'short Self::Target {
+        self
+    }
 }
 
 pub trait ExecutionMode<'env, S: StorageEngine>: private::Sealed + Clone + Copy + 'env {
     type Transaction: nsql_storage_engine::Transaction<'env, S>;
+
+    type Ref<'a, T>: Reborrow<'a, Target = T> + Deref<Target = T> + 'a
+    where
+        T: 'a;
 
     fn commit(transaction: Self::Transaction) -> ExecutionResult<()>;
 
@@ -200,6 +232,8 @@ impl<S> Copy for ReadonlyExecutionMode<S> {}
 
 impl<'env, S: StorageEngine> ExecutionMode<'env, S> for ReadonlyExecutionMode<S> {
     type Transaction = S::Transaction<'env>;
+
+    type Ref<'a, T> = &'a T where T: 'a;
 
     #[inline]
     fn commit(transaction: Self::Transaction) -> ExecutionResult<()> {
@@ -227,6 +261,8 @@ impl<S> private::Sealed for ReadWriteExecutionMode<S> {}
 
 impl<'env, S: StorageEngine> ExecutionMode<'env, S> for ReadWriteExecutionMode<S> {
     type Transaction = S::WriteTransaction<'env>;
+
+    type Ref<'a, T> = &'a mut T where T: 'a;
 
     #[inline]
     fn commit(transaction: Self::Transaction) -> ExecutionResult<()> {
@@ -294,13 +330,13 @@ where
 pub struct ExecutionContext<'env, S: StorageEngine, M: ExecutionMode<'env, S>> {
     storage: S,
     catalog: Arc<Catalog<S>>,
-    tx: RwLock<TransactionContext<'env, S, M>>,
+    tx: TransactionContext<'env, S, M>,
 }
 
 impl<'env, S: StorageEngine> ExecutionContext<'env, S, ReadonlyExecutionMode<S>> {
     #[inline]
     pub fn take_txn(self) -> (bool, Option<S::Transaction<'env>>) {
-        let tx = self.tx.into_inner();
+        let tx = self.tx;
         (tx.auto_commit.into_inner(), tx.tx)
     }
 }
@@ -308,7 +344,7 @@ impl<'env, S: StorageEngine> ExecutionContext<'env, S, ReadonlyExecutionMode<S>>
 impl<'env, S: StorageEngine> ExecutionContext<'env, S, ReadWriteExecutionMode<S>> {
     #[inline]
     pub fn take_txn(self) -> (bool, Option<S::WriteTransaction<'env>>) {
-        let tx = self.tx.into_inner();
+        let tx = self.tx;
         (tx.auto_commit.into_inner(), tx.tx)
     }
 }
@@ -319,10 +355,7 @@ impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> ExecutionContext<'env, S
         Self {
             storage,
             catalog,
-            tx: RwLock::new(TransactionContext {
-                tx: Some(tx),
-                auto_commit: AtomicBool::new(true),
-            }),
+            tx: TransactionContext { tx: Some(tx), auto_commit: AtomicBool::new(true) },
         }
     }
 
@@ -332,13 +365,13 @@ impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> ExecutionContext<'env, S
     }
 
     #[inline]
-    pub fn tx(&self) -> RwLockReadGuard<'_, TransactionContext<'env, S, M>> {
-        self.tx.read()
+    pub fn tx(&self) -> &TransactionContext<'env, S, M> {
+        &self.tx
     }
 
     #[inline]
-    pub fn tx_mut(&self) -> RwLockWriteGuard<'_, TransactionContext<'env, S, M>> {
-        self.tx.write()
+    pub fn tx_mut(&mut self) -> &mut TransactionContext<'env, S, M> {
+        &mut self.tx
     }
 
     #[inline]

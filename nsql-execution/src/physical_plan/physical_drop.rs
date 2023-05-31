@@ -55,16 +55,18 @@ impl<'env, S: StorageEngine> PhysicalNode<'env, S, ReadWriteExecutionMode<S>> fo
     }
 }
 
-#[async_trait::async_trait]
 impl<'env, S: StorageEngine> PhysicalSource<'env, S, ReadWriteExecutionMode<S>>
     for PhysicalDrop<S>
 {
     fn source<'txn>(
         self: Arc<Self>,
-        ctx: &'txn ExecutionContext<'env, S, ReadWriteExecutionMode<S>>,
+        ctx: <ReadWriteExecutionMode<S> as ExecutionMode<'env, S>>::Ref<
+            'txn,
+            ExecutionContext<'env, S, ReadWriteExecutionMode<S>>,
+        >,
     ) -> ExecutionResult<TupleStream<'txn, S>> {
-        let mut tx = ctx.tx_mut();
         let catalog = ctx.catalog();
+        let mut tx = ctx.tx_mut();
         for entity_ref in &self.refs {
             match entity_ref {
                 ir::EntityRef::Table(table_ref) => table_ref.delete(&catalog, &mut tx)?,

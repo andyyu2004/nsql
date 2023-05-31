@@ -49,7 +49,7 @@ impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSource<'env, S, 
     #[tracing::instrument(skip(self, ctx))]
     fn source<'txn>(
         self: Arc<Self>,
-        ctx: &'txn ExecutionContext<'env, S, M>,
+        ctx: M::Ref<'txn, ExecutionContext<'env, S, M>>,
     ) -> ExecutionResult<TupleStream<'txn, S>> {
         let table = self.table.get_or_try_init(|| {
             let tx = ctx.tx();
@@ -58,8 +58,8 @@ impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSource<'env, S, 
         })?;
 
         // let storage = table.storage();
-        // let storage= TableStorage::open(ctx.storage(), ctx.tx(), self.info.clone());
-        let storage: TableStorage<'env, '_, S> = todo!();
+        let storage = TableStorage::open(ctx.storage(), &**ctx.tx(), todo!())?;
+        // let storage: TableStorage<'env, '_, S> = todo!();
         let projection = self
             .projection
             .as_ref()

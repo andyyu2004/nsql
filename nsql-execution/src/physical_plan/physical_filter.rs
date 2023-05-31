@@ -19,9 +19,9 @@ impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalOperator<'env, S
     for PhysicalFilter<'env, S, M>
 {
     #[tracing::instrument(skip(self, _ctx, input))]
-    fn execute(
+    fn execute<'txn>(
         &self,
-        _ctx: &ExecutionContext<'env, S, M>,
+        _ctx: M::Ref<'txn, ExecutionContext<'env, S, M>>,
         input: Tuple,
     ) -> ExecutionResult<OperatorState<Tuple>> {
         let value = self.evaluator.evaluate_expr(&input, &self.predicate);

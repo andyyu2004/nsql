@@ -69,13 +69,17 @@ impl<'env, S: StorageEngine> PhysicalNode<'env, S, ReadWriteExecutionMode<S>>
 impl<'env, S: StorageEngine> PhysicalSink<'env, S, ReadWriteExecutionMode<S>>
     for PhysicalInsert<'env, S>
 {
-    fn sink(
+    fn sink<'txn>(
         &self,
-        ctx: &ExecutionContext<'env, S, ReadWriteExecutionMode<S>>,
+        ctx: <ReadWriteExecutionMode<S> as ExecutionMode<'env, S>>::Ref<
+            'txn,
+            ExecutionContext<'env, S, ReadWriteExecutionMode<S>>,
+        >,
         tuple: Tuple,
     ) -> ExecutionResult<()> {
+        let catalog = ctx.catalog();
         let mut tx = ctx.tx_mut();
-        let table = self.table_ref.get(&ctx.catalog(), &**tx);
+        let table = self.table_ref.get(&catalog, &**tx);
         // let storage = table.storage();
         // storage.append(&mut tx, &tuple)?;
 
@@ -91,10 +95,12 @@ impl<'env, S: StorageEngine> PhysicalSink<'env, S, ReadWriteExecutionMode<S>>
 impl<'env, S: StorageEngine> PhysicalSource<'env, S, ReadWriteExecutionMode<S>>
     for PhysicalInsert<'env, S>
 {
-    #[inline]
     fn source<'txn>(
         self: Arc<Self>,
-        _ctx: &'txn ExecutionContext<'env, S, ReadWriteExecutionMode<S>>,
+        ctx: <ReadWriteExecutionMode<S> as ExecutionMode<'env, S>>::Ref<
+            'txn,
+            ExecutionContext<'env, S, ReadWriteExecutionMode<S>>,
+        >,
     ) -> ExecutionResult<TupleStream<'txn, S>> {
         let returning = match &self.returning {
             Some(returning) => returning,

@@ -17,14 +17,13 @@ impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalProjection<'env,
     }
 }
 
-#[async_trait::async_trait]
 impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalOperator<'env, S, M>
     for PhysicalProjection<'env, S, M>
 {
     #[tracing::instrument(skip(self, _ctx, input))]
-    fn execute(
+    fn execute<'txn>(
         &self,
-        _ctx: &ExecutionContext<'env, S, M>,
+        _ctx: M::Ref<'txn, ExecutionContext<'env, S, M>>,
         input: Tuple,
     ) -> ExecutionResult<OperatorState<Tuple>> {
         let output = self.evaluator.evaluate(&input, &self.projection);

@@ -17,13 +17,12 @@ impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalLimit<'env, S, M
     }
 }
 
-#[async_trait::async_trait]
 impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalOperator<'env, S, M>
     for PhysicalLimit<'env, S, M>
 {
-    fn execute(
+    fn execute<'txn>(
         &self,
-        _ctx: &ExecutionContext<'env, S, M>,
+        _ctx: M::Ref<'txn, ExecutionContext<'env, S, M>>,
         input: Tuple,
     ) -> ExecutionResult<OperatorState<Tuple>> {
         if self.yielded.fetch_add(1, atomic::Ordering::AcqRel) >= self.limit {

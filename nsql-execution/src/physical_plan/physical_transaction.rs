@@ -46,33 +46,35 @@ impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSource<'env, S, 
 {
     fn source<'txn>(
         self: Arc<Self>,
-        ctx: &'txn ExecutionContext<'env, S, M>,
+        ctx: M::Ref<'txn, ExecutionContext<'env, S, M>>,
     ) -> ExecutionResult<TupleStream<'txn, S>> {
-        let mut tx = ctx.tx_mut();
-        match self.kind {
-            ir::TransactionStmtKind::Begin => {
-                if tx.auto_commit() {
-                    tx.unset_auto_commit();
-                } else {
-                    todo!()
-                }
-            }
-            ir::TransactionStmtKind::Commit => {
-                if tx.auto_commit() {
-                    todo!()
-                } else {
-                    tx.commit()?;
-                }
-            }
-            ir::TransactionStmtKind::Abort => {
-                if tx.auto_commit() {
-                    todo!()
-                    // return Err(nsql_storage::TransactionError::RollbackWithoutTransaction)?;
-                } else {
-                    tx.abort()?;
-                }
-            }
-        }
+        // FIXME this can only run in rw mode
+        todo!();
+        // let mut tx = ctx.tx();
+        // match self.kind {
+        //     ir::TransactionStmtKind::Begin => {
+        //         if tx.auto_commit() {
+        //             tx.unset_auto_commit();
+        //         } else {
+        //             todo!()
+        //         }
+        //     }
+        //     ir::TransactionStmtKind::Commit => {
+        //         if tx.auto_commit() {
+        //             todo!()
+        //         } else {
+        //             tx.commit()?;
+        //         }
+        //     }
+        //     ir::TransactionStmtKind::Abort => {
+        //         if tx.auto_commit() {
+        //             todo!()
+        //             // return Err(nsql_storage::TransactionError::RollbackWithoutTransaction)?;
+        //         } else {
+        //             tx.abort()?;
+        //         }
+        //     }
+        // }
 
         Ok(Box::new(fallible_iterator::empty()))
     }

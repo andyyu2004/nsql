@@ -72,13 +72,15 @@ impl<'env, S: StorageEngine> PhysicalNode<'env, S, ReadWriteExecutionMode<S>>
     }
 }
 
-#[async_trait::async_trait]
 impl<'env, S: StorageEngine> PhysicalSink<'env, S, ReadWriteExecutionMode<S>>
     for PhysicalUpdate<'env, S>
 {
-    fn sink(
+    fn sink<'txn>(
         &self,
-        ctx: &ExecutionContext<'env, S, ReadWriteExecutionMode<S>>,
+        ctx: <ReadWriteExecutionMode<S> as ExecutionMode<'env, S>>::Ref<
+            'txn,
+            ExecutionContext<'env, S, ReadWriteExecutionMode<S>>,
+        >,
         tuple: Tuple,
     ) -> ExecutionResult<()> {
         let tx = ctx.tx();
@@ -102,10 +104,12 @@ impl<'env, S: StorageEngine> PhysicalSink<'env, S, ReadWriteExecutionMode<S>>
 impl<'env, S: StorageEngine> PhysicalSource<'env, S, ReadWriteExecutionMode<S>>
     for PhysicalUpdate<'env, S>
 {
-    #[inline]
     fn source<'txn>(
         self: Arc<Self>,
-        _ctx: &'txn ExecutionContext<'env, S, ReadWriteExecutionMode<S>>,
+        ctx: <ReadWriteExecutionMode<S> as ExecutionMode<'env, S>>::Ref<
+            'txn,
+            ExecutionContext<'env, S, ReadWriteExecutionMode<S>>,
+        >,
     ) -> ExecutionResult<TupleStream<'txn, S>> {
         let returning = match &self.returning {
             Some(returning) => returning,
