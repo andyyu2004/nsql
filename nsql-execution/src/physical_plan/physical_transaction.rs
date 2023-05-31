@@ -1,3 +1,5 @@
+use nsql_storage_engine::fallible_iterator;
+
 use super::*;
 
 #[derive(Debug)]
@@ -42,7 +44,10 @@ impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode<'env, S, M>
 impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSource<'env, S, M>
     for PhysicalTransaction
 {
-    fn source(&self, ctx: &ExecutionContext<'env, S, M>) -> ExecutionResult<SourceState<Chunk>> {
+    fn source(
+        self: Arc<Self>,
+        ctx: &ExecutionContext<'env, S, M>,
+    ) -> ExecutionResult<TupleStream<S>> {
         let mut tx = ctx.tx_mut();
         match self.kind {
             ir::TransactionStmtKind::Begin => {
@@ -69,7 +74,7 @@ impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSource<'env, S, 
             }
         }
 
-        Ok(SourceState::Done)
+        Ok(Box::new(fallible_iterator::empty()))
     }
 }
 

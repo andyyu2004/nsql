@@ -1,9 +1,10 @@
 use std::fmt;
 
 use nsql_catalog::{Container, CreateNamespaceInfo, Namespace};
+use nsql_storage_engine::fallible_iterator;
 
 use super::*;
-use crate::{Chunk, ReadWriteExecutionMode};
+use crate::{Chunk, ReadWriteExecutionMode, TupleStream};
 
 #[derive(Debug)]
 pub struct PhysicalCreateNamespace {
@@ -53,14 +54,13 @@ impl<'env, S: StorageEngine> PhysicalNode<'env, S, ReadWriteExecutionMode<S>>
     }
 }
 
-#[async_trait::async_trait]
 impl<'env, S: StorageEngine> PhysicalSource<'env, S, ReadWriteExecutionMode<S>>
     for PhysicalCreateNamespace
 {
     fn source(
-        &self,
+        self: Arc<Self>,
         ctx: &ExecutionContext<'env, S, ReadWriteExecutionMode<S>>,
-    ) -> ExecutionResult<SourceState<Chunk>> {
+    ) -> ExecutionResult<TupleStream<S>> {
         let mut tx = ctx.tx_mut();
         let info = CreateNamespaceInfo { name: self.info.name.clone() };
 
@@ -70,7 +70,7 @@ impl<'env, S: StorageEngine> PhysicalSource<'env, S, ReadWriteExecutionMode<S>>
             }
         }
 
-        Ok(SourceState::Done)
+        Ok(Box::new(fallible_iterator::empty()))
     }
 }
 

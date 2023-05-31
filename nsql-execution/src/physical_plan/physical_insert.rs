@@ -1,6 +1,7 @@
 use std::collections::VecDeque;
 
 use nsql_catalog::EntityRef;
+use nsql_storage_engine::fallible_iterator;
 use parking_lot::RwLock;
 
 use super::*;
@@ -92,22 +93,23 @@ impl<'env, S: StorageEngine> PhysicalSource<'env, S, ReadWriteExecutionMode<S>>
 {
     #[inline]
     fn source(
-        &self,
+        self: Arc<Self>,
         _ctx: &ExecutionContext<'env, S, ReadWriteExecutionMode<S>>,
-    ) -> ExecutionResult<SourceState<Chunk>> {
+    ) -> ExecutionResult<TupleStream<S>> {
         let returning = match &self.returning {
             Some(returning) => returning,
-            None => return Ok(SourceState::Done),
+            None => return Ok(Box::new(fallible_iterator::empty())),
         };
+        todo!();
 
-        let tuple = match self.returning_tuples.write().pop_front() {
-            Some(tuple) => tuple,
-            None => return Ok(SourceState::Done),
-        };
-
-        Ok(SourceState::Yield(Chunk::singleton(
-            self.returning_evaluator.evaluate(&tuple, returning),
-        )))
+        // let tuple = match self.returning_tuples.write().pop_front() {
+        //     Some(tuple) => tuple,
+        //     None => return Ok(SourceState::Done),
+        // };
+        //
+        // Ok(SourceState::Yield(Chunk::singleton(
+        //     self.returning_evaluator.evaluate(&tuple, returning),
+        // )))
     }
 }
 

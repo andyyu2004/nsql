@@ -1,36 +1,43 @@
 use std::sync::atomic::{self, AtomicUsize};
 
+use nsql_storage_engine::fallible_iterator;
+
 use super::*;
 
 #[derive(Debug)]
 pub struct PhysicalValues {
     values: ir::Values,
-    index: AtomicUsize,
 }
 
 impl PhysicalValues {
     pub(crate) fn plan<'env, S: StorageEngine, M: ExecutionMode<'env, S>>(
         values: ir::Values,
     ) -> Arc<dyn PhysicalNode<'env, S, M>> {
-        Arc::new(PhysicalValues { values, index: AtomicUsize::new(0) })
+        Arc::new(PhysicalValues { values })
     }
 }
 
-#[async_trait::async_trait]
 impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSource<'env, S, M>
     for PhysicalValues
 {
-    fn source(&self, _ctx: &ExecutionContext<'env, S, M>) -> ExecutionResult<SourceState<Chunk>> {
-        let index = self.index.fetch_add(1, atomic::Ordering::SeqCst);
-        if index >= self.values.len() {
-            return Ok(SourceState::Done);
-        }
+    fn source(
+        self: Arc<Self>,
+        _ctx: &ExecutionContext<'env, S, M>,
+    ) -> ExecutionResult<TupleStream<S>> {
+        let mut index = 0;
+        let iter = fallible_iterator::from_fn(move || {
+            if index >= self.values.len() {
+                return Ok(None);
+            }
 
-        let evaluator = Evaluator::new();
-        let exprs = &self.values[index];
-        let tuple = evaluator.evaluate(&Tuple::empty(), exprs);
+            let evaluator = Evaluator::new();
+            let exprs = &self.values[index];
+            let tuple = evaluator.evaluate(&Tuple::empty(), exprs);
+            index += 1;
 
-        Ok(SourceState::Yield(Chunk::singleton(tuple)))
+            Ok(Some(tuple))
+        });
+        Ok(Box::new(iter))
     }
 }
 

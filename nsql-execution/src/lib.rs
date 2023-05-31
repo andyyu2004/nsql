@@ -18,7 +18,7 @@ pub use anyhow::Error;
 use nsql_arena::Idx;
 use nsql_catalog::Catalog;
 use nsql_storage::tuple::Tuple;
-use nsql_storage_engine::{StorageEngine, WriteTransaction};
+use nsql_storage_engine::{FallibleIterator, StorageEngine, WriteTransaction};
 use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 pub use physical_plan::PhysicalPlanner;
 use smallvec::SmallVec;
@@ -144,14 +144,6 @@ enum OperatorState<T> {
     Done,
 }
 
-#[derive(Debug)]
-enum SourceState<T> {
-    Yield(T),
-    Final(T),
-    Done,
-}
-
-#[async_trait::async_trait]
 trait PhysicalOperator<'env, S: StorageEngine, M: ExecutionMode<'env, S>, T = Tuple>:
     PhysicalNode<'env, S, M>
 {
@@ -162,15 +154,19 @@ trait PhysicalOperator<'env, S: StorageEngine, M: ExecutionMode<'env, S>, T = Tu
     ) -> ExecutionResult<OperatorState<T>>;
 }
 
-#[async_trait::async_trait]
+type TupleStream<S> =
+    Box<dyn FallibleIterator<Item = Tuple, Error = <S as StorageEngine>::Error>>;
+
 trait PhysicalSource<'env, S: StorageEngine, M: ExecutionMode<'env, S>, T = Tuple>:
     PhysicalNode<'env, S, M>
 {
     /// Return the next chunk from the source. An empty chunk indicates that the source is exhausted.
-    fn source(&self, ctx: &ExecutionContext<'env, S, M>) -> ExecutionResult<SourceState<Chunk<T>>>;
+    fn source(
+        self: Arc<Self>,
+        ctx: &ExecutionContext<'env, S, M>,
+    ) -> ExecutionResult<TupleStream<S>>;
 }
 
-#[async_trait::async_trait]
 trait PhysicalSink<'env, S: StorageEngine, M: ExecutionMode<'env, S>>:
     PhysicalSource<'env, S, M>
 {

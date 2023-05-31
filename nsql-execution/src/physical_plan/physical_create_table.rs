@@ -1,8 +1,9 @@
 use nsql_catalog::{Column, Container, CreateTableInfo, Entity, Namespace, Table};
 use nsql_storage::{ColumnStorageInfo, TableStorage, TableStorageInfo};
+use nsql_storage_engine::fallible_iterator;
 
 use super::*;
-use crate::ReadWriteExecutionMode;
+use crate::{ReadWriteExecutionMode, TupleStream};
 
 pub struct PhysicalCreateTable<S> {
     info: ir::CreateTableInfo<S>,
@@ -65,9 +66,9 @@ impl<'env, S: StorageEngine> PhysicalSource<'env, S, ReadWriteExecutionMode<S>>
     for PhysicalCreateTable<S>
 {
     fn source(
-        &self,
+        self: Arc<Self>,
         ctx: &ExecutionContext<'env, S, ReadWriteExecutionMode<S>>,
-    ) -> ExecutionResult<SourceState<Chunk>> {
+    ) -> ExecutionResult<TupleStream<S>> {
         let columns = self
             .info
             .columns
@@ -99,7 +100,7 @@ impl<'env, S: StorageEngine> PhysicalSource<'env, S, ReadWriteExecutionMode<S>>
             table.create::<Column>(&mut tx, info.clone())?;
         }
 
-        Ok(SourceState::Done)
+        Ok(Box::new(fallible_iterator::empty()))
     }
 }
 

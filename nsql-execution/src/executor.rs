@@ -33,30 +33,18 @@ impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> Executor<'env, S, M> {
         pipeline: Idx<Pipeline<'env, S, M>>,
     ) -> ExecutionResult<()> {
         let pipeline = &self.arena[pipeline];
-        let mut done = false;
-        while !done {
-            let chunk = match pipeline.source.source(ctx)? {
-                SourceState::Yield(chunk) => chunk,
-                SourceState::Final(chunk) => {
-                    // run once more around the loop with the final source chunk
-                    done = true;
-                    chunk
-                }
-                SourceState::Done => break,
-            };
-
-            'outer: for mut tuple in chunk {
-                for op in &pipeline.operators {
-                    tuple = match op.execute(ctx, tuple)? {
-                        OperatorState::Yield(tuple) => tuple,
-                        OperatorState::Continue => break 'outer,
-                        // Once an operator completes, the entire pipeline is finishedK
-                        OperatorState::Done => return Ok(()),
-                    };
-                }
-
-                pipeline.sink.sink(ctx, tuple)?;
+        let mut stream = Arc::clone(&pipeline.source).source(ctx)?;
+        'outer: while let Some(mut tuple) = stream.next()? {
+            for op in &pipeline.operators {
+                tuple = match op.execute(ctx, tuple)? {
+                    OperatorState::Yield(tuple) => tuple,
+                    OperatorState::Continue => break 'outer,
+                    // Once an operator completes, the entire pipeline is finished
+                    OperatorState::Done => return Ok(()),
+                };
             }
+
+            pipeline.sink.sink(ctx, tuple)?;
         }
 
         Ok(())
@@ -118,14 +106,15 @@ impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode<'env, S, M>
     }
 }
 
-#[async_trait::async_trait]
 impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSource<'env, S, M> for OutputSink {
-    fn source(&self, _ctx: &ExecutionContext<'env, S, M>) -> ExecutionResult<SourceState<Chunk>> {
+    fn source(
+        self: Arc<Self>,
+        _ctx: &ExecutionContext<'env, S, M>,
+    ) -> ExecutionResult<TupleStream<S>> {
         todo!()
     }
 }
 
-#[async_trait::async_trait]
 impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSink<'env, S, M> for OutputSink {
     fn sink(&self, _ctx: &ExecutionContext<'env, S, M>, tuple: Tuple) -> ExecutionResult<()> {
         self.tuples.write().push(tuple);

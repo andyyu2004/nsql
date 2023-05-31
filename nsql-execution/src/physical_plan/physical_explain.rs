@@ -1,5 +1,6 @@
 use atomic_take::AtomicTake;
 use nsql_storage::value::Value;
+use nsql_storage_engine::fallible_iterator;
 
 use super::*;
 
@@ -56,9 +57,12 @@ impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode<'env, S, M>
 impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSource<'env, S, M>
     for PhysicalExplain<'env, S, M>
 {
-    fn source(&self, _ctx: &ExecutionContext<'env, S, M>) -> ExecutionResult<SourceState<Chunk>> {
+    fn source(
+        self: Arc<Self>,
+        _ctx: &ExecutionContext<'env, S, M>,
+    ) -> ExecutionResult<TupleStream<S>> {
         let plan = self.stringified_plan.take().expect("should not be called again");
-        Ok(SourceState::Final(Chunk::singleton(Tuple::from(vec![Value::Text(plan)]))))
+        Ok(Box::new(fallible_iterator::once(Tuple::from(vec![Value::Text(plan)]))))
     }
 }
 

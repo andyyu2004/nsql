@@ -1,4 +1,7 @@
+use nsql_storage_engine::fallible_iterator;
+
 use super::*;
+use crate::TupleStream;
 
 #[derive(Debug)]
 pub struct PhysicalDummyScan;
@@ -14,8 +17,11 @@ impl PhysicalDummyScan {
 impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSource<'env, S, M>
     for PhysicalDummyScan
 {
-    fn source(&self, _ctx: &ExecutionContext<'env, S, M>) -> ExecutionResult<SourceState<Chunk>> {
-        Ok(SourceState::Final(Chunk::singleton(Tuple::empty())))
+    fn source(
+        self: Arc<Self>,
+        _ctx: &ExecutionContext<'env, S, M>,
+    ) -> ExecutionResult<TupleStream<S>> {
+        Ok(Box::new(fallible_iterator::once(Tuple::empty())))
     }
 }
 

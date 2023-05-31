@@ -44,7 +44,10 @@ impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode<'env, S, M>
 impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSource<'env, S, M>
     for PhysicalShow
 {
-    fn source(&self, ctx: &ExecutionContext<'env, S, M>) -> ExecutionResult<SourceState<Chunk>> {
+    fn source(
+        self: Arc<Self>,
+        ctx: &ExecutionContext<'env, S, M>,
+    ) -> ExecutionResult<TupleStream<S>> {
         let catalog = ctx.catalog();
         let tx = ctx.tx();
         let mut tuples = vec![];
@@ -59,7 +62,8 @@ impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSource<'env, S, 
             }
         }
 
-        Ok(SourceState::Final(Chunk::from(tuples)))
+        todo!()
+        // Ok(SourceState::Final(Chunk::from(tuples)))
     }
 }
 

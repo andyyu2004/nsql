@@ -39,7 +39,7 @@ use self::physical_values::PhysicalValues;
 use crate::{
     Chunk, Evaluator, ExecutionContext, ExecutionMode, ExecutionResult, OperatorState,
     PhysicalNode, PhysicalOperator, PhysicalSink, PhysicalSource, ReadWriteExecutionMode,
-    ReadonlyExecutionMode, SourceState, Tuple,
+    ReadonlyExecutionMode, Tuple, TupleStream,
 };
 
 pub struct PhysicalPlanner<S> {

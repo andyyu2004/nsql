@@ -4,6 +4,7 @@ use std::sync::OnceLock;
 use itertools::Itertools;
 use nsql_catalog::{Column, ColumnIndex, Container, Entity, Table};
 use nsql_storage::tuple::TupleIndex;
+use nsql_storage::TableStorage;
 use nsql_storage_engine::FallibleIterator;
 use parking_lot::Mutex;
 
@@ -15,12 +16,7 @@ pub struct PhysicalTableScan<S: StorageEngine> {
     projection: Option<Box<[ColumnIndex]>>,
     current_batch: Mutex<Vec<Tuple>>,
     current_batch_index: AtomicUsize,
-
-    stream: OnceLock<Mutex<TupleStream<S>>>,
 }
-
-type TupleStream<S> =
-    Box<dyn FallibleIterator<Item = Tuple, Error = <S as StorageEngine>::Error> + Send + Sync>;
 
 impl<'env, S: StorageEngine> fmt::Debug for PhysicalTableScan<S> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -42,7 +38,6 @@ impl<'env, S: StorageEngine> PhysicalTableScan<S> {
             table: Default::default(),
             current_batch: Default::default(),
             current_batch_index: Default::default(),
-            stream: Default::default(),
         })
     }
 }
@@ -52,29 +47,26 @@ impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSource<'env, S, 
     for PhysicalTableScan<S>
 {
     #[tracing::instrument(skip(self, ctx))]
-    fn source(&self, ctx: &ExecutionContext<'env, S, M>) -> ExecutionResult<SourceState<Chunk>> {
+    fn source(
+        self: Arc<Self>,
+        ctx: &ExecutionContext<'env, S, M>,
+    ) -> ExecutionResult<TupleStream<S>> {
         let table = self.table.get_or_try_init(|| {
             let tx = ctx.tx();
             let namespace = ctx.catalog.get(&**tx, self.table_ref.namespace).unwrap();
             Ok::<_, nsql_catalog::Error>(namespace.get(&**tx, self.table_ref.table).unwrap())
         })?;
 
-        // let stream = self.stream.get_or_try_init(|| {
         // let storage = table.storage();
-        // let projection = self
-        //     .projection
-        //     .as_ref()
-        //     .map(|p| p.iter().map(|&idx| TupleIndex::new(idx.as_usize())).collect());
-        //
-        // storage.scan(&**ctx.tx(), projection).map(|iter| Box::new(iter) as _).map(Mutex::new)
+        // let storage= TableStorage::open(ctx.storage(), ctx.tx(), self.info.clone());
+        let storage: TableStorage<'env, '_, S> = todo!();
+        let projection = self
+            .projection
+            .as_ref()
+            .map(|p| p.iter().map(|&idx| TupleIndex::new(idx.as_usize())).collect());
 
-        // })?;
-
-        // match stream.lock().next()? {
-        //     Some(tuple) => return Ok(SourceState::Yield(Chunk::singleton(tuple))),
-        //     None => return Ok(SourceState::Done),
-        // }
-        todo!()
+        let stream = storage.scan(projection)?;
+        Ok(Box::new(stream) as _)
     }
 }
 

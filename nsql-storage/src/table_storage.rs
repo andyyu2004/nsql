@@ -1,12 +1,8 @@
 use nsql_core::Name;
-use nsql_storage_engine::{
-    fallible_iterator, FallibleIterator, ReadOrWriteTransactionRef, ReadTree, StorageEngine,
-    Transaction, WriteTree,
-};
+use nsql_storage_engine::{FallibleIterator, ReadTree, StorageEngine, Transaction, WriteTree};
 
 use crate::schema::LogicalType;
 use crate::tuple::{Tuple, TupleIndex};
-use crate::value::Value;
 
 pub struct TableStorage<'env: 'txn, 'txn, S: StorageEngine> {
     storage: S,
@@ -23,15 +19,16 @@ impl<'env, 'txn, S: StorageEngine> TableStorage<'env, 'txn, S> {
     ) -> Result<Self, S::Error> {
         // create the tree
         storage.open_write_tree(tx, &info.storage_tree_name)?;
-        let tree = storage.open_tree(tx, &info.storage_tree_name)?.unwrap();
-        Ok(Self { storage, info, tree })
+        Self::open(storage, tx, info)
     }
 
-    pub fn open_tree(
-        &self,
-        tx: &'txn S::Transaction<'env>,
-    ) -> Result<S::ReadTree<'env, 'txn>, S::Error> {
-        Ok(self.storage.open_tree(tx, &self.info.storage_tree_name)?.unwrap())
+    pub fn open(
+        storage: S,
+        tx: &'txn impl Transaction<'env, S>,
+        info: TableStorageInfo,
+    ) -> Result<Self, S::Error> {
+        let tree = storage.open_tree(tx, &info.storage_tree_name)?.unwrap();
+        Ok(Self { storage, info, tree })
     }
 
     #[inline]

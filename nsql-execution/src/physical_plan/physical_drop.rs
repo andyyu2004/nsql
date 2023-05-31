@@ -1,7 +1,8 @@
 use nsql_catalog::EntityRef;
+use nsql_storage_engine::fallible_iterator;
 
 use super::*;
-use crate::ReadWriteExecutionMode;
+use crate::{ReadWriteExecutionMode, TupleStream};
 
 pub struct PhysicalDrop<S> {
     refs: Vec<ir::EntityRef<S>>,
@@ -59,9 +60,9 @@ impl<'env, S: StorageEngine> PhysicalSource<'env, S, ReadWriteExecutionMode<S>>
     for PhysicalDrop<S>
 {
     fn source(
-        &self,
+        self: Arc<Self>,
         ctx: &ExecutionContext<'env, S, ReadWriteExecutionMode<S>>,
-    ) -> ExecutionResult<SourceState<Chunk>> {
+    ) -> ExecutionResult<TupleStream<S>> {
         let mut tx = ctx.tx_mut();
         let catalog = ctx.catalog();
         for entity_ref in &self.refs {
@@ -70,7 +71,7 @@ impl<'env, S: StorageEngine> PhysicalSource<'env, S, ReadWriteExecutionMode<S>>
             }
         }
 
-        Ok(SourceState::Done)
+        Ok(Box::new(fallible_iterator::empty()))
     }
 }
 
