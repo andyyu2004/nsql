@@ -72,7 +72,7 @@ impl<S: StorageEngine> CatalogEntity<S> for Table<S> {
         &container.tables
     }
 
-    fn create(_tx: &mut S::WriteTransaction<'_>, info: Self::CreateInfo) -> Self {
+    fn create(_tx: &S::WriteTransaction<'_>, info: Self::CreateInfo) -> Self {
         Self { name: info.name, columns: Default::default() }
     }
 }

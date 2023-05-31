@@ -54,7 +54,7 @@ pub trait StorageEngine: Clone + Send + Sync + Sized + 'static {
     /// Open a tree for read/write access
     fn open_write_tree<'env, 'txn>(
         &self,
-        txn: &'txn mut Self::WriteTransaction<'env>,
+        txn: &'txn Self::WriteTransaction<'env>,
         name: &str,
     ) -> Result<Self::WriteTree<'env, 'txn>, Self::Error>
     where

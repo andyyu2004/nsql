@@ -42,14 +42,13 @@ impl<'env, S: StorageEngine> PhysicalTableScan<S> {
     }
 }
 
-#[async_trait::async_trait]
 impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSource<'env, S, M>
     for PhysicalTableScan<S>
 {
     #[tracing::instrument(skip(self, ctx))]
     fn source<'txn>(
         self: Arc<Self>,
-        ctx: M::Ref<'txn, ExecutionContext<'env, S, M>>,
+        ctx: &'txn ExecutionContext<'env, S, M>,
     ) -> ExecutionResult<TupleStream<'txn, S>> {
         let table = self.table.get_or_try_init(|| {
             let tx = ctx.tx();

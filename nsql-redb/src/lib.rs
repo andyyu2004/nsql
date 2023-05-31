@@ -87,7 +87,7 @@ impl nsql_storage_engine::StorageEngine for RedbStorageEngine {
     #[inline]
     fn open_write_tree<'env, 'txn>(
         &self,
-        txn: &'txn mut Self::WriteTransaction<'env>,
+        txn: &'txn Self::WriteTransaction<'env>,
         name: &str,
     ) -> Result<Self::WriteTree<'env, 'txn>, Self::Error>
     where

@@ -11,7 +11,7 @@ pub(crate) struct Executor<'env, S, M> {
 impl<'env, S: StorageEngine> Executor<'env, S, ReadWriteExecutionMode<S>> {
     fn execute(
         self: Arc<Self>,
-        ctx: &mut ExecutionContext<'env, S, ReadWriteExecutionMode<S>>,
+        ctx: &ExecutionContext<'env, S, ReadWriteExecutionMode<S>>,
         root: Idx<MetaPipeline<'env, S, ReadWriteExecutionMode<S>>>,
     ) -> ExecutionResult<()> {
         let root = &self.arena[root];
@@ -28,7 +28,7 @@ impl<'env, S: StorageEngine> Executor<'env, S, ReadWriteExecutionMode<S>> {
 
     fn execute_pipeline(
         self: Arc<Self>,
-        ctx: &mut ExecutionContext<'env, S, ReadWriteExecutionMode<S>>,
+        ctx: &ExecutionContext<'env, S, ReadWriteExecutionMode<S>>,
         pipeline: Idx<Pipeline<'env, S, ReadWriteExecutionMode<S>>>,
     ) -> ExecutionResult<()> {
         let pipeline = &self.arena[pipeline];
@@ -102,7 +102,7 @@ fn execute_root_pipeline<'env, S: StorageEngine>(
 }
 
 fn execute_root_pipeline_write<'env, S: StorageEngine>(
-    ctx: &mut ExecutionContext<'env, S, ReadWriteExecutionMode<S>>,
+    ctx: &ExecutionContext<'env, S, ReadWriteExecutionMode<S>>,
     pipeline: RootPipeline<'env, S, ReadWriteExecutionMode<S>>,
 ) -> ExecutionResult<()> {
     let root = pipeline.arena.root();
@@ -126,7 +126,7 @@ pub fn execute<'env, S: StorageEngine>(
 }
 
 pub fn execute_write<'env, S: StorageEngine>(
-    ctx: &mut ExecutionContext<'env, S, ReadWriteExecutionMode<S>>,
+    ctx: &ExecutionContext<'env, S, ReadWriteExecutionMode<S>>,
     plan: PhysicalPlan<'env, S, ReadWriteExecutionMode<S>>,
 ) -> ExecutionResult<Vec<Tuple>> {
     let sink = Arc::new(OutputSink::default());
@@ -176,7 +176,7 @@ impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode<'env, S, M>
 impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSource<'env, S, M> for OutputSink {
     fn source<'txn>(
         self: Arc<Self>,
-        _ctx: M::Ref<'txn, ExecutionContext<'env, S, M>>,
+        _ctx: &'txn ExecutionContext<'env, S, M>,
     ) -> ExecutionResult<TupleStream<'txn, S>> {
         todo!()
     }
@@ -185,7 +185,7 @@ impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSource<'env, S, 
 impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSink<'env, S, M> for OutputSink {
     fn sink<'txn>(
         &self,
-        _ctx: M::Ref<'txn, ExecutionContext<'env, S, M>>,
+        _ctx: &'txn ExecutionContext<'env, S, M>,
         tuple: Tuple,
     ) -> ExecutionResult<()> {
         self.tuples.write().push(tuple);

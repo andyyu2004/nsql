@@ -60,16 +60,13 @@ impl<'env, S: StorageEngine> PhysicalSource<'env, S, ReadWriteExecutionMode<S>>
 {
     fn source<'txn>(
         self: Arc<Self>,
-        ctx: <ReadWriteExecutionMode<S> as ExecutionMode<'env, S>>::Ref<
-            'txn,
-            ExecutionContext<'env, S, ReadWriteExecutionMode<S>>,
-        >,
+        ctx: &'txn ExecutionContext<'env, S, ReadWriteExecutionMode<S>>,
     ) -> ExecutionResult<TupleStream<'txn, S>> {
         let catalog = ctx.catalog();
-        let mut tx = ctx.tx_mut();
+        let tx = ctx.tx();
         for entity_ref in &self.refs {
             match entity_ref {
-                ir::EntityRef::Table(table_ref) => table_ref.delete(&catalog, &mut tx)?,
+                ir::EntityRef::Table(table_ref) => table_ref.delete(&catalog, tx)?,
             }
         }
 

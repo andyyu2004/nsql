@@ -30,7 +30,7 @@ pub const DEFAULT_SCHEMA: &str = "main";
 
 impl<S: StorageEngine> Catalog<S> {
     /// Create a blank catalog with the default schema
-    pub fn create(tx: &mut S::WriteTransaction<'_>) -> Result<Self> {
+    pub fn create(tx: &S::WriteTransaction<'_>) -> Result<Self> {
         let catalog = Self { schemas: Default::default() };
         catalog
             .create::<Namespace<S>>(tx, CreateNamespaceInfo { name: DEFAULT_SCHEMA.into() })
@@ -62,7 +62,7 @@ pub trait EntityRef<S: StorageEngine>: Copy {
             .expect("`oid` should be valid for `tx`")
     }
 
-    fn delete(self, catalog: &Catalog<S>, tx: &mut S::WriteTransaction<'_>) -> Result<()> {
+    fn delete(self, catalog: &Catalog<S>, tx: &S::WriteTransaction<'_>) -> Result<()> {
         self.container(catalog, tx).delete(tx, self.entity_oid())?;
         Ok(())
     }
@@ -71,7 +71,7 @@ pub trait EntityRef<S: StorageEngine>: Copy {
 pub trait Container<S: StorageEngine> {
     fn create<T: CatalogEntity<S, Container = Self>>(
         &self,
-        tx: &mut S::WriteTransaction<'_>,
+        tx: &S::WriteTransaction<'_>,
         info: T::CreateInfo,
     ) -> Result<Oid<T>, Conflict<S, T>> {
         T::create(tx, info).insert(self, tx)
@@ -89,7 +89,7 @@ pub trait Container<S: StorageEngine> {
     /// Panics if the `oid` is not visible to `tx`.
     fn delete<T: CatalogEntity<S, Container = Self>>(
         &self,
-        tx: &mut S::WriteTransaction<'_>,
+        tx: &S::WriteTransaction<'_>,
         oid: Oid<T>,
     ) -> Result<(), Conflict<S, T>> {
         T::delete(self, tx, oid)
@@ -130,13 +130,13 @@ pub(crate) mod private {
         /// extract the `CatalogSet` from the `container` for `Self`
         fn catalog_set(container: &Self::Container) -> &CatalogSet<S, Self>;
 
-        fn create(tx: &mut S::WriteTransaction<'_>, info: Self::CreateInfo) -> Self;
+        fn create(tx: &S::WriteTransaction<'_>, info: Self::CreateInfo) -> Self;
 
         #[inline]
         fn insert(
             self,
             container: &Self::Container,
-            tx: &mut S::WriteTransaction<'_>,
+            tx: &S::WriteTransaction<'_>,
         ) -> Result<Oid<Self>, Conflict<S, Self>> {
             Self::catalog_set(container).insert(tx, self)
         }
@@ -145,7 +145,7 @@ pub(crate) mod private {
         fn try_insert(
             self,
             container: &Self::Container,
-            tx: &mut S::WriteTransaction<'_>,
+            tx: &S::WriteTransaction<'_>,
         ) -> Result<Oid<Self>, Conflict<S, Self>> {
             Self::catalog_set(container).insert(tx, self)
         }
@@ -162,7 +162,7 @@ pub(crate) mod private {
         #[inline]
         fn delete(
             container: &Self::Container,
-            tx: &mut S::WriteTransaction<'_>,
+            tx: &S::WriteTransaction<'_>,
             oid: Oid<Self>,
         ) -> Result<(), Conflict<S, Self>> {
             Self::catalog_set(container).delete(tx, oid)

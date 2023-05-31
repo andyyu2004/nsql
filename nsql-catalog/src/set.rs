@@ -74,7 +74,7 @@ impl<S: StorageEngine, T: CatalogEntity<S>> CatalogSet<S, T> {
     #[inline]
     pub fn create(
         &self,
-        tx: &mut S::WriteTransaction<'_>,
+        tx: &S::WriteTransaction<'_>,
         info: T::CreateInfo,
     ) -> Result<Oid<T>, Conflict<S, T>> {
         let entity = T::create(tx, info);
@@ -107,7 +107,7 @@ impl<S: StorageEngine, T: CatalogEntity<S>> CatalogSet<S, T> {
 
     pub(crate) fn delete(
         &self,
-        _tx: &mut S::WriteTransaction<'_>,
+        _tx: &S::WriteTransaction<'_>,
         oid: Oid<T>,
     ) -> Result<(), Conflict<S, T>> {
         self.entries.remove(&oid);
@@ -116,7 +116,7 @@ impl<S: StorageEngine, T: CatalogEntity<S>> CatalogSet<S, T> {
 
     pub(crate) fn insert(
         &self,
-        tx: &mut S::WriteTransaction<'_>,
+        tx: &S::WriteTransaction<'_>,
         value: T,
     ) -> Result<Oid<T>, Conflict<S, T>> {
         let oid = self.next_oid();
@@ -150,7 +150,7 @@ impl<S: StorageEngine, T> CatalogEntry<S, T> {
         Arc::clone(&self.value)
     }
 
-    pub(crate) fn new(_tx: &mut S::WriteTransaction<'_>, value: T) -> Self {
+    pub(crate) fn new(_tx: &S::WriteTransaction<'_>, value: T) -> Self {
         Self { value: Arc::new(value), _marker: PhantomData }
     }
 }

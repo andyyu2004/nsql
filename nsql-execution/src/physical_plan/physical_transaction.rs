@@ -46,7 +46,7 @@ impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSource<'env, S, 
 {
     fn source<'txn>(
         self: Arc<Self>,
-        ctx: M::Ref<'txn, ExecutionContext<'env, S, M>>,
+        ctx: &'txn ExecutionContext<'env, S, M>,
     ) -> ExecutionResult<TupleStream<'txn, S>> {
         // FIXME this can only run in rw mode
         todo!();

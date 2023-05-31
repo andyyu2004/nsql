@@ -23,7 +23,7 @@ pub use physical_plan::PhysicalPlanner;
 use smallvec::SmallVec;
 
 use self::eval::Evaluator;
-pub use self::executor::execute;
+pub use self::executor::{execute, execute_write};
 use self::physical_plan::{explain, Explain, PhysicalPlan};
 use self::pipeline::{
     MetaPipeline, MetaPipelineBuilder, Pipeline, PipelineArena, PipelineBuilder,
@@ -148,7 +148,7 @@ trait PhysicalOperator<'env, S: StorageEngine, M: ExecutionMode<'env, S>, T = Tu
 {
     fn execute<'txn>(
         &self,
-        ctx: M::Ref<'txn, ExecutionContext<'env, S, M>>,
+        ctx: &'txn ExecutionContext<'env, S, M>,
         input: T,
     ) -> ExecutionResult<OperatorState<T>>;
 }
@@ -162,7 +162,7 @@ trait PhysicalSource<'env, S: StorageEngine, M: ExecutionMode<'env, S>, T = Tupl
     /// Return the next chunk from the source. An empty chunk indicates that the source is exhausted.
     fn source<'txn>(
         self: Arc<Self>,
-        ctx: M::Ref<'txn, ExecutionContext<'env, S, M>>,
+        ctx: &'txn ExecutionContext<'env, S, M>,
     ) -> ExecutionResult<TupleStream<'txn, S>>;
 }
 
@@ -171,11 +171,10 @@ trait PhysicalSink<'env, S: StorageEngine, M: ExecutionMode<'env, S>>:
 {
     fn sink<'txn>(
         &self,
-        ctx: M::Ref<'txn, ExecutionContext<'env, S, M>>,
+        ctx: &'txn ExecutionContext<'env, S, M>,
         tuple: Tuple,
     ) -> ExecutionResult<()>;
 }
-
 
 trait Reborrow<'short, _Outlives = &'short Self> {
     type Target;
@@ -204,10 +203,6 @@ impl<'short, 'a, T> Reborrow<'short> for &'a mut T {
 pub trait ExecutionMode<'env, S: StorageEngine>: private::Sealed + Clone + Copy + 'env {
     type Transaction: nsql_storage_engine::Transaction<'env, S>;
 
-    type Ref<'a, T>: Reborrow<'a, Target = T> + Deref<Target = T> + 'a
-    where
-        T: 'a;
-
     fn commit(transaction: Self::Transaction) -> ExecutionResult<()>;
 
     fn abort(transaction: Self::Transaction) -> ExecutionResult<()>;
@@ -233,9 +228,6 @@ impl<S> Copy for ReadonlyExecutionMode<S> {}
 impl<'env, S: StorageEngine> ExecutionMode<'env, S> for ReadonlyExecutionMode<S> {
     type Transaction = S::Transaction<'env>;
 
-    type Ref<'a, T> = &'a T where T: 'a;
-
-    #[inline]
     fn commit(transaction: Self::Transaction) -> ExecutionResult<()> {
         Ok(())
     }
@@ -261,8 +253,6 @@ impl<S> private::Sealed for ReadWriteExecutionMode<S> {}
 
 impl<'env, S: StorageEngine> ExecutionMode<'env, S> for ReadWriteExecutionMode<S> {
     type Transaction = S::WriteTransaction<'env>;
-
-    type Ref<'a, T> = &'a mut T where T: 'a;
 
     #[inline]
     fn commit(transaction: Self::Transaction) -> ExecutionResult<()> {

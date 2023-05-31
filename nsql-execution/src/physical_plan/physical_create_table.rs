@@ -67,10 +67,7 @@ impl<'env, S: StorageEngine> PhysicalSource<'env, S, ReadWriteExecutionMode<S>>
 {
     fn source<'txn>(
         self: Arc<Self>,
-        ctx: <ReadWriteExecutionMode<S> as ExecutionMode<'env, S>>::Ref<
-            'txn,
-            ExecutionContext<'env, S, ReadWriteExecutionMode<S>>,
-        >,
+        ctx: &'txn ExecutionContext<'env, S, ReadWriteExecutionMode<S>>,
     ) -> ExecutionResult<TupleStream<'txn, S>> {
         let columns = self
             .info
@@ -80,7 +77,7 @@ impl<'env, S: StorageEngine> PhysicalSource<'env, S, ReadWriteExecutionMode<S>>
             .collect::<Vec<_>>();
 
         let catalog = ctx.catalog();
-        let mut tx = ctx.tx_mut();
+        let tx = ctx.tx();
         let namespace = catalog
             .get::<Namespace<S>>(&**tx, self.info.namespace)
             .expect("schema not found during execution");
@@ -95,12 +92,12 @@ impl<'env, S: StorageEngine> PhysicalSource<'env, S, ReadWriteExecutionMode<S>>
             // )?),
         };
 
-        let table_oid = namespace.create::<Table<S>>(&mut tx, info)?;
+        let table_oid = namespace.create::<Table<S>>(tx, info)?;
         let table =
             namespace.get::<Table<S>>(&**tx, table_oid).expect("table not found during execution");
 
         for info in &self.info.columns {
-            table.create::<Column>(&mut tx, info.clone())?;
+            table.create::<Column>(tx, info.clone())?;
         }
 
         Ok(Box::new(fallible_iterator::empty()))

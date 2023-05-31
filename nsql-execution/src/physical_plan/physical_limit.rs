@@ -22,7 +22,7 @@ impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalOperator<'env, S
 {
     fn execute<'txn>(
         &self,
-        _ctx: M::Ref<'txn, ExecutionContext<'env, S, M>>,
+        _ctx: &'txn ExecutionContext<'env, S, M>,
         input: Tuple,
     ) -> ExecutionResult<OperatorState<Tuple>> {
         if self.yielded.fetch_add(1, atomic::Ordering::AcqRel) >= self.limit {

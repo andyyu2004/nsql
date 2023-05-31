@@ -105,14 +105,16 @@ impl StorageEngine for LmdbStorageEngine {
     #[inline]
     fn open_write_tree<'env, 'txn>(
         &self,
-        txn: &'txn mut Self::WriteTransaction<'env>,
+        txn: &'txn Self::WriteTransaction<'env>,
         name: &str,
     ) -> Result<Self::WriteTree<'env, 'txn>, Self::Error>
     where
         'env: 'txn,
     {
-        let db = self.env.create_database(&mut txn.0, Some(name))?;
-        Ok(LmdbWriteTree { db, txn })
+        // needs mutable ref for some reason, maybe it's unnecessary
+        todo!()
+        // let db = self.env.create_database(&mut txn.0, Some(name))?;
+        // Ok(LmdbWriteTree { db, txn })
     }
 }
 

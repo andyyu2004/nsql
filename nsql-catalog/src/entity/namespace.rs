@@ -32,7 +32,7 @@ impl<S: StorageEngine> CatalogEntity<S> for Namespace<S> {
     }
 
     #[inline]
-    fn create(_tx: &mut S::WriteTransaction<'_>, info: Self::CreateInfo) -> Self {
+    fn create(_tx: &S::WriteTransaction<'_>, info: Self::CreateInfo) -> Self {
         Self { name: info.name, tables: Default::default() }
     }
 }

@@ -14,7 +14,7 @@ impl<'env, 'txn, S: StorageEngine> TableStorage<'env, 'txn, S> {
     #[inline]
     pub fn initialize(
         storage: S,
-        tx: &'txn mut S::WriteTransaction<'env>,
+        tx: &'txn S::WriteTransaction<'env>,
         info: TableStorageInfo,
     ) -> Result<Self, S::Error> {
         // create the tree
@@ -32,7 +32,7 @@ impl<'env, 'txn, S: StorageEngine> TableStorage<'env, 'txn, S> {
     }
 
     #[inline]
-    pub fn append(&self, tx: &mut S::WriteTransaction<'_>, tuple: &Tuple) -> Result<(), S::Error> {
+    pub fn append(&self, tx: &S::WriteTransaction<'_>, tuple: &Tuple) -> Result<(), S::Error> {
         assert_eq!(
             tuple.len(),
             self.info.columns.len(),

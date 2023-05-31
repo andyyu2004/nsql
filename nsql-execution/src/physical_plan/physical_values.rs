@@ -22,7 +22,7 @@ impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSource<'env, S, 
 {
     fn source<'txn>(
         self: Arc<Self>,
-        _ctx: M::Ref<'txn, ExecutionContext<'env, S, M>>,
+        _ctx: &'txn ExecutionContext<'env, S, M>,
     ) -> ExecutionResult<TupleStream<'txn, S>> {
         let mut index = 0;
         let iter = fallible_iterator::from_fn(move || {
