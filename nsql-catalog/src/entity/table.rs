@@ -54,6 +54,11 @@ impl fmt::Debug for CreateTableInfo {
 
 impl<S: StorageEngine> Entity for Table<S> {
     #[inline]
+    fn oid(&self) -> Oid<Self> {
+        self.oid
+    }
+
+    #[inline]
     fn name(&self) -> Name {
         Name::clone(&self.name)
     }

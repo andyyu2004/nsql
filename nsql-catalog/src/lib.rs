@@ -45,6 +45,8 @@ impl<S: StorageEngine> Catalog<S> {
 impl<S: StorageEngine> Container<S> for Catalog<S> {}
 
 pub trait Entity {
+    fn oid(&self) -> Oid<Self>;
+
     fn name(&self) -> Name;
 
     fn desc() -> &'static str;

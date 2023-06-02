@@ -7,7 +7,7 @@ use std::ops::{Bound, Deref, RangeBounds};
 use std::path::Path;
 use std::sync::Arc;
 
-use nsql_storage_engine::{fallible_iterator, FallibleIterator, Range, ReadOrWriteTransactionRef};
+use nsql_storage_engine::{fallible_iterator, Range, ReadOrWriteTransactionRef};
 use redb::{AccessGuard, ReadableTable};
 
 type Result<T, E = redb::Error> = std::result::Result<T, E>;

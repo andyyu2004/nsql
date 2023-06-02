@@ -70,6 +70,11 @@ pub struct CreateColumnInfo {
 
 impl Entity for Column {
     #[inline]
+    fn oid(&self) -> Oid<Self> {
+        self.oid
+    }
+
+    #[inline]
     fn name(&self) -> Name {
         Name::clone(&self.name)
     }

@@ -40,6 +40,11 @@ impl<S: StorageEngine> CatalogEntity<S> for Namespace<S> {
 
 impl<S: StorageEngine> Entity for Namespace<S> {
     #[inline]
+    fn oid(&self) -> Oid<Self> {
+        self.oid
+    }
+
+    #[inline]
     fn name(&self) -> Name {
         Name::clone(&self.name)
     }
