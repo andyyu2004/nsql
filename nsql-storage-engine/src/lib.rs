@@ -35,6 +35,10 @@ pub trait StorageEngine: Clone + Send + Sync + Sized + 'static {
         Self: 'env + 'txn,
         'env: 'txn;
 
+    fn create(path: impl AsRef<Path>) -> Result<Self, Self::Error>
+    where
+        Self: Sized;
+
     fn open(path: impl AsRef<Path>) -> Result<Self, Self::Error>
     where
         Self: Sized;

@@ -8,15 +8,13 @@ use arc_swap::ArcSwapOption;
 use nsql_bind::Binder;
 use nsql_catalog::Catalog;
 use nsql_execution::{ExecutionContext, PhysicalPlanner};
-use nsql_lmdb::LmdbStorageEngine;
 use nsql_opt::optimize;
 use nsql_plan::Planner;
+use nsql_redb::RedbStorageEngine;
 pub use nsql_storage::schema::LogicalType;
 pub use nsql_storage::tuple::Tuple;
 use nsql_storage::Storage;
-use nsql_storage_engine::{
-    ReadOrWriteTransaction, ReadOrWriteTransactionRef, StorageEngine, WriteTransaction,
-};
+use nsql_storage_engine::{ReadOrWriteTransaction, StorageEngine, WriteTransaction};
 
 pub type Result<T, E = anyhow::Error> = std::result::Result<T, E>;
 
@@ -31,10 +29,19 @@ pub struct MaterializedQueryOutput {
 }
 
 impl<S: StorageEngine> Nsql<S> {
+    pub fn create(path: impl AsRef<Path>) -> Result<Self> {
+        let storage = S::create(path)?;
+        let tx = storage.begin_write()?;
+        let catalog = Arc::new(Catalog::<S>::create(&tx)?);
+        tx.commit()?;
+
+        Ok(Self::new(Shared { storage: Storage::new(storage), catalog }))
+    }
+
     pub fn open(path: impl AsRef<Path>) -> Result<Self> {
         let storage = S::open(path)?;
-        let mut tx = storage.begin_write()?;
-        let catalog = Arc::new(Catalog::<S>::create(&mut tx)?);
+        let tx = storage.begin_write()?;
+        let catalog = Arc::new(Catalog::<S>::create(&tx)?);
         tx.commit()?;
 
         Ok(Self::new(Shared { storage: Storage::new(storage), catalog }))
@@ -52,7 +59,7 @@ impl<S: StorageEngine> Nsql<S> {
 }
 
 // FIXME don't have an im memory impl currently
-impl Nsql<LmdbStorageEngine> {
+impl Nsql<RedbStorageEngine> {
     #[cfg(feature = "in-memory")]
     pub fn in_memory() -> Result<Self> {
         Self::open(":memory:")

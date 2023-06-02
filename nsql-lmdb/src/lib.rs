@@ -58,6 +58,13 @@ impl StorageEngine for LmdbStorageEngine {
 
     type WriteTree<'env, 'txn> = LmdbWriteTree<'env, 'txn> where 'env: 'txn;
 
+    fn create(_path: impl AsRef<Path>) -> std::result::Result<Self, Self::Error>
+    where
+        Self: Sized,
+    {
+        todo!()
+    }
+
     #[inline]
     fn open(path: impl AsRef<Path>) -> Result<Self, Self::Error>
     where

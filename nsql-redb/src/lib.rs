@@ -31,9 +31,9 @@ impl<'env> Deref for Transaction<'env> {
 }
 
 impl nsql_storage_engine::StorageEngine for RedbStorageEngine {
-    type Bytes<'txn> = AccessGuardDerefWrapper<'txn>;
-
     type Error = redb::Error;
+
+    type Bytes<'txn> = AccessGuardDerefWrapper<'txn>;
 
     type Transaction<'env> = ReadTransaction<'env>;
 
@@ -42,6 +42,14 @@ impl nsql_storage_engine::StorageEngine for RedbStorageEngine {
     type ReadTree<'env, 'txn> = Box<dyn ReadableTableDyn + 'txn> where 'env: 'txn;
 
     type WriteTree<'env, 'txn> = redb::Table<'env, 'txn, &'static [u8], &'static [u8]> where 'env: 'txn;
+
+    #[inline]
+    fn create(path: impl AsRef<Path>) -> std::result::Result<Self, Self::Error>
+    where
+        Self: Sized,
+    {
+        redb::Database::create(path).map(Arc::new).map(|db| Self { db })
+    }
 
     #[inline]
     fn open(path: impl AsRef<Path>) -> Result<Self, Self::Error>
