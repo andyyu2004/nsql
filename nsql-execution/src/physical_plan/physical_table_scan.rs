@@ -48,8 +48,6 @@ impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSource<'env, S, 
             TableStorageInfo::new(self.table_ref, table.columns(tx)),
         )?);
 
-        // let storage = Box::leak(Box::new(storage));
-
         let projection = self
             .projection
             .as_ref()

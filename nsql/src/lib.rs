@@ -137,6 +137,7 @@ impl<S: StorageEngine> Shared<S> {
         let planner = PhysicalPlanner::new(Arc::clone(&catalog));
         let (tx, tuples) = match tx {
             ReadOrWriteTransaction::Read(tx) => {
+                tracing::info!("executing readonly query");
                 let physical_plan = planner.plan(&tx, plan)?;
                 let ctx = ExecutionContext::new(self.storage.storage(), catalog, tx);
                 let tuples = nsql_execution::execute(&ctx, physical_plan)?;
@@ -144,6 +145,7 @@ impl<S: StorageEngine> Shared<S> {
                 (txn.map(ReadOrWriteTransaction::<S>::Read), tuples)
             }
             ReadOrWriteTransaction::Write(tx) => {
+                tracing::info!("executing write query");
                 let physical_plan = planner.plan_write(&tx, plan)?;
                 let ctx = ExecutionContext::new(self.storage.storage(), catalog, tx);
                 let tuples = nsql_execution::execute_write(&ctx, physical_plan)?;

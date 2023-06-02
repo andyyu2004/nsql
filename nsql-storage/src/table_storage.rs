@@ -104,15 +104,31 @@ fn range_gen<'env, 'txn, S: StorageEngine>(
     storage: Arc<TableStorage<'env, 'txn, S>>,
     projection: Option<Box<[TupleIndex]>>,
 ) {
-    let mut range = storage.tree.range(..).expect("todo");
-    while let Some((k, v)) = range.next().expect("todo error handling") {
-        let k = unsafe { rkyv::archived_root::<Vec<Value>>(&k) };
-        let v = unsafe { rkyv::archived_root::<Vec<Value>>(&v) };
-        //         let mut tuple = match &projection {
-        //             Some(projection) => tuple.project(tid, projection),
-        //             None => nsql_rkyv::deserialize(tuple),
-        //         };
-        yield_!(Ok(Tuple::new(Box::new([]))))
+    let mut range = match storage.tree.range(..) {
+        Ok(range) => range,
+        Err(err) => {
+            yield_!(Err(err));
+            return;
+        }
+    };
+    loop {
+        match range.next() {
+            Err(err) => {
+                yield_!(Err(err));
+                return;
+            }
+            Ok(None) => return,
+            Ok(Some((k, v))) => {
+                let k = unsafe { rkyv::archived_root::<Vec<Value>>(&k) };
+                let v = unsafe { rkyv::archived_root::<Vec<Value>>(&v) };
+                //         let mut tuple = match &projection {
+                //             Some(projection) => tuple.project(tid, projection),
+                //             None => nsql_rkyv::deserialize(tuple),
+                //         };
+                todo!();
+                yield_!(Ok(Tuple::new(Box::new([]))))
+            }
+        }
     }
 }
 pub struct TableStorageInfo {
