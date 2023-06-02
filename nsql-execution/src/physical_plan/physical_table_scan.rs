@@ -16,6 +16,7 @@ pub struct PhysicalTableScan<S: StorageEngine> {
     projection: Option<Box<[ColumnIndex]>>,
     current_batch: Mutex<Vec<Tuple>>,
     current_batch_index: AtomicUsize,
+    storage: TableStorage<'static, 'static, S>,
 }
 
 impl<S: StorageEngine> fmt::Debug for PhysicalTableScan<S> {
@@ -38,6 +39,7 @@ impl<'env, S: StorageEngine> PhysicalTableScan<S> {
             table: Default::default(),
             current_batch: Default::default(),
             current_batch_index: Default::default(),
+            storage: todo!(),
         })
     }
 }
@@ -58,6 +60,8 @@ impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSource<'env, S, 
             &**ctx.tx(),
             TableStorageInfo::new(self.table_ref, table.columns(tx)),
         )?;
+
+        let storage = Box::leak(Box::new(storage));
 
         let projection = self
             .projection

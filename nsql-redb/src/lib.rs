@@ -48,7 +48,7 @@ impl nsql_storage_engine::StorageEngine for RedbStorageEngine {
     where
         Self: Sized,
     {
-        redb::Database::create(path).map(Arc::new).map(|db| Self { db })
+        Ok(redb::Database::create(path).map(Arc::new).map(|db| Self { db })?)
     }
 
     #[inline]
@@ -56,7 +56,7 @@ impl nsql_storage_engine::StorageEngine for RedbStorageEngine {
     where
         Self: Sized,
     {
-        redb::Database::open(path).map(Arc::new).map(|db| Self { db })
+        Ok(redb::Database::open(path).map(Arc::new).map(|db| Self { db })?)
     }
 
     #[inline]
@@ -84,11 +84,17 @@ impl nsql_storage_engine::StorageEngine for RedbStorageEngine {
             ReadOrWriteTransactionRef::Read(txn) => {
                 match txn.0.open_table(redb::TableDefinition::new(name)) {
                     Ok(table) => Ok(Some(Box::new(table))),
-                    Err(redb::Error::TableDoesNotExist(_)) => unreachable!(),
-                    Err(e) => Err(e),
+                    Err(redb::TableError::TableDoesNotExist(_)) => unreachable!(),
+                    Err(e) => Err(e)?,
                 }
             }
-            ReadOrWriteTransactionRef::Write(_) => todo!(),
+            ReadOrWriteTransactionRef::Write(txn) => {
+                match txn.0.open_table(redb::TableDefinition::new(name)) {
+                    Ok(table) => Ok(Some(Box::new(table))),
+                    Err(redb::TableError::TableDoesNotExist(_)) => Ok(None),
+                    Err(e) => Err(e)?,
+                }
+            }
         }
     }
 
@@ -103,8 +109,8 @@ impl nsql_storage_engine::StorageEngine for RedbStorageEngine {
     {
         match txn.0.open_table(redb::TableDefinition::new(name)) {
             Ok(table) => Ok(table),
-            Err(redb::Error::TableDoesNotExist(_)) => unreachable!(),
-            Err(e) => Err(e),
+            Err(redb::TableError::TableDoesNotExist(_)) => unreachable!(),
+            Err(e) => Err(e)?,
         }
     }
 }
@@ -131,7 +137,7 @@ impl<'env, 'txn> nsql_storage_engine::ReadTree<'env, 'txn, RedbStorageEngine>
         Option<<RedbStorageEngine as nsql_storage_engine::StorageEngine>::Bytes<'a>>,
         <RedbStorageEngine as nsql_storage_engine::StorageEngine>::Error,
     > {
-        ReadableTable::get(self, key).map(|v| v.map(AccessGuardDerefWrapper))
+        Ok(ReadableTable::get(self, key).map(|v| v.map(AccessGuardDerefWrapper))?)
     }
 
     #[inline]
@@ -141,7 +147,10 @@ impl<'env, 'txn> nsql_storage_engine::ReadTree<'env, 'txn, RedbStorageEngine>
     ) -> Result<Range<'a, RedbStorageEngine>, redb::Error> {
         Ok(Box::new(fallible_iterator::convert(
             ReadableTable::range::<&[u8]>(self, (range.start_bound(), range.end_bound()))?
-                .map(|kv| kv.map(|(k, v)| (AccessGuardDerefWrapper(k), AccessGuardDerefWrapper(v))))
+                .map(|kv| {
+                    kv.map(|(k, v)| (AccessGuardDerefWrapper(k), AccessGuardDerefWrapper(v)))
+                        .map_err(Into::into)
+                })
                 .rev(),
         )))
     }
@@ -153,7 +162,10 @@ impl<'env, 'txn> nsql_storage_engine::ReadTree<'env, 'txn, RedbStorageEngine>
     ) -> Result<Range<'a, RedbStorageEngine>, redb::Error> {
         Ok(Box::new(fallible_iterator::convert(
             ReadableTable::range::<&[u8]>(self, (range.start_bound(), range.end_bound()))?.map(
-                |kv| kv.map(|(k, v)| (AccessGuardDerefWrapper(k), AccessGuardDerefWrapper(v))),
+                |kv| {
+                    kv.map(|(k, v)| (AccessGuardDerefWrapper(k), AccessGuardDerefWrapper(v)))
+                        .map_err(Into::into)
+                },
             ),
         )))
     }
@@ -199,16 +211,16 @@ impl<'env> nsql_storage_engine::Transaction<'env, RedbStorageEngine> for Transac
 impl<'env> nsql_storage_engine::WriteTransaction<'env, RedbStorageEngine> for Transaction<'env> {
     #[inline]
     fn commit(self) -> Result<(), redb::Error> {
-        self.0.commit()
+        Ok(self.0.commit()?)
     }
 
     #[inline]
     fn abort(self) -> Result<(), redb::Error> {
-        self.0.abort()
+        Ok(self.0.abort()?)
     }
 }
 
-pub trait ReadableTableDyn {
+pub trait ReadableTableDyn: Send + Sync {
     // Required methods
     fn get(&self, key: &[u8]) -> Result<Option<AccessGuard<'_, &'static [u8]>>, redb::Error>;
 
@@ -224,9 +236,12 @@ pub trait ReadableTableDyn {
     fn iter(&self) -> Result<redb::Range<'_, &'static [u8], &'static [u8]>, redb::Error>;
 }
 
-impl<T: ReadableTable<&'static [u8], &'static [u8]>> ReadableTableDyn for T {
+impl<T: ReadableTable<&'static [u8], &'static [u8]>> ReadableTableDyn for T
+where
+    T: Send + Sync,
+{
     fn get(&self, key: &[u8]) -> Result<Option<AccessGuard<'_, &'static [u8]>>, redb::Error> {
-        ReadableTable::get(self, key)
+        Ok(ReadableTable::get(self, key)?)
     }
 
     #[inline]
@@ -234,22 +249,22 @@ impl<T: ReadableTable<&'static [u8], &'static [u8]>> ReadableTableDyn for T {
         &self,
         range: (Bound<&[u8]>, Bound<&[u8]>),
     ) -> Result<redb::Range<'_, &'static [u8], &'static [u8]>, redb::Error> {
-        ReadableTable::range::<&[u8]>(self, range)
+        Ok(ReadableTable::range::<&[u8]>(self, range)?)
     }
 
     #[inline]
     fn len(&self) -> Result<u64, redb::Error> {
-        ReadableTable::len(self)
+        Ok(ReadableTable::len(self)?)
     }
 
     #[inline]
     fn is_empty(&self) -> Result<bool, redb::Error> {
-        ReadableTable::is_empty(self)
+        Ok(ReadableTable::is_empty(self)?)
     }
 
     #[inline]
     fn iter(&self) -> Result<redb::Range<'_, &'static [u8], &'static [u8]>, redb::Error> {
-        ReadableTable::iter(self)
+        Ok(ReadableTable::iter(self)?)
     }
 }
 
@@ -275,6 +290,7 @@ impl<'env, 'txn> nsql_storage_engine::ReadTree<'env, 'txn, RedbStorageEngine>
         Ok(Box::new(fallible_iterator::convert(
             (**self).range((range.start_bound(), range.end_bound()))?.map(|kv| {
                 kv.map(|(k, v)| (AccessGuardDerefWrapper(k), AccessGuardDerefWrapper(v)))
+                    .map_err(Into::into)
             }),
         )))
     }
@@ -287,6 +303,7 @@ impl<'env, 'txn> nsql_storage_engine::ReadTree<'env, 'txn, RedbStorageEngine>
         Ok(Box::new(fallible_iterator::convert(
             (**self).range((range.start_bound(), range.end_bound()))?.map(|kv| {
                 kv.map(|(k, v)| (AccessGuardDerefWrapper(k), AccessGuardDerefWrapper(v)))
+                    .map_err(Into::into)
             }),
         )))
     }

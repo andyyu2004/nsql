@@ -85,7 +85,7 @@ impl<'env, 'txn, S: StorageEngine> TableStorage<'env, 'txn, S> {
     pub fn scan(
         &self,
         projection: Option<Box<[TupleIndex]>>,
-    ) -> Result<impl FallibleIterator<Item = Tuple, Error = S::Error> + '_, S::Error> {
+    ) -> Result<impl FallibleIterator<Item = Tuple, Error = S::Error> +'_, S::Error> {
         let iter = self.tree.range(..)?;
         // Ok(fallible_iterator::convert([].into_iter()))
         Ok(iter.map(move |(k, v)| {

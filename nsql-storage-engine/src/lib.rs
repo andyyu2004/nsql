@@ -25,7 +25,7 @@ pub trait StorageEngine: Clone + Send + Sync + Sized + 'static {
     where
         Self: 'env;
 
-    type ReadTree<'env, 'txn>: ReadTree<'env, 'txn, Self>
+    type ReadTree<'env, 'txn>: ReadTree<'env, 'txn, Self> + Send + Sync
     where
         Self: 'env + 'txn,
         'env: 'txn;

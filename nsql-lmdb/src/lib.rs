@@ -130,10 +130,16 @@ pub struct LmdbReadTree<'env, 'txn> {
     txn: &'txn heed::RoTxn<'env>,
 }
 
+unsafe impl Send for LmdbReadTree<'_, '_> {}
+
+unsafe impl Sync for LmdbReadTree<'_, '_> {}
+
 pub struct LmdbWriteTree<'env, 'txn> {
     db: UntypedDatabase,
     txn: &'txn mut ReadWriteTx<'env>,
 }
+
+unsafe impl Send for LmdbWriteTree<'_, '_> {}
 
 impl<'env, 'txn> ReadTree<'env, 'txn, LmdbStorageEngine> for LmdbReadTree<'env, 'txn> {
     fn get<'a>(
