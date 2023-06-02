@@ -12,6 +12,7 @@ use crate::set::CatalogSet;
 use crate::{Catalog, Container, Entity, EntityRef, Name, Namespace, Oid};
 
 pub struct Table<S> {
+    oid: Oid<Self>,
     name: Name,
     columns: CatalogSet<S, Column>,
     // storage: Arc<TableStorage<S>>,
@@ -23,10 +24,10 @@ impl<S: StorageEngine> Table<S> {
         &self.name
     }
 
-    // #[inline]
-    // pub fn storage(&self) -> &Arc<TableStorage<S>> {
-    //     &self.storage
-    // }
+    #[inline]
+    pub fn columns(&self, tx: &impl Transaction<'_, S>) -> Vec<Arc<Column>> {
+        self.all::<Column>(tx)
+    }
 
     #[inline]
     /// Returns the index of the special `tid` column
@@ -72,8 +73,8 @@ impl<S: StorageEngine> CatalogEntity<S> for Table<S> {
         &container.tables
     }
 
-    fn create(_tx: &S::WriteTransaction<'_>, info: Self::CreateInfo) -> Self {
-        Self { name: info.name, columns: Default::default() }
+    fn create(_tx: &S::WriteTransaction<'_>, oid: Oid<Self>, info: Self::CreateInfo) -> Self {
+        Self { oid, name: info.name, columns: Default::default() }
     }
 }
 

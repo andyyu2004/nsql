@@ -11,7 +11,7 @@ mod wal;
 
 use anyhow::Error;
 use nsql_storage_engine::StorageEngine;
-pub use table_storage::{ColumnStorageInfo, TableStorage, TableStorageInfo};
+pub use table_storage::{TableStorage, TableStorageInfo};
 
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 

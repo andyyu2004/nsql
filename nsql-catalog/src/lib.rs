@@ -77,7 +77,7 @@ pub trait Container<S: StorageEngine> {
         tx: &S::WriteTransaction<'_>,
         info: T::CreateInfo,
     ) -> Result<Oid<T>, Conflict<S, T>> {
-        T::create(tx, info).insert(self, tx)
+        T::insert(self, tx, info)
     }
 
     fn get<T: CatalogEntity<S, Container = Self>>(
@@ -113,7 +113,7 @@ pub trait Container<S: StorageEngine> {
     fn all<T: CatalogEntity<S, Container = Self>>(
         &self,
         tx: &impl Transaction<'_, S>,
-    ) -> Vec<(Oid<T>, Arc<T>)> {
+    ) -> Vec<Arc<T>> {
         T::all(self, tx)
     }
 }
@@ -133,25 +133,25 @@ pub(crate) mod private {
         /// extract the `CatalogSet` from the `container` for `Self`
         fn catalog_set(container: &Self::Container) -> &CatalogSet<S, Self>;
 
-        fn create(tx: &S::WriteTransaction<'_>, info: Self::CreateInfo) -> Self;
+        fn create(tx: &S::WriteTransaction<'_>, oid: Oid<Self>, info: Self::CreateInfo) -> Self;
 
         #[inline]
         fn insert(
-            self,
             container: &Self::Container,
             tx: &S::WriteTransaction<'_>,
+            info: Self::CreateInfo,
         ) -> Result<Oid<Self>, Conflict<S, Self>> {
-            Self::catalog_set(container).insert(tx, self)
+            Self::catalog_set(container).insert(tx, info)
         }
 
-        #[inline]
-        fn try_insert(
-            self,
-            container: &Self::Container,
-            tx: &S::WriteTransaction<'_>,
-        ) -> Result<Oid<Self>, Conflict<S, Self>> {
-            Self::catalog_set(container).insert(tx, self)
-        }
+        // #[inline]
+        // fn try_insert(
+        //     self,
+        //     container: &Self::Container,
+        //     tx: &S::WriteTransaction<'_>,
+        // ) -> Result<Oid<Self>, Conflict<S, Self>> {
+        //     Self::catalog_set(container).insert(tx, self)
+        // }
 
         #[inline]
         fn get(
@@ -186,10 +186,7 @@ pub(crate) mod private {
         }
 
         #[inline]
-        fn all(
-            container: &Self::Container,
-            tx: &impl Transaction<'_, S>,
-        ) -> Vec<(Oid<Self>, Arc<Self>)> {
+        fn all(container: &Self::Container, tx: &impl Transaction<'_, S>) -> Vec<Arc<Self>> {
             Self::catalog_set(container).entries(tx)
         }
     }

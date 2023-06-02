@@ -2,10 +2,11 @@ use nsql_storage_engine::StorageEngine;
 
 use crate::private::CatalogEntity;
 use crate::set::CatalogSet;
-use crate::{Catalog, Container, Entity, Name, Table};
+use crate::{Catalog, Container, Entity, Name, Oid, Table};
 
 #[derive(Debug)]
 pub struct Namespace<S> {
+    oid: Oid<Self>,
     name: Name,
     pub(crate) tables: CatalogSet<S, Table<S>>,
 }
@@ -32,8 +33,8 @@ impl<S: StorageEngine> CatalogEntity<S> for Namespace<S> {
     }
 
     #[inline]
-    fn create(_tx: &S::WriteTransaction<'_>, info: Self::CreateInfo) -> Self {
-        Self { name: info.name, tables: Default::default() }
+    fn create(_tx: &S::WriteTransaction<'_>, oid: Oid<Self>, info: Self::CreateInfo) -> Self {
+        Self { oid, name: info.name, tables: Default::default() }
     }
 }
 

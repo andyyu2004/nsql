@@ -30,7 +30,7 @@ impl Scope {
 
         let table = table_ref.get(&binder.catalog, tx);
         let mut table_columns = table.all::<Column>(tx);
-        table_columns.sort_by_key(|(_, col)| col.index());
+        table_columns.sort_by_key(|col| col.index());
 
         if let Some(alias) = alias {
             // if no columns are specified, we only rename the table
@@ -49,7 +49,7 @@ impl Scope {
             None => table_path,
         };
 
-        for (i, (_oid, column)) in table_columns.into_iter().enumerate() {
+        for (i, column) in table_columns.into_iter().enumerate() {
             let name = match alias {
                 Some(alias) if !alias.columns.is_empty() => alias.columns[i].clone(),
                 _ => column.name(),

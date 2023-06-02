@@ -77,16 +77,11 @@ impl<S: StorageEngine, T: CatalogEntity<S>> CatalogSet<S, T> {
         tx: &S::WriteTransaction<'_>,
         info: T::CreateInfo,
     ) -> Result<Oid<T>, Conflict<S, T>> {
-        let entity = T::create(tx, info);
-        self.insert(tx, entity)
+        self.insert(tx, info)
     }
 
-    pub(crate) fn entries(&self, _tx: &impl Transaction<'_, S>) -> Vec<(Oid<T>, Arc<T>)> {
-        self.entries
-            .iter()
-            .enumerate()
-            .map(|(idx, entry)| (Oid::new(idx as u64), entry.value().value()))
-            .collect()
+    pub(crate) fn entries(&self, _tx: &impl Transaction<'_, S>) -> Vec<Arc<T>> {
+        self.entries.iter().map(|entry| entry.value().value()).collect()
     }
 
     pub(crate) fn get(&self, _tx: &impl Transaction<'_, S>, oid: Oid<T>) -> Option<Arc<T>> {
@@ -117,9 +112,10 @@ impl<S: StorageEngine, T: CatalogEntity<S>> CatalogSet<S, T> {
     pub(crate) fn insert(
         &self,
         tx: &S::WriteTransaction<'_>,
-        value: T,
+        info: T::CreateInfo,
     ) -> Result<Oid<T>, Conflict<S, T>> {
         let oid = self.next_oid();
+        let value = T::create(tx, oid, info);
         if self.name_mapping.contains_key(&value.name()) {
             return Err(Conflict::AlreadyExists(PhantomData, value));
         }

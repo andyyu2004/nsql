@@ -1,5 +1,7 @@
+use std::sync::Arc;
+
 use nsql_catalog::schema::LogicalType;
-use nsql_catalog::{Namespace, Oid, Table, TableRef};
+use nsql_catalog::{Column, Namespace, Oid, Table, TableRef};
 use nsql_storage_engine::{FallibleIterator, ReadTree, StorageEngine, Transaction, WriteTree};
 
 use crate::tuple::{Tuple, TupleIndex};
@@ -47,13 +49,13 @@ impl<'env, 'txn, S: StorageEngine> TableStorage<'env, 'txn, S> {
         for (value, col) in tuple.values().zip(&self.info.columns) {
             assert_eq!(
                 value.ty(),
-                col.ty,
+                col.logical_type(),
                 "expected column type {:?}, got {:?}",
-                col.ty,
+                col.logical_type(),
                 value.ty()
             );
 
-            if col.is_primary_key {
+            if col.is_primary_key() {
                 pk_tuple.push(value);
             } else {
                 non_pk_tuple.push(value);
@@ -115,28 +117,15 @@ impl<'env, 'txn, S: StorageEngine> TableStorage<'env, 'txn, S> {
 }
 
 pub struct TableStorageInfo {
-    columns: Vec<ColumnStorageInfo>,
+    columns: Vec<Arc<Column>>,
     storage_tree_name: String,
-}
-
-#[derive(Clone)]
-pub struct ColumnStorageInfo {
-    ty: LogicalType,
-    is_primary_key: bool,
-}
-
-impl ColumnStorageInfo {
-    #[inline]
-    pub fn new(ty: LogicalType, is_primary_key: bool) -> Self {
-        Self { ty, is_primary_key }
-    }
 }
 
 impl TableStorageInfo {
     #[inline]
-    pub fn new<S>(table_ref: TableRef<S>, columns: Vec<ColumnStorageInfo>) -> Self {
+    pub fn new<S>(table_ref: TableRef<S>, columns: Vec<Arc<Column>>) -> Self {
         assert!(
-            columns.iter().any(|c| c.is_primary_key),
+            columns.iter().any(|c| c.is_primary_key()),
             "expected at least one primary key column (this should be checked in the binder)"
         );
 

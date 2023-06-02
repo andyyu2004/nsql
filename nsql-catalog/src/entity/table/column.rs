@@ -11,6 +11,7 @@ use crate::{Catalog, Entity, EntityRef, Name, Oid, Table};
 
 #[derive(Clone)]
 pub struct Column {
+    oid: Oid<Self>,
     name: Name,
     index: ColumnIndex,
     ty: LogicalType,
@@ -88,8 +89,9 @@ impl<S: StorageEngine> CatalogEntity<S> for Column {
         &table.columns
     }
 
-    fn create(_tx: &S::WriteTransaction<'_>, info: Self::CreateInfo) -> Self {
+    fn create(_tx: &S::WriteTransaction<'_>, oid: Oid<Self>, info: Self::CreateInfo) -> Self {
         Self {
+            oid,
             name: info.name,
             index: ColumnIndex::new(info.index),
             ty: info.ty,

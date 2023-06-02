@@ -50,15 +50,15 @@ impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSource<'env, S, 
         self: Arc<Self>,
         ctx: &'txn ExecutionContext<'env, S, M>,
     ) -> ExecutionResult<TupleStream<'txn, S>> {
-        let table = self.table.get_or_init(|| self.table_ref.get(&ctx.catalog, &**ctx.tx()));
+        let tx = &**ctx.tx();
+        let table = self.table.get_or_init(|| self.table_ref.get(&ctx.catalog, tx));
 
-        // let storage = table.storage();
         let storage = TableStorage::open(
             ctx.storage(),
             &**ctx.tx(),
-            TableStorageInfo::new(self.table_ref, todo!()),
+            TableStorageInfo::new(self.table_ref, table.columns(tx)),
         )?;
-        // let storage: TableStorage<'env, '_, S> = todo!();
+
         let projection = self
             .projection
             .as_ref()
@@ -112,12 +112,12 @@ impl<'env, S: StorageEngine> Explain<S> for PhysicalTableScan<S> {
                 .map(|&idx| {
                     columns
                         .get(idx.as_usize())
-                        .map(|(_, col)| col.name())
+                        .map(|col| col.name())
                         // FIXME centralize this logic
                         .unwrap_or_else(|| "tid".into())
                 })
                 .collect::<Vec<_>>(),
-            None => columns.iter().map(|(_, col)| col.name()).collect::<Vec<_>>(),
+            None => columns.iter().map(|col| col.name()).collect::<Vec<_>>(),
         };
 
         write!(f, "scan {} ({})", table.name(), column_names.iter().join(", "))?;

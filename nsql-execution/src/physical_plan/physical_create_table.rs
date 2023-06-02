@@ -1,5 +1,4 @@
 use nsql_catalog::{Column, Container, CreateTableInfo, Entity, Namespace, Table};
-use nsql_storage::{ColumnStorageInfo, TableStorage, TableStorageInfo};
 use nsql_storage_engine::fallible_iterator;
 
 use super::*;
@@ -69,12 +68,7 @@ impl<'env, S: StorageEngine> PhysicalSource<'env, S, ReadWriteExecutionMode<S>>
         self: Arc<Self>,
         ctx: &'txn ExecutionContext<'env, S, ReadWriteExecutionMode<S>>,
     ) -> ExecutionResult<TupleStream<'txn, S>> {
-        let columns = self
-            .info
-            .columns
-            .iter()
-            .map(|c| ColumnStorageInfo::new(c.ty.clone(), c.is_primary_key))
-            .collect::<Vec<_>>();
+        let columns = self.info.columns.clone();
 
         let catalog = ctx.catalog();
         let tx = ctx.tx();
@@ -84,6 +78,7 @@ impl<'env, S: StorageEngine> PhysicalSource<'env, S, ReadWriteExecutionMode<S>>
 
         let info = CreateTableInfo {
             name: self.info.name.clone(),
+            // FIXME need to create the physical table
             // storage: Arc::new(TableStorage::initialize(
             //     ctx.storage(),
             //     &mut tx,
