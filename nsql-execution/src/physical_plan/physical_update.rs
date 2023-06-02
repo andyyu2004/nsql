@@ -1,6 +1,6 @@
 use std::collections::VecDeque;
 
-use nsql_catalog::EntityRef;
+use nsql_catalog::{EntityRef, TableRef};
 use nsql_storage_engine::fallible_iterator;
 use parking_lot::RwLock;
 
@@ -9,7 +9,7 @@ use crate::ReadWriteExecutionMode;
 
 pub(crate) struct PhysicalUpdate<'env, S> {
     children: [Arc<dyn PhysicalNode<'env, S, ReadWriteExecutionMode<S>>>; 1],
-    table_ref: ir::TableRef<S>,
+    table_ref: TableRef<S>,
     returning: Option<Box<[ir::Expr]>>,
     returning_tuples: RwLock<VecDeque<Tuple>>,
     returning_evaluator: Evaluator,
@@ -17,7 +17,7 @@ pub(crate) struct PhysicalUpdate<'env, S> {
 
 impl<'env, S: StorageEngine> PhysicalUpdate<'env, S> {
     pub fn plan(
-        table_ref: ir::TableRef<S>,
+        table_ref: TableRef<S>,
         // This is the source of the updates.
         // The schema should be that of the table being updated + the `tid` in the rightmost column
         source: Arc<dyn PhysicalNode<'env, S, ReadWriteExecutionMode<S>>>,

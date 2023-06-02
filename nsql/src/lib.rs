@@ -6,12 +6,12 @@ use std::sync::Arc;
 pub use anyhow::Error;
 use arc_swap::ArcSwapOption;
 use nsql_bind::Binder;
+pub use nsql_catalog::schema::LogicalType;
 use nsql_catalog::Catalog;
 use nsql_execution::{ExecutionContext, PhysicalPlanner};
 use nsql_opt::optimize;
 use nsql_plan::Planner;
 use nsql_redb::RedbStorageEngine;
-pub use nsql_storage::schema::LogicalType;
 pub use nsql_storage::tuple::Tuple;
 use nsql_storage::Storage;
 use nsql_storage_engine::{ReadOrWriteTransaction, StorageEngine, WriteTransaction};
@@ -145,7 +145,7 @@ impl<S: StorageEngine> Shared<S> {
             }
             ReadOrWriteTransaction::Write(tx) => {
                 let physical_plan = planner.plan_write(&tx, plan)?;
-                let mut ctx = ExecutionContext::new(self.storage.storage(), catalog, tx);
+                let ctx = ExecutionContext::new(self.storage.storage(), catalog, tx);
                 let tuples = nsql_execution::execute_write(&ctx, physical_plan)?;
                 let (auto_commit, mut txn) = ctx.take_txn();
                 // FIXME need to remember `auto_commit` the next call

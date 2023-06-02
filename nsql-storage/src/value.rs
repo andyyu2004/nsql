@@ -2,10 +2,9 @@ use std::error::Error;
 use std::fmt;
 use std::marker::PhantomData;
 
+use nsql_catalog::schema::LogicalType;
 use rust_decimal::prelude::ToPrimitive;
 pub use rust_decimal::Decimal;
-
-use crate::schema::LogicalType;
 
 pub struct CastError<T> {
     value: Value,

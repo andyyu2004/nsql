@@ -1,11 +1,13 @@
 use std::fmt;
+use std::sync::Arc;
 
-use nsql_storage::schema::LogicalType;
-use nsql_storage_engine::StorageEngine;
+use nsql_storage_engine::{StorageEngine, Transaction};
 
+use super::TableRef;
 use crate::private::CatalogEntity;
+use crate::schema::LogicalType;
 use crate::set::CatalogSet;
-use crate::{Entity, Name, Table};
+use crate::{Catalog, Entity, EntityRef, Name, Oid, Table};
 
 #[derive(Clone)]
 pub struct Column {
@@ -93,5 +95,36 @@ impl<S: StorageEngine> CatalogEntity<S> for Column {
             ty: info.ty,
             is_primary_key: info.is_primary_key,
         }
+    }
+}
+
+#[derive(Debug)]
+pub struct ColumnRef<S> {
+    pub table_ref: TableRef<S>,
+    pub column: Oid<Column>,
+}
+
+impl<S> Clone for ColumnRef<S> {
+    #[inline]
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<S> Copy for ColumnRef<S> {}
+
+impl<S: StorageEngine> EntityRef<S> for ColumnRef<S> {
+    type Entity = Column;
+
+    type Container = Table<S>;
+
+    #[inline]
+    fn container(self, catalog: &Catalog<S>, tx: &impl Transaction<'_, S>) -> Arc<Self::Container> {
+        self.table_ref.get(catalog, tx)
+    }
+
+    #[inline]
+    fn entity_oid(self) -> Oid<Self::Entity> {
+        self.column
     }
 }

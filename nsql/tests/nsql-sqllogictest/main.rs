@@ -3,8 +3,8 @@ use std::error::Error;
 use std::path::Path;
 
 use nsql::{Connection, ConnectionState, Nsql};
+use nsql_catalog::schema::LogicalType;
 use nsql_redb::RedbStorageEngine;
-use nsql_storage::schema::LogicalType;
 use nsql_storage_engine::StorageEngine;
 use sqllogictest::{ColumnType, DBOutput, Runner, DB};
 use tracing_subscriber::EnvFilter;

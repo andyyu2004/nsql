@@ -17,6 +17,12 @@ impl<T: ?Sized> fmt::Debug for Oid<T> {
     }
 }
 
+impl<T: ?Sized> fmt::Display for Oid<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.oid)
+    }
+}
+
 impl<T: ?Sized> Copy for Oid<T> {}
 
 impl<T: ?Sized> Clone for Oid<T> {

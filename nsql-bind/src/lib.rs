@@ -11,13 +11,13 @@ use anyhow::{anyhow, bail, ensure};
 use ir::expr::EvalNotConst;
 use ir::{Decimal, Path, TupleIndex};
 use itertools::Itertools;
+use nsql_catalog::schema::LogicalType;
 use nsql_catalog::{
     Catalog, Column, Container, CreateColumnInfo, Entity, EntityRef, Namespace, NamespaceEntity,
-    Oid, Table, DEFAULT_SCHEMA,
+    Oid, Table, TableRef, DEFAULT_SCHEMA,
 };
 use nsql_core::Name;
 use nsql_parse::ast::{self, HiveDistributionStyle};
-use nsql_storage::schema::LogicalType;
 use nsql_storage_engine::{StorageEngine, Transaction};
 
 use self::scope::Scope;
@@ -215,7 +215,7 @@ impl<S: StorageEngine> Binder<S> {
                         ast::ObjectType::Table => {
                             let (namespace, table) =
                                 self.bind_namespaced_entity::<Table<S>>(tx, name)?;
-                            Ok(ir::EntityRef::Table(ir::TableRef { namespace, table }))
+                            Ok(ir::EntityRef::Table(TableRef { namespace, table }))
                         }
                         ast::ObjectType::View => todo!(),
                         ast::ObjectType::Index => todo!(),
@@ -301,7 +301,7 @@ impl<S: StorageEngine> Binder<S> {
         &self,
         tx: &impl Transaction<'_, S>,
         scope: &Scope,
-        table_ref: ir::TableRef<S>,
+        table_ref: TableRef<S>,
         assignments: &[ast::Assignment],
     ) -> Result<Box<[ir::Expr]>> {
         let table = table_ref.get(&self.catalog, tx);
@@ -594,11 +594,11 @@ impl<S: StorageEngine> Binder<S> {
         scope: &Scope,
         table_name: &ast::ObjectName,
         alias: Option<&ast::TableAlias>,
-    ) -> Result<(Scope, ir::TableRef<S>)> {
+    ) -> Result<(Scope, TableRef<S>)> {
         let alias = alias.map(|alias| self.lower_table_alias(alias));
         let table_name = self.lower_path(&table_name.0)?;
         let (namespace, table) = self.bind_namespaced_entity::<Table<S>>(tx, &table_name)?;
-        let table_ref = ir::TableRef { namespace, table };
+        let table_ref = TableRef { namespace, table };
 
         Ok((scope.bind_table(self, tx, table_name, table_ref, alias.as_ref())?, table_ref))
     }

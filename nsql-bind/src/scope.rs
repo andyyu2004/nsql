@@ -1,7 +1,7 @@
 use anyhow::bail;
-use nsql_catalog::{Column, Container, Entity, EntityRef};
+use nsql_catalog::schema::LogicalType;
+use nsql_catalog::{Column, Container, Entity, EntityRef, TableRef};
 use nsql_core::Name;
-use nsql_storage::schema::LogicalType;
 use nsql_storage_engine::{StorageEngine, Transaction};
 
 use super::unbound;
@@ -22,7 +22,7 @@ impl Scope {
         binder: &Binder<S>,
         tx: &impl Transaction<'_, S>,
         table_path: Path,
-        table_ref: ir::TableRef<S>,
+        table_ref: TableRef<S>,
         alias: Option<&TableAlias>,
     ) -> Result<Scope> {
         tracing::debug!("binding table");

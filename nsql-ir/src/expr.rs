@@ -5,8 +5,10 @@ use std::ops::Deref;
 use std::sync::Arc;
 
 pub use eval::EvalNotConst;
-use nsql_catalog::{Catalog, Column, ColumnIndex, Container, EntityRef, Namespace, Oid, Table};
-use nsql_storage::schema::LogicalType;
+use nsql_catalog::schema::LogicalType;
+use nsql_catalog::{
+    Catalog, Column, ColumnIndex, Container, EntityRef, Namespace, Oid, Table, TableRef,
+};
 use nsql_storage::tuple::TupleIndex;
 use nsql_storage::value::Value;
 use nsql_storage_engine::{StorageEngine, Transaction};
@@ -113,76 +115,6 @@ impl fmt::Display for BinOp {
             BinOp::And => write!(f, "AND"),
             BinOp::Or => write!(f, "OR"),
         }
-    }
-}
-
-pub struct TableRef<S> {
-    pub namespace: Oid<Namespace<S>>,
-    pub table: Oid<Table<S>>,
-}
-
-impl<S> fmt::Debug for TableRef<S> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("TableRef")
-            .field("namespace", &self.namespace)
-            .field("table", &self.table)
-            .finish()
-    }
-}
-
-impl<S> Clone for TableRef<S> {
-    #[inline]
-    fn clone(&self) -> Self {
-        *self
-    }
-}
-
-impl<S> Copy for TableRef<S> {}
-
-impl<S: StorageEngine> EntityRef<S> for TableRef<S> {
-    type Entity = Table<S>;
-
-    type Container = Namespace<S>;
-
-    #[inline]
-    fn container(self, catalog: &Catalog<S>, tx: &impl Transaction<'_, S>) -> Arc<Self::Container> {
-        catalog.get(tx, self.namespace).expect("namespace should exist for `tx`")
-    }
-
-    #[inline]
-    fn entity_oid(self) -> Oid<Self::Entity> {
-        self.table
-    }
-}
-
-#[derive(Debug)]
-pub struct ColumnRef<S> {
-    pub table_ref: TableRef<S>,
-    pub column: Oid<Column>,
-}
-
-impl<S> Clone for ColumnRef<S> {
-    #[inline]
-    fn clone(&self) -> Self {
-        *self
-    }
-}
-
-impl<S> Copy for ColumnRef<S> {}
-
-impl<S: StorageEngine> EntityRef<S> for ColumnRef<S> {
-    type Entity = Column;
-
-    type Container = Table<S>;
-
-    #[inline]
-    fn container(self, catalog: &Catalog<S>, tx: &impl Transaction<'_, S>) -> Arc<Self::Container> {
-        self.table_ref.get(catalog, tx)
-    }
-
-    #[inline]
-    fn entity_oid(self) -> Oid<Self::Entity> {
-        self.column
     }
 }
 

@@ -1,6 +1,6 @@
 //! fixme this crate seems a bit useless
 
-use nsql_catalog::ColumnIndex;
+use nsql_catalog::{ColumnIndex, TableRef};
 use nsql_storage_engine::StorageEngine;
 
 #[derive(Debug)]
@@ -13,7 +13,7 @@ pub enum Plan<S> {
     Show(ir::ObjectType),
     Explain(ir::ExplainMode, Box<Plan<S>>),
     Update {
-        table_ref: ir::TableRef<S>,
+        table_ref: TableRef<S>,
         source: Box<Plan<S>>,
         returning: Option<Box<[ir::Expr]>>,
     },
@@ -26,7 +26,7 @@ pub enum Plan<S> {
         projection: Box<[ir::Expr]>,
     },
     Insert {
-        table_ref: ir::TableRef<S>,
+        table_ref: TableRef<S>,
         projection: Box<[ir::Expr]>,
         source: Box<Plan<S>>,
         returning: Option<Box<[ir::Expr]>>,
@@ -35,7 +35,7 @@ pub enum Plan<S> {
         values: ir::Values,
     },
     Scan {
-        table_ref: ir::TableRef<S>,
+        table_ref: TableRef<S>,
         projection: Option<Box<[ColumnIndex]>>,
     },
     Limit {

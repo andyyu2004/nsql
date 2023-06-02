@@ -4,7 +4,7 @@
 pub mod expr;
 use std::fmt;
 
-use nsql_catalog::{CreateColumnInfo, Namespace, Oid};
+use nsql_catalog::{CreateColumnInfo, Namespace, Oid, TableRef};
 use nsql_core::Name;
 pub use nsql_storage::tuple::TupleIndex;
 pub use nsql_storage::value::{Decimal, Value};

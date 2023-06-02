@@ -1,7 +1,7 @@
-use nsql_core::Name;
+use nsql_catalog::schema::LogicalType;
+use nsql_catalog::{Namespace, Oid, Table, TableRef};
 use nsql_storage_engine::{FallibleIterator, ReadTree, StorageEngine, Transaction, WriteTree};
 
-use crate::schema::LogicalType;
 use crate::tuple::{Tuple, TupleIndex};
 
 pub struct TableStorage<'env: 'txn, 'txn, S: StorageEngine> {
@@ -134,13 +134,13 @@ impl ColumnStorageInfo {
 
 impl TableStorageInfo {
     #[inline]
-    pub fn create(namespace: &Name, table: &Name, columns: Vec<ColumnStorageInfo>) -> Self {
+    pub fn new<S>(table_ref: TableRef<S>, columns: Vec<ColumnStorageInfo>) -> Self {
         assert!(
             columns.iter().any(|c| c.is_primary_key),
             "expected at least one primary key column (this should be checked in the binder)"
         );
 
-        Self { columns, storage_tree_name: format!("{}.{}", namespace, table) }
+        Self { columns, storage_tree_name: format!("{table_ref}") }
     }
 }
 

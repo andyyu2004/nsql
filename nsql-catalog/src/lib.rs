@@ -5,6 +5,7 @@
 
 mod entity;
 mod entry;
+pub mod schema;
 mod set;
 
 use std::sync::Arc;
@@ -14,7 +15,9 @@ use nsql_core::Name;
 use nsql_storage_engine::{StorageEngine, Transaction};
 
 pub use self::entity::namespace::{CreateNamespaceInfo, Namespace, NamespaceEntity};
-pub use self::entity::table::{Column, ColumnIndex, CreateColumnInfo, CreateTableInfo, Table};
+pub use self::entity::table::{
+    Column, ColumnIndex, ColumnRef, CreateColumnInfo, CreateTableInfo, Table, TableRef,
+};
 pub use self::entry::Oid;
 use self::private::CatalogEntity;
 use self::set::{CatalogSet, Conflict};

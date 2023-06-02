@@ -4,7 +4,6 @@
 #![feature(split_array)]
 #![allow(incomplete_features)]
 
-pub mod schema;
 mod table_storage;
 pub mod tuple;
 pub mod value;

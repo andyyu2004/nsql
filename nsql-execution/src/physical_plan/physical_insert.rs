@@ -1,6 +1,6 @@
 use std::collections::VecDeque;
 
-use nsql_catalog::EntityRef;
+use nsql_catalog::{EntityRef, TableRef};
 use nsql_storage_engine::fallible_iterator;
 use parking_lot::RwLock;
 
@@ -9,7 +9,7 @@ use crate::ReadWriteExecutionMode;
 
 pub(crate) struct PhysicalInsert<'env, S> {
     children: [Arc<dyn PhysicalNode<'env, S, ReadWriteExecutionMode<S>>>; 1],
-    table_ref: ir::TableRef<S>,
+    table_ref: TableRef<S>,
     returning: Option<Box<[ir::Expr]>>,
     returning_tuples: RwLock<VecDeque<Tuple>>,
     returning_evaluator: Evaluator,
@@ -17,7 +17,7 @@ pub(crate) struct PhysicalInsert<'env, S> {
 
 impl<'env, S: StorageEngine> PhysicalInsert<'env, S> {
     pub fn plan(
-        table_ref: ir::TableRef<S>,
+        table_ref: TableRef<S>,
         source: Arc<dyn PhysicalNode<'env, S, ReadWriteExecutionMode<S>>>,
         returning: Option<Box<[ir::Expr]>>,
     ) -> Arc<dyn PhysicalNode<'env, S, ReadWriteExecutionMode<S>>> {

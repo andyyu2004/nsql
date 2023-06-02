@@ -3,13 +3,13 @@ mod column;
 use std::fmt;
 use std::sync::Arc;
 
-use nsql_storage::TableStorage;
-use nsql_storage_engine::StorageEngine;
+// use nsql_storage::TableStorage;
+use nsql_storage_engine::{StorageEngine, Transaction};
 
-pub use self::column::{Column, ColumnIndex, CreateColumnInfo};
+pub use self::column::{Column, ColumnIndex, ColumnRef, CreateColumnInfo};
 use crate::private::CatalogEntity;
 use crate::set::CatalogSet;
-use crate::{Container, Entity, Name, Namespace};
+use crate::{Catalog, Container, Entity, EntityRef, Name, Namespace, Oid};
 
 pub struct Table<S> {
     name: Name,
@@ -78,3 +78,48 @@ impl<S: StorageEngine> CatalogEntity<S> for Table<S> {
 }
 
 impl<S: StorageEngine> Container<S> for Table<S> {}
+
+pub struct TableRef<S> {
+    pub namespace: Oid<Namespace<S>>,
+    pub table: Oid<Table<S>>,
+}
+
+impl<S> fmt::Debug for TableRef<S> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("TableRef")
+            .field("namespace", &self.namespace)
+            .field("table", &self.table)
+            .finish()
+    }
+}
+
+impl<S> fmt::Display for TableRef<S> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}.{}", self.namespace, self.table)
+    }
+}
+
+impl<S> Clone for TableRef<S> {
+    #[inline]
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<S> Copy for TableRef<S> {}
+
+impl<S: StorageEngine> EntityRef<S> for TableRef<S> {
+    type Entity = Table<S>;
+
+    type Container = Namespace<S>;
+
+    #[inline]
+    fn container(self, catalog: &Catalog<S>, tx: &impl Transaction<'_, S>) -> Arc<Self::Container> {
+        catalog.get(tx, self.namespace).expect("namespace should exist for `tx`")
+    }
+
+    #[inline]
+    fn entity_oid(self) -> Oid<Self::Entity> {
+        self.table
+    }
+}

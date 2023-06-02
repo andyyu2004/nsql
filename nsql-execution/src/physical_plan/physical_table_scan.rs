@@ -2,23 +2,23 @@ use std::sync::atomic::{self, AtomicUsize};
 use std::sync::OnceLock;
 
 use itertools::Itertools;
-use nsql_catalog::{Column, ColumnIndex, Container, Entity, Table};
+use nsql_catalog::{Column, ColumnIndex, Container, Entity, Table, TableRef};
 use nsql_storage::tuple::TupleIndex;
-use nsql_storage::TableStorage;
+use nsql_storage::{TableStorage, TableStorageInfo};
 use nsql_storage_engine::FallibleIterator;
 use parking_lot::Mutex;
 
 use super::*;
 
 pub struct PhysicalTableScan<S: StorageEngine> {
-    table_ref: ir::TableRef<S>,
+    table_ref: TableRef<S>,
     table: OnceLock<Arc<Table<S>>>,
     projection: Option<Box<[ColumnIndex]>>,
     current_batch: Mutex<Vec<Tuple>>,
     current_batch_index: AtomicUsize,
 }
 
-impl<'env, S: StorageEngine> fmt::Debug for PhysicalTableScan<S> {
+impl<S: StorageEngine> fmt::Debug for PhysicalTableScan<S> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("PhysicalTableScan")
             .field("table_ref", &self.table_ref)
@@ -29,7 +29,7 @@ impl<'env, S: StorageEngine> fmt::Debug for PhysicalTableScan<S> {
 
 impl<'env, S: StorageEngine> PhysicalTableScan<S> {
     pub(crate) fn plan<M: ExecutionMode<'env, S>>(
-        table_ref: ir::TableRef<S>,
+        table_ref: TableRef<S>,
         projection: Option<Box<[ColumnIndex]>>,
     ) -> Arc<dyn PhysicalNode<'env, S, M>> {
         Arc::new(Self {
@@ -50,14 +50,14 @@ impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSource<'env, S, 
         self: Arc<Self>,
         ctx: &'txn ExecutionContext<'env, S, M>,
     ) -> ExecutionResult<TupleStream<'txn, S>> {
-        let table = self.table.get_or_try_init(|| {
-            let tx = ctx.tx();
-            let namespace = ctx.catalog.get(&**tx, self.table_ref.namespace).unwrap();
-            Ok::<_, nsql_catalog::Error>(namespace.get(&**tx, self.table_ref.table).unwrap())
-        })?;
+        let table = self.table.get_or_init(|| self.table_ref.get(&ctx.catalog, &**ctx.tx()));
 
         // let storage = table.storage();
-        let storage = TableStorage::open(ctx.storage(), &**ctx.tx(), todo!())?;
+        let storage = TableStorage::open(
+            ctx.storage(),
+            &**ctx.tx(),
+            TableStorageInfo::new(self.table_ref, todo!()),
+        )?;
         // let storage: TableStorage<'env, '_, S> = todo!();
         let projection = self
             .projection
