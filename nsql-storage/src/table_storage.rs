@@ -1,10 +1,15 @@
 use std::sync::Arc;
 
-use nsql_catalog::schema::LogicalType;
-use nsql_catalog::{Column, Namespace, Oid, Table, TableRef};
-use nsql_storage_engine::{FallibleIterator, ReadTree, StorageEngine, Transaction, WriteTree};
+use ::next_gen::prelude::*;
+use fix_hidden_lifetime_bug::fix_hidden_lifetime_bug;
+use next_gen::generator_fn::GeneratorFn;
+use nsql_catalog::{Column, TableRef};
+use nsql_storage_engine::{
+    fallible_iterator, FallibleIterator, ReadTree, StorageEngine, Transaction, WriteTree,
+};
 
 use crate::tuple::{Tuple, TupleIndex};
+use crate::value::Value;
 
 pub struct TableStorage<'env: 'txn, 'txn, S: StorageEngine> {
     storage: S,
@@ -12,6 +17,7 @@ pub struct TableStorage<'env: 'txn, 'txn, S: StorageEngine> {
     info: TableStorageInfo,
 }
 
+#[fix_hidden_lifetime_bug]
 impl<'env, 'txn, S: StorageEngine> TableStorage<'env, 'txn, S> {
     #[inline]
     pub fn initialize(
@@ -82,40 +88,33 @@ impl<'env, 'txn, S: StorageEngine> TableStorage<'env, 'txn, S> {
     }
 
     #[inline]
+    #[fix_hidden_lifetime_bug]
     pub fn scan(
-        &self,
+        self: Arc<Self>,
         projection: Option<Box<[TupleIndex]>>,
-    ) -> Result<impl FallibleIterator<Item = Tuple, Error = S::Error> +'_, S::Error> {
-        let iter = self.tree.range(..)?;
-        // Ok(fallible_iterator::convert([].into_iter()))
-        Ok(iter.map(move |(k, v)| {
-            // let k = unsafe { rkyv::archived_root::<Vec<Value>>(&k) };
-            // let v = unsafe { rkyv::archived_root::<Vec<Value>>(&v) };
-            // dbg!(k, v);
-            // todo!();
-            Ok(Tuple::new(Box::new([])))
-        }))
-        //
-        // Ok(tree.range(..)?.map(|(k, v)| {
-        //     // let k = unsafe { rkyv::archived_root::<Vec<Value>>(&k) };
-        //     // let v = unsafe { rkyv::archived_root::<Vec<Value>>(&v) };
-        //     // dbg!(k, v);
-        //     todo!();
-        //     Ok(Tuple::new(Box::new([])))
-        // }))
-        // self.heap
-        //     .scan(tx, move |tid, tuple| {
+    ) -> Result<impl FallibleIterator<Item = Tuple, Error = S::Error> + 'txn, S::Error> {
+        let mut gen = Box::pin(GeneratorFn::empty());
+        gen.as_mut().init(range_gen::<S>, (self, projection));
+        Ok(fallible_iterator::convert(gen))
+    }
+}
+
+#[generator(yield(Result<Tuple, S::Error>))]
+fn range_gen<'env, 'txn, S: StorageEngine>(
+    storage: Arc<TableStorage<'env, 'txn, S>>,
+    projection: Option<Box<[TupleIndex]>>,
+) {
+    let mut range = storage.tree.range(..).expect("todo");
+    while let Some((k, v)) = range.next().expect("todo error handling") {
+        let k = unsafe { rkyv::archived_root::<Vec<Value>>(&k) };
+        let v = unsafe { rkyv::archived_root::<Vec<Value>>(&v) };
         //         let mut tuple = match &projection {
         //             Some(projection) => tuple.project(tid, projection),
         //             None => nsql_rkyv::deserialize(tuple),
         //         };
-        //
-        //         tuple
-        //     })
-        //     .await
+        yield_!(Ok(Tuple::new(Box::new([]))))
     }
 }
-
 pub struct TableStorageInfo {
     columns: Vec<Arc<Column>>,
     storage_tree_name: String,

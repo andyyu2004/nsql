@@ -69,7 +69,8 @@ pub type Range<'a, S> = Box<
     dyn FallibleIterator<
             Item = (<S as StorageEngine>::Bytes<'a>, <S as StorageEngine>::Bytes<'a>),
             Error = <S as StorageEngine>::Error,
-        > + 'a,
+        > + Unpin
+        + 'a,
 >;
 
 pub trait ReadTree<'env, 'txn, S: StorageEngine> {
