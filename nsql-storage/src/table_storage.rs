@@ -35,7 +35,7 @@ impl<'env, 'txn, S: StorageEngine> TableStorage<'env, 'txn, S> {
         tx: &'txn impl Transaction<'env, S>,
         info: TableStorageInfo,
     ) -> Result<Self, S::Error> {
-        let tree = storage.open_tree(tx, &info.storage_tree_name)?.unwrap();
+        let tree = storage.open_tree(tx, &info.storage_tree_name)?.expect("tree not found");
         Ok(Self { storage, info, tree })
     }
 
@@ -104,6 +104,7 @@ fn range_gen<'env, 'txn, S: StorageEngine>(
     storage: Arc<TableStorage<'env, 'txn, S>>,
     projection: Option<Box<[TupleIndex]>>,
 ) {
+    assert!(projection.is_none(), "projection is not yet supported");
     let mut range = match storage.tree.range(..) {
         Ok(range) => range,
         Err(err) => {
@@ -111,6 +112,7 @@ fn range_gen<'env, 'txn, S: StorageEngine>(
             return;
         }
     };
+
     loop {
         match range.next() {
             Err(err) => {
@@ -119,14 +121,27 @@ fn range_gen<'env, 'txn, S: StorageEngine>(
             }
             Ok(None) => return,
             Ok(Some((k, v))) => {
-                let k = unsafe { rkyv::archived_root::<Vec<Value>>(&k) };
-                let v = unsafe { rkyv::archived_root::<Vec<Value>>(&v) };
+                let ks = unsafe { rkyv::archived_root::<Vec<Value>>(&k) };
+                let vs = unsafe { rkyv::archived_root::<Vec<Value>>(&v) };
+                let n = storage.info.columns.len();
+                debug_assert_eq!(ks.len() + vs.len(), n);
+                let (mut i, mut j) = (0, 0);
+                let mut tuple = Vec::with_capacity(n);
+
+                for col in &storage.info.columns {
+                    if col.is_primary_key() {
+                        tuple.push(nsql_rkyv::deserialize(&ks[i]));
+                        i += 1;
+                    } else {
+                        tuple.push(nsql_rkyv::deserialize(&vs[j]));
+                        j += 1;
+                    }
+                }
                 //         let mut tuple = match &projection {
                 //             Some(projection) => tuple.project(tid, projection),
                 //             None => nsql_rkyv::deserialize(tuple),
                 //         };
-                todo!();
-                yield_!(Ok(Tuple::new(Box::new([]))))
+                yield_!(Ok(Tuple::from(tuple)))
             }
         }
     }

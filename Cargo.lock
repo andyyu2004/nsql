@@ -1145,6 +1145,7 @@ dependencies = [
  "nsql-core",
  "nsql-echodb",
  "nsql-execution",
+ "nsql-lmdb",
  "nsql-opt",
  "nsql-parse",
  "nsql-plan",

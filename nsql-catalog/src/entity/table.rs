@@ -15,7 +15,6 @@ pub struct Table<S> {
     oid: Oid<Self>,
     name: Name,
     columns: CatalogSet<S, Column>,
-    // storage: Arc<TableStorage<S>>,
 }
 
 impl<S: StorageEngine> Table<S> {

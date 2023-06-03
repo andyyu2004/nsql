@@ -1,4 +1,5 @@
-use nsql_catalog::{Column, Container, CreateTableInfo, Entity, Namespace, Table};
+use nsql_catalog::{Column, Container, CreateTableInfo, Namespace, Table, TableRef};
+use nsql_storage::{TableStorage, TableStorageInfo};
 use nsql_storage_engine::fallible_iterator;
 
 use super::*;
@@ -68,31 +69,30 @@ impl<'env, S: StorageEngine> PhysicalSource<'env, S, ReadWriteExecutionMode<S>>
         self: Arc<Self>,
         ctx: &'txn ExecutionContext<'env, S, ReadWriteExecutionMode<S>>,
     ) -> ExecutionResult<TupleStream<'txn, S>> {
-        let columns = self.info.columns.clone();
-
         let catalog = ctx.catalog();
         let tx = ctx.tx();
-        let namespace = catalog
+        let namespace: Arc<Namespace<S>> = catalog
             .get::<Namespace<S>>(&**tx, self.info.namespace)
             .expect("schema not found during execution");
 
-        let info = CreateTableInfo {
-            name: self.info.name.clone(),
-            // FIXME need to create the physical table
-            // storage: Arc::new(TableStorage::initialize(
-            //     ctx.storage(),
-            //     &mut tx,
-            //     TableStorageInfo::create(&namespace.name(), &self.info.name, columns),
-            // )?),
-        };
+        let info = CreateTableInfo { name: self.info.name.clone() };
 
         let table_oid = namespace.create::<Table<S>>(tx, info)?;
-        let table =
+        let table: Arc<Table<S>> =
             namespace.get::<Table<S>>(&**tx, table_oid).expect("table not found during execution");
 
         for info in &self.info.columns {
             table.create::<Column>(tx, info.clone())?;
         }
+
+        TableStorage::initialize(
+            ctx.storage(),
+            tx,
+            TableStorageInfo::new(
+                TableRef { namespace: self.info.namespace, table: table_oid },
+                table.columns(&**tx),
+            ),
+        )?;
 
         Ok(Box::new(fallible_iterator::empty()))
     }

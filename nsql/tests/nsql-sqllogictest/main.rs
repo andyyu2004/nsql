@@ -4,7 +4,7 @@ use std::path::Path;
 
 use nsql::{Connection, ConnectionState, Nsql};
 use nsql_catalog::schema::LogicalType;
-use nsql_redb::RedbStorageEngine;
+use nsql_lmdb::LmdbStorageEngine;
 use nsql_storage_engine::StorageEngine;
 use sqllogictest::{ColumnType, DBOutput, Runner, DB};
 use tracing_subscriber::EnvFilter;
@@ -14,7 +14,7 @@ fn nsql_sqllogictest(path: &Path) -> nsql::Result<(), Box<dyn Error>> {
         EnvFilter::try_from_env("NSQL_LOG").unwrap_or_else(|_| EnvFilter::new("nsql=DEBUG"));
     let _ = tracing_subscriber::fmt::fmt().with_env_filter(filter).try_init();
     let db_path = nsql_test::tempfile::NamedTempFile::new()?.into_temp_path();
-    let db = TestDb::new(Nsql::<RedbStorageEngine>::create(db_path).unwrap());
+    let db = TestDb::new(Nsql::<LmdbStorageEngine>::create(db_path).unwrap());
     let mut tester = Runner::new(db);
     tester.run_file(path)?;
     Ok(())

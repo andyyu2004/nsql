@@ -58,11 +58,12 @@ impl StorageEngine for LmdbStorageEngine {
 
     type WriteTree<'env, 'txn> = LmdbWriteTree<'env, 'txn> where 'env: 'txn;
 
-    fn create(_path: impl AsRef<Path>) -> std::result::Result<Self, Self::Error>
+    fn create(path: impl AsRef<Path>) -> Result<Self, Self::Error>
     where
         Self: Sized,
     {
-        todo!()
+        std::fs::OpenOptions::new().create(true).write(true).truncate(false).open(&path)?;
+        Self::open(path)
     }
 
     #[inline]
@@ -72,7 +73,6 @@ impl StorageEngine for LmdbStorageEngine {
     {
         // large value `max_readers` has a performance issues so I don't think having a lmdb database per table is practical.
         // Perhaps we can do a lmdb database per schema and have a reasonable limit on it (say ~100)
-        std::fs::OpenOptions::new().create(true).write(true).truncate(false).open(&path)?;
         let env = unsafe { heed::EnvOpenOptions::new().flag(Flag::NoSubDir).flag(Flag::NoTls) }
             .max_dbs(100)
             .open(path)?;
@@ -88,7 +88,7 @@ impl StorageEngine for LmdbStorageEngine {
     }
 
     #[inline]
-    fn begin_write(&self) -> std::result::Result<Self::WriteTransaction<'_>, Self::Error> {
+    fn begin_write(&self) -> Result<Self::WriteTransaction<'_>, Self::Error> {
         let inner = self.env.write_txn()?;
         Ok(ReadWriteTx(inner))
     }
@@ -143,7 +143,7 @@ impl<'env, 'txn> ReadTree<'env, 'txn, LmdbStorageEngine> for LmdbReadTree<'env, 
     fn get<'a>(
         &'a self,
         key: &[u8],
-    ) -> std::result::Result<
+    ) -> Result<
         Option<<LmdbStorageEngine as StorageEngine>::Bytes<'a>>,
         <LmdbStorageEngine as StorageEngine>::Error,
     > {
@@ -214,15 +214,12 @@ impl<'env, 'txn> WriteTree<'env, 'txn, LmdbStorageEngine> for LmdbWriteTree<'env
         &mut self,
         key: &[u8],
         value: &[u8],
-    ) -> std::result::Result<(), <LmdbStorageEngine as StorageEngine>::Error> {
+    ) -> Result<(), <LmdbStorageEngine as StorageEngine>::Error> {
         self.db.put(&self.txn.0, key, value)
     }
 
     #[inline]
-    fn delete(
-        &mut self,
-        key: &[u8],
-    ) -> std::result::Result<bool, <LmdbStorageEngine as StorageEngine>::Error> {
+    fn delete(&mut self, key: &[u8]) -> Result<bool, <LmdbStorageEngine as StorageEngine>::Error> {
         self.db.delete(&self.txn.0, key)
     }
 }
