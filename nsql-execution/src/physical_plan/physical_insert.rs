@@ -83,7 +83,7 @@ impl<'env, S: StorageEngine> PhysicalSink<'env, S, ReadWriteExecutionMode<S>>
             TableStorageInfo::new(self.table_ref, table.columns(tx)),
         )?;
 
-        storage.append(tx, &tuple)?;
+        storage.insert(tx, &tuple)?;
 
         if let Some(return_expr) = &self.returning {
             self.returning_tuples

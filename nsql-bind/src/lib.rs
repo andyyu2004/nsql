@@ -9,7 +9,7 @@ use std::sync::Arc;
 pub use anyhow::Error;
 use anyhow::{anyhow, bail, ensure};
 use ir::expr::EvalNotConst;
-use ir::{Decimal, Path, TupleIndex};
+use ir::{Decimal, Path};
 use itertools::Itertools;
 use nsql_catalog::schema::LogicalType;
 use nsql_catalog::{
@@ -243,19 +243,7 @@ impl<S: StorageEngine> Binder<S> {
                     _ => not_implemented!("update with non-table relation"),
                 };
 
-                // FIXME hacky way to build the projection
-                let table = table_ref.get(&self.catalog, tx);
-                let columns = table.all::<Column>(tx);
-                let projection = Some(
-                    columns
-                        .iter()
-                        .map(|col| col.index())
-                        // Add special column index for the tid
-                        .chain(Some(table.tid_column_index()))
-                        .collect(),
-                );
-
-                let mut source = Box::new(ir::QueryPlan::TableRef { table_ref, projection });
+                let mut source = Box::new(ir::QueryPlan::TableRef { table_ref, projection: None });
                 if let Some(predicate) = selection
                     .as_ref()
                     .map(|selection| self.bind_predicate(&scope, selection))
@@ -337,16 +325,6 @@ impl<S: StorageEngine> Binder<S> {
 
             projections.push(expr);
         }
-
-        // We need to project the special tid column too
-        // FIXME don't think this hack will work once we have joins and other columns in the update
-        projections.push(ir::Expr {
-            ty: LogicalType::Tid,
-            kind: ir::ExprKind::ColumnRef {
-                index: TupleIndex::new(projections.len()),
-                path: Path::unqualified("tid"),
-            },
-        });
 
         Ok(projections.into_boxed_slice())
     }

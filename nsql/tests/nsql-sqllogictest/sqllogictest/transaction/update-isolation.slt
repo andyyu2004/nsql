@@ -1,5 +1,5 @@
 statement ok
-CREATE TABLE t(x int);
+CREATE TABLE t(x int PRIMARY KEY);
 
 statement ok
 INSERT INTO t(x) VALUES (1), (2);

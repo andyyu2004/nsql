@@ -63,7 +63,7 @@ impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSource<'env, S, 
     }
 }
 
-impl< S: StorageEngine> Explain<S> for PhysicalShow {
+impl<S: StorageEngine> Explain<S> for PhysicalShow {
     fn explain(
         &self,
         _catalog: &Catalog<S>,

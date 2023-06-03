@@ -1,8 +1,8 @@
 statement ok
-CREATE TABLE t(b boolean);
+CREATE TABLE t(id int PRIMARY KEY, b boolean);
 
 statement ok
-INSERT INTO t VALUES (false);
+INSERT INTO t VALUES (1, false);
 
 statement error
 UPDATE t SET b = true WHERE 99;
@@ -15,7 +15,7 @@ UPDATE t SET b = true WHERE b;
 query I
 SELECT * FROM t;
 ----
-false
+1 false
 
 statement ok
 UPDATE t SET b = true;
@@ -23,5 +23,5 @@ UPDATE t SET b = true;
 query I
 SELECT * FROM t;
 ----
-true
+1 true
 

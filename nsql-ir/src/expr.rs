@@ -2,16 +2,12 @@ mod eval;
 
 use std::fmt;
 use std::ops::Deref;
-use std::sync::Arc;
 
 pub use eval::EvalNotConst;
 use nsql_catalog::schema::LogicalType;
-use nsql_catalog::{
-    Catalog, Column, ColumnIndex, Container, EntityRef, Namespace, Oid, Table, TableRef,
-};
+use nsql_catalog::{ColumnIndex, TableRef};
 use nsql_storage::tuple::TupleIndex;
 use nsql_storage::value::Value;
-use nsql_storage_engine::{StorageEngine, Transaction};
 
 use crate::Path;
 

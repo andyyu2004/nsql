@@ -8,7 +8,7 @@ use nsql_storage_engine::{
     fallible_iterator, FallibleIterator, ReadTree, StorageEngine, Transaction, WriteTree,
 };
 
-use crate::tuple::{Tuple, TupleIndex};
+use crate::tuple::{ArchivedTuple, Tuple, TupleIndex, TupleRef};
 use crate::value::Value;
 
 pub struct TableStorage<'env: 'txn, 'txn, S: StorageEngine> {
@@ -40,7 +40,7 @@ impl<'env, 'txn, S: StorageEngine> TableStorage<'env, 'txn, S> {
     }
 
     #[inline]
-    pub fn append(&self, tx: &S::WriteTransaction<'_>, tuple: &Tuple) -> Result<(), S::Error> {
+    pub fn insert(&self, tx: &S::WriteTransaction<'_>, tuple: &Tuple) -> Result<(), S::Error> {
         assert_eq!(
             tuple.len(),
             self.info.columns.len(),
@@ -77,17 +77,6 @@ impl<'env, 'txn, S: StorageEngine> TableStorage<'env, 'txn, S> {
     }
 
     #[inline]
-    pub fn update(
-        &self,
-        _tx: &S::Transaction<'_>,
-        _id: &Tuple,
-        _tuple: &Tuple,
-    ) -> Result<(), S::Error> {
-        todo!();
-        Ok(())
-    }
-
-    #[inline]
     #[fix_hidden_lifetime_bug]
     pub fn scan(
         self: Arc<Self>,
@@ -104,7 +93,6 @@ fn range_gen<'env, 'txn, S: StorageEngine>(
     storage: Arc<TableStorage<'env, 'txn, S>>,
     projection: Option<Box<[TupleIndex]>>,
 ) {
-    assert!(projection.is_none(), "projection is not yet supported");
     let mut range = match storage.tree.range(..) {
         Ok(range) => range,
         Err(err) => {
@@ -121,6 +109,7 @@ fn range_gen<'env, 'txn, S: StorageEngine>(
             }
             Ok(None) => return,
             Ok(Some((k, v))) => {
+                // FIXME this is a very naive and inefficient algorithm
                 let ks = unsafe { rkyv::archived_root::<Vec<Value>>(&k) };
                 let vs = unsafe { rkyv::archived_root::<Vec<Value>>(&v) };
                 let n = storage.info.columns.len();
@@ -130,18 +119,20 @@ fn range_gen<'env, 'txn, S: StorageEngine>(
 
                 for col in &storage.info.columns {
                     if col.is_primary_key() {
-                        tuple.push(nsql_rkyv::deserialize(&ks[i]));
+                        tuple.push(&ks[i]);
                         i += 1;
                     } else {
-                        tuple.push(nsql_rkyv::deserialize(&vs[j]));
+                        tuple.push(&vs[j]);
                         j += 1;
                     }
                 }
-                //         let mut tuple = match &projection {
-                //             Some(projection) => tuple.project(tid, projection),
-                //             None => nsql_rkyv::deserialize(tuple),
-                //         };
-                yield_!(Ok(Tuple::from(tuple)))
+
+                let tuple = match &projection {
+                    Some(projection) => Tuple::project_archived(tuple.as_slice(), projection),
+                    None => tuple.into_iter().map(nsql_rkyv::deserialize).collect(),
+                };
+
+                yield_!(Ok(tuple))
             }
         }
     }

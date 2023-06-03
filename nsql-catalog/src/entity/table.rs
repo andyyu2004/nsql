@@ -27,12 +27,6 @@ impl<S: StorageEngine> Table<S> {
     pub fn columns(&self, tx: &impl Transaction<'_, S>) -> Vec<Arc<Column>> {
         self.all::<Column>(tx)
     }
-
-    #[inline]
-    /// Returns the index of the special `tid` column
-    pub fn tid_column_index(&self) -> ColumnIndex {
-        ColumnIndex::new(self.columns.len().try_into().unwrap())
-    }
 }
 
 impl<S> fmt::Debug for Table<S> {

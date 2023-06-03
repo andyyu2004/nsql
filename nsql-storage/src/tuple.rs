@@ -3,6 +3,8 @@ use std::ops::Index;
 use std::sync::Arc;
 
 use nsql_catalog::schema::Schema;
+use rkyv::with::RefAsBox;
+use rkyv::Archived;
 
 use crate::value::Value;
 
@@ -13,6 +15,10 @@ pub struct TupleDeserializationContext {
 #[derive(Debug, Clone, PartialEq, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
 #[repr(transparent)]
 pub struct Tuple(Box<[Value]>);
+
+#[derive(Debug, Clone, PartialEq, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
+#[repr(transparent)]
+pub struct TupleRef<'a>(#[with(RefAsBox)] &'a [Value]);
 
 impl Tuple {
     #[inline]
@@ -31,13 +37,6 @@ impl Tuple {
     }
 
     #[inline]
-    // FIXME find more efficient representation to avoid all this copying
-    pub fn split_last(&self) -> Option<(Tuple, Value)> {
-        let (last, rest) = self.0.split_last()?;
-        Some((Self::from(rest.to_vec()), last.clone()))
-    }
-
-    #[inline]
     pub fn empty() -> Self {
         Self::new(Box::new([]))
     }
@@ -47,9 +46,15 @@ impl Tuple {
         self.0.iter()
     }
 
+    pub fn project_archived(values: &[&Archived<Value>], projection: &[TupleIndex]) -> Tuple {
+        projection.iter().map(|&idx| nsql_rkyv::deserialize(values[idx.0])).collect()
+    }
+}
+
+impl ArchivedTuple {
     #[inline]
-    pub fn project(&self, projection: &[TupleIndex]) -> Self {
-        projection.iter().map(|&idx| self[idx].clone()).collect()
+    pub fn project(&self, projection: &[TupleIndex]) -> Tuple {
+        projection.iter().map(|&idx| nsql_rkyv::deserialize(&self.0[idx.0])).collect()
     }
 }
 
@@ -68,18 +73,21 @@ impl fmt::Display for Tuple {
 }
 
 impl From<Vec<Value>> for Tuple {
+    #[inline]
     fn from(values: Vec<Value>) -> Self {
         Self::new(values.into_boxed_slice())
     }
 }
 
 impl From<Box<[Value]>> for Tuple {
+    #[inline]
     fn from(values: Box<[Value]>) -> Self {
         Self::new(values)
     }
 }
 
 impl FromIterator<Value> for Tuple {
+    #[inline]
     fn from_iter<I: IntoIterator<Item = Value>>(iter: I) -> Self {
         Self::new(iter.into_iter().collect())
     }
@@ -88,6 +96,7 @@ impl FromIterator<Value> for Tuple {
 impl Index<TupleIndex> for Tuple {
     type Output = Value;
 
+    #[inline]
     fn index(&self, index: TupleIndex) -> &Self::Output {
         &self.0[index.0]
     }

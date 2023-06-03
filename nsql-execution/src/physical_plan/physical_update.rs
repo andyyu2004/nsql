@@ -1,6 +1,7 @@
 use std::collections::VecDeque;
 
 use nsql_catalog::{EntityRef, TableRef};
+use nsql_storage::{TableStorage, TableStorageInfo};
 use nsql_storage_engine::fallible_iterator;
 use parking_lot::RwLock;
 
@@ -11,7 +12,7 @@ pub(crate) struct PhysicalUpdate<'env, S> {
     children: [Arc<dyn PhysicalNode<'env, S, ReadWriteExecutionMode<S>>>; 1],
     table_ref: TableRef<S>,
     returning: Option<Box<[ir::Expr]>>,
-    returning_tuples: RwLock<VecDeque<Tuple>>,
+    returning_tuples: RwLock<Vec<Tuple>>,
     returning_evaluator: Evaluator,
 }
 
@@ -80,18 +81,22 @@ impl<'env, S: StorageEngine> PhysicalSink<'env, S, ReadWriteExecutionMode<S>>
         ctx: &'txn ExecutionContext<'env, S, ReadWriteExecutionMode<S>>,
         tuple: Tuple,
     ) -> ExecutionResult<()> {
-        let tx = ctx.tx();
-        let table = self.table_ref.get(&ctx.catalog(), &**tx);
-        // let _storage = table.storage();
+        let tx = &**ctx.tx();
+        let table = self.table_ref.get(&ctx.catalog(), tx);
+        let storage = TableStorage::open(
+            ctx.storage(),
+            &**ctx.tx(),
+            TableStorageInfo::new(self.table_ref, table.columns(tx)),
+        )?;
 
-        let (_tuple, _tid) = tuple.split_last().expect("expected tuple to be non-empty");
+        // FIXME we need to detect whether or not we actually updated something before adding it
+        // to the returning set
+        storage.insert(tx, &tuple)?;
 
-        todo!();
-        // storage.update(&tx, tid, &tuple).map_err(|report| report.into_error())?;
-
-        // FIXReadWriteExecutionMode<S>E just do the return evaluation here
-        if self.returning.is_some() {
-            self.returning_tuples.write().push_back(tuple);
+        if let Some(return_expr) = &self.returning {
+            self.returning_tuples
+                .write()
+                .push(self.returning_evaluator.evaluate(&tuple, return_expr));
         }
 
         Ok(())
@@ -103,23 +108,10 @@ impl<'env, S: StorageEngine> PhysicalSource<'env, S, ReadWriteExecutionMode<S>>
 {
     fn source<'txn>(
         self: Arc<Self>,
-        ctx: &'txn ExecutionContext<'env, S, ReadWriteExecutionMode<S>>,
+        _ctx: &'txn ExecutionContext<'env, S, ReadWriteExecutionMode<S>>,
     ) -> ExecutionResult<TupleStream<'txn, S>> {
-        let returning = match &self.returning {
-            Some(returning) => returning,
-            None => return Ok(Box::new(fallible_iterator::empty())),
-        };
-
-        todo!()
-
-        // let tuple = match self.returning_tuples.write().pop_front() {
-        //     Some(tuple) => tuple,
-        //     None => return Ok(SourceState::Done),
-        // };
-        //
-        // Ok(SourceState::Yield(Chunk::singleton(
-        //     self.returning_evaluator.evaluate(&tuple, returning),
-        // )))
+        let returning = std::mem::take(&mut *self.returning_tuples.write());
+        Ok(Box::new(fallible_iterator::convert(returning.into_iter().map(Ok))))
     }
 }
 
