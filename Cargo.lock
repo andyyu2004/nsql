@@ -1228,6 +1228,7 @@ dependencies = [
  "nsql-plan",
  "nsql-storage",
  "nsql-storage-engine",
+ "nsql-util",
  "parking_lot",
  "smallvec",
  "tracing",

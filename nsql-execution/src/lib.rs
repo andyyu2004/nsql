@@ -19,6 +19,7 @@ use nsql_arena::Idx;
 use nsql_catalog::Catalog;
 use nsql_storage::tuple::Tuple;
 use nsql_storage_engine::{FallibleIterator, StorageEngine, WriteTransaction};
+use nsql_util::atomic::AtomicEnum;
 pub use physical_plan::PhysicalPlanner;
 use smallvec::SmallVec;
 
@@ -202,10 +203,6 @@ impl<'short, 'a, T> Reborrow<'short> for &'a mut T {
 
 pub trait ExecutionMode<'env, S: StorageEngine>: private::Sealed + Clone + Copy + 'env {
     type Transaction: nsql_storage_engine::Transaction<'env, S>;
-
-    fn commit(transaction: Self::Transaction) -> ExecutionResult<()>;
-
-    fn abort(transaction: Self::Transaction) -> ExecutionResult<()>;
 }
 
 mod private {
@@ -227,15 +224,6 @@ impl<S> Copy for ReadonlyExecutionMode<S> {}
 
 impl<'env, S: StorageEngine> ExecutionMode<'env, S> for ReadonlyExecutionMode<S> {
     type Transaction = S::Transaction<'env>;
-
-    fn commit(transaction: Self::Transaction) -> ExecutionResult<()> {
-        Ok(())
-    }
-
-    #[inline]
-    fn abort(transaction: Self::Transaction) -> ExecutionResult<()> {
-        Ok(())
-    }
 }
 
 pub struct ReadWriteExecutionMode<S>(std::marker::PhantomData<S>);
@@ -253,38 +241,60 @@ impl<S> private::Sealed for ReadWriteExecutionMode<S> {}
 
 impl<'env, S: StorageEngine> ExecutionMode<'env, S> for ReadWriteExecutionMode<S> {
     type Transaction = S::WriteTransaction<'env>;
-
-    #[inline]
-    fn commit(transaction: Self::Transaction) -> ExecutionResult<()> {
-        Ok(transaction.commit()?)
-    }
-
-    #[inline]
-    fn abort(transaction: Self::Transaction) -> ExecutionResult<()> {
-        Ok(transaction.abort()?)
-    }
 }
 
 pub struct TransactionContext<'env, S: StorageEngine, M: ExecutionMode<'env, S>> {
-    // This option is consumed on commit/abort
-    tx: Option<M::Transaction>,
+    tx: M::Transaction,
     auto_commit: AtomicBool,
+    state: AtomicEnum<TransactionState>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
+pub enum TransactionState {
+    Active,
+    Committed,
+    Aborted,
+}
+
+impl From<TransactionState> for u8 {
+    #[inline]
+    fn from(state: TransactionState) -> Self {
+        state as u8
+    }
+}
+
+impl From<u8> for TransactionState {
+    #[inline]
+    fn from(state: u8) -> Self {
+        assert!(state <= TransactionState::Aborted as u8);
+        unsafe { std::mem::transmute(state) }
+    }
 }
 
 impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> TransactionContext<'env, S, M> {
+    #[inline]
+    pub fn new(tx: M::Transaction, auto_commit: bool) -> Self {
+        Self {
+            tx,
+            auto_commit: AtomicBool::new(auto_commit),
+            state: AtomicEnum::new(TransactionState::Active),
+        }
+    }
+
     #[inline]
     pub fn auto_commit(&self) -> bool {
         self.auto_commit.load(atomic::Ordering::Acquire)
     }
 
     #[inline]
-    pub fn commit(&mut self) -> ExecutionResult<()> {
-        M::commit(self.tx.take().unwrap())
+    pub fn commit(&self) {
+        self.state.store(TransactionState::Committed, atomic::Ordering::Release);
     }
 
     #[inline]
-    pub fn abort(&mut self) -> ExecutionResult<()> {
-        M::abort(self.tx.take().unwrap())
+    pub fn abort(&self) {
+        self.state.store(TransactionState::Aborted, atomic::Ordering::Release);
     }
 
     #[inline]
@@ -302,7 +312,7 @@ where
 
     #[inline]
     fn deref(&self) -> &Self::Target {
-        self.tx.as_ref().unwrap()
+        &self.tx
     }
 }
 
@@ -313,7 +323,7 @@ where
 {
     #[inline]
     fn deref_mut(&mut self) -> &mut Self::Target {
-        self.tx.as_mut().unwrap()
+        &mut self.tx
     }
 }
 
@@ -325,28 +335,24 @@ pub struct ExecutionContext<'env, S: StorageEngine, M: ExecutionMode<'env, S>> {
 
 impl<'env, S: StorageEngine> ExecutionContext<'env, S, ReadonlyExecutionMode<S>> {
     #[inline]
-    pub fn take_txn(self) -> (bool, Option<S::Transaction<'env>>) {
+    pub fn take_txn(self) -> (bool, TransactionState, S::Transaction<'env>) {
         let tx = self.tx;
-        (tx.auto_commit.into_inner(), tx.tx)
+        (tx.auto_commit.into_inner(), tx.state.into_inner(), tx.tx)
     }
 }
 
 impl<'env, S: StorageEngine> ExecutionContext<'env, S, ReadWriteExecutionMode<S>> {
     #[inline]
-    pub fn take_txn(self) -> (bool, Option<S::WriteTransaction<'env>>) {
+    pub fn take_txn(self) -> (bool, TransactionState, S::WriteTransaction<'env>) {
         let tx = self.tx;
-        (tx.auto_commit.into_inner(), tx.tx)
+        (tx.auto_commit.into_inner(), tx.state.into_inner(), tx.tx)
     }
 }
 
 impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> ExecutionContext<'env, S, M> {
     #[inline]
-    pub fn new(storage: S, catalog: Arc<Catalog<S>>, tx: M::Transaction) -> Self {
-        Self {
-            storage,
-            catalog,
-            tx: TransactionContext { tx: Some(tx), auto_commit: AtomicBool::new(true) },
-        }
+    pub fn new(storage: S, catalog: Arc<Catalog<S>>, tx: TransactionContext<'env, S, M>) -> Self {
+        Self { storage, catalog, tx }
     }
 
     #[inline]

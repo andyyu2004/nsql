@@ -48,33 +48,31 @@ impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSource<'env, S, 
         self: Arc<Self>,
         ctx: &'txn ExecutionContext<'env, S, M>,
     ) -> ExecutionResult<TupleStream<'txn, S>> {
-        // FIXME this can only run in rw mode
-        todo!();
-        // let mut tx = ctx.tx();
-        // match self.kind {
-        //     ir::TransactionStmtKind::Begin => {
-        //         if tx.auto_commit() {
-        //             tx.unset_auto_commit();
-        //         } else {
-        //             todo!()
-        //         }
-        //     }
-        //     ir::TransactionStmtKind::Commit => {
-        //         if tx.auto_commit() {
-        //             todo!()
-        //         } else {
-        //             tx.commit()?;
-        //         }
-        //     }
-        //     ir::TransactionStmtKind::Abort => {
-        //         if tx.auto_commit() {
-        //             todo!()
-        //             // return Err(nsql_storage::TransactionError::RollbackWithoutTransaction)?;
-        //         } else {
-        //             tx.abort()?;
-        //         }
-        //     }
-        // }
+        let tx = ctx.tx();
+        match self.kind {
+            ir::TransactionStmtKind::Begin => {
+                if tx.auto_commit() {
+                    tx.unset_auto_commit();
+                } else {
+                    todo!()
+                }
+            }
+            ir::TransactionStmtKind::Commit => {
+                if tx.auto_commit() {
+                    todo!()
+                } else {
+                    tx.commit();
+                }
+            }
+            ir::TransactionStmtKind::Abort => {
+                if tx.auto_commit() {
+                    todo!()
+                    // return Err(nsql_storage::TransactionError::RollbackWithoutTransaction)?;
+                } else {
+                    tx.abort();
+                }
+            }
+        }
 
         Ok(Box::new(fallible_iterator::empty()))
     }

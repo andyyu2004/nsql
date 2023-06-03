@@ -23,6 +23,10 @@ impl<T: AtomicEnumType> AtomicEnum<T> {
         Self { inner: AtomicU8::new(value.into()), _marker: PhantomData }
     }
 
+    pub fn into_inner(self) -> T {
+        self.inner.into_inner().into()
+    }
+
     #[inline]
     pub fn load(&self, order: Ordering) -> T {
         self.inner.load(order).into()
