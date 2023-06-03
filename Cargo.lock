@@ -809,7 +809,7 @@ checksum = "95505c38b4572b2d910cecb0281560f54b440a19336cbbcb27bf6ce6adc6f5a8"
 [[package]]
 name = "heed"
 version = "0.20.0-alpha.0"
-source = "git+https://github.com/meilisearch/heed?branch=main#5cdaedc727683077d7638f4e6826d06a03973d98"
+source = "git+https://github.com/andyyu2004/heed?branch=main#a6cca031e9262f8915f60982655e41200cd2ac7a"
 dependencies = [
  "bytemuck",
  "byteorder",
@@ -826,12 +826,12 @@ dependencies = [
 [[package]]
 name = "heed-traits"
 version = "0.20.0-alpha.0"
-source = "git+https://github.com/meilisearch/heed?branch=main#5cdaedc727683077d7638f4e6826d06a03973d98"
+source = "git+https://github.com/andyyu2004/heed?branch=main#a6cca031e9262f8915f60982655e41200cd2ac7a"
 
 [[package]]
 name = "heed-types"
 version = "0.20.0-alpha.0"
-source = "git+https://github.com/meilisearch/heed?branch=main#5cdaedc727683077d7638f4e6826d06a03973d98"
+source = "git+https://github.com/andyyu2004/heed?branch=main#a6cca031e9262f8915f60982655e41200cd2ac7a"
 dependencies = [
  "bincode",
  "bytemuck",
@@ -1041,7 +1041,7 @@ checksum = "ef53942eb7bf7ff43a617b3e2c1c4a5ecf5944a7c1bc12d7ee39bbb15e5c1519"
 [[package]]
 name = "lmdb-master-sys"
 version = "0.1.0"
-source = "git+https://github.com/meilisearch/heed?branch=main#5cdaedc727683077d7638f4e6826d06a03973d98"
+source = "git+https://github.com/andyyu2004/heed?branch=main#a6cca031e9262f8915f60982655e41200cd2ac7a"
 dependencies = [
  "cc",
  "doxygen-rs",

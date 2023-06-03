@@ -118,10 +118,8 @@ impl StorageEngine for LmdbStorageEngine {
     where
         'env: 'txn,
     {
-        // needs mutable ref for some reason, maybe it's unnecessary
-        todo!()
-        // let db = self.env.create_database(&mut txn.0, Some(name))?;
-        // Ok(LmdbWriteTree { db, txn })
+        let db = self.env.create_database(&txn.0, Some(name))?;
+        Ok(LmdbWriteTree { db, txn })
     }
 }
 
@@ -136,7 +134,7 @@ unsafe impl Sync for LmdbReadTree<'_, '_> {}
 
 pub struct LmdbWriteTree<'env, 'txn> {
     db: UntypedDatabase,
-    txn: &'txn mut ReadWriteTx<'env>,
+    txn: &'txn ReadWriteTx<'env>,
 }
 
 unsafe impl Send for LmdbWriteTree<'_, '_> {}
@@ -217,7 +215,7 @@ impl<'env, 'txn> WriteTree<'env, 'txn, LmdbStorageEngine> for LmdbWriteTree<'env
         key: &[u8],
         value: &[u8],
     ) -> std::result::Result<(), <LmdbStorageEngine as StorageEngine>::Error> {
-        self.db.put(&mut self.txn.0, key, value)
+        self.db.put(&self.txn.0, key, value)
     }
 
     #[inline]
@@ -225,7 +223,7 @@ impl<'env, 'txn> WriteTree<'env, 'txn, LmdbStorageEngine> for LmdbWriteTree<'env
         &mut self,
         key: &[u8],
     ) -> std::result::Result<bool, <LmdbStorageEngine as StorageEngine>::Error> {
-        self.db.delete(&mut self.txn.0, key)
+        self.db.delete(&self.txn.0, key)
     }
 }
 
