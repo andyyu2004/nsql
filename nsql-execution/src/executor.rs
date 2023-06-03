@@ -37,7 +37,7 @@ impl<'env, S: StorageEngine> Executor<'env, S, ReadWriteExecutionMode<S>> {
             for op in &pipeline.operators {
                 tuple = match op.execute(ctx, tuple)? {
                     OperatorState::Yield(tuple) => tuple,
-                    OperatorState::Continue => break 'outer,
+                    OperatorState::Continue => continue 'outer,
                     // Once an operator completes, the entire pipeline is finished
                     OperatorState::Done => return Ok(()),
                 };
@@ -79,7 +79,7 @@ impl<'env, S: StorageEngine> Executor<'env, S, ReadonlyExecutionMode<S>> {
             for op in &pipeline.operators {
                 tuple = match op.execute(ctx, tuple)? {
                     OperatorState::Yield(tuple) => tuple,
-                    OperatorState::Continue => break 'outer,
+                    OperatorState::Continue => continue 'outer,
                     // Once an operator completes, the entire pipeline is finished
                     OperatorState::Done => return Ok(()),
                 };

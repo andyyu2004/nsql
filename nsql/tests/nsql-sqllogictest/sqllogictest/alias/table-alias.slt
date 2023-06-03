@@ -5,7 +5,7 @@ SELECT t.x FROM (VALUES (1), (2)) AS t(x)
 2
 
 statement ok
-CREATE TABLE t(x INT);
+CREATE TABLE t(x int PRIMARY KEY);
 
 statement ok
 INSERT INTO t VALUES (1), (2);

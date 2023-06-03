@@ -1,5 +1,3 @@
-use std::collections::VecDeque;
-
 use nsql_catalog::{EntityRef, TableRef};
 use nsql_storage::{TableStorage, TableStorageInfo};
 use nsql_storage_engine::fallible_iterator;
@@ -12,7 +10,7 @@ pub(crate) struct PhysicalInsert<'env, S> {
     children: [Arc<dyn PhysicalNode<'env, S, ReadWriteExecutionMode<S>>>; 1],
     table_ref: TableRef<S>,
     returning: Option<Box<[ir::Expr]>>,
-    returning_tuples: RwLock<VecDeque<Tuple>>,
+    returning_tuples: RwLock<Vec<Tuple>>,
     returning_evaluator: Evaluator,
 }
 
@@ -87,9 +85,10 @@ impl<'env, S: StorageEngine> PhysicalSink<'env, S, ReadWriteExecutionMode<S>>
 
         storage.append(tx, &tuple)?;
 
-        // FIXME just do the return evaluation here
-        if self.returning.is_some() {
-            self.returning_tuples.write().push_back(tuple);
+        if let Some(return_expr) = &self.returning {
+            self.returning_tuples
+                .write()
+                .push(self.returning_evaluator.evaluate(&tuple, return_expr));
         }
 
         Ok(())
@@ -101,22 +100,10 @@ impl<'env, S: StorageEngine> PhysicalSource<'env, S, ReadWriteExecutionMode<S>>
 {
     fn source<'txn>(
         self: Arc<Self>,
-        ctx: &'txn ExecutionContext<'env, S, ReadWriteExecutionMode<S>>,
+        _ctx: &'txn ExecutionContext<'env, S, ReadWriteExecutionMode<S>>,
     ) -> ExecutionResult<TupleStream<'txn, S>> {
-        let returning = match &self.returning {
-            Some(returning) => returning,
-            None => return Ok(Box::new(fallible_iterator::empty())),
-        };
-        todo!();
-
-        // let tuple = match self.returning_tuples.write().pop_front() {
-        //     Some(tuple) => tuple,
-        //     None => return Ok(SourceState::Done),
-        // };
-        //
-        // Ok(SourceState::Yield(Chunk::singleton(
-        //     self.returning_evaluator.evaluate(&tuple, returning),
-        // )))
+        let returning = std::mem::take(&mut *self.returning_tuples.write());
+        Ok(Box::new(fallible_iterator::convert(returning.into_iter().map(Ok))))
     }
 }
 

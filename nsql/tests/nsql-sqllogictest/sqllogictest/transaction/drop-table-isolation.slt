@@ -1,8 +1,8 @@
 statement ok
-CREATE TABLE a (id INT)
+CREATE TABLE a (id int PRIMARY KEY)
 
 statement ok con1
-CREATE TABLE b (id INT)
+CREATE TABLE b (id int PRIMARY KEY)
 
 query T rowsort con1
 SHOW TABLES

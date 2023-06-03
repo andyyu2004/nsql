@@ -1,5 +1,6 @@
 use nsql_catalog::{Container, Namespace, Table};
 use nsql_storage::value::Value;
+use nsql_storage_engine::fallible_iterator;
 
 use super::*;
 
@@ -49,24 +50,20 @@ impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSource<'env, S, 
     ) -> ExecutionResult<TupleStream<'txn, S>> {
         let catalog = ctx.catalog();
         let tx = ctx.tx();
-        let mut tuples = vec![];
-        let namespaces = catalog.all::<Namespace<S>>(&**tx);
-        for namespace in namespaces {
+        let iter = catalog.all::<Namespace<S>>(&**tx).into_iter().flat_map(move |namespace| {
             match self.show {
-                ir::ObjectType::Table => {
-                    for table in namespace.all::<Table<S>>(&**tx) {
-                        tuples.push(Tuple::from(vec![Value::Text(table.name().to_string())]));
-                    }
-                }
+                ir::ObjectType::Table => namespace
+                    .all::<Table<S>>(&**tx)
+                    .into_iter()
+                    .map(|table| Ok(Tuple::from(vec![Value::Text(table.name().to_string())]))),
             }
-        }
+        });
 
-        todo!()
-        // Ok(SourceState::Final(Chunk::from(tuples)))
+        Ok(Box::new(fallible_iterator::convert(iter)))
     }
 }
 
-impl<'env, S: StorageEngine> Explain<S> for PhysicalShow {
+impl< S: StorageEngine> Explain<S> for PhysicalShow {
     fn explain(
         &self,
         _catalog: &Catalog<S>,
