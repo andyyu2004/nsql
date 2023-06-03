@@ -153,6 +153,7 @@ impl<S: StorageEngine> Shared<S> {
                 // FIXME need to remember `auto_commit` the next call
                 if let Some(txn) = txn.take() {
                     if auto_commit {
+                        tracing::info!("auto-committing write query");
                         txn.commit()?;
                     }
                 }

@@ -1,6 +1,7 @@
 use std::collections::VecDeque;
 
 use nsql_catalog::{EntityRef, TableRef};
+use nsql_storage::{TableStorage, TableStorageInfo};
 use nsql_storage_engine::fallible_iterator;
 use parking_lot::RwLock;
 
@@ -75,10 +76,16 @@ impl<'env, S: StorageEngine> PhysicalSink<'env, S, ReadWriteExecutionMode<S>>
         tuple: Tuple,
     ) -> ExecutionResult<()> {
         let catalog = ctx.catalog();
-        let tx = ctx.tx();
-        let table = self.table_ref.get(&catalog, &**tx);
-        // let storage = table.storage();
-        // storage.append(&mut tx, &tuple)?;
+        let tx = &**ctx.tx();
+        let table = self.table_ref.get(&catalog, tx);
+
+        let storage = TableStorage::open(
+            ctx.storage(),
+            &**ctx.tx(),
+            TableStorageInfo::new(self.table_ref, table.columns(tx)),
+        )?;
+
+        storage.append(tx, &tuple)?;
 
         // FIXME just do the return evaluation here
         if self.returning.is_some() {
