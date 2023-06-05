@@ -7,7 +7,6 @@ edition = "2021"
 anyhow = "1.0.70"
 indexmap = "1.9.3"
 nsql-core = { path = "../nsql-core" }
-# nsql-storage = { path = "../nsql-storage" }
 nsql-storage-engine = { path = "../nsql-storage-engine" }
 nsql-util = { path = "../nsql-util" }
 parking_lot = "0.12.1"

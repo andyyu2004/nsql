@@ -1,6 +1,4 @@
 #![deny(rust_2018_idioms)]
-#![feature(async_fn_in_trait)]
-#![allow(incomplete_features)]
 
 pub mod schema;
 pub mod value;

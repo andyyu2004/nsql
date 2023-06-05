@@ -13,4 +13,4 @@ tracing = "0.1.37"
 anyhow = "1.0.71"
 itertools = "0.10.5"
 nsql-storage = { path = "../nsql-storage" }
-nsql-storage-engine = { version = "0.1.0", path = "../nsql-storage-engine" }
+nsql-storage-engine = { path = "../nsql-storage-engine" }
