@@ -111,7 +111,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> Explain<S> for PhysicalInsert<'env, 'tx
     fn explain(
         &self,
         catalog: &Catalog<S>,
-        tx: &S::Transaction<'_>,
+        tx: &dyn Transaction<'_, S>,
         f: &mut fmt::Formatter<'_>,
     ) -> explain::Result {
         write!(f, "insert into {}", self.table_ref.get(catalog, tx).name())?;

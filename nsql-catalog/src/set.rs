@@ -84,17 +84,17 @@ impl<S: StorageEngine, T: CatalogEntity<S>> CatalogSet<S, T> {
         self.insert(tx, info)
     }
 
-    pub(crate) fn entries(&self, _tx: &impl Transaction<'_, S>) -> Vec<Arc<T>> {
+    pub(crate) fn entries(&self, _tx: &dyn Transaction<'_, S>) -> Vec<Arc<T>> {
         self.entries.read().values().map(|entry| entry.value()).collect()
     }
 
-    pub(crate) fn get(&self, _tx: &impl Transaction<'_, S>, oid: Oid<T>) -> Option<Arc<T>> {
+    pub(crate) fn get(&self, _tx: &dyn Transaction<'_, S>, oid: Oid<T>) -> Option<Arc<T>> {
         self.entries.read().get(&oid).map(|entry| entry.value())
     }
 
     pub(crate) fn get_by_name(
         &self,
-        tx: &impl Transaction<'_, S>,
+        tx: &dyn Transaction<'_, S>,
         name: &str,
     ) -> Option<(Oid<T>, Arc<T>)> {
         self.find(name).and_then(|oid| self.get(tx, oid).map(|item| (oid, item)))

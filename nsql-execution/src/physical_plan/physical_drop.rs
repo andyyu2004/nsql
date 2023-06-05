@@ -80,7 +80,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> Explain<S> for PhysicalDrop<S> {
     fn explain(
         &self,
         catalog: &Catalog<S>,
-        tx: &S::Transaction<'_>,
+        tx: &dyn Transaction<'_, S>,
         f: &mut fmt::Formatter<'_>,
     ) -> explain::Result {
         write!(f, "drop ")?;

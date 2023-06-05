@@ -17,7 +17,7 @@ type Result<T, E = heed::Error> = std::result::Result<T, E>;
 
 type UntypedDatabase = heed::Database<ByteSlice, ByteSlice>;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct LmdbStorageEngine {
     env: heed::Env,
 }
@@ -93,7 +93,7 @@ impl StorageEngine for LmdbStorageEngine {
     #[inline]
     fn open_tree<'env, 'txn>(
         &self,
-        txn: &'txn impl Transaction<'env, Self>,
+        txn: &'txn dyn Transaction<'env, Self>,
         name: &str,
     ) -> Result<Option<Self::ReadTree<'env, 'txn>>, Self::Error>
     where

@@ -1,4 +1,3 @@
-use nsql_storage_engine::StorageEngine;
 use parking_lot::RwLock;
 
 use super::*;
@@ -205,7 +204,7 @@ impl<S: StorageEngine> Explain<S> for OutputSink {
     fn explain(
         &self,
         _catalog: &Catalog<S>,
-        _tx: &S::Transaction<'_>,
+        _tx: &dyn Transaction<'_, S>,
         f: &mut fmt::Formatter<'_>,
     ) -> explain::Result {
         write!(f, "output")

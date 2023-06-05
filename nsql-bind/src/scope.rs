@@ -20,7 +20,7 @@ impl Scope {
     pub fn bind_table<S: StorageEngine>(
         &self,
         binder: &Binder<S>,
-        tx: &impl Transaction<'_, S>,
+        tx: &dyn Transaction<'_, S>,
         table_path: Path,
         table_ref: TableRef<S>,
         alias: Option<&TableAlias>,

@@ -1,6 +1,6 @@
 use std::borrow::Cow;
 
-use nsql::{MaterializedQueryOutput, Nsql};
+use nsql::{MaterializedQueryOutput, Nsql, RedbStorageEngine};
 use nu_ansi_term::{Color, Style};
 use reedline::{
     default_vi_insert_keybindings, default_vi_normal_keybindings, DefaultHinter, FileBackedHistory,
@@ -23,7 +23,7 @@ fn main() -> nsql::Result<()> {
 
     let prompt = NsqlPrompt {};
 
-    let nsql = Nsql::in_memory()?;
+    let nsql = Nsql::<RedbStorageEngine>::create("/tmp/test.db")?;
     let (conn, state) = nsql.connect();
 
     loop {

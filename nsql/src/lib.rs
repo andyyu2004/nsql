@@ -11,7 +11,7 @@ use nsql_catalog::Catalog;
 use nsql_execution::{ExecutionContext, PhysicalPlanner, TransactionContext, TransactionState};
 use nsql_opt::optimize;
 use nsql_plan::Planner;
-use nsql_redb::RedbStorageEngine;
+pub use nsql_redb::RedbStorageEngine;
 pub use nsql_storage::tuple::Tuple;
 use nsql_storage::Storage;
 use nsql_storage_engine::{ReadOrWriteTransaction, StorageEngine, WriteTransaction};
@@ -55,14 +55,6 @@ impl<S: StorageEngine> Nsql<S> {
     #[inline]
     fn new(inner: Shared<S>) -> Self {
         Self { shared: Arc::new(inner) }
-    }
-}
-
-// FIXME don't have an im memory impl currently
-impl Nsql<RedbStorageEngine> {
-    #[cfg(feature = "in-memory")]
-    pub fn in_memory() -> Result<Self> {
-        Self::open(":memory:")
     }
 }
 

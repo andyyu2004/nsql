@@ -24,7 +24,7 @@ impl<S: StorageEngine> Table<S> {
     }
 
     #[inline]
-    pub fn columns(&self, tx: &impl Transaction<'_, S>) -> Vec<Arc<Column>> {
+    pub fn columns(&self, tx: &dyn Transaction<'_, S>) -> Vec<Arc<Column>> {
         self.all::<Column>(tx)
     }
 }
@@ -113,7 +113,7 @@ impl<S: StorageEngine> EntityRef<S> for TableRef<S> {
     type Container = Namespace<S>;
 
     #[inline]
-    fn container(self, catalog: &Catalog<S>, tx: &impl Transaction<'_, S>) -> Arc<Self::Container> {
+    fn container(self, catalog: &Catalog<S>, tx: &dyn Transaction<'_, S>) -> Arc<Self::Container> {
         catalog.get(tx, self.namespace).expect("namespace should exist for `tx`")
     }
 

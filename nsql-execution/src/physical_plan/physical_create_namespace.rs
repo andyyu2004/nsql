@@ -79,7 +79,7 @@ impl<S: StorageEngine> Explain<S> for PhysicalCreateNamespace {
     fn explain(
         &self,
         _catalog: &Catalog<S>,
-        _tx: &S::Transaction<'_>,
+        _tx: &dyn Transaction<'_, S>,
         f: &mut fmt::Formatter<'_>,
     ) -> explain::Result {
         write!(f, "create namespace {}", self.info.name)?;

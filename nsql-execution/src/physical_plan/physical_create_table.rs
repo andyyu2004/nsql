@@ -102,7 +102,7 @@ impl<S: StorageEngine> Explain<S> for PhysicalCreateTable<S> {
     fn explain(
         &self,
         _catalog: &Catalog<S>,
-        _tx: &S::Transaction<'_>,
+        _tx: &dyn Transaction<'_, S>,
         f: &mut fmt::Formatter<'_>,
     ) -> explain::Result {
         write!(f, "create table {}", self.info.name)?;

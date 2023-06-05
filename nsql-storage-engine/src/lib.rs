@@ -6,13 +6,14 @@
 mod example;
 
 use std::error::Error;
+use std::fmt;
 use std::ops::{Deref, RangeBounds};
 use std::path::Path;
 
 pub use fallible_iterator;
 pub use fallible_iterator::FallibleIterator;
 
-pub trait StorageEngine: Clone + Send + Sync + Sized + 'static {
+pub trait StorageEngine: Clone + Send + Sync + Sized + fmt::Debug + 'static {
     type Error: Send + Sync + Error + 'static;
 
     type Bytes<'txn>: Deref<Target = [u8]>;
@@ -49,7 +50,7 @@ pub trait StorageEngine: Clone + Send + Sync + Sized + 'static {
 
     fn open_tree<'env, 'txn>(
         &self,
-        txn: &'txn impl Transaction<'env, Self>,
+        txn: &'txn dyn Transaction<'env, Self>,
         name: &str,
     ) -> Result<Option<Self::ReadTree<'env, 'txn>>, Self::Error>
     where

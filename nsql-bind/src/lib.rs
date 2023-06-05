@@ -52,7 +52,7 @@ impl<S: StorageEngine> Binder<S> {
         Self { catalog }
     }
 
-    pub fn bind(&self, tx: &impl Transaction<'_, S>, stmt: &ast::Statement) -> Result<ir::Stmt<S>> {
+    pub fn bind(&self, tx: &dyn Transaction<'_, S>, stmt: &ast::Statement) -> Result<ir::Stmt<S>> {
         let scope = &Scope::default();
         let stmt = match stmt {
             ast::Statement::CreateTable {
@@ -287,7 +287,7 @@ impl<S: StorageEngine> Binder<S> {
 
     fn bind_assignments(
         &self,
-        tx: &impl Transaction<'_, S>,
+        tx: &dyn Transaction<'_, S>,
         scope: &Scope,
         table_ref: TableRef<S>,
         assignments: &[ast::Assignment],
@@ -380,7 +380,7 @@ impl<S: StorageEngine> Binder<S> {
 
     fn bind_namespaced_entity<T: NamespaceEntity<S>>(
         &self,
-        tx: &impl Transaction<'_, S>,
+        tx: &dyn Transaction<'_, S>,
         path: &Path,
     ) -> Result<(Oid<Namespace<S>>, Oid<T>)> {
         match path {
@@ -421,7 +421,7 @@ impl<S: StorageEngine> Binder<S> {
 
     fn bind_query(
         &self,
-        tx: &impl Transaction<'_, S>,
+        tx: &dyn Transaction<'_, S>,
         scope: &Scope,
         query: &ast::Query,
     ) -> Result<(Scope, Box<ir::QueryPlan<S>>)> {
@@ -450,7 +450,7 @@ impl<S: StorageEngine> Binder<S> {
 
     fn bind_table_expr(
         &self,
-        tx: &impl Transaction<'_, S>,
+        tx: &dyn Transaction<'_, S>,
         scope: &Scope,
         body: &ast::SetExpr,
     ) -> Result<(Scope, Box<ir::QueryPlan<S>>)> {
@@ -472,7 +472,7 @@ impl<S: StorageEngine> Binder<S> {
 
     fn bind_select(
         &self,
-        tx: &impl Transaction<'_, S>,
+        tx: &dyn Transaction<'_, S>,
         scope: &Scope,
         select: &ast::Select,
     ) -> Result<(Scope, Box<ir::QueryPlan<S>>)> {
@@ -524,7 +524,7 @@ impl<S: StorageEngine> Binder<S> {
 
     fn bind_joint_tables(
         &self,
-        tx: &impl Transaction<'_, S>,
+        tx: &dyn Transaction<'_, S>,
         scope: &Scope,
         tables: &ast::TableWithJoins,
     ) -> Result<(Scope, Box<ir::QueryPlan<S>>)> {
@@ -535,7 +535,7 @@ impl<S: StorageEngine> Binder<S> {
 
     fn bind_table_factor(
         &self,
-        tx: &impl Transaction<'_, S>,
+        tx: &dyn Transaction<'_, S>,
         scope: &Scope,
         table: &ast::TableFactor,
     ) -> Result<(Scope, Box<ir::QueryPlan<S>>)> {
@@ -568,7 +568,7 @@ impl<S: StorageEngine> Binder<S> {
 
     fn bind_table(
         &self,
-        tx: &impl Transaction<'_, S>,
+        tx: &dyn Transaction<'_, S>,
         scope: &Scope,
         table_name: &ast::ObjectName,
         alias: Option<&ast::TableAlias>,

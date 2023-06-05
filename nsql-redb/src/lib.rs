@@ -12,7 +12,7 @@ use redb::{AccessGuard, ReadableTable};
 
 type Result<T, E = redb::Error> = std::result::Result<T, E>;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct RedbStorageEngine {
     db: Arc<redb::Database>,
 }
@@ -74,7 +74,7 @@ impl nsql_storage_engine::StorageEngine for RedbStorageEngine {
     #[inline]
     fn open_tree<'env, 'txn>(
         &self,
-        txn: &'txn impl nsql_storage_engine::Transaction<'env, Self>,
+        txn: &'txn dyn nsql_storage_engine::Transaction<'env, Self>,
         name: &str,
     ) -> Result<Option<Self::ReadTree<'env, 'txn>>, Self::Error>
     where

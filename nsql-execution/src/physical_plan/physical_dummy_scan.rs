@@ -57,7 +57,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> Explain<S> for PhysicalDummyScan {
     fn explain(
         &self,
         _catalog: &Catalog<S>,
-        _tx: &S::Transaction<'_>,
+        _tx: &dyn Transaction<'_, S>,
         f: &mut fmt::Formatter<'_>,
     ) -> explain::Result {
         write!(f, "dummy scan")?;

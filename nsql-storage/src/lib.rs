@@ -9,7 +9,7 @@ pub mod tuple;
 pub mod value;
 
 use anyhow::Error;
-use nsql_storage_engine::StorageEngine;
+use nsql_storage_engine::{StorageEngine, Transaction};
 pub use table_storage::{TableStorage, TableStorageInfo};
 
 pub type Result<T, E = Error> = std::result::Result<T, E>;
@@ -30,7 +30,7 @@ impl<S: StorageEngine> Storage<S> {
         self.storage.begin_write()
     }
 
-    pub fn load(&self, _tx: &S::Transaction<'_>) -> Result<()> {
+    pub fn load(&self, _tx: &dyn Transaction<'_, S>) -> Result<()> {
         todo!()
         // let reader = self.pager.meta_page_reader();
         // let checkpointer = Checkpointer::new(self.pager.as_ref());

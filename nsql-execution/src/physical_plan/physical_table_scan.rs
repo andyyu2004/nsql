@@ -91,7 +91,7 @@ impl<S: StorageEngine> Explain<S> for PhysicalTableScan<S> {
     fn explain(
         &self,
         catalog: &Catalog<S>,
-        tx: &S::Transaction<'_>,
+        tx: &dyn Transaction<'_, S>,
         f: &mut fmt::Formatter<'_>,
     ) -> explain::Result {
         // In this context, we know the projection indices correspond to the column indices of the source table

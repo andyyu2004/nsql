@@ -7,7 +7,8 @@ fn check_explain<'a>(
     query: &str,
     expect: Expect,
 ) -> nsql::Result<()> {
-    let nsql = Nsql::in_memory()?;
+    let db_path = nsql_test::tempfile::NamedTempFile::new()?.into_temp_path();
+    let nsql = Nsql::<nsql_redb::RedbStorageEngine>::create(db_path)?;
     let (conn, state) = nsql.connect();
 
     for sql in setup {
@@ -25,18 +26,18 @@ fn check_explain<'a>(
 #[test]
 fn test_explain() -> nsql::Result<()> {
     check_explain(
-        vec!["CREATE TABLE t (b boolean)"],
+        vec!["CREATE TABLE t (b boolean PRIMARY KEY)"],
         "EXPLAIN UPDATE t SET b = true WHERE b",
         expect![[r#"
             update t
-              projection (true, tid)
+              projection (true)
                 filter b
-                  scan t (b, tid)
+                  scan t (b)
         "#]],
     )?;
 
     check_explain(
-        vec!["CREATE TABLE t (b boolean)"],
+        vec!["CREATE TABLE t (b boolean PRIMARY KEY)"],
         "EXPLAIN VERBOSE UPDATE t SET b = true WHERE b",
         expect![[r#"
             metapipeline #0
@@ -47,9 +48,9 @@ fn test_explain() -> nsql::Result<()> {
                   metapipeline #1
                     pipeline #1
                       update t
-                      projection (true, tid)
+                      projection (true)
                       filter b
-                      scan t (b, tid)
+                      scan t (b)
         "#]],
     )?;
 

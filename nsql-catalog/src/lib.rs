@@ -57,11 +57,11 @@ pub trait EntityRef<S: StorageEngine>: Copy {
 
     type Container: Container<S>;
 
-    fn container(self, catalog: &Catalog<S>, tx: &impl Transaction<'_, S>) -> Arc<Self::Container>;
+    fn container(self, catalog: &Catalog<S>, tx: &dyn Transaction<'_, S>) -> Arc<Self::Container>;
 
     fn entity_oid(self) -> Oid<Self::Entity>;
 
-    fn get(self, catalog: &Catalog<S>, tx: &impl Transaction<'_, S>) -> Arc<Self::Entity> {
+    fn get(self, catalog: &Catalog<S>, tx: &dyn Transaction<'_, S>) -> Arc<Self::Entity> {
         self.container(catalog, tx)
             .get(tx, self.entity_oid())
             .expect("`oid` should be valid for `tx`")
@@ -84,7 +84,7 @@ pub trait Container<S: StorageEngine> {
 
     fn get<T: CatalogEntity<S, Container = Self>>(
         &self,
-        tx: &impl Transaction<'_, S>,
+        tx: &dyn Transaction<'_, S>,
         oid: Oid<T>,
     ) -> Option<Arc<T>> {
         T::get(self, tx, oid)
@@ -102,7 +102,7 @@ pub trait Container<S: StorageEngine> {
 
     fn get_by_name<T: CatalogEntity<S, Container = Self>>(
         &self,
-        tx: &impl Transaction<'_, S>,
+        tx: &dyn Transaction<'_, S>,
         name: impl AsRef<str>,
     ) -> Result<Option<(Oid<T>, Arc<T>)>> {
         Ok(T::get_by_name(self, tx, name.as_ref()))
@@ -114,7 +114,7 @@ pub trait Container<S: StorageEngine> {
 
     fn all<T: CatalogEntity<S, Container = Self>>(
         &self,
-        tx: &impl Transaction<'_, S>,
+        tx: &dyn Transaction<'_, S>,
     ) -> Vec<Arc<T>> {
         T::all(self, tx)
     }
@@ -158,7 +158,7 @@ pub(crate) mod private {
         #[inline]
         fn get(
             container: &Self::Container,
-            tx: &impl Transaction<'_, S>,
+            tx: &dyn Transaction<'_, S>,
             oid: Oid<Self>,
         ) -> Option<Arc<Self>> {
             Self::catalog_set(container).get(tx, oid)
@@ -176,7 +176,7 @@ pub(crate) mod private {
         #[inline]
         fn get_by_name(
             container: &Self::Container,
-            tx: &impl Transaction<'_, S>,
+            tx: &dyn Transaction<'_, S>,
             name: &str,
         ) -> Option<(Oid<Self>, Arc<Self>)> {
             Self::catalog_set(container).get_by_name(tx, name)
@@ -188,7 +188,7 @@ pub(crate) mod private {
         }
 
         #[inline]
-        fn all(container: &Self::Container, tx: &impl Transaction<'_, S>) -> Vec<Arc<Self>> {
+        fn all(container: &Self::Container, tx: &dyn Transaction<'_, S>) -> Vec<Arc<Self>> {
             Self::catalog_set(container).entries(tx)
         }
     }

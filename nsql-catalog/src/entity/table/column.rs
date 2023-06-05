@@ -126,7 +126,7 @@ impl<S: StorageEngine> EntityRef<S> for ColumnRef<S> {
     type Container = Table<S>;
 
     #[inline]
-    fn container(self, catalog: &Catalog<S>, tx: &impl Transaction<'_, S>) -> Arc<Self::Container> {
+    fn container(self, catalog: &Catalog<S>, tx: &dyn Transaction<'_, S>) -> Arc<Self::Container> {
         self.table_ref.get(catalog, tx)
     }
 
