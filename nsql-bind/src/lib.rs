@@ -328,11 +328,20 @@ impl<S: StorageEngine> Binder<S> {
         }
 
         // We desugar the update assignments into a projection
-        let mut projections = Vec::with_capacity(1 + columns.len());
+        let mut projections = Vec::with_capacity(columns.len());
         for column in columns {
             let expr = if let Some(assignment) =
                 assignments.iter().find(|assn| assn.id[0].value == column.name().as_str())
             {
+                // we don't allow updating primary keys
+                if column.is_primary_key() {
+                    bail!(
+                        "cannot update primary key column `{}` of table `{}`",
+                        column.name(),
+                        table.name()
+                    )
+                }
+
                 // if the column is being updated, we bind the expression in the assignment
                 self.bind_expr(scope, &assignment.value)?
             } else {

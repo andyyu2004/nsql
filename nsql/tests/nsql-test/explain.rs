@@ -26,18 +26,18 @@ fn check_explain<'a>(
 #[test]
 fn test_explain() -> nsql::Result<()> {
     check_explain(
-        vec!["CREATE TABLE t (b boolean PRIMARY KEY)"],
+        vec!["CREATE TABLE t (id int PRIMARY KEY, b boolean)"],
         "EXPLAIN UPDATE t SET b = true WHERE b",
         expect![[r#"
             update t
-              projection (true)
+              projection (id, true)
                 filter b
-                  scan t (b)
+                  scan t (id, b)
         "#]],
     )?;
 
     check_explain(
-        vec!["CREATE TABLE t (b boolean PRIMARY KEY)"],
+        vec!["CREATE TABLE t (id int PRIMARY KEY, b boolean)"],
         "EXPLAIN VERBOSE UPDATE t SET b = true WHERE b",
         expect![[r#"
             metapipeline #0
@@ -48,9 +48,9 @@ fn test_explain() -> nsql::Result<()> {
                   metapipeline #1
                     pipeline #1
                       update t
-                      projection (true)
+                      projection (id, true)
                       filter b
-                      scan t (b)
+                      scan t (id, b)
         "#]],
     )?;
 
