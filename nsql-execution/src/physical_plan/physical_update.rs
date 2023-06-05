@@ -101,7 +101,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSink<'env, 'txn, S, ReadWriteEx
         for tuple in &*tuples {
             // FIXME we need to detect whether or not we actually updated something before adding it
             // to the returning set
-            storage.insert(tx, tuple)?;
+            storage.update(tuple)?;
 
             if let Some(return_expr) = &self.returning {
                 self.returning_tuples

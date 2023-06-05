@@ -8,6 +8,7 @@ use nsql_storage_engine::{
     fallible_iterator, ExecutionMode, FallibleIterator, ReadTree, ReadWriteExecutionMode,
     StorageEngine, WriteTree,
 };
+use rkyv::AlignedVec;
 
 use crate::tuple::{Tuple, TupleIndex};
 use crate::value::Value;
@@ -30,7 +31,24 @@ impl<'env: 'txn, 'txn, S: StorageEngine> TableStorage<'env, 'txn, S, ReadWriteEx
     }
 
     #[inline]
-    pub fn insert(&mut self, _tx: &S::WriteTransaction<'_>, tuple: &Tuple) -> Result<(), S::Error> {
+    pub fn update(&mut self, tuple: &Tuple) -> Result<(), S::Error> {
+        let (k, v) = self.split_tuple(tuple);
+        debug_assert!(self.tree.delete(&k)?, "updating a tuple that didn't exist");
+        self.tree.put(&k, &v)?;
+
+        Ok(())
+    }
+
+    #[inline]
+    pub fn insert(&mut self, tuple: &Tuple) -> Result<(), S::Error> {
+        let (k, v) = self.split_tuple(tuple);
+        self.tree.put(&k, &v)?;
+
+        Ok(())
+    }
+
+    /// Aplit tuple into primary key and non-primary key
+    fn split_tuple(&self, tuple: &Tuple) -> (AlignedVec, AlignedVec) {
         assert_eq!(
             tuple.len(),
             self.info.columns.len(),
@@ -62,9 +80,8 @@ impl<'env: 'txn, 'txn, S: StorageEngine> TableStorage<'env, 'txn, S, ReadWriteEx
 
         let pk_bytes = nsql_rkyv::to_bytes(&pk_tuple);
         let non_pk_bytes = nsql_rkyv::to_bytes(&non_pk_tuple);
-        self.tree.put(&pk_bytes, &non_pk_bytes)?;
 
-        Ok(())
+        (pk_bytes, non_pk_bytes)
     }
 }
 
