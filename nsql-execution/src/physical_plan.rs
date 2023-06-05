@@ -43,7 +43,7 @@ use crate::{
 };
 
 pub struct PhysicalPlanner<S> {
-    catalog: Arc<Catalog<S>>,
+    _catalog: Arc<Catalog<S>>,
 }
 
 /// Opaque physical plan that is ready to be executed
@@ -56,8 +56,8 @@ impl<'env, 'txn, S, M> PhysicalPlan<'env, 'txn, S, M> {
 }
 
 impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalPlanner<S> {
-    pub fn new(catalog: Arc<Catalog<S>>) -> Self {
-        Self { catalog }
+    pub fn new(_catalog: Arc<Catalog<S>>) -> Self {
+        Self { _catalog }
     }
 
     #[inline]

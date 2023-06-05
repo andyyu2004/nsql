@@ -55,9 +55,11 @@ impl<S: StorageEngine, T: CatalogEntity<S>> fmt::Display for Conflict<S, T> {
     }
 }
 
+type EntryMap<S, T> = IndexMap<Oid<T>, Arc<CatalogEntry<S, T>>>;
+
 #[derive(Debug)]
 pub struct CatalogSet<S, T> {
-    entries: RwLock<IndexMap<Oid<T>, Arc<CatalogEntry<S, T>>>>,
+    entries: RwLock<EntryMap<S, T>>,
     name_mapping: RwLock<HashMap<Name, Oid<T>>>,
     _marker: std::marker::PhantomData<S>,
 }

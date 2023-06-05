@@ -23,7 +23,6 @@ use nsql_storage_engine::{
 };
 use nsql_util::atomic::AtomicEnum;
 pub use physical_plan::PhysicalPlanner;
-use smallvec::SmallVec;
 
 use self::eval::Evaluator;
 pub use self::executor::{execute, execute_write};
@@ -45,6 +44,7 @@ fn build_pipelines<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>
     RootPipeline { arena }
 }
 
+#[allow(clippy::type_complexity)]
 trait PhysicalNode<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>:
     Send + Sync + Explain<S> + 'txn
 {
@@ -101,39 +101,6 @@ trait PhysicalNode<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>
                 }
             },
         }
-    }
-}
-
-#[derive(Debug)]
-struct Chunk<T = Tuple>(SmallVec<[T; 1]>);
-
-impl<T> From<Vec<T>> for Chunk<T> {
-    fn from(vec: Vec<T>) -> Self {
-        Self(SmallVec::from_vec(vec))
-    }
-}
-
-impl<T> Chunk<T> {
-    pub fn is_empty(&self) -> bool {
-        self.0.is_empty()
-    }
-
-    pub fn empty() -> Self {
-        Self(SmallVec::new())
-    }
-
-    pub fn singleton(tuple: T) -> Self {
-        Self(SmallVec::from_buf([tuple]))
-    }
-}
-
-impl<T> IntoIterator for Chunk<T> {
-    type Item = T;
-
-    type IntoIter = smallvec::IntoIter<[Self::Item; 1]>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.0.into_iter()
     }
 }
 

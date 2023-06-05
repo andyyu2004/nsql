@@ -1218,7 +1218,6 @@ dependencies = [
  "nsql-storage-engine",
  "nsql-util",
  "parking_lot",
- "smallvec",
  "tracing",
 ]
 

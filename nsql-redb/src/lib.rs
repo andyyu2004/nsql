@@ -135,7 +135,7 @@ impl<'env, 'txn> nsql_storage_engine::ReadTree<'env, 'txn, RedbStorageEngine>
         key: &[u8],
     ) -> std::result::Result<
         Option<<RedbStorageEngine as nsql_storage_engine::StorageEngine>::Bytes<'a>>,
-        <RedbStorageEngine as nsql_storage_engine::StorageEngine>::Error,
+        redb::Error,
     > {
         Ok(ReadableTable::get(self, key).map(|v| v.map(AccessGuardDerefWrapper))?)
     }
@@ -175,21 +175,14 @@ impl<'env, 'txn> nsql_storage_engine::WriteTree<'env, 'txn, RedbStorageEngine>
     for redb::Table<'env, 'txn, &[u8], &[u8]>
 {
     #[inline]
-    fn put(
-        &mut self,
-        key: &[u8],
-        value: &[u8],
-    ) -> Result<(), <RedbStorageEngine as nsql_storage_engine::StorageEngine>::Error> {
+    fn put(&mut self, key: &[u8], value: &[u8]) -> Result<(), redb::Error> {
         // can return a bool if we need to know if the key was already present
         self.insert(key, value).map(|prev| prev.is_none())?;
         Ok(())
     }
 
     #[inline]
-    fn delete(
-        &mut self,
-        key: &[u8],
-    ) -> Result<bool, <RedbStorageEngine as nsql_storage_engine::StorageEngine>::Error> {
+    fn delete(&mut self, key: &[u8]) -> Result<bool, redb::Error> {
         Ok(self.remove(key)?.is_some())
     }
 }
@@ -277,7 +270,7 @@ impl<'env, 'txn> nsql_storage_engine::ReadTree<'env, 'txn, RedbStorageEngine>
         key: &[u8],
     ) -> std::result::Result<
         Option<<RedbStorageEngine as nsql_storage_engine::StorageEngine>::Bytes<'a>>,
-        <RedbStorageEngine as nsql_storage_engine::StorageEngine>::Error,
+        redb::Error,
     > {
         (**self).get(key).map(|v| v.map(AccessGuardDerefWrapper))
     }

@@ -9,8 +9,8 @@ use std::sync::Arc;
 use heed::types::ByteSlice;
 use heed::Flag;
 use nsql_storage_engine::{
-    fallible_iterator, FallibleIterator, Range, ReadOrWriteTransactionRef, ReadTree, StorageEngine,
-    Transaction, WriteTransaction, WriteTree,
+    fallible_iterator, Range, ReadOrWriteTransactionRef, ReadTree, StorageEngine, Transaction,
+    WriteTransaction, WriteTree,
 };
 
 type Result<T, E = heed::Error> = std::result::Result<T, E>;
@@ -20,7 +20,6 @@ type UntypedDatabase = heed::Database<ByteSlice, ByteSlice>;
 #[derive(Clone)]
 pub struct LmdbStorageEngine {
     env: heed::Env,
-    main_db: UntypedDatabase,
 }
 
 #[derive(Clone)]
@@ -76,9 +75,7 @@ impl StorageEngine for LmdbStorageEngine {
         let env = unsafe { heed::EnvOpenOptions::new().flag(Flag::NoSubDir).flag(Flag::NoTls) }
             .max_dbs(100)
             .open(path)?;
-        let main_db =
-            env.open_database(&env.read_txn()?, None)?.expect("main database should exist");
-        Ok(Self { main_db, env })
+        Ok(Self { env })
     }
 
     #[inline]
@@ -210,11 +207,7 @@ impl<'env, 'txn> ReadTree<'env, 'txn, LmdbStorageEngine> for LmdbWriteTree<'env,
 
 impl<'env, 'txn> WriteTree<'env, 'txn, LmdbStorageEngine> for LmdbWriteTree<'env, 'txn> {
     #[inline]
-    fn put(
-        &mut self,
-        key: &[u8],
-        value: &[u8],
-    ) -> Result<(), <LmdbStorageEngine as StorageEngine>::Error> {
+    fn put(&mut self, key: &[u8], value: &[u8]) -> Result<(), heed::Error> {
         self.db.put(&self.txn.0, key, value)
     }
 

@@ -7,7 +7,6 @@
 mod table_storage;
 pub mod tuple;
 pub mod value;
-mod wal;
 
 use anyhow::Error;
 use nsql_storage_engine::StorageEngine;

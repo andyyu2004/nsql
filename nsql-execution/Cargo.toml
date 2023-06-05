@@ -13,7 +13,6 @@ nsql-plan = { path = "../nsql-plan" }
 nsql-storage = { path = "../nsql-storage" }
 parking_lot = "0.12.1"
 dot-structures = "0.1.0"
-smallvec = "1.10.0"
 anyhow = "1.0.71"
 atomic-take = "1.1.0"
 tracing = "0.1.37"
