@@ -5,19 +5,19 @@ statement ok
 INSERT INTO t VALUES (1);
 
 statement ok con0
-BEGIN
+BEGIN READ ONLY
 
 statement ok con1
 BEGIN
 
 statement ok con2
-BEGIN
+BEGIN READ ONLY
 
 statement ok con1
 INSERT INTO t VALUES (2);
 
 # con1 can see the row it inserted
-query I con1
+query I rowsort con1
 SELECT x from t;
 ----
 1
