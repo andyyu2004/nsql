@@ -83,6 +83,11 @@ pub trait ReadTree<'env, 'txn, S: StorageEngine> {
         &'a self,
         range: impl RangeBounds<[u8]> + 'a,
     ) -> Result<Range<'a, S>, S::Error>;
+
+    #[inline]
+    fn exists(&self, key: &[u8]) -> Result<bool, S::Error> {
+        self.get(key).map(|v| v.is_some())
+    }
 }
 
 pub trait WriteTree<'env, 'txn, S: StorageEngine>: ReadTree<'env, 'txn, S> {
@@ -138,6 +143,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> Transaction<'env, S>
     }
 }
 
+// TODO not sure if this type will be necessary
 pub enum ReadOrWriteTree<'env: 'txn, 'txn, S: StorageEngine> {
     Read(S::ReadTree<'env, 'txn>),
     Write(S::WriteTree<'env, 'txn>),
@@ -146,10 +152,19 @@ pub enum ReadOrWriteTree<'env: 'txn, 'txn, S: StorageEngine> {
 impl<'env: 'txn, 'txn, S: StorageEngine> ReadTree<'env, 'txn, S>
     for ReadOrWriteTree<'env, 'txn, S>
 {
+    #[inline]
     fn get<'a>(&'a self, key: &[u8]) -> Result<Option<S::Bytes<'a>>, S::Error> {
         match self {
             ReadOrWriteTree::Read(tree) => tree.get(key),
             ReadOrWriteTree::Write(tree) => tree.get(key),
+        }
+    }
+
+    #[inline]
+    fn exists(&self, key: &[u8]) -> Result<bool, <S as StorageEngine>::Error> {
+        match self {
+            ReadOrWriteTree::Read(tree) => tree.exists(key),
+            ReadOrWriteTree::Write(tree) => tree.exists(key),
         }
     }
 

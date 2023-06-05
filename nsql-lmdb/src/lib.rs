@@ -137,13 +137,11 @@ pub struct LmdbWriteTree<'env, 'txn> {
 unsafe impl Send for LmdbWriteTree<'_, '_> {}
 
 impl<'env, 'txn> ReadTree<'env, 'txn, LmdbStorageEngine> for LmdbReadTree<'env, 'txn> {
+    #[inline]
     fn get<'a>(
         &'a self,
         key: &[u8],
-    ) -> Result<
-        Option<<LmdbStorageEngine as StorageEngine>::Bytes<'a>>,
-        <LmdbStorageEngine as StorageEngine>::Error,
-    > {
+    ) -> Result<Option<<LmdbStorageEngine as StorageEngine>::Bytes<'a>>, heed::Error> {
         self.db.get(self.txn, key)
     }
 

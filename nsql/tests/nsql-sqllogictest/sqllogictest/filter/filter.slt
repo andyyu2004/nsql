@@ -1,19 +1,19 @@
 statement ok
-CREATE TABLE t (x boolean PRIMARY KEY);
+CREATE TABLE t (id int PRIMARY KEY, x boolean);
 
 statement ok
-INSERT INTO t VALUES (false), (true), (false);
+INSERT INTO t VALUES (1, false), (2, true), (3, false);
 
 query B
-SELECT * FROM t WHERE x;
+SELECT x FROM t WHERE x;
 ----
 true
 
 query B
-SELECT * FROM t WHERE NULL;
+SELECT x FROM t WHERE NULL;
 ----
 
 query error
-SELECT * FROM t WHERE 1;
+SELECT x FROM t WHERE 1;
 ----
 expected predicate type of WHERE to be of type bool, got type int

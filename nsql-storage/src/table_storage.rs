@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use ::next_gen::prelude::*;
+use anyhow::bail;
 use fix_hidden_lifetime_bug::fix_hidden_lifetime_bug;
 use next_gen::generator_fn::GeneratorFn;
 use nsql_catalog::{Column, TableRef};
@@ -40,8 +41,12 @@ impl<'env: 'txn, 'txn, S: StorageEngine> TableStorage<'env, 'txn, S, ReadWriteEx
     }
 
     #[inline]
-    pub fn insert(&mut self, tuple: &Tuple) -> Result<(), S::Error> {
+    pub fn insert(&mut self, tuple: &Tuple) -> Result<(), anyhow::Error> {
         let (k, v) = self.split_tuple(tuple);
+        if self.tree.exists(&k)? {
+            // FIXME better error message
+            bail!("duplicate key value violates primary key constraint")
+        }
         self.tree.put(&k, &v)?;
 
         Ok(())

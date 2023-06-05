@@ -118,6 +118,7 @@ impl<S: StorageEngine> Binder<S> {
                 if columns.iter().all(|c| !c.is_primary_key) {
                     bail!("table must have a primary key defined")
                 }
+
                 let info = ir::CreateTableInfo { name: path.name(), namespace, columns };
                 ir::Stmt::CreateTable(info)
             }
