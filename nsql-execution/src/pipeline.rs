@@ -46,7 +46,9 @@ impl<'env, 'txn, S, M> PipelineBuilderArena<'env, 'txn, S, M> {
 
 macro_rules! impl_index {
     ($name:ident . $field:ident: $idx:ident) => {
-        impl<'env, 'txn, S, M> std::ops::Index<Idx<$idx<'env, 'txn, S, M>>> for $name<'env, 'txn, S, M> {
+        impl<'env, 'txn, S, M> std::ops::Index<Idx<$idx<'env, 'txn, S, M>>>
+            for $name<'env, 'txn, S, M>
+        {
             type Output = $idx<'env, 'txn, S, M>;
 
             #[inline]
@@ -55,7 +57,9 @@ macro_rules! impl_index {
             }
         }
 
-        impl<'env, 'txn, S, M> std::ops::IndexMut<Idx<$idx<'env, 'txn, S, M>>> for $name<'env, 'txn, S, M> {
+        impl<'env, 'txn, S, M> std::ops::IndexMut<Idx<$idx<'env, 'txn, S, M>>>
+            for $name<'env, 'txn, S, M>
+        {
             #[inline]
             fn index_mut(&mut self, index: Idx<$idx<'env, 'txn, S, M>>) -> &mut Self::Output {
                 &mut self.$field[index]
@@ -138,7 +142,9 @@ impl<'env, 'txn, S, M> MetaPipelineBuilder<'env, 'txn, S, M> {
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PipelineBuilderArena<'env, 'txn, S, M> {
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
+    PipelineBuilderArena<'env, 'txn, S, M>
+{
     pub(crate) fn new_child_meta_pipeline(
         &mut self,
         parent: Idx<MetaPipelineBuilder<'env, 'txn, S, M>>,

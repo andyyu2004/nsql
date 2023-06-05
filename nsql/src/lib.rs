@@ -75,7 +75,7 @@ pub struct Connection<S: StorageEngine> {
     db: Nsql<S>,
 }
 
-pub struct ConnectionState<'env, 'txn, S: StorageEngine> {
+pub struct ConnectionState<'env, S: StorageEngine> {
     current_tx: ArcSwapOption<ReadOrWriteTransaction<'env, S>>,
 }
 
@@ -148,15 +148,15 @@ impl<S: StorageEngine> Shared<S> {
                 let ctx = ExecutionContext::new(
                     self.storage.storage(),
                     catalog,
-                    TransactionContext::new(tx, auto_commit),
+                    TransactionContext::new(&tx, auto_commit),
                 );
                 let tuples = nsql_execution::execute(&ctx, physical_plan)?;
-                let (auto_commit, state, txn) = ctx.take_txn();
+                let (auto_commit, state) = ctx.take_txn();
                 if auto_commit || !matches!(state, TransactionState::Active) {
                     tracing::info!("ending readonly transaction");
                     (None, tuples)
                 } else {
-                    (Some(ReadOrWriteTransaction::<S>::Read(txn)), tuples)
+                    (Some(ReadOrWriteTransaction::<S>::Read(tx)), tuples)
                 }
             }
             ReadOrWriteTransaction::Write(tx) => {
@@ -165,30 +165,30 @@ impl<S: StorageEngine> Shared<S> {
                 let ctx = ExecutionContext::new(
                     self.storage.storage(),
                     catalog,
-                    TransactionContext::new(tx, auto_commit),
+                    TransactionContext::new(&tx, auto_commit),
                 );
                 let tuples = nsql_execution::execute_write(&ctx, physical_plan)?;
-                let (auto_commit, state, txn) = ctx.take_txn();
+                let (auto_commit, state) = ctx.take_txn();
                 // FIXME need to remember `auto_commit` value for the next call, otherwise
                 // auto_commit will be true again
                 match state {
                     TransactionState::Active if auto_commit => {
                         tracing::info!("auto-committing write transaction");
-                        txn.commit()?;
+                        tx.commit()?;
                     }
                     TransactionState::Active => {
                         return Ok((
-                            Some(ReadOrWriteTransaction::Write(txn)),
+                            Some(ReadOrWriteTransaction::Write(tx)),
                             MaterializedQueryOutput { types: vec![], tuples },
                         ));
                     }
                     TransactionState::Committed => {
                         tracing::info!("committing write transaction");
-                        txn.commit()?
+                        tx.commit()?
                     }
                     TransactionState::Aborted => {
                         tracing::info!("aborting write transaction");
-                        txn.abort()?
+                        tx.abort()?
                     }
                 }
 

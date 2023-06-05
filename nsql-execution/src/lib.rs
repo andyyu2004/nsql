@@ -11,7 +11,7 @@ mod vis;
 
 use std::fmt;
 use std::marker::PhantomData;
-use std::ops::{Deref, DerefMut};
+use std::ops::Deref;
 use std::sync::atomic::{self, AtomicBool};
 use std::sync::Arc;
 
@@ -202,9 +202,7 @@ impl<'short, 'a, T> Reborrow<'short> for &'a mut T {
 }
 
 pub struct TransactionContext<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> {
-    // probably can just take a reference to the transaction
-    pd: PhantomData<&'txn ()>,
-    tx: M::Transaction,
+    tx: &'txn M::Transaction,
     auto_commit: AtomicBool,
     state: AtomicEnum<TransactionState>,
 }
@@ -236,9 +234,8 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     TransactionContext<'env, 'txn, S, M>
 {
     #[inline]
-    pub fn new(tx: M::Transaction, auto_commit: bool) -> Self {
+    pub fn new(tx: &'txn M::Transaction, auto_commit: bool) -> Self {
         Self {
-            pd: PhantomData,
             tx,
             auto_commit: AtomicBool::new(auto_commit),
             state: AtomicEnum::new(TransactionState::Active),
@@ -274,19 +271,8 @@ where
     type Target = M::Transaction;
 
     #[inline]
-    fn deref(&self) -> &Self::Target {
-        &self.tx
-    }
-}
-
-impl<'env, 'txn, S, M> DerefMut for TransactionContext<'env, 'txn, S, M>
-where
-    S: StorageEngine,
-    M: ExecutionMode<'env, S>,
-{
-    #[inline]
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.tx
+    fn deref(&self) -> &'txn Self::Target {
+        self.tx
     }
 }
 
@@ -299,9 +285,9 @@ pub struct ExecutionContext<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env,
 
 impl<'env: 'txn, 'txn, S: StorageEngine> ExecutionContext<'env, 'txn, S, ReadonlyExecutionMode<S>> {
     #[inline]
-    pub fn take_txn(self) -> (bool, TransactionState, S::Transaction<'env>) {
+    pub fn take_txn(self) -> (bool, TransactionState) {
         let tx = self.tx;
-        (tx.auto_commit.into_inner(), tx.state.into_inner(), tx.tx)
+        (tx.auto_commit.into_inner(), tx.state.into_inner())
     }
 }
 
@@ -309,9 +295,9 @@ impl<'env: 'txn, 'txn, S: StorageEngine>
     ExecutionContext<'env, 'txn, S, ReadWriteExecutionMode<S>>
 {
     #[inline]
-    pub fn take_txn(self) -> (bool, TransactionState, S::WriteTransaction<'env>) {
+    pub fn take_txn(self) -> (bool, TransactionState) {
         let tx = self.tx;
-        (tx.auto_commit.into_inner(), tx.state.into_inner(), tx.tx)
+        (tx.auto_commit.into_inner(), tx.state.into_inner())
     }
 }
 
@@ -333,8 +319,13 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     }
 
     #[inline]
-    pub fn tx(&self) -> &TransactionContext<'env, 'txn, S, M> {
+    pub fn tcx(&self) -> &TransactionContext<'env, 'txn, S, M> {
         &self.tx
+    }
+
+    #[inline]
+    pub fn tx(&self) -> &'txn M::Transaction {
+        self.tx.tx
     }
 
     #[inline]

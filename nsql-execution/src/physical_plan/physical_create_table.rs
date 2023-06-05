@@ -72,14 +72,14 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSource<'env, 'txn, S, ReadWrite
         let catalog = ctx.catalog();
         let tx = ctx.tx();
         let namespace: Arc<Namespace<S>> = catalog
-            .get::<Namespace<S>>(&**tx, self.info.namespace)
+            .get::<Namespace<S>>(tx, self.info.namespace)
             .expect("schema not found during execution");
 
         let info = CreateTableInfo { name: self.info.name.clone() };
 
         let table_oid = namespace.create::<Table<S>>(tx, info)?;
         let table: Arc<Table<S>> =
-            namespace.get::<Table<S>>(&**tx, table_oid).expect("table not found during execution");
+            namespace.get::<Table<S>>(tx, table_oid).expect("table not found during execution");
 
         for info in &self.info.columns {
             table.create::<Column>(tx, info.clone())?;
@@ -90,7 +90,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSource<'env, 'txn, S, ReadWrite
             tx,
             TableStorageInfo::new(
                 TableRef { namespace: self.info.namespace, table: table_oid },
-                table.columns(&**tx),
+                table.columns(tx),
             ),
         )?;
 

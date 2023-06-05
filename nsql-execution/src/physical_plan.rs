@@ -37,9 +37,9 @@ use self::physical_transaction::PhysicalTransaction;
 use self::physical_update::PhysicalUpdate;
 use self::physical_values::PhysicalValues;
 use crate::{
-    Chunk, Evaluator, ExecutionContext, ExecutionMode, ExecutionResult, OperatorState,
-    PhysicalNode, PhysicalOperator, PhysicalSink, PhysicalSource, ReadWriteExecutionMode,
-    ReadonlyExecutionMode, Tuple, TupleStream,
+    Evaluator, ExecutionContext, ExecutionMode, ExecutionResult, OperatorState, PhysicalNode,
+    PhysicalOperator, PhysicalSink, PhysicalSource, ReadWriteExecutionMode, ReadonlyExecutionMode,
+    Tuple, TupleStream,
 };
 
 pub struct PhysicalPlanner<S> {

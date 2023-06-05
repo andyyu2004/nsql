@@ -6,7 +6,7 @@ use next_gen::generator_fn::GeneratorFn;
 use nsql_catalog::{Column, TableRef};
 use nsql_storage_engine::{
     fallible_iterator, ExecutionMode, FallibleIterator, ReadTree, ReadWriteExecutionMode,
-    StorageEngine, Transaction, WriteTree,
+    StorageEngine, WriteTree,
 };
 
 use crate::tuple::{Tuple, TupleIndex};
