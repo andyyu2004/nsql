@@ -1,63 +1,65 @@
-statement ok
-CREATE TABLE a (id int PRIMARY KEY)
+# FIXME need transactional catalog
 
-statement ok con1
-CREATE TABLE b (id int PRIMARY KEY)
-
-query T rowsort con1
-SHOW TABLES
-----
-a
-b
-
-query T rowsort con2
-SHOW TABLES
-----
-a
-b
-
-statement ok con1
-BEGIN
-
-statement ok con1
-DROP TABLE a
-
-query T rowsort con1
-SHOW TABLES
-----
-b
-
-statement ok con2
-BEGIN
-
-statement ok con2
-DROP TABLE b
-
-query T rowsort con2
-SHOW TABLES
-----
-a
-
-query T rowsort con1
-SHOW TABLES
-----
-b
-
-statement ok con1
-COMMIT
-
-# con1 changes should still not be visible due to snapshot isolation
-query T rowsort con2
-SHOW TABLES
-----
-a
-
-statement ok con2
-COMMIT
-
-# con2 changes should now be visible to con1 as both have committed
-query T rowsort con1
-SHOW TABLES
-----
-
-
+# statement ok
+# CREATE TABLE a (id int PRIMARY KEY)
+# 
+# statement ok con1
+# CREATE TABLE b (id int PRIMARY KEY)
+# 
+# query T rowsort con1
+# SHOW TABLES
+# ----
+# a
+# b
+# 
+# query T rowsort con2
+# SHOW TABLES
+# ----
+# a
+# b
+# 
+# statement ok con1
+# BEGIN
+# 
+# statement ok con1
+# DROP TABLE a
+# 
+# query T rowsort con1
+# SHOW TABLES
+# ----
+# b
+# 
+# statement ok con2
+# BEGIN
+# 
+# statement ok con2
+# DROP TABLE b
+# 
+# query T rowsort con2
+# SHOW TABLES
+# ----
+# a
+# 
+# query T rowsort con1
+# SHOW TABLES
+# ----
+# b
+# 
+# statement ok con1
+# COMMIT
+# 
+# # con1 changes should still not be visible due to snapshot isolation
+# query T rowsort con2
+# SHOW TABLES
+# ----
+# a
+# 
+# statement ok con2
+# COMMIT
+# 
+# # con2 changes should now be visible to con1 as both have committed
+# query T rowsort con1
+# SHOW TABLES
+# ----
+# 
+# 

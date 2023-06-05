@@ -1,3 +1,4 @@
+use anyhow::bail;
 use nsql_storage_engine::fallible_iterator;
 
 use super::*;
@@ -53,24 +54,23 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
     ) -> ExecutionResult<TupleStream<'txn, S>> {
         let tx = ctx.tcx();
         match self.kind {
-            ir::TransactionStmtKind::Begin(mode) => {
+            ir::TransactionStmtKind::Begin(_) => {
                 if tx.auto_commit() {
                     tx.unset_auto_commit();
                 } else {
-                    todo!()
+                    bail!("nested transactions are not supported")
                 }
             }
             ir::TransactionStmtKind::Commit => {
                 if tx.auto_commit() {
-                    todo!()
+                    bail!("cannot commit outside of a transaction")
                 } else {
                     tx.commit();
                 }
             }
             ir::TransactionStmtKind::Abort => {
                 if tx.auto_commit() {
-                    todo!()
-                    // return Err(nsql_storage::TransactionError::RollbackWithoutTransaction)?;
+                    bail!("cannot rollback outside of a transaction")
                 } else {
                     tx.abort();
                 }

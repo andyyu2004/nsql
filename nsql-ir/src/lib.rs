@@ -115,7 +115,7 @@ impl<S> Stmt<S> {
             Stmt::Transaction(kind) => match kind {
                 TransactionStmtKind::Begin(mode) => *mode,
                 TransactionStmtKind::Commit | TransactionStmtKind::Abort => {
-                    todo!("when would this occur?")
+                    TransactionMode::ReadOnly
                 }
             },
             Stmt::Show(..) | Stmt::Query(..) | Stmt::Explain(..) => TransactionMode::ReadOnly,

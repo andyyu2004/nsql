@@ -100,18 +100,6 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalPlanner<S> {
             Plan::CreateTable(info) => PhysicalCreateTable::plan(info),
             Plan::CreateNamespace(info) => PhysicalCreateNamespace::plan(info),
             Plan::Drop(refs) => PhysicalDrop::plan(refs),
-            Plan::Projection { source, projection } => {
-                PhysicalProjection::plan(self.plan_write_node(tx, source)?, projection)
-            }
-            Plan::Limit { source, limit } => {
-                PhysicalLimit::plan(self.plan_write_node(tx, source)?, limit)
-            }
-            Plan::Filter { source, predicate } => {
-                PhysicalFilter::plan(self.plan_write_node(tx, source)?, predicate)
-            }
-            Plan::Explain(kind, plan) => {
-                return self.explain_plan(tx, kind, self.plan_write_node(tx, plan)?);
-            }
             _ => return self.fold_plan(tx, plan, Self::plan_write_node),
         };
 

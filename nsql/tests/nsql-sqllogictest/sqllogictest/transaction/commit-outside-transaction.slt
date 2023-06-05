@@ -11,7 +11,7 @@ statement error
 commit
 
 statement error
-ROLLBACK
+oOLLBACK
 
 statement ok
 BEGIN

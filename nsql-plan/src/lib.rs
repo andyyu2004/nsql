@@ -51,12 +51,14 @@ impl<S> Plan<S> {
             Plan::Empty
             | Plan::Transaction(_)
             | Plan::Show(_)
-            | Plan::Explain(..)
             | Plan::Scan { .. }
             | Plan::Values { .. } => false,
             Plan::Projection { source, .. }
             | Plan::Limit { source, .. }
             | Plan::Filter { source, .. } => source.requires_write_transaction(),
+            // even though `explain` doesn't execute the plan, the planning stage currently
+            // still checks we have a write transaction available
+            Plan::Explain(_, inner) => inner.requires_write_transaction(),
             Plan::Insert { .. }
             | Plan::Drop(_)
             | Plan::CreateTable(_)
