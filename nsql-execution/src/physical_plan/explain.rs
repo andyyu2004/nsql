@@ -1,44 +1,69 @@
 use std::fmt;
+use std::sync::Arc;
 
 use nsql_arena::Idx;
 use nsql_catalog::Catalog;
-use nsql_storage::Transaction;
+use nsql_storage_engine::{StorageEngine, Transaction};
 
 use crate::pipeline::MetaPipeline;
-use crate::{PhysicalNode, RootPipeline};
+use crate::{ExecutionMode, PhysicalNode, RootPipeline};
 
 pub type Result<T = ()> = std::result::Result<T, fmt::Error>;
 
-pub trait Explain {
-    fn explain(&self, catalog: &Catalog, tx: &Transaction, f: &mut fmt::Formatter<'_>) -> Result;
+pub trait Explain<S: StorageEngine> {
+    fn explain(
+        &self,
+        catalog: &Catalog<S>,
+        tx: &dyn Transaction<'_, S>,
+        f: &mut fmt::Formatter<'_>,
+    ) -> Result;
 }
 
-pub(crate) fn explain_pipeline<'a>(
-    catalog: &'a Catalog,
-    tx: &'a Transaction,
-    root_pipeline: &'a RootPipeline,
-) -> impl fmt::Display + 'a {
-    RootPipelineExplainer { catalog, tx, root_pipeline }
+pub(crate) fn display<'a, 'env: 'a, S: StorageEngine>(
+    catalog: &'a Catalog<S>,
+    tx: &'a dyn Transaction<'env, S>,
+    explain: &'a dyn Explain<S>,
+) -> Display<'a, 'env, S> {
+    Display { catalog, tx, explain, marker: std::marker::PhantomData }
 }
 
-pub struct RootPipelineExplainer<'a> {
-    catalog: &'a Catalog,
-    tx: &'a Transaction,
-    root_pipeline: &'a RootPipeline,
+pub(crate) struct Display<'a, 'env, S: StorageEngine> {
+    catalog: &'a Catalog<S>,
+    tx: &'a dyn Transaction<'env, S>,
+    explain: &'a dyn Explain<S>,
+    marker: std::marker::PhantomData<&'env ()>,
 }
 
-impl RootPipelineExplainer<'_> {}
+impl<'a, 'env, S: StorageEngine> fmt::Display for Display<'a, 'env, S> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.explain.explain(self.catalog, self.tx, f)
+    }
+}
 
-pub struct MetaPipelineExplainer<'a> {
-    root: &'a RootPipelineExplainer<'a>,
+pub(crate) fn explain_pipeline<'a, 'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
+    root_pipeline: &'a RootPipeline<'env, 'txn, S, M>,
+) -> RootPipelineExplainer<'a, 'env, 'txn, S, M> {
+    RootPipelineExplainer { root_pipeline }
+}
+
+pub struct RootPipelineExplainer<'a, 'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> {
+    root_pipeline: &'a RootPipeline<'env, 'txn, S, M>,
+}
+
+pub struct MetaPipelineExplainer<'a, 'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> {
+    root: &'a RootPipelineExplainer<'a, 'env, 'txn, S, M>,
     indent: usize,
 }
 
-impl<'a> MetaPipelineExplainer<'a> {
+impl<'a, 'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
+    MetaPipelineExplainer<'a, 'env, 'txn, S, M>
+{
     fn explain_meta_pipeline(
         &self,
+        catalog: &Catalog<S>,
+        tx: &dyn Transaction<'_, S>,
         f: &mut fmt::Formatter<'_>,
-        meta_pipeline: Idx<MetaPipeline>,
+        meta_pipeline: Idx<MetaPipeline<'env, 'txn, S, M>>,
     ) -> fmt::Result {
         let arena = &self.root.root_pipeline.arena;
         writeln!(
@@ -62,7 +87,7 @@ impl<'a> MetaPipelineExplainer<'a> {
             let pipeline = &arena[pipeline];
             for node in pipeline.nodes().rev() {
                 write!(f, "{:indent$}", "", indent = self.indent + 4)?;
-                node.explain(self.root.catalog, self.root.tx, f)?;
+                node.explain(catalog, tx, f)?;
                 writeln!(f)?;
             }
         }
@@ -70,48 +95,67 @@ impl<'a> MetaPipelineExplainer<'a> {
         for &child in &meta_pipeline.children {
             writeln!(f)?;
             MetaPipelineExplainer { root: self.root, indent: self.indent + 6 }
-                .explain_meta_pipeline(f, child)?;
+                .explain_meta_pipeline(catalog, tx, f, child)?;
         }
         Ok(())
     }
 }
 
-impl fmt::Display for RootPipelineExplainer<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        MetaPipelineExplainer { root: self, indent: 0 }
-            .explain_meta_pipeline(f, self.root_pipeline.arena.root())
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Explain<S>
+    for RootPipelineExplainer<'_, 'env, 'txn, S, M>
+{
+    fn explain(
+        &self,
+        catalog: &Catalog<S>,
+        tx: &dyn Transaction<'_, S>,
+        f: &mut fmt::Formatter<'_>,
+    ) -> Result {
+        MetaPipelineExplainer { root: self, indent: 0 }.explain_meta_pipeline(
+            catalog,
+            tx,
+            f,
+            self.root_pipeline.arena.root(),
+        )
     }
 }
 
-pub(crate) fn explain<'a>(
-    catalog: &'a Catalog,
-    tx: &'a Transaction,
-    node: &'a dyn PhysicalNode,
-) -> impl fmt::Display + 'a {
-    PhysicalNodeExplainer { catalog, tx, node, indent: 0 }
+pub(crate) fn explain<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
+    node: Arc<dyn PhysicalNode<'env, 'txn, S, M> + 'txn>,
+) -> PhysicalNodeExplainer<'env, 'txn, S, M> {
+    PhysicalNodeExplainer { node, indent: 0 }
 }
 
-pub struct PhysicalNodeExplainer<'a> {
-    catalog: &'a Catalog,
-    tx: &'a Transaction,
-    node: &'a dyn PhysicalNode,
+pub struct PhysicalNodeExplainer<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> {
+    node: Arc<dyn PhysicalNode<'env, 'txn, S, M>>,
     indent: usize,
 }
 
-impl<'a> PhysicalNodeExplainer<'a> {
-    fn explain_child(&self, node: &'a dyn PhysicalNode) -> PhysicalNodeExplainer<'_> {
-        PhysicalNodeExplainer { catalog: self.catalog, tx: self.tx, node, indent: self.indent + 2 }
+impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
+    PhysicalNodeExplainer<'env, 'txn, S, M>
+{
+    fn explain_child(
+        &self,
+        node: Arc<dyn PhysicalNode<'env, 'txn, S, M>>,
+    ) -> PhysicalNodeExplainer<'env, 'txn, S, M> {
+        PhysicalNodeExplainer { node, indent: self.indent + 2 }
     }
 }
 
-impl fmt::Display for PhysicalNodeExplainer<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Explain<S>
+    for PhysicalNodeExplainer<'env, 'txn, S, M>
+{
+    fn explain(
+        &self,
+        catalog: &Catalog<S>,
+        tx: &dyn Transaction<'_, S>,
+        f: &mut fmt::Formatter<'_>,
+    ) -> Result {
         write!(f, "{:indent$}", "", indent = self.indent)?;
-        self.node.explain(self.catalog, self.tx, f)?;
+        self.node.explain(catalog, tx, f)?;
         writeln!(f)?;
 
         for child in self.node.children() {
-            self.explain_child(child.as_ref()).fmt(f)?;
+            self.explain_child(Arc::clone(child)).explain(catalog, tx, f)?;
         }
 
         Ok(())

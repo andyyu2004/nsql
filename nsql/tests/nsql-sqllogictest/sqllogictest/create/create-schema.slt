@@ -2,10 +2,10 @@ statement ok
 CREATE SCHEMA foo;
 
 statement ok
-CREATE TABLE foo.bar (id int);
+CREATE TABLE foo.bar (id int PRIMARY KEY);
 
 statement ok
-CREATE TABLE bar (id int);
+CREATE TABLE bar (id int PRIMARY KEY);
 
 statement ok
 INSERT INTO foo.bar VALUES (1)

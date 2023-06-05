@@ -2,28 +2,30 @@ use itertools::Itertools;
 
 use super::*;
 
-#[derive(Debug)]
-pub struct PhysicalProjection {
-    children: [Arc<dyn PhysicalNode>; 1],
+pub struct PhysicalProjection<'env, 'txn, S, M> {
+    children: [Arc<dyn PhysicalNode<'env, 'txn, S, M>>; 1],
     projection: Box<[ir::Expr]>,
     evaluator: Evaluator,
 }
 
-impl PhysicalProjection {
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
+    PhysicalProjection<'env, 'txn, S, M>
+{
     pub(crate) fn plan(
-        source: Arc<dyn PhysicalNode>,
+        source: Arc<dyn PhysicalNode<'env, 'txn, S, M>>,
         projection: Box<[ir::Expr]>,
-    ) -> Arc<dyn PhysicalNode> {
+    ) -> Arc<dyn PhysicalNode<'env, 'txn, S, M>> {
         Arc::new(Self { evaluator: Evaluator::new(), children: [source], projection })
     }
 }
 
-#[async_trait::async_trait]
-impl PhysicalOperator for PhysicalProjection {
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
+    PhysicalOperator<'env, 'txn, S, M> for PhysicalProjection<'env, 'txn, S, M>
+{
     #[tracing::instrument(skip(self, _ctx, input))]
-    async fn execute(
+    fn execute(
         &self,
-        _ctx: &ExecutionContext,
+        _ctx: &'txn ExecutionContext<'env, S, M>,
         input: Tuple,
     ) -> ExecutionResult<OperatorState<Tuple>> {
         let output = self.evaluator.evaluate(&input, &self.projection);
@@ -32,29 +34,42 @@ impl PhysicalOperator for PhysicalProjection {
     }
 }
 
-impl PhysicalNode for PhysicalProjection {
-    fn children(&self) -> &[Arc<dyn PhysicalNode>] {
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode<'env, 'txn, S, M>
+    for PhysicalProjection<'env, 'txn, S, M>
+{
+    fn children(&self) -> &[Arc<dyn PhysicalNode<'env, 'txn, S, M>>] {
         &self.children
     }
 
-    fn as_source(self: Arc<Self>) -> Result<Arc<dyn PhysicalSource>, Arc<dyn PhysicalNode>> {
+    fn as_source(
+        self: Arc<Self>,
+    ) -> Result<Arc<dyn PhysicalSource<'env, 'txn, S, M>>, Arc<dyn PhysicalNode<'env, 'txn, S, M>>>
+    {
         Err(self)
     }
 
-    fn as_sink(self: Arc<Self>) -> Result<Arc<dyn PhysicalSink>, Arc<dyn PhysicalNode>> {
+    fn as_sink(
+        self: Arc<Self>,
+    ) -> Result<Arc<dyn PhysicalSink<'env, 'txn, S, M>>, Arc<dyn PhysicalNode<'env, 'txn, S, M>>>
+    {
         Err(self)
     }
 
-    fn as_operator(self: Arc<Self>) -> Result<Arc<dyn PhysicalOperator>, Arc<dyn PhysicalNode>> {
+    fn as_operator(
+        self: Arc<Self>,
+    ) -> Result<Arc<dyn PhysicalOperator<'env, 'txn, S, M>>, Arc<dyn PhysicalNode<'env, 'txn, S, M>>>
+    {
         Ok(self)
     }
 }
 
-impl Explain for PhysicalProjection {
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Explain<S>
+    for PhysicalProjection<'env, 'txn, S, M>
+{
     fn explain(
         &self,
-        _catalog: &Catalog,
-        _tx: &Transaction,
+        _catalog: &Catalog<S>,
+        _tx: &dyn Transaction<'_, S>,
         f: &mut fmt::Formatter<'_>,
     ) -> explain::Result {
         write!(f, "projection ({})", self.projection.iter().join(", "))?;

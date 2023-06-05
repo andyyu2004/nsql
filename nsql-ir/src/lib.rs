@@ -1,20 +1,31 @@
+#![feature(anonymous_lifetime_in_impl_trait)]
 #![deny(rust_2018_idioms)]
 
 pub mod expr;
 use std::fmt;
 
-use nsql_catalog::{CreateColumnInfo, Namespace, Oid};
+use nsql_catalog::{CreateColumnInfo, Namespace, Oid, TableRef};
 use nsql_core::Name;
 pub use nsql_storage::tuple::TupleIndex;
 pub use nsql_storage::value::{Decimal, Value};
 
 pub use self::expr::*;
 
-#[derive(Debug, Clone)]
-pub struct CreateTableInfo {
+#[derive(Clone)]
+pub struct CreateTableInfo<S> {
     pub name: Name,
-    pub namespace: Oid<Namespace>,
+    pub namespace: Oid<Namespace<S>>,
     pub columns: Vec<CreateColumnInfo>,
+}
+
+impl<S> fmt::Debug for CreateTableInfo<S> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("CreateTableInfo")
+            .field("name", &self.name)
+            .field("namespace", &self.namespace)
+            .field("columns", &self.columns)
+            .finish()
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -23,11 +34,26 @@ pub struct CreateNamespaceInfo {
     pub if_not_exists: bool,
 }
 
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub enum TransactionMode {
+    ReadOnly,
+    ReadWrite,
+}
+
+impl fmt::Display for TransactionMode {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::ReadWrite => write!(f, "read write"),
+            Self::ReadOnly => write!(f, "read only"),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
-pub enum TransactionKind {
-    Begin,
+pub enum TransactionStmtKind {
+    Begin(TransactionMode),
     Commit,
-    Rollback,
+    Abort,
 }
 
 #[derive(Debug, Clone)]
@@ -43,31 +69,61 @@ impl fmt::Display for ObjectType {
     }
 }
 
-#[derive(Debug, Clone)]
-pub enum EntityRef {
-    Table(TableRef),
+#[derive(Clone)]
+pub enum EntityRef<S> {
+    Table(TableRef<S>),
+}
+
+impl<S> fmt::Debug for EntityRef<S> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Table(table) => write!(f, "{table:?}"),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
-pub enum Stmt {
+pub enum Stmt<S> {
     Show(ObjectType),
-    Drop(Vec<EntityRef>),
-    Transaction(TransactionKind),
+    Drop(Vec<EntityRef<S>>),
+    Transaction(TransactionStmtKind),
     CreateNamespace(CreateNamespaceInfo),
-    CreateTable(CreateTableInfo),
-    Query(Box<QueryPlan>),
-    Explain(ExplainMode, Box<Stmt>),
+    CreateTable(CreateTableInfo<S>),
+    Query(Box<QueryPlan<S>>),
+    Explain(ExplainMode, Box<Stmt<S>>),
     Insert {
-        table_ref: TableRef,
+        table_ref: TableRef<S>,
         projection: Box<[Expr]>,
-        source: Box<QueryPlan>,
+        source: Box<QueryPlan<S>>,
         returning: Option<Box<[Expr]>>,
     },
     Update {
-        table_ref: TableRef,
-        source: Box<QueryPlan>,
+        table_ref: TableRef<S>,
+        source: Box<QueryPlan<S>>,
         returning: Option<Box<[Expr]>>,
     },
+}
+
+impl<S> Stmt<S> {
+    pub fn required_transaction_mode(&self) -> TransactionMode {
+        match self {
+            Stmt::Drop(_)
+            | Stmt::CreateNamespace(_)
+            | Stmt::CreateTable(_)
+            | Stmt::Update { .. }
+            | Stmt::Insert { .. } => TransactionMode::ReadWrite,
+            Stmt::Transaction(kind) => match kind {
+                TransactionStmtKind::Begin(mode) => *mode,
+                TransactionStmtKind::Commit | TransactionStmtKind::Abort => {
+                    TransactionMode::ReadOnly
+                }
+            },
+            // even though `explain` doesn't execute the plan, the planning stage currently
+            // still checks we have a write transaction available
+            Stmt::Explain(_, inner) => inner.required_transaction_mode(),
+            Stmt::Show(..) | Stmt::Query(..) => TransactionMode::ReadOnly,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]

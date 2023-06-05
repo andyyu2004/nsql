@@ -1,30 +1,32 @@
-use std::collections::VecDeque;
-
-use nsql_catalog::EntityRef;
+use nsql_catalog::{EntityRef, TableRef};
+use nsql_storage::{TableStorage, TableStorageInfo};
+use nsql_storage_engine::fallible_iterator;
 use parking_lot::RwLock;
 
 use super::*;
+use crate::ReadWriteExecutionMode;
 
-#[derive(Debug)]
-pub(crate) struct PhysicalUpdate {
-    children: [Arc<dyn PhysicalNode>; 1],
-    table_ref: ir::TableRef,
+pub(crate) struct PhysicalUpdate<'env, 'txn, S> {
+    children: [Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode<S>>>; 1],
+    table_ref: TableRef<S>,
+    tuples: RwLock<Vec<Tuple>>,
     returning: Option<Box<[ir::Expr]>>,
-    returning_tuples: RwLock<VecDeque<Tuple>>,
+    returning_tuples: RwLock<Vec<Tuple>>,
     returning_evaluator: Evaluator,
 }
 
-impl PhysicalUpdate {
+impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalUpdate<'env, 'txn, S> {
     pub fn plan(
-        table_ref: ir::TableRef,
+        table_ref: TableRef<S>,
         // This is the source of the updates.
         // The schema should be that of the table being updated + the `tid` in the rightmost column
-        source: Arc<dyn PhysicalNode>,
+        source: Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode<S>>>,
         returning: Option<Box<[ir::Expr]>>,
-    ) -> Arc<dyn PhysicalNode> {
+    ) -> Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode<S>>> {
         Arc::new(Self {
             table_ref,
             returning,
+            tuples: Default::default(),
             children: [source],
             returning_tuples: Default::default(),
             returning_evaluator: Evaluator::new(),
@@ -32,75 +34,103 @@ impl PhysicalUpdate {
     }
 }
 
-impl PhysicalNode for PhysicalUpdate {
-    fn children(&self) -> &[Arc<dyn PhysicalNode>] {
+impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode<S>>
+    for PhysicalUpdate<'env, 'txn, S>
+{
+    #[inline]
+    fn children(&self) -> &[Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode<S>>>] {
         &self.children
     }
 
-    fn as_source(self: Arc<Self>) -> Result<Arc<dyn PhysicalSource>, Arc<dyn PhysicalNode>> {
+    #[inline]
+    fn as_source(
+        self: Arc<Self>,
+    ) -> Result<
+        Arc<dyn PhysicalSource<'env, 'txn, S, ReadWriteExecutionMode<S>>>,
+        Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode<S>>>,
+    > {
         Ok(self)
     }
 
-    fn as_sink(self: Arc<Self>) -> Result<Arc<dyn PhysicalSink>, Arc<dyn PhysicalNode>> {
+    #[inline]
+    fn as_sink(
+        self: Arc<Self>,
+    ) -> Result<
+        Arc<dyn PhysicalSink<'env, 'txn, S, ReadWriteExecutionMode<S>>>,
+        Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode<S>>>,
+    > {
         Ok(self)
     }
 
-    fn as_operator(self: Arc<Self>) -> Result<Arc<dyn PhysicalOperator>, Arc<dyn PhysicalNode>> {
+    #[inline]
+    fn as_operator(
+        self: Arc<Self>,
+    ) -> Result<
+        Arc<dyn PhysicalOperator<'env, 'txn, S, ReadWriteExecutionMode<S>>>,
+        Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode<S>>>,
+    > {
         Err(self)
     }
 }
 
-#[async_trait::async_trait]
-impl PhysicalSink for PhysicalUpdate {
-    async fn sink(&self, ctx: &ExecutionContext, tuple: Tuple) -> ExecutionResult<()> {
-        let tx = ctx.tx();
-        let table = self.table_ref.get(&ctx.catalog(), &tx);
-        let storage = table.storage();
+impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSink<'env, 'txn, S, ReadWriteExecutionMode<S>>
+    for PhysicalUpdate<'env, 'txn, S>
+{
+    fn sink(
+        &self,
+        _ctx: &'txn ExecutionContext<'env, S, ReadWriteExecutionMode<S>>,
+        tuple: Tuple,
+    ) -> ExecutionResult<()> {
+        self.tuples.write().push(tuple);
+        Ok(())
+    }
 
-        let (tuple, tid) = tuple.split_last().expect("expected tuple to be non-empty");
+    fn finalize(
+        &self,
+        ctx: &'txn ExecutionContext<'env, S, ReadWriteExecutionMode<S>>,
+    ) -> ExecutionResult<()> {
+        let tx = ctx.tx()?;
+        let table = self.table_ref.get(&ctx.catalog(), tx);
+        let mut storage = TableStorage::open(
+            ctx.storage(),
+            tx,
+            TableStorageInfo::new(self.table_ref, table.columns(tx)),
+        )?;
 
-        // We expect the tid in the rightmost column of the tuple.
-        let tid = match tid {
-            ir::Value::Tid(tid) => tid,
-            val => unreachable!("expected tid to be in the rightmost column, got {}", val.ty()),
-        };
+        let tuples = self.tuples.read();
+        for tuple in &*tuples {
+            // FIXME we need to detect whether or not we actually updated something before adding it
+            // to the returning set
+            storage.update(tuple)?;
 
-        storage.update(&tx, tid, &tuple).await.map_err(|report| report.into_error())?;
-
-        // FIXME just do the return evaluation here
-        if self.returning.is_some() {
-            self.returning_tuples.write().push_back(tuple);
+            if let Some(return_expr) = &self.returning {
+                self.returning_tuples
+                    .write()
+                    .push(self.returning_evaluator.evaluate(tuple, return_expr));
+            }
         }
 
         Ok(())
     }
 }
 
-#[async_trait::async_trait]
-impl PhysicalSource for PhysicalUpdate {
-    #[inline]
-    async fn source(&self, _ctx: &ExecutionContext) -> ExecutionResult<SourceState<Chunk>> {
-        let returning = match &self.returning {
-            Some(returning) => returning,
-            None => return Ok(SourceState::Done),
-        };
-
-        let tuple = match self.returning_tuples.write().pop_front() {
-            Some(tuple) => tuple,
-            None => return Ok(SourceState::Done),
-        };
-
-        Ok(SourceState::Yield(Chunk::singleton(
-            self.returning_evaluator.evaluate(&tuple, returning),
-        )))
+impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSource<'env, 'txn, S, ReadWriteExecutionMode<S>>
+    for PhysicalUpdate<'env, 'txn, S>
+{
+    fn source(
+        self: Arc<Self>,
+        _ctx: &'txn ExecutionContext<'env, S, ReadWriteExecutionMode<S>>,
+    ) -> ExecutionResult<TupleStream<'txn, S>> {
+        let returning = std::mem::take(&mut *self.returning_tuples.write());
+        Ok(Box::new(fallible_iterator::convert(returning.into_iter().map(Ok))))
     }
 }
 
-impl Explain for PhysicalUpdate {
+impl<'env: 'txn, 'txn, S: StorageEngine> Explain<S> for PhysicalUpdate<'env, 'txn, S> {
     fn explain(
         &self,
-        catalog: &Catalog,
-        tx: &Transaction,
+        catalog: &Catalog<S>,
+        tx: &dyn Transaction<'_, S>,
         f: &mut fmt::Formatter<'_>,
     ) -> explain::Result {
         write!(f, "update {}", self.table_ref.get(catalog, tx).name())?;

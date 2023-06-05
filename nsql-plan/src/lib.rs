@@ -1,53 +1,61 @@
 //! fixme this crate seems a bit useless
 
-use nsql_catalog::ColumnIndex;
+use nsql_catalog::{ColumnIndex, TableRef};
+use nsql_storage_engine::StorageEngine;
 
 #[derive(Debug)]
-pub enum Plan {
+pub enum Plan<S> {
     Empty,
-    Transaction(ir::TransactionKind),
-    CreateTable(ir::CreateTableInfo),
+    Transaction(ir::TransactionStmtKind),
+    CreateTable(ir::CreateTableInfo<S>),
     CreateNamespace(ir::CreateNamespaceInfo),
-    Drop(Vec<ir::EntityRef>),
+    Drop(Vec<ir::EntityRef<S>>),
     Show(ir::ObjectType),
-    Explain(ir::ExplainMode, Box<Plan>),
+    Explain(ir::ExplainMode, Box<Plan<S>>),
     Update {
-        table_ref: ir::TableRef,
-        source: Box<Plan>,
+        table_ref: TableRef<S>,
+        source: Box<Plan<S>>,
         returning: Option<Box<[ir::Expr]>>,
     },
     Filter {
-        source: Box<Plan>,
+        source: Box<Plan<S>>,
         predicate: ir::Expr,
     },
     Projection {
-        source: Box<Plan>,
+        source: Box<Plan<S>>,
         projection: Box<[ir::Expr]>,
     },
     Insert {
-        table_ref: ir::TableRef,
+        table_ref: TableRef<S>,
         projection: Box<[ir::Expr]>,
-        source: Box<Plan>,
+        source: Box<Plan<S>>,
         returning: Option<Box<[ir::Expr]>>,
     },
     Values {
         values: ir::Values,
     },
     Scan {
-        table_ref: ir::TableRef,
+        table_ref: TableRef<S>,
         projection: Option<Box<[ColumnIndex]>>,
     },
     Limit {
-        source: Box<Plan>,
+        source: Box<Plan<S>>,
         limit: u64,
     },
 }
 
-#[derive(Default)]
-pub struct Planner {}
+pub struct Planner<S> {
+    _marker: std::marker::PhantomData<S>,
+}
 
-impl Planner {
-    pub fn plan(&self, stmt: ir::Stmt) -> Box<Plan> {
+impl<S> Default for Planner<S> {
+    fn default() -> Self {
+        Self { _marker: std::marker::PhantomData }
+    }
+}
+
+impl<S: StorageEngine> Planner<S> {
+    pub fn plan(&self, stmt: ir::Stmt<S>) -> Box<Plan<S>> {
         let plan = match stmt {
             ir::Stmt::Transaction(kind) => Plan::Transaction(kind),
             ir::Stmt::CreateTable(info) => Plan::CreateTable(info),
@@ -68,7 +76,8 @@ impl Planner {
         Box::new(plan)
     }
 
-    fn plan_query(&self, plan: Box<ir::QueryPlan>) -> Box<Plan> {
+    #[allow(clippy::boxed_local)]
+    fn plan_query(&self, plan: Box<ir::QueryPlan<S>>) -> Box<Plan<S>> {
         let plan = match *plan {
             ir::QueryPlan::Values(values) => Plan::Values { values },
             ir::QueryPlan::Filter { source, predicate } => {

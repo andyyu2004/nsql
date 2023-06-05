@@ -1,6 +1,6 @@
 use std::borrow::Cow;
 
-use nsql::{MaterializedQueryOutput, Nsql};
+use nsql::{MaterializedQueryOutput, Nsql, RedbStorageEngine};
 use nu_ansi_term::{Color, Style};
 use reedline::{
     default_vi_insert_keybindings, default_vi_normal_keybindings, DefaultHinter, FileBackedHistory,
@@ -10,8 +10,7 @@ use reedline::{
 use tabled::builder::Builder;
 use tabled::Table;
 
-#[tokio::main]
-async fn main() -> nsql::Result<()> {
+fn main() -> nsql::Result<()> {
     let mut ikb = default_vi_insert_keybindings();
     ikb.add_binding(KeyModifiers::CONTROL, KeyCode::Char('f'), ReedlineEvent::HistoryHintComplete);
 
@@ -24,13 +23,13 @@ async fn main() -> nsql::Result<()> {
 
     let prompt = NsqlPrompt {};
 
-    let nsql = Nsql::mem().await?;
-    let conn = nsql.connect();
+    let nsql = Nsql::<RedbStorageEngine>::create("/tmp/test.db")?;
+    let (conn, state) = nsql.connect();
 
     loop {
         let sig = line_editor.read_line(&prompt)?;
         match sig {
-            Signal::Success(buffer) => match conn.query(&buffer).await {
+            Signal::Success(buffer) => match conn.query(&state, &buffer) {
                 Ok(output) => println!("{}", tabulate(output)),
                 Err(e) => println!("{}", e),
             },

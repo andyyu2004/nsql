@@ -1,115 +1,178 @@
-mod fsm;
-mod heap;
-mod local_storage;
+use std::sync::Arc;
 
-use std::sync::{Arc, Weak};
+use ::next_gen::prelude::*;
+use fix_hidden_lifetime_bug::fix_hidden_lifetime_bug;
+use next_gen::generator_fn::GeneratorFn;
+use nsql_catalog::{Column, TableRef};
+use nsql_storage_engine::{
+    fallible_iterator, ExecutionMode, FallibleIterator, ReadTree, ReadWriteExecutionMode,
+    StorageEngine, WriteTree,
+};
+use rkyv::AlignedVec;
 
-use dashmap::mapref::entry::Entry;
-use dashmap::mapref::one::RefMut;
-use dashmap::DashMap;
-use futures_util::{stream, Stream, StreamExt};
-use nsql_buffer::Pool;
-use nsql_pager::PageIndex;
-
-use self::heap::{Heap, HeapId};
-use self::local_storage::LocalStorage;
-use crate::schema::Schema;
 use crate::tuple::{Tuple, TupleIndex};
-use crate::{Transaction, Xid};
+use crate::value::Value;
 
-pub struct TableStorage {
+pub struct TableStorage<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> {
+    tree: M::Tree<'txn>,
     info: TableStorageInfo,
-    /// The persisted state of the table stored in the heap
-    heap: Arc<Heap<Tuple>>,
-    local_storages: DashMap<Xid, Weak<LocalStorage>>,
 }
 
-pub type TupleId = HeapId<Tuple>;
-
-impl TableStorage {
+impl<'env: 'txn, 'txn, S: StorageEngine> TableStorage<'env, 'txn, S, ReadWriteExecutionMode<S>> {
     #[inline]
-    pub async fn initialize(
-        pool: Arc<dyn Pool>,
+    pub fn initialize(
+        storage: S,
+        tx: &'txn S::WriteTransaction<'env>,
         info: TableStorageInfo,
-    ) -> nsql_buffer::Result<Self> {
-        let heap = Arc::new(Heap::initialize(Arc::clone(&pool)).await?);
-        Ok(Self { info, heap, local_storages: Default::default() })
+    ) -> Result<Self, S::Error> {
+        // create the tree
+        storage.open_write_tree(tx, &info.storage_tree_name)?;
+        Self::open(storage, tx, info)
     }
 
     #[inline]
-    pub async fn append(&self, tx: &Arc<Transaction>, tuple: &Tuple) -> nsql_buffer::Result<()> {
-        self.local_storage(tx).await.upgrade().unwrap().append(tuple);
+    pub fn update(&mut self, tuple: &Tuple) -> Result<(), S::Error> {
+        let (k, v) = self.split_tuple(tuple);
+        debug_assert!(self.tree.delete(&k)?, "updating a tuple that didn't exist");
+        self.tree.put(&k, &v)?;
+
         Ok(())
     }
 
     #[inline]
-    pub async fn update(
-        &self,
-        tx: &Arc<Transaction>,
-        id: TupleId,
-        tuple: &Tuple,
-    ) -> nsql_buffer::Result<()> {
-        self.local_storage(tx).await.upgrade().unwrap().update(id, tuple);
+    pub fn insert(&mut self, tuple: &Tuple) -> Result<(), S::Error> {
+        let (k, v) = self.split_tuple(tuple);
+        self.tree.put(&k, &v)?;
+
         Ok(())
     }
 
+    /// Aplit tuple into primary key and non-primary key
+    fn split_tuple(&self, tuple: &Tuple) -> (AlignedVec, AlignedVec) {
+        assert_eq!(
+            tuple.len(),
+            self.info.columns.len(),
+            "tuple length did not match the expected number of columns, expected {}, got {}",
+            self.info.columns.len(),
+            tuple.len()
+        );
+
+        let mut pk_tuple = vec![];
+        let mut non_pk_tuple = vec![];
+
+        assert_eq!(tuple.len(), self.info.columns.len());
+
+        for (value, col) in tuple.values().zip(&self.info.columns) {
+            assert_eq!(
+                value.ty(),
+                col.logical_type(),
+                "expected column type {:?}, got {:?}",
+                col.logical_type(),
+                value.ty()
+            );
+
+            if col.is_primary_key() {
+                pk_tuple.push(value);
+            } else {
+                non_pk_tuple.push(value);
+            }
+        }
+
+        let pk_bytes = nsql_rkyv::to_bytes(&pk_tuple);
+        let non_pk_bytes = nsql_rkyv::to_bytes(&non_pk_tuple);
+
+        (pk_bytes, non_pk_bytes)
+    }
+}
+
+#[fix_hidden_lifetime_bug]
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> TableStorage<'env, 'txn, S, M> {
+    pub fn open(
+        storage: S,
+        tx: &'txn M::Transaction,
+        info: TableStorageInfo,
+    ) -> Result<Self, S::Error> {
+        let tree = M::open_tree(&storage, tx, &info.storage_tree_name)?;
+        Ok(Self { info, tree })
+    }
+
     #[inline]
-    pub async fn scan(
-        &self,
-        tx: Arc<Transaction>,
+    #[fix_hidden_lifetime_bug]
+    pub fn scan(
+        self: Arc<Self>,
         projection: Option<Box<[TupleIndex]>>,
-    ) -> impl Stream<Item = nsql_buffer::Result<Vec<Tuple>>> + Send {
-        let local_storage = self.local_storage(&tx).await.upgrade().unwrap();
-        let local_tuples = local_storage.scan();
+    ) -> Result<impl FallibleIterator<Item = Tuple, Error = S::Error> + 'txn, S::Error> {
+        let mut gen = Box::pin(GeneratorFn::empty());
+        gen.as_mut().init(range_gen::<S, M>, (self, projection));
+        Ok(fallible_iterator::convert(gen))
+    }
+}
 
-        self.heap
-            .scan(tx, move |tid, tuple| {
-                let mut tuple = match &projection {
-                    Some(projection) => tuple.project(tid, projection),
-                    None => nsql_rkyv::deserialize(tuple),
+#[generator(yield(Result<Tuple, S::Error>))]
+fn range_gen<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
+    storage: Arc<TableStorage<'env, 'txn, S, M>>,
+    projection: Option<Box<[TupleIndex]>>,
+) {
+    let mut range = match storage.tree.range(..) {
+        Ok(range) => range,
+        Err(err) => {
+            yield_!(Err(err));
+            return;
+        }
+    };
+
+    loop {
+        match range.next() {
+            Err(err) => {
+                yield_!(Err(err));
+                return;
+            }
+            Ok(None) => return,
+            Ok(Some((k, v))) => {
+                // FIXME this is a very naive and inefficient algorithm
+                let ks = unsafe { rkyv::archived_root::<Vec<Value>>(&k) };
+                let vs = unsafe { rkyv::archived_root::<Vec<Value>>(&v) };
+                let n = storage.info.columns.len();
+                debug_assert_eq!(ks.len() + vs.len(), n);
+                let (mut i, mut j) = (0, 0);
+                let mut tuple = Vec::with_capacity(n);
+
+                for col in &storage.info.columns {
+                    if col.is_primary_key() {
+                        tuple.push(&ks[i]);
+                        i += 1;
+                    } else {
+                        tuple.push(&vs[j]);
+                        j += 1;
+                    }
+                }
+
+                let tuple = match &projection {
+                    Some(projection) => Tuple::project_archived(tuple.as_slice(), projection),
+                    None => tuple.into_iter().map(nsql_rkyv::deserialize).collect(),
                 };
 
-                // apply any transaction local updates
-                local_storage.patch(tid, &mut tuple);
-                tuple
-            })
-            .await
-            .chain(stream::iter(Some(Ok(local_tuples))))
-    }
-
-    async fn local_storage(&self, tx: &Arc<Transaction>) -> RefMut<'_, Xid, Weak<LocalStorage>> {
-        match self.local_storages.entry(tx.xid()) {
-            Entry::Occupied(entry) => entry.into_ref(),
-            Entry::Vacant(entry) => {
-                let local_storage =
-                    Arc::new(LocalStorage::new(Arc::downgrade(tx), Arc::clone(&self.heap)));
-                let r = entry.insert(Arc::downgrade(&local_storage));
-                // The transaction owns its local storage, we only only store weak references to it here
-                // so it gets dropped with the transaction
-                tx.add_dependency(Arc::clone(&local_storage)).await;
-                r
+                yield_!(Ok(tuple))
             }
         }
     }
 }
-
 pub struct TableStorageInfo {
-    schema: Arc<Schema>,
-    /// The index of the root page of the table if it has been allocated
-    root_page_idx: Option<PageIndex>,
+    columns: Vec<Arc<Column>>,
+    storage_tree_name: String,
 }
 
 impl TableStorageInfo {
     #[inline]
-    pub fn new(schema: Arc<Schema>, root_page_idx: Option<PageIndex>) -> Self {
-        Self { schema, root_page_idx }
-    }
+    pub fn new<S>(table_ref: TableRef<S>, columns: Vec<Arc<Column>>) -> Self {
+        assert!(
+            columns.iter().any(|c| c.is_primary_key()),
+            "expected at least one primary key column (this should be checked in the binder)"
+        );
 
-    #[inline]
-    pub fn create(schema: Arc<Schema>) -> Self {
-        Self { schema, root_page_idx: None }
+        Self { columns, storage_tree_name: format!("{table_ref}") }
     }
 }
 
-#[cfg(test)]
-mod tests;
+// #[cfg(test)]
+// mod tests;

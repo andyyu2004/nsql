@@ -6,3 +6,4 @@ edition = "2021"
 [dependencies]
 nsql-catalog = { path = "../nsql-catalog" }
 ir = { path = "../nsql-ir", package = "nsql-ir" }
+nsql-storage-engine = { version = "0.1.0", path = "../nsql-storage-engine" }

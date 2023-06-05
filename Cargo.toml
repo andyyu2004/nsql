@@ -1,34 +1,25 @@
 [workspace]
+resolver = "2"
 members = [
     "nsql",
     "nsql-arena",
     "nsql-bind",
-    "nsql-btree",
-    "nsql-buffer",
     "nsql-catalog",
-    "nsql-checkpoint",
     "nsql-core",
+    "nsql-echodb",
     "nsql-execution",
     "nsql-ir",
-    "nsql-fs",
-    "nsql-pager",
     "nsql-parse",
     "nsql-plan",
     "nsql-opt",
     "nsql-rkyv",
-    "nsql-serde",
-    "nsql-serde-derive",
     "nsql-shell",
     "nsql-storage",
+    "nsql-storage-engine",
     "nsql-test",
     "nsql-util",
-    "lruk",
-    "vendor/tracing-test/tracing-test",
-    "vendor/tracing-test/tracing-test-macro",
-    "vendor/tracing-test/tracing-test-macro-tests",
-    "vendor/sqllogictest/sqllogictest",
-    "vendor/sqllogictest/tests",
-
+    "nsql-lmdb",
+    "nsql-redb",
 ]
 
 [profile.bench]

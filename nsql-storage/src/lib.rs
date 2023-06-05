@@ -1,41 +1,36 @@
 #![deny(rust_2018_idioms)]
 #![feature(async_fn_in_trait)]
+#![feature(anonymous_lifetime_in_impl_trait)]
 #![feature(split_array)]
 #![allow(incomplete_features)]
 
-pub mod schema;
 mod table_storage;
-mod transaction;
 pub mod tuple;
 pub mod value;
-mod wal;
 
-use std::io;
-use std::sync::Arc;
-
-use nsql_pager::Pager;
+use anyhow::Error;
+use nsql_storage_engine::{StorageEngine, Transaction};
 pub use table_storage::{TableStorage, TableStorageInfo};
-use thiserror::Error;
-
-pub use self::transaction::{
-    Transaction, TransactionError, TransactionManager, TransactionState, Transactional, Version,
-    Xid,
-};
 
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 
-#[derive(Debug, Error)]
-pub enum Error {
-    #[error(transparent)]
-    Fs(#[from] io::Error),
+#[derive(Clone)]
+pub struct Storage<S> {
+    storage: S,
 }
 
-pub struct Storage {
-    pager: Arc<dyn Pager>,
-}
+impl<S: StorageEngine> Storage<S> {
+    #[inline]
+    pub fn begin(&self) -> Result<S::Transaction<'_>, S::Error> {
+        self.storage.begin()
+    }
 
-impl Storage {
-    pub async fn load(&self, _tx: &Transaction) -> Result<()> {
+    #[inline]
+    pub fn begin_write(&self) -> Result<S::WriteTransaction<'_>, S::Error> {
+        self.storage.begin_write()
+    }
+
+    pub fn load(&self, _tx: &dyn Transaction<'_, S>) -> Result<()> {
         todo!()
         // let reader = self.pager.meta_page_reader();
         // let checkpointer = Checkpointer::new(self.pager.as_ref());
@@ -43,17 +38,17 @@ impl Storage {
         // Ok(checkpoint)
     }
 
-    pub async fn checkpoint(&self) -> Result<()> {
+    pub fn checkpoint(&self) -> Result<()> {
         Ok(())
     }
 
     #[inline]
-    pub fn new(pager: Arc<dyn Pager>) -> Self {
-        Self { pager }
+    pub fn new(storage: S) -> Self {
+        Self { storage }
     }
 
     #[inline]
-    pub fn pager(&self) -> Arc<dyn Pager> {
-        Arc::clone(&self.pager)
+    pub fn storage(&self) -> &S {
+        &self.storage
     }
 }

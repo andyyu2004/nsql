@@ -1,95 +1,145 @@
 use parking_lot::RwLock;
-use tokio::task::JoinSet;
 
 use super::*;
 
-pub(crate) struct Executor {
-    arena: PipelineArena,
+pub(crate) struct Executor<'env, 'txn, S, M> {
+    arena: PipelineArena<'env, 'txn, S, M>,
+    _marker: std::marker::PhantomData<(S, M)>,
 }
 
-impl Executor {
-    #[async_recursion::async_recursion]
-    async fn execute(
+impl<'env: 'txn, 'txn, S: StorageEngine> Executor<'env, 'txn, S, ReadWriteExecutionMode<S>> {
+    fn execute(
         self: Arc<Self>,
-        ctx: ExecutionContext,
-        root: Idx<MetaPipeline>,
+        ctx: &'txn ExecutionContext<'env, S, ReadWriteExecutionMode<S>>,
+        root: Idx<MetaPipeline<'env, 'txn, S, ReadWriteExecutionMode<S>>>,
     ) -> ExecutionResult<()> {
-        let mut join_set = JoinSet::new();
-
         let root = &self.arena[root];
         for &child in &root.children {
-            join_set.spawn(Arc::clone(&self).execute(ctx.clone(), child));
-        }
-
-        while let Some(res) = join_set.join_next().await {
-            res??;
+            Arc::clone(&self).execute(ctx, child)?;
         }
 
         for &pipeline in &root.pipelines {
-            join_set.spawn(Arc::clone(&self).execute_pipeline(ctx.clone(), pipeline));
+            Arc::clone(&self).execute_pipeline(ctx, pipeline)?;
         }
-
-        while let Some(res) = join_set.join_next().await {
-            res??;
-        }
-
-        assert!(join_set.is_empty());
 
         Ok(())
     }
 
-    async fn execute_pipeline(
+    fn execute_pipeline(
         self: Arc<Self>,
-        ctx: ExecutionContext,
-        pipeline: Idx<Pipeline>,
+        ctx: &'txn ExecutionContext<'env, S, ReadWriteExecutionMode<S>>,
+        pipeline: Idx<Pipeline<'env, 'txn, S, ReadWriteExecutionMode<S>>>,
+    ) -> ExecutionResult<()> {
+        let pipeline: &Pipeline<'env, 'txn, S, _> = &self.arena[pipeline];
+        let mut stream = Arc::clone(&pipeline.source).source(ctx)?;
+        'outer: while let Some(mut tuple) = stream.next()? {
+            for op in &pipeline.operators {
+                tuple = match op.execute(ctx, tuple)? {
+                    OperatorState::Yield(tuple) => tuple,
+                    OperatorState::Continue => continue 'outer,
+                    // Once an operator completes, the entire pipeline is finished
+                    OperatorState::Done => return Ok(()),
+                };
+            }
+
+            pipeline.sink.sink(ctx, tuple)?;
+        }
+
+        pipeline.sink.finalize(ctx)?;
+
+        Ok(())
+    }
+}
+
+impl<'env: 'txn, 'txn, S: StorageEngine> Executor<'env, 'txn, S, ReadonlyExecutionMode<S>> {
+    fn execute(
+        self: Arc<Self>,
+        ctx: &'txn ExecutionContext<'env, S, ReadonlyExecutionMode<S>>,
+        root: Idx<MetaPipeline<'env, 'txn, S, ReadonlyExecutionMode<S>>>,
+    ) -> ExecutionResult<()> {
+        let root = &self.arena[root];
+        for &child in &root.children {
+            Arc::clone(&self).execute(ctx, child)?;
+        }
+
+        for &pipeline in &root.pipelines {
+            Arc::clone(&self).execute_pipeline(ctx, pipeline)?;
+        }
+
+        Ok(())
+    }
+
+    fn execute_pipeline(
+        self: Arc<Self>,
+        ctx: &'txn ExecutionContext<'env, S, ReadonlyExecutionMode<S>>,
+        pipeline: Idx<Pipeline<'env, 'txn, S, ReadonlyExecutionMode<S>>>,
     ) -> ExecutionResult<()> {
         let pipeline = &self.arena[pipeline];
-        let mut done = false;
-        while !done {
-            let chunk = match pipeline.source.source(&ctx).await? {
-                SourceState::Yield(chunk) => chunk,
-                SourceState::Final(chunk) => {
-                    // run once more around the loop with the final source chunk
-                    done = true;
-                    chunk
-                }
-                SourceState::Done => break,
-            };
-
-            'outer: for mut tuple in chunk {
-                for op in &pipeline.operators {
-                    tuple = match op.execute(&ctx, tuple).await? {
-                        OperatorState::Yield(tuple) => tuple,
-                        OperatorState::Continue => break 'outer,
-                        // Once an operator completes, the entire pipeline is finishedK
-                        OperatorState::Done => return Ok(()),
-                    };
-                }
-
-                pipeline.sink.sink(&ctx, tuple).await?;
+        let mut stream = Arc::clone(&pipeline.source).source(ctx)?;
+        'outer: while let Some(mut tuple) = stream.next()? {
+            for op in &pipeline.operators {
+                tuple = match op.execute(ctx, tuple)? {
+                    OperatorState::Yield(tuple) => tuple,
+                    OperatorState::Continue => continue 'outer,
+                    // Once an operator completes, the entire pipeline is finished
+                    OperatorState::Done => return Ok(()),
+                };
             }
+
+            pipeline.sink.sink(ctx, tuple)?;
         }
 
         Ok(())
     }
 }
 
-async fn execute_root_pipeline(
-    ctx: ExecutionContext,
-    pipeline: RootPipeline,
+fn execute_root_pipeline<'env, 'txn, S: StorageEngine>(
+    ctx: &'txn ExecutionContext<'env, S, ReadonlyExecutionMode<S>>,
+    pipeline: RootPipeline<'env, 'txn, S, ReadonlyExecutionMode<S>>,
 ) -> ExecutionResult<()> {
     let root = pipeline.arena.root();
-    let executor = Arc::new(Executor { arena: pipeline.arena });
-    executor.execute(ctx, root).await
+    let executor = Arc::new(Executor { arena: pipeline.arena, _marker: std::marker::PhantomData });
+    executor.execute(ctx, root)
 }
 
-pub async fn execute(ctx: ExecutionContext, plan: PhysicalPlan) -> ExecutionResult<Vec<Tuple>> {
+fn execute_root_pipeline_write<'env, 'txn, S: StorageEngine>(
+    ctx: &'txn ExecutionContext<'env, S, ReadWriteExecutionMode<S>>,
+    pipeline: RootPipeline<'env, 'txn, S, ReadWriteExecutionMode<S>>,
+) -> ExecutionResult<()> {
+    let root = pipeline.arena.root();
+    let executor = Arc::new(Executor { arena: pipeline.arena, _marker: std::marker::PhantomData });
+    executor.execute(ctx, root)
+}
+
+pub fn execute<'env: 'txn, 'txn, S: StorageEngine>(
+    ctx: &'txn ExecutionContext<'env, S, ReadonlyExecutionMode<S>>,
+    plan: PhysicalPlan<'env, 'txn, S, ReadonlyExecutionMode<S>>,
+) -> ExecutionResult<Vec<Tuple>> {
     let sink = Arc::new(OutputSink::default());
-    let root_pipeline = build_pipelines(Arc::clone(&sink) as Arc<dyn PhysicalSink>, plan);
+    let root_pipeline = build_pipelines(
+        Arc::clone(&sink) as Arc<dyn PhysicalSink<'env, 'txn, S, ReadonlyExecutionMode<S>> + 'txn>,
+        plan,
+    );
 
-    execute_root_pipeline(ctx, root_pipeline).await?;
+    execute_root_pipeline(ctx, root_pipeline)?;
 
-    Ok(Arc::try_unwrap(sink).expect("should be last reference").tuples.into_inner())
+    Ok(Arc::try_unwrap(sink).expect("should be last reference to output sink").tuples.into_inner())
+}
+
+pub fn execute_write<'env: 'txn, 'txn, S: StorageEngine>(
+    ctx: &'txn ExecutionContext<'env, S, ReadWriteExecutionMode<S>>,
+    plan: PhysicalPlan<'env, 'txn, S, ReadWriteExecutionMode<S>>,
+) -> ExecutionResult<Vec<Tuple>> {
+    let sink = Arc::new(OutputSink::default());
+
+    let root_pipeline = build_pipelines(
+        Arc::clone(&sink) as Arc<dyn PhysicalSink<'env, 'txn, S, ReadWriteExecutionMode<S>> + 'txn>,
+        plan,
+    );
+
+    execute_root_pipeline_write(ctx, root_pipeline)?;
+
+    Ok(Arc::try_unwrap(sink).expect("should be last reference to output sink").tuples.into_inner())
 }
 
 #[derive(Debug, Default)]
@@ -97,44 +147,64 @@ pub(crate) struct OutputSink {
     tuples: RwLock<Vec<Tuple>>,
 }
 
-impl PhysicalNode for OutputSink {
-    fn children(&self) -> &[Arc<dyn PhysicalNode>] {
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode<'env, 'txn, S, M>
+    for OutputSink
+{
+    #[inline]
+    fn children(&self) -> &[Arc<dyn PhysicalNode<'env, 'txn, S, M>>] {
         &[]
     }
 
-    fn as_source(self: Arc<Self>) -> Result<Arc<dyn PhysicalSource>, Arc<dyn PhysicalNode>> {
+    #[inline]
+    fn as_source(
+        self: Arc<Self>,
+    ) -> Result<Arc<dyn PhysicalSource<'env, 'txn, S, M>>, Arc<dyn PhysicalNode<'env, 'txn, S, M>>>
+    {
         Err(self)
     }
 
-    fn as_sink(self: Arc<Self>) -> Result<Arc<dyn PhysicalSink>, Arc<dyn PhysicalNode>> {
+    #[inline]
+    fn as_sink(
+        self: Arc<Self>,
+    ) -> Result<Arc<dyn PhysicalSink<'env, 'txn, S, M>>, Arc<dyn PhysicalNode<'env, 'txn, S, M>>>
+    {
         Ok(self)
     }
 
-    fn as_operator(self: Arc<Self>) -> Result<Arc<dyn PhysicalOperator>, Arc<dyn PhysicalNode>> {
+    #[inline]
+    fn as_operator(
+        self: Arc<Self>,
+    ) -> Result<Arc<dyn PhysicalOperator<'env, 'txn, S, M>>, Arc<dyn PhysicalNode<'env, 'txn, S, M>>>
+    {
         Err(self)
     }
 }
 
-#[async_trait::async_trait]
-impl PhysicalSource for OutputSink {
-    async fn source(&self, _ctx: &ExecutionContext) -> ExecutionResult<SourceState<Chunk>> {
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSource<'env, 'txn, S, M>
+    for OutputSink
+{
+    fn source(
+        self: Arc<Self>,
+        _ctx: &'txn ExecutionContext<'env, S, M>,
+    ) -> ExecutionResult<TupleStream<'txn, S>> {
         todo!()
     }
 }
 
-#[async_trait::async_trait]
-impl PhysicalSink for OutputSink {
-    async fn sink(&self, _ctx: &ExecutionContext, tuple: Tuple) -> ExecutionResult<()> {
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSink<'env, 'txn, S, M>
+    for OutputSink
+{
+    fn sink(&self, _ctx: &'txn ExecutionContext<'env, S, M>, tuple: Tuple) -> ExecutionResult<()> {
         self.tuples.write().push(tuple);
         Ok(())
     }
 }
 
-impl Explain for OutputSink {
+impl<S: StorageEngine> Explain<S> for OutputSink {
     fn explain(
         &self,
-        _catalog: &Catalog,
-        _tx: &Transaction,
+        _catalog: &Catalog<S>,
+        _tx: &dyn Transaction<'_, S>,
         f: &mut fmt::Formatter<'_>,
     ) -> explain::Result {
         write!(f, "output")

@@ -18,8 +18,9 @@ use std::fmt;
 use std::sync::Arc;
 
 use anyhow::Result;
-use nsql_catalog::{Catalog, EntityRef, Transaction};
+use nsql_catalog::{Catalog, EntityRef};
 use nsql_plan::Plan;
+use nsql_storage_engine::{StorageEngine, Transaction};
 
 pub use self::explain::Explain;
 use self::physical_create_namespace::PhysicalCreateNamespace;
@@ -38,81 +39,138 @@ use self::physical_update::PhysicalUpdate;
 use self::physical_values::PhysicalValues;
 use crate::executor::OutputSink;
 use crate::{
-    Chunk, Evaluator, ExecutionContext, ExecutionResult, OperatorState, PhysicalNode,
-    PhysicalOperator, PhysicalSink, PhysicalSource, SourceState, Tuple,
+    Evaluator, ExecutionContext, ExecutionMode, ExecutionResult, OperatorState, PhysicalNode,
+    PhysicalOperator, PhysicalSink, PhysicalSource, ReadWriteExecutionMode, ReadonlyExecutionMode,
+    Tuple, TupleStream,
 };
 
-pub struct PhysicalPlanner {
-    tx: Arc<Transaction>,
-    catalog: Arc<Catalog>,
+pub struct PhysicalPlanner<S> {
+    catalog: Arc<Catalog<S>>,
 }
 
 /// Opaque physical plan that is ready to be executed
-#[derive(Debug)]
-pub struct PhysicalPlan(Arc<dyn PhysicalNode>);
+pub struct PhysicalPlan<'env, 'txn, S, M>(Arc<dyn PhysicalNode<'env, 'txn, S, M>>);
 
-impl PhysicalPlan {
-    pub(crate) fn root(&self) -> Arc<dyn PhysicalNode> {
+impl<'env, 'txn, S, M> PhysicalPlan<'env, 'txn, S, M> {
+    pub(crate) fn root(&self) -> Arc<dyn PhysicalNode<'env, 'txn, S, M>> {
         Arc::clone(&self.0)
     }
 }
 
-impl PhysicalPlanner {
-    pub fn new(catalog: Arc<Catalog>, tx: Arc<Transaction>) -> Self {
-        Self { tx, catalog }
+impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalPlanner<S> {
+    pub fn new(catalog: Arc<Catalog<S>>) -> Self {
+        Self { catalog }
     }
 
-    pub fn plan(&self, plan: Box<Plan>) -> Result<PhysicalPlan> {
-        self.plan_node(plan).map(PhysicalPlan)
+    #[inline]
+    pub fn plan(
+        &self,
+        tx: &dyn Transaction<'env, S>,
+        plan: Box<Plan<S>>,
+    ) -> Result<PhysicalPlan<'env, 'txn, S, ReadonlyExecutionMode<S>>> {
+        self.plan_node(tx, plan).map(PhysicalPlan)
     }
 
-    #[allow(clippy::boxed_local)]
-    fn plan_node(&self, plan: Box<Plan>) -> Result<Arc<dyn PhysicalNode>> {
+    #[inline]
+    pub fn plan_write(
+        &self,
+        tx: &dyn Transaction<'env, S>,
+        plan: Box<Plan<S>>,
+    ) -> Result<PhysicalPlan<'env, 'txn, S, ReadWriteExecutionMode<S>>> {
+        self.plan_write_node(tx, plan).map(PhysicalPlan)
+    }
+
+    fn plan_write_node(
+        &self,
+        tx: &dyn Transaction<'env, S>,
+        plan: Box<Plan<S>>,
+    ) -> Result<Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode<S>>>> {
         let plan = match *plan {
-            Plan::Transaction(kind) => PhysicalTransaction::plan(kind),
-            Plan::CreateTable(info) => PhysicalCreateTable::plan(info),
-            Plan::CreateNamespace(info) => PhysicalCreateNamespace::plan(info),
-            Plan::Drop(refs) => PhysicalDrop::plan(refs),
-            Plan::Scan { table_ref, projection } => PhysicalTableScan::plan(table_ref, projection),
-            Plan::Show(show) => PhysicalShow::plan(show),
-            Plan::Explain(kind, plan) => {
-                let plan = self.plan_node(plan)?;
-                let stringified = match kind {
-                    ir::ExplainMode::Physical => {
-                        explain::explain(&self.catalog, &self.tx, plan.as_ref()).to_string()
-                    }
-                    ir::ExplainMode::Pipeline => {
-                        let sink = Arc::new(OutputSink::default());
-                        let pipeline =
-                            crate::build_pipelines(sink, PhysicalPlan(Arc::clone(&plan)));
-                        let disp = explain::explain_pipeline(&self.catalog, &self.tx, &pipeline);
-                        disp.to_string()
-                    }
-                };
-
-                PhysicalExplain::plan(stringified, plan)
+            Plan::Update { table_ref, source, returning } => {
+                let source = self.plan_write_node(tx, source)?;
+                PhysicalUpdate::plan(table_ref, source, returning)
             }
             Plan::Insert { table_ref, projection, source, returning } => {
-                let mut source = self.plan_node(source)?;
+                let mut source = self.plan_write_node(tx, source)?;
                 if !projection.is_empty() {
                     source = PhysicalProjection::plan(source, projection);
                 };
                 PhysicalInsert::plan(table_ref, source, returning)
             }
+            Plan::CreateTable(info) => PhysicalCreateTable::plan(info),
+            Plan::CreateNamespace(info) => PhysicalCreateNamespace::plan(info),
+            Plan::Drop(refs) => PhysicalDrop::plan(refs),
+            _ => return self.fold_plan(tx, plan, Self::plan_write_node),
+        };
+
+        Ok(plan)
+    }
+
+    fn explain_plan<M: ExecutionMode<'env, S>>(
+        &self,
+        tx: &dyn Transaction<'env, S>,
+        kind: ir::ExplainMode,
+        plan: Arc<dyn PhysicalNode<'env, 'txn, S, M>>,
+    ) -> Result<Arc<dyn PhysicalNode<'env, 'txn, S, M>>> {
+        let stringified = match kind {
+            ir::ExplainMode::Physical => {
+                explain::display(&self.catalog, tx, &explain::explain(Arc::clone(&plan)))
+                    .to_string()
+            }
+            ir::ExplainMode::Pipeline => {
+                let sink = Arc::new(OutputSink::default());
+                let pipeline = crate::build_pipelines(sink, PhysicalPlan(Arc::clone(&plan)));
+                explain::display(&self.catalog, tx, &explain::explain_pipeline(&pipeline))
+                    .to_string()
+            }
+        };
+
+        Ok(PhysicalExplain::plan(stringified, plan))
+    }
+
+    #[allow(clippy::boxed_local)]
+    fn plan_node<M: ExecutionMode<'env, S>>(
+        &self,
+        tx: &dyn Transaction<'env, S>,
+        plan: Box<Plan<S>>,
+    ) -> Result<Arc<dyn PhysicalNode<'env, 'txn, S, M>>> {
+        self.fold_plan(tx, plan, Self::plan_node)
+    }
+
+    #[allow(clippy::boxed_local)]
+    fn fold_plan<M: ExecutionMode<'env, S>>(
+        &self,
+        tx: &dyn Transaction<'env, S>,
+        plan: Box<Plan<S>>,
+        f: impl FnOnce(
+            &Self,
+            &dyn Transaction<'env, S>,
+            Box<Plan<S>>,
+        ) -> Result<Arc<dyn PhysicalNode<'env, 'txn, S, M>>>,
+    ) -> Result<Arc<dyn PhysicalNode<'env, 'txn, S, M>>> {
+        let plan = match *plan {
+            Plan::Transaction(kind) => PhysicalTransaction::plan(kind),
+            Plan::Scan { table_ref, projection } => PhysicalTableScan::plan(table_ref, projection),
+            Plan::Show(show) => PhysicalShow::plan(show),
+            Plan::Explain(kind, plan) => {
+                return self.explain_plan(tx, kind, f(self, tx, plan)?);
+            }
             Plan::Values { values } => PhysicalValues::plan(values),
             Plan::Projection { source, projection } => {
-                let source = self.plan_node(source)?;
-                PhysicalProjection::plan(source, projection)
+                PhysicalProjection::plan(f(self, tx, source)?, projection)
             }
-            Plan::Limit { source, limit } => PhysicalLimit::plan(self.plan_node(source)?, limit),
+            Plan::Limit { source, limit } => PhysicalLimit::plan(f(self, tx, source)?, limit),
             Plan::Filter { source, predicate } => {
-                PhysicalFilter::plan(self.plan_node(source)?, predicate)
-            }
-            Plan::Update { table_ref, source, returning } => {
-                let source = self.plan_node(source)?;
-                PhysicalUpdate::plan(table_ref, source, returning)
+                PhysicalFilter::plan(f(self, tx, source)?, predicate)
             }
             Plan::Empty => PhysicalDummyScan::plan(),
+            Plan::CreateTable(_)
+            | Plan::CreateNamespace(_)
+            | Plan::Drop(_)
+            | Plan::Update { .. }
+            | Plan::Insert { .. } => {
+                unreachable!("write plans should go through plan_node_write, got plan {:?}", plan)
+            }
         };
 
         Ok(plan)

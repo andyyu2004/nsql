@@ -1,58 +1,82 @@
-use std::sync::atomic::{self, AtomicUsize};
+use nsql_storage_engine::fallible_iterator;
 
 use super::*;
 
 #[derive(Debug)]
 pub struct PhysicalValues {
     values: ir::Values,
-    index: AtomicUsize,
 }
 
 impl PhysicalValues {
-    pub(crate) fn plan(values: ir::Values) -> Arc<dyn PhysicalNode> {
-        Arc::new(PhysicalValues { values, index: AtomicUsize::new(0) })
+    pub(crate) fn plan<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
+        values: ir::Values,
+    ) -> Arc<dyn PhysicalNode<'env, 'txn, S, M>> {
+        Arc::new(PhysicalValues { values })
     }
 }
 
-#[async_trait::async_trait]
-impl PhysicalSource for PhysicalValues {
-    async fn source(&self, _ctx: &ExecutionContext) -> ExecutionResult<SourceState<Chunk>> {
-        let index = self.index.fetch_add(1, atomic::Ordering::SeqCst);
-        if index >= self.values.len() {
-            return Ok(SourceState::Done);
-        }
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSource<'env, 'txn, S, M>
+    for PhysicalValues
+{
+    fn source(
+        self: Arc<Self>,
+        _ctx: &'txn ExecutionContext<'env, S, M>,
+    ) -> ExecutionResult<TupleStream<'txn, S>> {
+        let mut index = 0;
+        let iter = fallible_iterator::from_fn(move || {
+            if index >= self.values.len() {
+                return Ok(None);
+            }
 
-        let evaluator = Evaluator::new();
-        let exprs = &self.values[index];
-        let tuple = evaluator.evaluate(&Tuple::empty(), exprs);
+            let evaluator = Evaluator::new();
+            let exprs = &self.values[index];
+            let tuple = evaluator.evaluate(&Tuple::empty(), exprs);
+            index += 1;
 
-        Ok(SourceState::Yield(Chunk::singleton(tuple)))
+            Ok(Some(tuple))
+        });
+        Ok(Box::new(iter))
     }
 }
 
-impl PhysicalNode for PhysicalValues {
-    fn children(&self) -> &[Arc<dyn PhysicalNode>] {
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode<'env, 'txn, S, M>
+    for PhysicalValues
+{
+    #[inline]
+    fn children(&self) -> &[Arc<dyn PhysicalNode<'env, 'txn, S, M>>] {
         &[]
     }
 
-    fn as_source(self: Arc<Self>) -> Result<Arc<dyn PhysicalSource>, Arc<dyn PhysicalNode>> {
+    #[inline]
+    fn as_source(
+        self: Arc<Self>,
+    ) -> Result<Arc<dyn PhysicalSource<'env, 'txn, S, M>>, Arc<dyn PhysicalNode<'env, 'txn, S, M>>>
+    {
         Ok(self)
     }
 
-    fn as_sink(self: Arc<Self>) -> Result<Arc<dyn PhysicalSink>, Arc<dyn PhysicalNode>> {
+    #[inline]
+    fn as_sink(
+        self: Arc<Self>,
+    ) -> Result<Arc<dyn PhysicalSink<'env, 'txn, S, M>>, Arc<dyn PhysicalNode<'env, 'txn, S, M>>>
+    {
         Err(self)
     }
 
-    fn as_operator(self: Arc<Self>) -> Result<Arc<dyn PhysicalOperator>, Arc<dyn PhysicalNode>> {
+    #[inline]
+    fn as_operator(
+        self: Arc<Self>,
+    ) -> Result<Arc<dyn PhysicalOperator<'env, 'txn, S, M>>, Arc<dyn PhysicalNode<'env, 'txn, S, M>>>
+    {
         Err(self)
     }
 }
 
-impl Explain for PhysicalValues {
+impl<'env: 'txn, 'txn, S: StorageEngine> Explain<S> for PhysicalValues {
     fn explain(
         &self,
-        _catalog: &Catalog,
-        _tx: &Transaction,
+        _catalog: &Catalog<S>,
+        _tx: &dyn Transaction<'_, S>,
         f: &mut fmt::Formatter<'_>,
     ) -> explain::Result {
         write!(f, "scan values")?;

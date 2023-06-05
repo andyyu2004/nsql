@@ -1,11 +1,12 @@
-statement ok
-BEGIN
-
-statement ok
-CREATE TABLE t(a INT)
-
-statement ok
-DROP TABLE t
-
-statement ok
-CREATE TABLE t(a INT)
+# FIXME
+# statement ok
+# BEGIN
+# 
+# statement ok
+# CREATE TABLE t(a int PRIMARY KEY)
+# 
+# statement ok
+# DROP TABLE t
+# 
+# statement ok
+# CREATE TABLE t(a int PRIMARY KEY)

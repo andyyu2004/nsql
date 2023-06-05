@@ -2,42 +2,39 @@ mod eval;
 
 use std::fmt;
 use std::ops::Deref;
-use std::sync::Arc;
 
 pub use eval::EvalNotConst;
-use nsql_catalog::{
-    Catalog, Column, ColumnIndex, Container, EntityRef, Namespace, Oid, Table, Transaction,
-};
-use nsql_storage::schema::LogicalType;
+use nsql_catalog::schema::LogicalType;
+use nsql_catalog::{ColumnIndex, TableRef};
 use nsql_storage::tuple::TupleIndex;
 use nsql_storage::value::Value;
 
 use crate::Path;
 
 #[derive(Debug, Clone)]
-pub enum QueryPlan {
-    TableRef { table_ref: TableRef, projection: Option<Box<[ColumnIndex]>> },
-    Projection { source: Box<QueryPlan>, projection: Box<[Expr]> },
-    Filter { source: Box<QueryPlan>, predicate: Expr },
+pub enum QueryPlan<S> {
+    TableRef { table_ref: TableRef<S>, projection: Option<Box<[ColumnIndex]>> },
+    Projection { source: Box<QueryPlan<S>>, projection: Box<[Expr]> },
+    Filter { source: Box<QueryPlan<S>>, predicate: Expr },
     Values(Values),
-    Limit(Box<QueryPlan>, u64),
+    Limit(Box<QueryPlan<S>>, u64),
     Empty,
 }
 
-impl QueryPlan {
+impl<S> QueryPlan<S> {
     #[inline]
-    pub fn limit(self: Box<Self>, limit: u64) -> Box<QueryPlan> {
+    pub fn limit(self: Box<Self>, limit: u64) -> Box<QueryPlan<S>> {
         Box::new(QueryPlan::Limit(self, limit))
     }
 
     #[inline]
-    pub fn filter(self: Box<Self>, predicate: Expr) -> Box<QueryPlan> {
+    pub fn filter(self: Box<Self>, predicate: Expr) -> Box<QueryPlan<S>> {
         assert!(matches!(predicate.ty, LogicalType::Bool | LogicalType::Null));
         Box::new(QueryPlan::Filter { source: self, predicate })
     }
 
     #[inline]
-    pub fn project(self: Box<Self>, projection: impl Into<Box<[Expr]>>) -> Box<QueryPlan> {
+    pub fn project(self: Box<Self>, projection: impl Into<Box<[Expr]>>) -> Box<QueryPlan<S>> {
         Box::new(QueryPlan::Projection { source: self, projection: projection.into() })
     }
 }
@@ -114,50 +111,6 @@ impl fmt::Display for BinOp {
             BinOp::And => write!(f, "AND"),
             BinOp::Or => write!(f, "OR"),
         }
-    }
-}
-
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub struct TableRef {
-    pub namespace: Oid<Namespace>,
-    pub table: Oid<Table>,
-}
-
-impl EntityRef for TableRef {
-    type Entity = Table;
-
-    type Container = Namespace;
-
-    #[inline]
-    fn container(self, catalog: &Catalog, tx: &Transaction) -> Arc<Self::Container> {
-        catalog.get(tx, self.namespace).expect("namespace should exist for `tx`")
-    }
-
-    #[inline]
-    fn entity_oid(self) -> Oid<Self::Entity> {
-        self.table
-    }
-}
-
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub struct ColumnRef {
-    pub table_ref: TableRef,
-    pub column: Oid<Column>,
-}
-
-impl EntityRef for ColumnRef {
-    type Entity = Column;
-
-    type Container = Table;
-
-    #[inline]
-    fn container(self, catalog: &Catalog, tx: &Transaction) -> Arc<Self::Container> {
-        self.table_ref.get(catalog, tx)
-    }
-
-    #[inline]
-    fn entity_oid(self) -> Oid<Self::Entity> {
-        self.column
     }
 }
 

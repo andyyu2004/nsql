@@ -3,41 +3,33 @@ mod column;
 use std::fmt;
 use std::sync::Arc;
 
-use nsql_serde::StreamSerialize;
-use nsql_storage::{TableStorage, Transaction};
+// use nsql_storage::TableStorage;
+use nsql_storage_engine::{StorageEngine, Transaction};
 
-pub use self::column::{Column, ColumnIndex, CreateColumnInfo};
+pub use self::column::{Column, ColumnIndex, ColumnRef, CreateColumnInfo};
 use crate::private::CatalogEntity;
 use crate::set::CatalogSet;
-use crate::{Container, Entity, Name, Namespace};
+use crate::{Catalog, Container, Entity, EntityRef, Name, Namespace, Oid};
 
-#[derive(StreamSerialize)]
-pub struct Table {
+pub struct Table<S> {
+    oid: Oid<Self>,
     name: Name,
-    columns: CatalogSet<Column>,
-    #[serde(skip)]
-    storage: Arc<TableStorage>,
+    columns: CatalogSet<S, Column>,
 }
 
-impl Table {
+impl<S: StorageEngine> Table<S> {
     #[inline]
     pub fn name(&self) -> &Name {
         &self.name
     }
 
     #[inline]
-    pub fn storage(&self) -> &Arc<TableStorage> {
-        &self.storage
-    }
-
-    #[inline]
-    /// Returns the index of the special `tid` column
-    pub fn tid_column_index(&self) -> ColumnIndex {
-        ColumnIndex::new(self.columns.len().try_into().unwrap())
+    pub fn columns(&self, tx: &dyn Transaction<'_, S>) -> Vec<Arc<Column>> {
+        self.all::<Column>(tx)
     }
 }
 
-impl fmt::Debug for Table {
+impl<S> fmt::Debug for Table<S> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Table").field("name", &self.name).finish_non_exhaustive()
     }
@@ -45,7 +37,6 @@ impl fmt::Debug for Table {
 
 pub struct CreateTableInfo {
     pub name: Name,
-    pub storage: Arc<TableStorage>,
 }
 
 impl fmt::Debug for CreateTableInfo {
@@ -54,7 +45,12 @@ impl fmt::Debug for CreateTableInfo {
     }
 }
 
-impl Entity for Table {
+impl<S: StorageEngine> Entity for Table<S> {
+    #[inline]
+    fn oid(&self) -> Oid<Self> {
+        self.oid
+    }
+
     #[inline]
     fn name(&self) -> Name {
         Name::clone(&self.name)
@@ -66,18 +62,63 @@ impl Entity for Table {
     }
 }
 
-impl CatalogEntity for Table {
-    type Container = Namespace;
+impl<S: StorageEngine> CatalogEntity<S> for Table<S> {
+    type Container = Namespace<S>;
 
     type CreateInfo = CreateTableInfo;
 
-    fn catalog_set(container: &Self::Container) -> &CatalogSet<Self> {
+    fn catalog_set(container: &Self::Container) -> &CatalogSet<S, Self> {
         &container.tables
     }
 
-    fn new(_tx: &Transaction, info: Self::CreateInfo) -> Self {
-        Self { name: info.name, storage: info.storage, columns: Default::default() }
+    fn create(_tx: &S::WriteTransaction<'_>, oid: Oid<Self>, info: Self::CreateInfo) -> Self {
+        Self { oid, name: info.name, columns: Default::default() }
     }
 }
 
-impl Container for Table {}
+impl<S: StorageEngine> Container<S> for Table<S> {}
+
+pub struct TableRef<S> {
+    pub namespace: Oid<Namespace<S>>,
+    pub table: Oid<Table<S>>,
+}
+
+impl<S> fmt::Debug for TableRef<S> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("TableRef")
+            .field("namespace", &self.namespace)
+            .field("table", &self.table)
+            .finish()
+    }
+}
+
+impl<S> fmt::Display for TableRef<S> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}.{}", self.namespace, self.table)
+    }
+}
+
+impl<S> Clone for TableRef<S> {
+    #[inline]
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<S> Copy for TableRef<S> {}
+
+impl<S: StorageEngine> EntityRef<S> for TableRef<S> {
+    type Entity = Table<S>;
+
+    type Container = Namespace<S>;
+
+    #[inline]
+    fn container(self, catalog: &Catalog<S>, tx: &dyn Transaction<'_, S>) -> Arc<Self::Container> {
+        catalog.get(tx, self.namespace).expect("namespace should exist for `tx`")
+    }
+
+    #[inline]
+    fn entity_oid(self) -> Oid<Self::Entity> {
+        self.table
+    }
+}

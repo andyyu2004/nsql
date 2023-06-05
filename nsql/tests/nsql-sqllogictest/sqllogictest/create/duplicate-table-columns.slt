@@ -1,4 +1,4 @@
 statement error
-CREATE TABLE test (id int, id int);
+CREATE TABLE test (id int PRIMARY KEY, id int);
 ----
 column `id` already exists

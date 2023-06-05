@@ -1,24 +1,31 @@
 use std::collections::BTreeMap;
 use std::error::Error;
 use std::path::Path;
-use std::time::Duration;
 
-use async_trait::async_trait;
-use nsql::{Connection, Nsql};
-use nsql_storage::schema::LogicalType;
-use sqllogictest::{AsyncDB, ColumnType, DBOutput, Runner};
+use nsql::{Connection, ConnectionState, Nsql};
+use nsql_catalog::schema::LogicalType;
+use nsql_lmdb::LmdbStorageEngine;
+use nsql_redb::RedbStorageEngine;
+use nsql_storage_engine::StorageEngine;
+use sqllogictest::{ColumnType, DBOutput, Runner, DB};
 use tracing_subscriber::EnvFilter;
 
 fn nsql_sqllogictest(path: &Path) -> nsql::Result<(), Box<dyn Error>> {
-    nsql_test::start(async {
+    fn test<S: StorageEngine>(path: &Path) -> nsql::Result<(), Box<dyn Error>> {
         let filter =
             EnvFilter::try_from_env("NSQL_LOG").unwrap_or_else(|_| EnvFilter::new("nsql=DEBUG"));
         let _ = tracing_subscriber::fmt::fmt().with_env_filter(filter).try_init();
-        let db = TestDb::new(Nsql::mem().await.unwrap());
+        tracing::info!("Running test {} with {}", path.display(), std::any::type_name::<S>());
+        let db_path = nsql_test::tempfile::NamedTempFile::new()?.into_temp_path();
+        let db = TestDb::new(Nsql::<S>::create(db_path).unwrap());
         let mut tester = Runner::new(db);
-        tester.run_file_async(path).await?;
+        tester.run_file(path)?;
         Ok(())
-    })
+    }
+
+    test::<LmdbStorageEngine>(path)?;
+    test::<RedbStorageEngine>(path)?;
+    Ok(())
 }
 
 // if you wish to debug a particular test, you can temporarily change the regex to match only that test
@@ -55,35 +62,44 @@ impl ColumnType for TypeWrapper {
     }
 }
 
-pub struct TestDb {
-    db: Nsql,
-    connections: BTreeMap<Option<String>, Connection>,
+pub struct TestDb<S: StorageEngine> {
+    db: Nsql<S>,
+    connections: BTreeMap<Option<String>, (Connection<S>, ConnectionState<'static, S>)>,
 }
 
-impl TestDb {
-    pub fn new(db: Nsql) -> Self {
+impl<S: StorageEngine> TestDb<S> {
+    pub fn new(db: Nsql<S>) -> Self {
         Self { db, connections: Default::default() }
     }
 }
 
-#[async_trait]
-impl AsyncDB for TestDb {
-    type Error = nsql::Error;
+#[derive(thiserror::Error, Debug)]
+#[error(transparent)]
+pub struct ErrorWrapper(#[from] anyhow::Error);
+
+impl<S: StorageEngine> DB for TestDb<S> {
+    type Error = ErrorWrapper;
 
     type ColumnType = TypeWrapper;
 
     #[tracing::instrument(skip(self))]
-    async fn run_on(
+    fn run_on(
         &mut self,
         connection_name: Option<&str>,
         sql: &str,
     ) -> Result<DBOutput<Self::ColumnType>, Self::Error> {
-        let conn = self
+        let (conn, state) = self
             .connections
             .entry(connection_name.map(Into::into))
-            .or_insert_with(|| self.db.connect());
+            // Safety: We don't close the storage engine until the end of the test, so this
+            // lifetime extension is ok.
+            .or_insert_with(|| {
+                let (conn, state) = self.db.connect();
+                (conn, unsafe { std::mem::transmute(state) })
+            });
 
-        let output = conn.query(sql).await?;
+        // transmute the lifetime back to whatever we need, not sure about safety on this one but it's a test so we'll find out
+        let output = conn.query(unsafe { std::mem::transmute(state) }, sql)?;
         Ok(DBOutput::Rows {
             types: output.types.into_iter().map(TypeWrapper).collect(),
             rows: output
@@ -96,9 +112,5 @@ impl AsyncDB for TestDb {
 
     fn engine_name(&self) -> &str {
         "nsql"
-    }
-
-    async fn sleep(dur: Duration) {
-        tokio::time::sleep(dur).await
     }
 }

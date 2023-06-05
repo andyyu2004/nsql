@@ -2,19 +2,20 @@ use expect_test::{expect, Expect};
 use nsql::Nsql;
 use nsql_storage::tuple::TupleIndex;
 
-async fn check_explain(
-    setup: impl IntoIterator<Item = &str>,
+fn check_explain<'a>(
+    setup: impl IntoIterator<Item = &'a str>,
     query: &str,
     expect: Expect,
 ) -> nsql::Result<()> {
-    let nsql = Nsql::mem().await?;
-    let conn = nsql.connect();
+    let db_path = nsql_test::tempfile::NamedTempFile::new()?.into_temp_path();
+    let nsql = Nsql::<nsql_redb::RedbStorageEngine>::create(db_path)?;
+    let (conn, state) = nsql.connect();
 
     for sql in setup {
-        conn.query(sql).await?;
+        conn.query(&state, sql)?;
     }
 
-    let result = conn.query(query).await?;
+    let result = conn.query(&state, query)?;
     assert_eq!(result.tuples.len(), 1);
     assert_eq!(result.tuples[0].len(), 1);
 
@@ -22,22 +23,21 @@ async fn check_explain(
     Ok(())
 }
 
-#[tokio::test]
-async fn test_explain() -> nsql::Result<()> {
+#[test]
+fn test_explain() -> nsql::Result<()> {
     check_explain(
-        vec!["CREATE TABLE t (b boolean)"],
+        vec!["CREATE TABLE t (b boolean PRIMARY KEY)"],
         "EXPLAIN UPDATE t SET b = true WHERE b",
         expect![[r#"
             update t
-              projection (true, tid)
+              projection (true)
                 filter b
-                  scan t (b, tid)
+                  scan t (b)
         "#]],
-    )
-    .await?;
+    )?;
 
     check_explain(
-        vec!["CREATE TABLE t (b boolean)"],
+        vec!["CREATE TABLE t (b boolean PRIMARY KEY)"],
         "EXPLAIN VERBOSE UPDATE t SET b = true WHERE b",
         expect![[r#"
             metapipeline #0
@@ -48,12 +48,11 @@ async fn test_explain() -> nsql::Result<()> {
                   metapipeline #1
                     pipeline #1
                       update t
-                      projection (true, tid)
+                      projection (true)
                       filter b
-                      scan t (b, tid)
+                      scan t (b)
         "#]],
-    )
-    .await?;
+    )?;
 
     Ok(())
 }

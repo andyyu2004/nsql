@@ -2,11 +2,9 @@ use std::error::Error;
 use std::fmt;
 use std::marker::PhantomData;
 
+use nsql_catalog::schema::LogicalType;
 use rust_decimal::prelude::ToPrimitive;
 pub use rust_decimal::Decimal;
-
-use crate::schema::LogicalType;
-use crate::table_storage::TupleId;
 
 pub struct CastError<T> {
     value: Value,
@@ -42,13 +40,31 @@ impl<T> Error for CastError<T> {}
 /// An nsql value
 // FIXME write a custom archive impl that has a schema in scope to avoid needing to archive a disriminant
 #[derive(Debug, Clone, PartialEq, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
+#[archive_attr(derive(Debug))]
 pub enum Value {
     Null,
     Int(i32),
     Bool(bool),
     Decimal(Decimal),
     Text(String),
-    Tid(TupleId),
+}
+
+impl<'a> rkyv::Archive for &'a Value {
+    type Archived = <Value as rkyv::Archive>::Archived;
+
+    type Resolver = <Value as rkyv::Archive>::Resolver;
+
+    #[inline]
+    unsafe fn resolve(&self, pos: usize, resolver: Self::Resolver, out: *mut Self::Archived) {
+        (**self).resolve(pos, resolver, out)
+    }
+}
+
+impl<'a, S: rkyv::ser::Serializer> rkyv::Serialize<S> for &'a Value {
+    #[inline]
+    fn serialize(&self, serializer: &mut S) -> Result<Self::Resolver, S::Error> {
+        (**self).serialize(serializer)
+    }
 }
 
 impl Value {
@@ -80,7 +96,6 @@ impl Value {
             Value::Bool(_) => LogicalType::Bool,
             Value::Decimal(_) => LogicalType::Decimal,
             Value::Text(_) => LogicalType::Text,
-            Value::Tid(_) => LogicalType::Tid,
         }
     }
 }
@@ -94,7 +109,6 @@ impl fmt::Display for Value {
             Value::Decimal(d) => write!(f, "{d}"),
             Value::Text(s) => write!(f, "{s}"),
             Value::Int(i) => write!(f, "{i}"),
-            Value::Tid(t) => write!(f, "{t}"),
         }
     }
 }

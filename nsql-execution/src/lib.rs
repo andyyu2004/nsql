@@ -1,3 +1,4 @@
+#![feature(anonymous_lifetime_in_impl_trait)]
 #![deny(rust_2018_idioms)]
 #![feature(trait_upcasting)]
 #![feature(once_cell_try)]
@@ -8,21 +9,23 @@ mod physical_plan;
 mod pipeline;
 mod vis;
 
-use std::any::Any;
 use std::fmt;
+use std::sync::atomic::{self, AtomicBool};
 use std::sync::Arc;
 
 pub use anyhow::Error;
 use nsql_arena::Idx;
-use nsql_buffer::Pool;
 use nsql_catalog::Catalog;
 use nsql_storage::tuple::Tuple;
-use nsql_storage::Transaction;
+use nsql_storage_engine::{
+    ExecutionMode, FallibleIterator, ReadWriteExecutionMode, ReadonlyExecutionMode, StorageEngine,
+    Transaction,
+};
+use nsql_util::atomic::AtomicEnum;
 pub use physical_plan::PhysicalPlanner;
-use smallvec::SmallVec;
 
 use self::eval::Evaluator;
-pub use self::executor::execute;
+pub use self::executor::{execute, execute_write};
 use self::physical_plan::{explain, Explain, PhysicalPlan};
 use self::pipeline::{
     MetaPipeline, MetaPipelineBuilder, Pipeline, PipelineArena, PipelineBuilder,
@@ -31,27 +34,39 @@ use self::pipeline::{
 
 pub type ExecutionResult<T, E = Error> = std::result::Result<T, E>;
 
-fn build_pipelines(sink: Arc<dyn PhysicalSink>, plan: PhysicalPlan) -> RootPipeline {
+fn build_pipelines<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
+    sink: Arc<dyn PhysicalSink<'env, 'txn, S, M>>,
+    plan: PhysicalPlan<'env, 'txn, S, M>,
+) -> RootPipeline<'env, 'txn, S, M> {
     let (mut builder, root_meta_pipeline) = PipelineBuilderArena::new(sink);
     builder.build(root_meta_pipeline, plan.root());
     let arena = builder.finish();
     RootPipeline { arena }
 }
 
-trait PhysicalNode: Send + Sync + fmt::Debug + Explain + Any + 'static {
-    fn children(&self) -> &[Arc<dyn PhysicalNode>];
+#[allow(clippy::type_complexity)]
+trait PhysicalNode<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>:
+    Send + Sync + Explain<S> + 'txn
+{
+    fn children(&self) -> &[Arc<dyn PhysicalNode<'env, 'txn, S, M>>];
 
-    fn as_source(self: Arc<Self>) -> Result<Arc<dyn PhysicalSource>, Arc<dyn PhysicalNode>>;
+    fn as_source(
+        self: Arc<Self>,
+    ) -> Result<Arc<dyn PhysicalSource<'env, 'txn, S, M>>, Arc<dyn PhysicalNode<'env, 'txn, S, M>>>;
 
-    fn as_sink(self: Arc<Self>) -> Result<Arc<dyn PhysicalSink>, Arc<dyn PhysicalNode>>;
+    fn as_sink(
+        self: Arc<Self>,
+    ) -> Result<Arc<dyn PhysicalSink<'env, 'txn, S, M>>, Arc<dyn PhysicalNode<'env, 'txn, S, M>>>;
 
-    fn as_operator(self: Arc<Self>) -> Result<Arc<dyn PhysicalOperator>, Arc<dyn PhysicalNode>>;
+    fn as_operator(
+        self: Arc<Self>,
+    ) -> Result<Arc<dyn PhysicalOperator<'env, 'txn, S, M>>, Arc<dyn PhysicalNode<'env, 'txn, S, M>>>;
 
     fn build_pipelines(
         self: Arc<Self>,
-        arena: &mut PipelineBuilderArena,
-        meta_builder: Idx<MetaPipelineBuilder>,
-        current: Idx<PipelineBuilder>,
+        arena: &mut PipelineBuilderArena<'env, 'txn, S, M>,
+        meta_builder: Idx<MetaPipelineBuilder<'env, 'txn, S, M>>,
+        current: Idx<PipelineBuilder<'env, 'txn, S, M>>,
     ) {
         match self.as_sink() {
             Ok(sink) => {
@@ -64,14 +79,16 @@ trait PhysicalNode: Send + Sync + fmt::Debug + Explain + Any + 'static {
                 // If we have a sink node (which is also a source),
                 // - set it to be the source of the current pipeline,
                 // - recursively build the pipeline for its child with `sink` as the sink of the new metapipeline
-                arena[current].set_source(Arc::clone(&sink) as Arc<dyn PhysicalSource>);
+                arena[current]
+                    .set_source(Arc::clone(&sink) as Arc<dyn PhysicalSource<'env, 'txn, S, M>>);
                 let child_meta_builder = arena.new_child_meta_pipeline(meta_builder, sink);
                 arena.build(child_meta_builder, child);
             }
             Err(node) => match node.as_source() {
                 Ok(source) => arena[current].set_source(source),
                 Err(operator) => {
-                    let operator = operator.as_operator().unwrap();
+                    // Safety: we checked the other two cases above, must be an operator
+                    let operator = unsafe { operator.as_operator().unwrap_unchecked() };
                     let children = operator.children();
                     assert_eq!(
                         children.len(),
@@ -88,39 +105,6 @@ trait PhysicalNode: Send + Sync + fmt::Debug + Explain + Any + 'static {
 }
 
 #[derive(Debug)]
-struct Chunk<T = Tuple>(SmallVec<[T; 1]>);
-
-impl<T> From<Vec<T>> for Chunk<T> {
-    fn from(vec: Vec<T>) -> Self {
-        Self(SmallVec::from_vec(vec))
-    }
-}
-
-impl<T> Chunk<T> {
-    pub fn is_empty(&self) -> bool {
-        self.0.is_empty()
-    }
-
-    pub fn empty() -> Self {
-        Self(SmallVec::new())
-    }
-
-    pub fn singleton(tuple: T) -> Self {
-        Self(SmallVec::from_buf([tuple]))
-    }
-}
-
-impl<T> IntoIterator for Chunk<T> {
-    type Item = T;
-
-    type IntoIter = smallvec::IntoIter<[Self::Item; 1]>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.0.into_iter()
-    }
-}
-
-#[derive(Debug)]
 enum OperatorState<T> {
     /// The operator has an output is ready to process the next input
     Yield(T),
@@ -130,58 +114,146 @@ enum OperatorState<T> {
     Done,
 }
 
-#[derive(Debug)]
-enum SourceState<T> {
-    Yield(T),
-    Final(T),
-    Done,
+trait PhysicalOperator<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T = Tuple>:
+    PhysicalNode<'env, 'txn, S, M>
+{
+    fn execute(
+        &self,
+        ctx: &'txn ExecutionContext<'env, S, M>,
+        input: T,
+    ) -> ExecutionResult<OperatorState<T>>;
 }
 
-#[async_trait::async_trait]
-trait PhysicalOperator<T = Tuple>: PhysicalNode {
-    async fn execute(&self, ctx: &ExecutionContext, input: T) -> ExecutionResult<OperatorState<T>>;
-}
+type TupleStream<'txn, S> =
+    Box<dyn FallibleIterator<Item = Tuple, Error = <S as StorageEngine>::Error> + 'txn>;
 
-#[async_trait::async_trait]
-trait PhysicalSource<T = Tuple>: PhysicalNode {
+trait PhysicalSource<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T = Tuple>:
+    PhysicalNode<'env, 'txn, S, M>
+{
     /// Return the next chunk from the source. An empty chunk indicates that the source is exhausted.
-    async fn source(&self, ctx: &ExecutionContext) -> ExecutionResult<SourceState<Chunk<T>>>;
+    fn source(
+        self: Arc<Self>,
+        ctx: &'txn ExecutionContext<'env, S, M>,
+    ) -> ExecutionResult<TupleStream<'txn, S>>;
 }
 
-#[async_trait::async_trait]
-trait PhysicalSink: PhysicalSource {
-    async fn sink(&self, ctx: &ExecutionContext, tuple: Tuple) -> ExecutionResult<()>;
+trait PhysicalSink<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>:
+    PhysicalSource<'env, 'txn, S, M>
+{
+    fn sink(&self, ctx: &'txn ExecutionContext<'env, S, M>, tuple: Tuple) -> ExecutionResult<()>;
+
+    fn finalize(&self, _ctx: &'txn ExecutionContext<'env, S, M>) -> ExecutionResult<()> {
+        Ok(())
+    }
 }
 
-#[derive(Clone)]
-pub struct ExecutionContext {
-    pool: Arc<dyn Pool>,
-    catalog: Arc<Catalog>,
-    tx: Arc<Transaction>,
+pub struct TransactionContext<'env, S: StorageEngine, M: ExecutionMode<'env, S>> {
+    tx: M::Transaction,
+    auto_commit: AtomicBool,
+    state: AtomicEnum<TransactionState>,
 }
 
-impl ExecutionContext {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
+pub enum TransactionState {
+    Active,
+    Committed,
+    Aborted,
+}
+
+impl From<TransactionState> for u8 {
     #[inline]
-    pub fn new(pool: Arc<dyn Pool>, catalog: Arc<Catalog>, tx: Arc<Transaction>) -> Self {
-        Self { pool, catalog, tx }
+    fn from(state: TransactionState) -> Self {
+        state as u8
+    }
+}
+
+impl From<u8> for TransactionState {
+    #[inline]
+    fn from(state: u8) -> Self {
+        assert!(state <= TransactionState::Aborted as u8);
+        unsafe { std::mem::transmute(state) }
+    }
+}
+
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> TransactionContext<'env, S, M> {
+    #[inline]
+    pub fn new(tx: M::Transaction, auto_commit: bool) -> Self {
+        let auto_commit = AtomicBool::new(auto_commit);
+        Self { tx, auto_commit, state: AtomicEnum::new(TransactionState::Active) }
     }
 
     #[inline]
-    pub fn pool(&self) -> Arc<dyn Pool> {
-        Arc::clone(&self.pool)
+    pub fn auto_commit(&self) -> bool {
+        self.auto_commit.load(atomic::Ordering::Acquire)
     }
 
     #[inline]
-    pub fn tx(&self) -> Arc<Transaction> {
-        Arc::clone(&self.tx)
+    pub fn commit(&self) {
+        self.state.store(TransactionState::Committed, atomic::Ordering::Release);
     }
 
     #[inline]
-    pub fn catalog(&self) -> Arc<Catalog> {
+    pub fn abort(&self) {
+        self.state.store(TransactionState::Aborted, atomic::Ordering::Release);
+    }
+
+    #[inline]
+    pub fn unset_auto_commit(&self) {
+        self.auto_commit.store(false, atomic::Ordering::Release)
+    }
+}
+
+pub struct ExecutionContext<'env, S: StorageEngine, M: ExecutionMode<'env, S>> {
+    storage: &'env S,
+    catalog: Arc<Catalog<S>>,
+    tcx: TransactionContext<'env, S, M>,
+}
+
+impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> ExecutionContext<'env, S, M> {
+    #[inline]
+    pub fn take_txn(self) -> (bool, TransactionState, M::Transaction) {
+        let tx = self.tcx;
+        (tx.auto_commit.into_inner(), tx.state.into_inner(), tx.tx)
+    }
+}
+
+impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> ExecutionContext<'env, S, M> {
+    #[inline]
+    pub fn new(
+        storage: &'env S,
+        catalog: Arc<Catalog<S>>,
+        tcx: TransactionContext<'env, S, M>,
+    ) -> Self {
+        Self { storage, catalog, tcx }
+    }
+
+    #[inline]
+    pub fn storage(&self) -> S {
+        self.storage.clone()
+    }
+
+    #[inline]
+    pub fn tcx(&self) -> &TransactionContext<'env, S, M> {
+        &self.tcx
+    }
+
+    #[inline]
+    pub fn tx(&self) -> Result<&M::Transaction, S::Error> {
+        Ok(&self.tcx.tx)
+    }
+
+    #[inline]
+    pub fn tx_mut(&mut self) -> &mut TransactionContext<'env, S, M> {
+        &mut self.tcx
+    }
+
+    #[inline]
+    pub fn catalog(&self) -> Arc<Catalog<S>> {
         Arc::clone(&self.catalog)
     }
 }
 
-struct RootPipeline {
-    arena: PipelineArena,
+struct RootPipeline<'env, 'txn, S, M> {
+    arena: PipelineArena<'env, 'txn, S, M>,
 }

@@ -1,44 +1,49 @@
-use nsql_serde::{StreamDeserialize, StreamSerialize};
-use nsql_storage::Transaction;
+use nsql_storage_engine::StorageEngine;
 
 use crate::private::CatalogEntity;
 use crate::set::CatalogSet;
-use crate::{Catalog, Container, Entity, Name, Table};
+use crate::{Catalog, Container, Entity, Name, Oid, Table};
 
-#[derive(Debug, StreamSerialize)]
-pub struct Namespace {
+#[derive(Debug)]
+pub struct Namespace<S> {
+    oid: Oid<Self>,
     name: Name,
-    pub(crate) tables: CatalogSet<Table>,
+    pub(crate) tables: CatalogSet<S, Table<S>>,
 }
 
-pub trait NamespaceEntity: CatalogEntity<Container = Namespace> {}
+pub trait NamespaceEntity<S: StorageEngine>: CatalogEntity<S, Container = Namespace<S>> {}
 
-impl<T: CatalogEntity<Container = Namespace>> NamespaceEntity for T {}
+impl<S: StorageEngine, T: CatalogEntity<S, Container = Namespace<S>>> NamespaceEntity<S> for T {}
 
-impl Container for Namespace {}
+impl<S: StorageEngine> Container<S> for Namespace<S> {}
 
-#[derive(Debug, StreamSerialize, StreamDeserialize)]
+#[derive(Debug)]
 pub struct CreateNamespaceInfo {
     pub name: Name,
 }
 
-impl CatalogEntity for Namespace {
-    type Container = Catalog;
+impl<S: StorageEngine> CatalogEntity<S> for Namespace<S> {
+    type Container = Catalog<S>;
 
     type CreateInfo = CreateNamespaceInfo;
 
     #[inline]
-    fn catalog_set(catalog: &Catalog) -> &CatalogSet<Self> {
+    fn catalog_set(catalog: &Catalog<S>) -> &CatalogSet<S, Self> {
         &catalog.schemas
     }
 
     #[inline]
-    fn new(_tx: &Transaction, info: Self::CreateInfo) -> Self {
-        Self { name: info.name, tables: Default::default() }
+    fn create(_tx: &S::WriteTransaction<'_>, oid: Oid<Self>, info: Self::CreateInfo) -> Self {
+        Self { oid, name: info.name, tables: Default::default() }
     }
 }
 
-impl Entity for Namespace {
+impl<S: StorageEngine> Entity for Namespace<S> {
+    #[inline]
+    fn oid(&self) -> Oid<Self> {
+        self.oid
+    }
+
     #[inline]
     fn name(&self) -> Name {
         Name::clone(&self.name)

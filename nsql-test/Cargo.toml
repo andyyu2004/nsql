@@ -5,6 +5,3 @@ edition = "2021"
 
 [dependencies]
 tempfile = "3.3.0"
-tokio = { version = "1.26.0", features = ["rt-multi-thread"] }
-# use this when multithread is supported
-# tokio-uring = { branch = "master", git = "https://github.com/tokio-rs/tokio-uring" }

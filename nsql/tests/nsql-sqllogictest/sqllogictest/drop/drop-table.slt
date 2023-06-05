@@ -1,5 +1,5 @@
 statement ok
-CREATE TABLE foo(id INT)
+CREATE TABLE foo(id int PRIMARY KEY)
 
 query T rowsort
 SHOW TABLES

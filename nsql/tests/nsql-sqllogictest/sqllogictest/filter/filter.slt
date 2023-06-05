@@ -1,5 +1,5 @@
 statement ok
-CREATE TABLE t (x boolean);
+CREATE TABLE t (x boolean PRIMARY KEY);
 
 statement ok
 INSERT INTO t VALUES (false), (true), (false);

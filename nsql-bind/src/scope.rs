@@ -1,9 +1,8 @@
-// FIXME this file is a logical mess
-
 use anyhow::bail;
-use nsql_catalog::{Column, Container, Entity, EntityRef};
+use nsql_catalog::schema::LogicalType;
+use nsql_catalog::{Column, Container, Entity, EntityRef, TableRef};
 use nsql_core::Name;
-use nsql_storage::schema::LogicalType;
+use nsql_storage_engine::{StorageEngine, Transaction};
 
 use super::unbound;
 use crate::{Binder, Path, Result, TableAlias};
@@ -17,20 +16,21 @@ pub(crate) struct Scope {
 
 impl Scope {
     /// Insert a table and its columns to the scope
-    #[tracing::instrument(skip(self, binder, table_ref))]
-    pub fn bind_table(
+    #[tracing::instrument(skip(self, tx, binder, table_ref))]
+    pub fn bind_table<S: StorageEngine>(
         &self,
-        binder: &Binder,
+        binder: &Binder<S>,
+        tx: &dyn Transaction<'_, S>,
         table_path: Path,
-        table_ref: ir::TableRef,
+        table_ref: TableRef<S>,
         alias: Option<&TableAlias>,
     ) -> Result<Scope> {
         tracing::debug!("binding table");
         let mut columns = self.columns.clone();
 
-        let table = table_ref.get(&binder.catalog, &binder.tx);
-        let mut table_columns = table.all::<Column>(&binder.tx);
-        table_columns.sort_by_key(|(_, col)| col.index());
+        let table = table_ref.get(&binder.catalog, tx);
+        let mut table_columns = table.all::<Column>(tx);
+        table_columns.sort_by_key(|col| col.index());
 
         if let Some(alias) = alias {
             // if no columns are specified, we only rename the table
@@ -49,7 +49,7 @@ impl Scope {
             None => table_path,
         };
 
-        for (i, (_oid, column)) in table_columns.into_iter().enumerate() {
+        for (i, column) in table_columns.into_iter().enumerate() {
             let name = match alias {
                 Some(alias) if !alias.columns.is_empty() => alias.columns[i].clone(),
                 _ => column.name(),

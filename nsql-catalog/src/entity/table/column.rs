@@ -1,18 +1,21 @@
 use std::fmt;
+use std::sync::Arc;
 
-use nsql_serde::{StreamDeserialize, StreamSerialize};
-use nsql_storage::schema::LogicalType;
-use nsql_storage::Transaction;
+use nsql_storage_engine::{StorageEngine, Transaction};
 
+use super::TableRef;
 use crate::private::CatalogEntity;
+use crate::schema::LogicalType;
 use crate::set::CatalogSet;
-use crate::{Entity, Name, Table};
+use crate::{Catalog, Entity, EntityRef, Name, Oid, Table};
 
-#[derive(Clone, StreamSerialize)]
+#[derive(Clone)]
 pub struct Column {
+    oid: Oid<Self>,
     name: Name,
     index: ColumnIndex,
     ty: LogicalType,
+    is_primary_key: bool,
 }
 
 impl Column {
@@ -25,6 +28,11 @@ impl Column {
     pub fn logical_type(&self) -> LogicalType {
         self.ty.clone()
     }
+
+    #[inline]
+    pub fn is_primary_key(&self) -> bool {
+        self.is_primary_key
+    }
 }
 
 impl fmt::Debug for Column {
@@ -33,9 +41,7 @@ impl fmt::Debug for Column {
     }
 }
 
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, StreamSerialize, StreamDeserialize,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ColumnIndex {
     index: u8,
 }
@@ -53,15 +59,21 @@ impl ColumnIndex {
     }
 }
 
-#[derive(Debug, Clone, StreamDeserialize)]
+#[derive(Debug, Clone)]
 pub struct CreateColumnInfo {
     pub name: Name,
     /// The index of the column in the table.
     pub index: u8,
     pub ty: LogicalType,
+    pub is_primary_key: bool,
 }
 
 impl Entity for Column {
+    #[inline]
+    fn oid(&self) -> Oid<Self> {
+        self.oid
+    }
+
     #[inline]
     fn name(&self) -> Name {
         Name::clone(&self.name)
@@ -73,16 +85,53 @@ impl Entity for Column {
     }
 }
 
-impl CatalogEntity for Column {
-    type Container = Table;
+impl<S: StorageEngine> CatalogEntity<S> for Column {
+    type Container = Table<S>;
 
     type CreateInfo = CreateColumnInfo;
 
-    fn catalog_set(table: &Self::Container) -> &CatalogSet<Self> {
+    fn catalog_set(table: &Self::Container) -> &CatalogSet<S, Self> {
         &table.columns
     }
 
-    fn new(_tx: &Transaction, info: Self::CreateInfo) -> Self {
-        Self { name: info.name, index: ColumnIndex::new(info.index), ty: info.ty }
+    fn create(_tx: &S::WriteTransaction<'_>, oid: Oid<Self>, info: Self::CreateInfo) -> Self {
+        Self {
+            oid,
+            name: info.name,
+            index: ColumnIndex::new(info.index),
+            ty: info.ty,
+            is_primary_key: info.is_primary_key,
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct ColumnRef<S> {
+    pub table_ref: TableRef<S>,
+    pub column: Oid<Column>,
+}
+
+impl<S> Clone for ColumnRef<S> {
+    #[inline]
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<S> Copy for ColumnRef<S> {}
+
+impl<S: StorageEngine> EntityRef<S> for ColumnRef<S> {
+    type Entity = Column;
+
+    type Container = Table<S>;
+
+    #[inline]
+    fn container(self, catalog: &Catalog<S>, tx: &dyn Transaction<'_, S>) -> Arc<Self::Container> {
+        self.table_ref.get(catalog, tx)
+    }
+
+    #[inline]
+    fn entity_oid(self) -> Oid<Self::Entity> {
+        self.column
     }
 }

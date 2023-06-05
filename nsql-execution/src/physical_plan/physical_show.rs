@@ -1,5 +1,6 @@
 use nsql_catalog::{Container, Namespace, Table};
 use nsql_storage::value::Value;
+use nsql_storage_engine::fallible_iterator;
 
 use super::*;
 
@@ -9,55 +10,70 @@ pub struct PhysicalShow {
 }
 
 impl PhysicalShow {
-    pub(crate) fn plan(show: ir::ObjectType) -> Arc<dyn PhysicalNode> {
+    pub(crate) fn plan<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
+        show: ir::ObjectType,
+    ) -> Arc<dyn PhysicalNode<'env, 'txn, S, M>> {
         Arc::new(Self { show })
     }
 }
 
-impl PhysicalNode for PhysicalShow {
-    fn children(&self) -> &[Arc<dyn PhysicalNode>] {
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode<'env, 'txn, S, M>
+    for PhysicalShow
+{
+    fn children(&self) -> &[Arc<dyn PhysicalNode<'env, 'txn, S, M>>] {
         &[]
     }
 
-    fn as_source(self: Arc<Self>) -> Result<Arc<dyn PhysicalSource>, Arc<dyn PhysicalNode>> {
+    fn as_source(
+        self: Arc<Self>,
+    ) -> Result<Arc<dyn PhysicalSource<'env, 'txn, S, M>>, Arc<dyn PhysicalNode<'env, 'txn, S, M>>>
+    {
         Ok(self)
     }
 
-    fn as_sink(self: Arc<Self>) -> Result<Arc<dyn PhysicalSink>, Arc<dyn PhysicalNode>> {
+    fn as_sink(
+        self: Arc<Self>,
+    ) -> Result<Arc<dyn PhysicalSink<'env, 'txn, S, M>>, Arc<dyn PhysicalNode<'env, 'txn, S, M>>>
+    {
         Err(self)
     }
 
-    fn as_operator(self: Arc<Self>) -> Result<Arc<dyn PhysicalOperator>, Arc<dyn PhysicalNode>> {
+    fn as_operator(
+        self: Arc<Self>,
+    ) -> Result<Arc<dyn PhysicalOperator<'env, 'txn, S, M>>, Arc<dyn PhysicalNode<'env, 'txn, S, M>>>
+    {
         Err(self)
     }
 }
 
-#[async_trait::async_trait]
-impl PhysicalSource for PhysicalShow {
-    async fn source(&self, ctx: &ExecutionContext) -> ExecutionResult<SourceState<Chunk>> {
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSource<'env, 'txn, S, M>
+    for PhysicalShow
+{
+    fn source(
+        self: Arc<Self>,
+        ctx: &'txn ExecutionContext<'env, S, M>,
+    ) -> ExecutionResult<TupleStream<'txn, S>> {
         let catalog = ctx.catalog();
-        let tx = ctx.tx();
-        let mut tuples = vec![];
-        let namespaces = catalog.all::<Namespace>(&tx);
-        for (_, namespace) in namespaces {
-            match self.show {
-                ir::ObjectType::Table => {
-                    for (_, table) in namespace.all::<Table>(&tx) {
-                        tuples.push(Tuple::from(vec![Value::Text(table.name().to_string())]));
-                    }
+        let tx = ctx.tx()?;
+        let iter =
+            catalog.all::<Namespace<S>>(tx).into_iter().flat_map(move |namespace| {
+                match self.show {
+                    ir::ObjectType::Table => namespace
+                        .all::<Table<S>>(tx)
+                        .into_iter()
+                        .map(|table| Ok(Tuple::from(vec![Value::Text(table.name().to_string())]))),
                 }
-            }
-        }
+            });
 
-        Ok(SourceState::Final(Chunk::from(tuples)))
+        Ok(Box::new(fallible_iterator::convert(iter)))
     }
 }
 
-impl Explain for PhysicalShow {
+impl<S: StorageEngine> Explain<S> for PhysicalShow {
     fn explain(
         &self,
-        _catalog: &Catalog,
-        _tx: &Transaction,
+        _catalog: &Catalog<S>,
+        _tx: &dyn Transaction<'_, S>,
         f: &mut fmt::Formatter<'_>,
     ) -> explain::Result {
         write!(f, "show {}s", self.show)?;
