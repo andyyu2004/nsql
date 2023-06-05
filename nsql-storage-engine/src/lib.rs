@@ -142,7 +142,9 @@ pub enum ReadOrWriteTree<'env: 'txn, 'txn, S: StorageEngine> {
     Write(S::WriteTree<'env, 'txn>),
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine> ReadTree<'env, 'txn, S> for ReadOrWriteTree<'env, 'txn, S> {
+impl<'env: 'txn, 'txn, S: StorageEngine> ReadTree<'env, 'txn, S>
+    for ReadOrWriteTree<'env, 'txn, S>
+{
     fn get<'a>(&'a self, key: &[u8]) -> Result<Option<S::Bytes<'a>>, S::Error> {
         match self {
             ReadOrWriteTree::Read(tree) => tree.get(key),
@@ -168,7 +170,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> ReadTree<'env, 'txn, S> for ReadOrWrite
     }
 }
 
-pub trait ExecutionMode<'env, S: StorageEngine>: private::Sealed + Clone + Copy + 'env {
+pub trait ExecutionMode<'env, S: StorageEngine>: private::Sealed + Clone + Copy + 'static {
     type Transaction: Transaction<'env, S>;
 
     type Tree<'txn>: ReadTree<'env, 'txn, S>

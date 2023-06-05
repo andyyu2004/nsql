@@ -3,9 +3,9 @@ use crate::{FallibleIterator, ReadTree, StorageEngine, WriteTransaction, WriteTr
 
 fn example_usage<S: StorageEngine>() -> Result<(), S::Error> {
     let s = S::open("path")?;
-    let mut txn = s.begin_write()?;
+    let txn = s.begin_write()?;
     {
-        let mut tree = s.open_write_tree(&mut txn, "tree")?;
+        let mut tree = s.open_write_tree(&txn, "tree")?;
         tree.put(b"hello", b"world")?;
         tree.put(b"hello2", b"world2")?;
     }

@@ -24,7 +24,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     pub(crate) fn plan(
         stringified_plan: String,
         child: Arc<dyn PhysicalNode<'env, 'txn, S, M>>,
-    ) -> Arc<dyn PhysicalNode<'env, 'txn, S, M> + 'env> {
+    ) -> Arc<dyn PhysicalNode<'env, 'txn, S, M>> {
         Arc::new(Self { stringified_plan: AtomicTake::new(stringified_plan), children: [child] })
     }
 }

@@ -12,7 +12,7 @@ pub struct PhysicalCreateNamespace {
 }
 
 impl PhysicalCreateNamespace {
-    pub(crate) fn plan<'env, 'txn, S: StorageEngine>(
+    pub(crate) fn plan<'env: 'txn, 'txn, S: StorageEngine>(
         info: ir::CreateNamespaceInfo,
     ) -> Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode<S>>> {
         Arc::new(Self { info })

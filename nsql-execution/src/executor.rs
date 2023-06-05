@@ -110,13 +110,13 @@ fn execute_root_pipeline_write<'env, 'txn, S: StorageEngine>(
     executor.execute(ctx, root)
 }
 
-pub fn execute<'env, 'txn, S: StorageEngine>(
+pub fn execute<'env: 'txn, 'txn, S: StorageEngine>(
     ctx: &ExecutionContext<'env, 'txn, S, ReadonlyExecutionMode<S>>,
     plan: PhysicalPlan<'env, 'txn, S, ReadonlyExecutionMode<S>>,
 ) -> ExecutionResult<Vec<Tuple>> {
     let sink = Arc::new(OutputSink::default());
     let root_pipeline = build_pipelines(
-        Arc::clone(&sink) as Arc<dyn PhysicalSink<'env, 'txn, S, ReadonlyExecutionMode<S>>>,
+        Arc::clone(&sink) as Arc<dyn PhysicalSink<'env, 'txn, S, ReadonlyExecutionMode<S>> + 'txn>,
         plan,
     );
 
@@ -125,13 +125,14 @@ pub fn execute<'env, 'txn, S: StorageEngine>(
     Ok(Arc::try_unwrap(sink).expect("should be last reference to output sink").tuples.into_inner())
 }
 
-pub fn execute_write<'env, 'txn, S: StorageEngine>(
+pub fn execute_write<'env: 'txn, 'txn, S: StorageEngine>(
     ctx: &ExecutionContext<'env, 'txn, S, ReadWriteExecutionMode<S>>,
     plan: PhysicalPlan<'env, 'txn, S, ReadWriteExecutionMode<S>>,
 ) -> ExecutionResult<Vec<Tuple>> {
     let sink = Arc::new(OutputSink::default());
+
     let root_pipeline = build_pipelines(
-        Arc::clone(&sink) as Arc<dyn PhysicalSink<'env, 'txn, S, ReadWriteExecutionMode<S>>>,
+        Arc::clone(&sink) as Arc<dyn PhysicalSink<'env, 'txn, S, ReadWriteExecutionMode<S>> + 'txn>,
         plan,
     );
 

@@ -8,7 +8,7 @@ pub struct PhysicalTransaction {
 }
 
 impl PhysicalTransaction {
-    pub(crate) fn plan<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
+    pub(crate) fn plan<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
         kind: ir::TransactionStmtKind,
     ) -> Arc<dyn PhysicalNode<'env, 'txn, S, M>> {
         Arc::new(Self { kind })

@@ -82,7 +82,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalPlanner<S> {
         &self,
         tx: &impl Transaction<'_, S>,
         plan: Box<Plan<S>>,
-    ) -> Result<Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode<S>> + 'env>> {
+    ) -> Result<Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode<S>>>> {
         match *plan {
             Plan::Update { table_ref, source, returning } => {
                 let source = self.plan_node(tx, source)?;

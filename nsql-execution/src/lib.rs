@@ -36,7 +36,7 @@ use self::pipeline::{
 
 pub type ExecutionResult<T, E = Error> = std::result::Result<T, E>;
 
-fn build_pipelines<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
+fn build_pipelines<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
     sink: Arc<dyn PhysicalSink<'env, 'txn, S, M>>,
     plan: PhysicalPlan<'env, 'txn, S, M>,
 ) -> RootPipeline<'env, 'txn, S, M> {
@@ -47,7 +47,7 @@ fn build_pipelines<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
 }
 
 trait PhysicalNode<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>:
-    Send + Sync + Explain<S>
+    Send + Sync + Explain<S> + 'txn
 {
     fn children(&self) -> &[Arc<dyn PhysicalNode<'env, 'txn, S, M>>];
 

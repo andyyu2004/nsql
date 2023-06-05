@@ -7,7 +7,7 @@ use crate::TupleStream;
 pub struct PhysicalDummyScan;
 
 impl PhysicalDummyScan {
-    pub(crate) fn plan<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>()
+    pub(crate) fn plan<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>()
     -> Arc<dyn PhysicalNode<'env, 'txn, S, M>> {
         Arc::new(Self)
     }

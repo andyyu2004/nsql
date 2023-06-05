@@ -1,5 +1,3 @@
-use std::sync::atomic::{self, AtomicUsize};
-
 use nsql_storage_engine::fallible_iterator;
 
 use super::*;
@@ -10,7 +8,7 @@ pub struct PhysicalValues {
 }
 
 impl PhysicalValues {
-    pub(crate) fn plan<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
+    pub(crate) fn plan<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
         values: ir::Values,
     ) -> Arc<dyn PhysicalNode<'env, 'txn, S, M>> {
         Arc::new(PhysicalValues { values })
