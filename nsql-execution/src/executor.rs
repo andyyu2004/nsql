@@ -31,7 +31,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> Executor<'env, 'txn, S, ReadWriteExecut
         ctx: &ExecutionContext<'env, 'txn, S, ReadWriteExecutionMode<S>>,
         pipeline: Idx<Pipeline<'env, 'txn, S, ReadWriteExecutionMode<S>>>,
     ) -> ExecutionResult<()> {
-        let pipeline = &self.arena[pipeline];
+        let pipeline: &Pipeline<'env, 'txn, S, _> = &self.arena[pipeline];
         let mut stream = Arc::clone(&pipeline.source).source(ctx)?;
         'outer: while let Some(mut tuple) = stream.next()? {
             for op in &pipeline.operators {
@@ -45,6 +45,8 @@ impl<'env: 'txn, 'txn, S: StorageEngine> Executor<'env, 'txn, S, ReadWriteExecut
 
             pipeline.sink.sink(ctx, tuple)?;
         }
+
+        pipeline.sink.finalize(ctx)?;
 
         Ok(())
     }

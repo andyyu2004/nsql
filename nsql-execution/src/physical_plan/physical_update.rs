@@ -9,6 +9,7 @@ use crate::ReadWriteExecutionMode;
 pub(crate) struct PhysicalUpdate<'env, 'txn, S> {
     children: [Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode<S>>>; 1],
     table_ref: TableRef<S>,
+    tuples: RwLock<Vec<Tuple>>,
     returning: Option<Box<[ir::Expr]>>,
     returning_tuples: RwLock<Vec<Tuple>>,
     returning_evaluator: Evaluator,
@@ -25,6 +26,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalUpdate<'env, 'txn, S> {
         Arc::new(Self {
             table_ref,
             returning,
+            tuples: Default::default(),
             children: [source],
             returning_tuples: Default::default(),
             returning_evaluator: Evaluator::new(),
@@ -76,8 +78,16 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSink<'env, 'txn, S, ReadWriteEx
 {
     fn sink(
         &self,
-        ctx: &ExecutionContext<'env, 'txn, S, ReadWriteExecutionMode<S>>,
+        _ctx: &ExecutionContext<'env, 'txn, S, ReadWriteExecutionMode<S>>,
         tuple: Tuple,
+    ) -> ExecutionResult<()> {
+        self.tuples.write().push(tuple);
+        Ok(())
+    }
+
+    fn finalize(
+        &self,
+        ctx: &ExecutionContext<'env, 'txn, S, ReadWriteExecutionMode<S>>,
     ) -> ExecutionResult<()> {
         let tx = ctx.tx();
         let table = self.table_ref.get(&ctx.catalog(), tx);
@@ -87,14 +97,17 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSink<'env, 'txn, S, ReadWriteEx
             TableStorageInfo::new(self.table_ref, table.columns(tx)),
         )?;
 
-        // FIXME we need to detect whether or not we actually updated something before adding it
-        // to the returning set
-        storage.insert(tx, &tuple)?;
+        let tuples = self.tuples.read();
+        for tuple in &*tuples {
+            // FIXME we need to detect whether or not we actually updated something before adding it
+            // to the returning set
+            storage.insert(tx, tuple)?;
 
-        if let Some(return_expr) = &self.returning {
-            self.returning_tuples
-                .write()
-                .push(self.returning_evaluator.evaluate(&tuple, return_expr));
+            if let Some(return_expr) = &self.returning {
+                self.returning_tuples
+                    .write()
+                    .push(self.returning_evaluator.evaluate(tuple, return_expr));
+            }
         }
 
         Ok(())

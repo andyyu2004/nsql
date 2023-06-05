@@ -13,7 +13,6 @@ use crate::tuple::{Tuple, TupleIndex};
 use crate::value::Value;
 
 pub struct TableStorage<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> {
-    storage: S,
     tree: M::Tree<'txn>,
     info: TableStorageInfo,
 }
@@ -77,7 +76,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> TableStorage
         info: TableStorageInfo,
     ) -> Result<Self, S::Error> {
         let tree = M::open_tree(&storage, tx, &info.storage_tree_name)?;
-        Ok(Self { storage, info, tree })
+        Ok(Self { info, tree })
     }
 
     #[inline]

@@ -22,6 +22,7 @@ fn check_explain<'a>(
     Ok(())
 }
 
+#[test]
 fn test_explain() -> nsql::Result<()> {
     check_explain(
         vec!["CREATE TABLE t (b boolean)"],

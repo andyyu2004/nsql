@@ -10,7 +10,6 @@ mod pipeline;
 mod vis;
 
 use std::fmt;
-use std::marker::PhantomData;
 use std::ops::Deref;
 use std::sync::atomic::{self, AtomicBool};
 use std::sync::Arc;
@@ -175,6 +174,10 @@ trait PhysicalSink<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>
     PhysicalSource<'env, 'txn, S, M>
 {
     fn sink(&self, ctx: &ExecutionContext<'env, 'txn, S, M>, tuple: Tuple) -> ExecutionResult<()>;
+
+    fn finalize(&self, _ctx: &ExecutionContext<'env, 'txn, S, M>) -> ExecutionResult<()> {
+        Ok(())
+    }
 }
 
 trait Reborrow<'short, _Outlives = &'short Self> {
@@ -280,7 +283,6 @@ pub struct ExecutionContext<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env,
     storage: S,
     catalog: Arc<Catalog<S>>,
     tx: TransactionContext<'env, 'txn, S, M>,
-    pd: PhantomData<&'txn ()>,
 }
 
 impl<'env: 'txn, 'txn, S: StorageEngine> ExecutionContext<'env, 'txn, S, ReadonlyExecutionMode<S>> {
@@ -310,7 +312,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
         catalog: Arc<Catalog<S>>,
         tx: TransactionContext<'env, 'txn, S, M>,
     ) -> Self {
-        Self { storage, catalog, tx, pd: PhantomData }
+        Self { storage, catalog, tx }
     }
 
     #[inline]
