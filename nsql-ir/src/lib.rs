@@ -118,7 +118,10 @@ impl<S> Stmt<S> {
                     TransactionMode::ReadOnly
                 }
             },
-            Stmt::Show(..) | Stmt::Query(..) | Stmt::Explain(..) => TransactionMode::ReadOnly,
+            // even though `explain` doesn't execute the plan, the planning stage currently
+            // still checks we have a write transaction available
+            Stmt::Explain(_, inner) => inner.required_transaction_mode(),
+            Stmt::Show(..) | Stmt::Query(..) => TransactionMode::ReadOnly,
         }
     }
 }
