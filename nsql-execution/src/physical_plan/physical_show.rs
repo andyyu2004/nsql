@@ -51,7 +51,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
 {
     fn source(
         self: Arc<Self>,
-        ctx: &ExecutionContext<'env, 'txn, S, M>,
+        ctx: &'txn ExecutionContext<'env, S, M>,
     ) -> ExecutionResult<TupleStream<'txn, S>> {
         let catalog = ctx.catalog();
         let tx = ctx.tx();

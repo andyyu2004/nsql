@@ -155,7 +155,7 @@ impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Explain<S>
         writeln!(f)?;
 
         for child in self.node.children() {
-            self.explain_child(Arc::clone(&child)).explain(catalog, tx, f)?;
+            self.explain_child(Arc::clone(child)).explain(catalog, tx, f)?;
         }
 
         Ok(())

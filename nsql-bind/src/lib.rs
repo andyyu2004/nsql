@@ -180,8 +180,18 @@ impl<S: StorageEngine> Binder<S> {
                 ir::Stmt::Query(query)
             }
             ast::Statement::StartTransaction { modes } => {
-                not_implemented!(!modes.is_empty());
-                ir::Stmt::Transaction(ir::TransactionStmtKind::Begin)
+                let mut mode = ir::TransactionMode::ReadWrite;
+                match modes[..] {
+                    [] => (),
+                    [ast::TransactionMode::AccessMode(ast::TransactionAccessMode::ReadOnly)] => {
+                        mode = ir::TransactionMode::ReadOnly
+                    }
+                    [ast::TransactionMode::IsolationLevel(_)] => {
+                        not_implemented!("isolation level")
+                    }
+                    _ => not_implemented!("multiple transaction modes"),
+                }
+                ir::Stmt::Transaction(ir::TransactionStmtKind::Begin(mode))
             }
             ast::Statement::Rollback { chain } => {
                 not_implemented!(*chain);

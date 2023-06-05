@@ -34,9 +34,24 @@ pub struct CreateNamespaceInfo {
     pub if_not_exists: bool,
 }
 
+#[derive(Debug, Copy, Clone)]
+pub enum TransactionMode {
+    ReadWrite,
+    ReadOnly,
+}
+
+impl fmt::Display for TransactionMode {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::ReadWrite => write!(f, "read write"),
+            Self::ReadOnly => write!(f, "read only"),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum TransactionStmtKind {
-    Begin,
+    Begin(TransactionMode),
     Commit,
     Abort,
 }

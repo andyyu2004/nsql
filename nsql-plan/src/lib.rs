@@ -98,6 +98,7 @@ impl<S: StorageEngine> Planner<S> {
         Box::new(plan)
     }
 
+    #[allow(clippy::boxed_local)]
     fn plan_query(&self, plan: Box<ir::QueryPlan<S>>) -> Box<Plan<S>> {
         let plan = match *plan {
             ir::QueryPlan::Values(values) => Plan::Values { values },

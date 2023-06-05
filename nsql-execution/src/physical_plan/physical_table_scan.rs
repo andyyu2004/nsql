@@ -37,7 +37,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
     #[tracing::instrument(skip(self, ctx))]
     fn source(
         self: Arc<Self>,
-        ctx: &ExecutionContext<'env, 'txn, S, M>,
+        ctx: &'txn ExecutionContext<'env, S, M>,
     ) -> ExecutionResult<TupleStream<'txn, S>> {
         let tx = ctx.tx();
         let table = self.table.get_or_init(|| self.table_ref.get(&ctx.catalog, tx));

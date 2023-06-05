@@ -23,7 +23,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     #[tracing::instrument(skip(self, _ctx, input))]
     fn execute(
         &self,
-        _ctx: &ExecutionContext<'env, 'txn, S, M>,
+        _ctx: &'txn ExecutionContext<'env, S, M>,
         input: Tuple,
     ) -> ExecutionResult<OperatorState<Tuple>> {
         let value = self.evaluator.evaluate_expr(&input, &self.predicate);

@@ -140,10 +140,10 @@ impl<S: StorageEngine> Shared<S> {
                 let ctx = ExecutionContext::new(
                     self.storage.storage(),
                     catalog,
-                    TransactionContext::new(&tx, auto_commit),
+                    TransactionContext::new(tx, auto_commit),
                 );
                 let tuples = nsql_execution::execute(&ctx, physical_plan)?;
-                let (auto_commit, state) = ctx.take_txn();
+                let (auto_commit, state, tx) = ctx.take_txn();
                 if auto_commit || !matches!(state, TransactionState::Active) {
                     tracing::info!("ending readonly transaction");
                     (None, tuples)
@@ -157,10 +157,10 @@ impl<S: StorageEngine> Shared<S> {
                 let ctx = ExecutionContext::new(
                     self.storage.storage(),
                     catalog,
-                    TransactionContext::new(&tx, auto_commit),
+                    TransactionContext::new(tx, auto_commit),
                 );
                 let tuples = nsql_execution::execute_write(&ctx, physical_plan)?;
-                let (auto_commit, state) = ctx.take_txn();
+                let (auto_commit, state, tx) = ctx.take_txn();
                 // FIXME need to remember `auto_commit` value for the next call, otherwise
                 // auto_commit will be true again
                 match state {

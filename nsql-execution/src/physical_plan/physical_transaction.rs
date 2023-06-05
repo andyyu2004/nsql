@@ -49,11 +49,11 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
 {
     fn source(
         self: Arc<Self>,
-        ctx: &ExecutionContext<'env, 'txn, S, M>,
+        ctx: &'txn ExecutionContext<'env, S, M>,
     ) -> ExecutionResult<TupleStream<'txn, S>> {
         let tx = ctx.tcx();
         match self.kind {
-            ir::TransactionStmtKind::Begin => {
+            ir::TransactionStmtKind::Begin(mode) => {
                 if tx.auto_commit() {
                     tx.unset_auto_commit();
                 } else {
@@ -89,7 +89,7 @@ impl<S: StorageEngine> Explain<S> for PhysicalTransaction {
         f: &mut fmt::Formatter<'_>,
     ) -> explain::Result {
         match self.kind {
-            ir::TransactionStmtKind::Begin => write!(f, "begin transaction")?,
+            ir::TransactionStmtKind::Begin(mode) => write!(f, "begin transaction {}", mode)?,
             ir::TransactionStmtKind::Commit => write!(f, "commit")?,
             ir::TransactionStmtKind::Abort => write!(f, "rollback")?,
         }

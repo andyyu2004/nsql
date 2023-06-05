@@ -1,5 +1,5 @@
 statement ok con1
-CREATE TABLE t(id INT)
+CREATE TABLE t(id int PRIMARY KEY)
 
 statement ok con1
 BEGIN

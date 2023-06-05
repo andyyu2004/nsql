@@ -18,7 +18,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
 {
     fn source(
         self: Arc<Self>,
-        _ctx: &ExecutionContext<'env, 'txn, S, M>,
+        _ctx: &'txn ExecutionContext<'env, S, M>,
     ) -> ExecutionResult<TupleStream<'txn, S>> {
         Ok(Box::new(fallible_iterator::once(Tuple::empty())))
     }

@@ -120,7 +120,7 @@ trait PhysicalOperator<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env
 {
     fn execute(
         &self,
-        ctx: &ExecutionContext<'env, 'txn, S, M>,
+        ctx: &'txn ExecutionContext<'env, S, M>,
         input: T,
     ) -> ExecutionResult<OperatorState<T>>;
 }
@@ -134,46 +134,22 @@ trait PhysicalSource<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, 
     /// Return the next chunk from the source. An empty chunk indicates that the source is exhausted.
     fn source(
         self: Arc<Self>,
-        ctx: &ExecutionContext<'env, 'txn, S, M>,
+        ctx: &'txn ExecutionContext<'env, S, M>,
     ) -> ExecutionResult<TupleStream<'txn, S>>;
 }
 
 trait PhysicalSink<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>:
     PhysicalSource<'env, 'txn, S, M>
 {
-    fn sink(&self, ctx: &ExecutionContext<'env, 'txn, S, M>, tuple: Tuple) -> ExecutionResult<()>;
+    fn sink(&self, ctx: &'txn ExecutionContext<'env, S, M>, tuple: Tuple) -> ExecutionResult<()>;
 
-    fn finalize(&self, _ctx: &ExecutionContext<'env, 'txn, S, M>) -> ExecutionResult<()> {
+    fn finalize(&self, _ctx: &'txn ExecutionContext<'env, S, M>) -> ExecutionResult<()> {
         Ok(())
     }
 }
 
-trait Reborrow<'short, _Outlives = &'short Self> {
-    type Target;
-
-    fn rb(&'short self) -> &'short Self::Target;
-}
-
-impl<'short, 'a, T> Reborrow<'short> for &'a T {
-    type Target = T;
-
-    #[inline]
-    fn rb(&'short self) -> &'short Self::Target {
-        self
-    }
-}
-
-impl<'short, 'a, T> Reborrow<'short> for &'a mut T {
-    type Target = T;
-
-    #[inline]
-    fn rb(&'short self) -> &'short Self::Target {
-        self
-    }
-}
-
-pub struct TransactionContext<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> {
-    tx: &'txn M::Transaction,
+pub struct TransactionContext<'env, S: StorageEngine, M: ExecutionMode<'env, S>> {
+    tx: M::Transaction,
     auto_commit: AtomicBool,
     state: AtomicEnum<TransactionState>,
 }
@@ -201,11 +177,9 @@ impl From<u8> for TransactionState {
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
-    TransactionContext<'env, 'txn, S, M>
-{
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> TransactionContext<'env, S, M> {
     #[inline]
-    pub fn new(tx: &'txn M::Transaction, auto_commit: bool) -> Self {
+    pub fn new(tx: M::Transaction, auto_commit: bool) -> Self {
         Self {
             tx,
             auto_commit: AtomicBool::new(auto_commit),
@@ -234,52 +208,31 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     }
 }
 
-impl<'env, 'txn, S, M> Deref for TransactionContext<'env, 'txn, S, M>
-where
-    S: StorageEngine,
-    M: ExecutionMode<'env, S>,
-{
-    type Target = M::Transaction;
-
-    #[inline]
-    fn deref(&self) -> &'txn Self::Target {
-        self.tx
-    }
-}
-
-pub struct ExecutionContext<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> {
+pub struct ExecutionContext<'env, S: StorageEngine, M: ExecutionMode<'env, S>> {
     storage: S,
     catalog: Arc<Catalog<S>>,
-    tx: TransactionContext<'env, 'txn, S, M>,
+    tx: TransactionContext<'env, S, M>,
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine> ExecutionContext<'env, 'txn, S, ReadonlyExecutionMode<S>> {
+impl<'env, S: StorageEngine> ExecutionContext<'env, S, ReadonlyExecutionMode<S>> {
     #[inline]
-    pub fn take_txn(self) -> (bool, TransactionState) {
+    pub fn take_txn(self) -> (bool, TransactionState, S::Transaction<'env>) {
         let tx = self.tx;
-        (tx.auto_commit.into_inner(), tx.state.into_inner())
+        (tx.auto_commit.into_inner(), tx.state.into_inner(), tx.tx)
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine>
-    ExecutionContext<'env, 'txn, S, ReadWriteExecutionMode<S>>
-{
+impl<'env, S: StorageEngine> ExecutionContext<'env, S, ReadWriteExecutionMode<S>> {
     #[inline]
-    pub fn take_txn(self) -> (bool, TransactionState) {
+    pub fn take_txn(self) -> (bool, TransactionState, S::WriteTransaction<'env>) {
         let tx = self.tx;
-        (tx.auto_commit.into_inner(), tx.state.into_inner())
+        (tx.auto_commit.into_inner(), tx.state.into_inner(), tx.tx)
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
-    ExecutionContext<'env, 'txn, S, M>
-{
+impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> ExecutionContext<'env, S, M> {
     #[inline]
-    pub fn new(
-        storage: S,
-        catalog: Arc<Catalog<S>>,
-        tx: TransactionContext<'env, 'txn, S, M>,
-    ) -> Self {
+    pub fn new(storage: S, catalog: Arc<Catalog<S>>, tx: TransactionContext<'env, S, M>) -> Self {
         Self { storage, catalog, tx }
     }
 
@@ -289,17 +242,17 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     }
 
     #[inline]
-    pub fn tcx(&self) -> &TransactionContext<'env, 'txn, S, M> {
+    pub fn tcx(&self) -> &TransactionContext<'env, S, M> {
         &self.tx
     }
 
     #[inline]
-    pub fn tx(&self) -> &'txn M::Transaction {
-        self.tx.tx
+    pub fn tx(&self) -> &M::Transaction {
+        &self.tx.tx
     }
 
     #[inline]
-    pub fn tx_mut(&mut self) -> &mut TransactionContext<'env, 'txn, S, M> {
+    pub fn tx_mut(&mut self) -> &mut TransactionContext<'env, S, M> {
         &mut self.tx
     }
 

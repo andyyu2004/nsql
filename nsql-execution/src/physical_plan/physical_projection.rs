@@ -25,7 +25,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     #[tracing::instrument(skip(self, _ctx, input))]
     fn execute(
         &self,
-        _ctx: &ExecutionContext<'env, 'txn, S, M>,
+        _ctx: &'txn ExecutionContext<'env, S, M>,
         input: Tuple,
     ) -> ExecutionResult<OperatorState<Tuple>> {
         let output = self.evaluator.evaluate(&input, &self.projection);

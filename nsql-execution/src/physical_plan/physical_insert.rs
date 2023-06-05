@@ -70,7 +70,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSink<'env, 'txn, S, ReadWriteEx
 {
     fn sink(
         &self,
-        ctx: &ExecutionContext<'env, 'txn, S, ReadWriteExecutionMode<S>>,
+        ctx: &'txn ExecutionContext<'env, S, ReadWriteExecutionMode<S>>,
         tuple: Tuple,
     ) -> ExecutionResult<()> {
         let catalog = ctx.catalog();
@@ -100,7 +100,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSource<'env, 'txn, S, ReadWrite
 {
     fn source(
         self: Arc<Self>,
-        _ctx: &ExecutionContext<'env, 'txn, S, ReadWriteExecutionMode<S>>,
+        _ctx: &'txn ExecutionContext<'env, S, ReadWriteExecutionMode<S>>,
     ) -> ExecutionResult<TupleStream<'txn, S>> {
         let returning = std::mem::take(&mut *self.returning_tuples.write());
         Ok(Box::new(fallible_iterator::convert(returning.into_iter().map(Ok))))
