@@ -4,7 +4,7 @@ use nsql_catalog::{Container, CreateNamespaceInfo, Namespace};
 use nsql_storage_engine::fallible_iterator;
 
 use super::*;
-use crate::{Chunk, ReadWriteExecutionMode, TupleStream};
+use crate::{ReadWriteExecutionMode, TupleStream};
 
 #[derive(Debug)]
 pub struct PhysicalCreateNamespace {
@@ -12,25 +12,25 @@ pub struct PhysicalCreateNamespace {
 }
 
 impl PhysicalCreateNamespace {
-    pub(crate) fn plan<'env, S: StorageEngine>(
+    pub(crate) fn plan<'env, 'txn, S: StorageEngine>(
         info: ir::CreateNamespaceInfo,
-    ) -> Arc<dyn PhysicalNode<'env, S, ReadWriteExecutionMode<S>>> {
+    ) -> Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode<S>>> {
         Arc::new(Self { info })
     }
 }
 
-impl<'env, S: StorageEngine> PhysicalNode<'env, S, ReadWriteExecutionMode<S>>
+impl<'env, 'txn, S: StorageEngine> PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode<S>>
     for PhysicalCreateNamespace
 {
-    fn children(&self) -> &[Arc<dyn PhysicalNode<'env, S, ReadWriteExecutionMode<S>>>] {
+    fn children(&self) -> &[Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode<S>>>] {
         &[]
     }
 
     fn as_source(
         self: Arc<Self>,
     ) -> Result<
-        Arc<dyn PhysicalSource<'env, S, ReadWriteExecutionMode<S>>>,
-        Arc<dyn PhysicalNode<'env, S, ReadWriteExecutionMode<S>>>,
+        Arc<dyn PhysicalSource<'env, 'txn, S, ReadWriteExecutionMode<S>>>,
+        Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode<S>>>,
     > {
         Ok(self)
     }
@@ -38,8 +38,8 @@ impl<'env, S: StorageEngine> PhysicalNode<'env, S, ReadWriteExecutionMode<S>>
     fn as_sink(
         self: Arc<Self>,
     ) -> Result<
-        Arc<dyn PhysicalSink<'env, S, ReadWriteExecutionMode<S>>>,
-        Arc<dyn PhysicalNode<'env, S, ReadWriteExecutionMode<S>>>,
+        Arc<dyn PhysicalSink<'env, 'txn, S, ReadWriteExecutionMode<S>>>,
+        Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode<S>>>,
     > {
         Err(self)
     }
@@ -47,19 +47,19 @@ impl<'env, S: StorageEngine> PhysicalNode<'env, S, ReadWriteExecutionMode<S>>
     fn as_operator(
         self: Arc<Self>,
     ) -> Result<
-        Arc<dyn PhysicalOperator<'env, S, ReadWriteExecutionMode<S>>>,
-        Arc<dyn PhysicalNode<'env, S, ReadWriteExecutionMode<S>>>,
+        Arc<dyn PhysicalOperator<'env, 'txn, S, ReadWriteExecutionMode<S>>>,
+        Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode<S>>>,
     > {
         Err(self)
     }
 }
 
-impl<'env, S: StorageEngine> PhysicalSource<'env, S, ReadWriteExecutionMode<S>>
+impl<'env, 'txn, S: StorageEngine> PhysicalSource<'env, 'txn, S, ReadWriteExecutionMode<S>>
     for PhysicalCreateNamespace
 {
-    fn source<'txn>(
+    fn source(
         self: Arc<Self>,
-        ctx: &'txn ExecutionContext<'env, S, ReadWriteExecutionMode<S>>,
+        ctx: &'txn ExecutionContext<'env, 'txn, S, ReadWriteExecutionMode<S>>,
     ) -> ExecutionResult<TupleStream<'txn, S>> {
         let catalog = ctx.catalog();
         let tx = ctx.tx();

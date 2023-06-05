@@ -14,24 +14,26 @@ impl<S> fmt::Debug for PhysicalDrop<S> {
     }
 }
 
-impl<'env, S: StorageEngine> PhysicalDrop<S> {
+impl<'env, 'txn, S: StorageEngine> PhysicalDrop<S> {
     pub(crate) fn plan(
         refs: Vec<ir::EntityRef<S>>,
-    ) -> Arc<dyn PhysicalNode<'env, S, ReadWriteExecutionMode<S>>> {
+    ) -> Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode<S>>> {
         Arc::new(Self { refs })
     }
 }
 
-impl<'env, S: StorageEngine> PhysicalNode<'env, S, ReadWriteExecutionMode<S>> for PhysicalDrop<S> {
-    fn children(&self) -> &[Arc<dyn PhysicalNode<'env, S, ReadWriteExecutionMode<S>>>] {
+impl<'env, 'txn, S: StorageEngine> PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode<S>>
+    for PhysicalDrop<S>
+{
+    fn children(&self) -> &[Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode<S>>>] {
         &[]
     }
 
     fn as_source(
         self: Arc<Self>,
     ) -> Result<
-        Arc<dyn PhysicalSource<'env, S, ReadWriteExecutionMode<S>>>,
-        Arc<dyn PhysicalNode<'env, S, ReadWriteExecutionMode<S>>>,
+        Arc<dyn PhysicalSource<'env, 'txn, S, ReadWriteExecutionMode<S>>>,
+        Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode<S>>>,
     > {
         Ok(self)
     }
@@ -39,8 +41,8 @@ impl<'env, S: StorageEngine> PhysicalNode<'env, S, ReadWriteExecutionMode<S>> fo
     fn as_sink(
         self: Arc<Self>,
     ) -> Result<
-        Arc<dyn PhysicalSink<'env, S, ReadWriteExecutionMode<S>>>,
-        Arc<dyn PhysicalNode<'env, S, ReadWriteExecutionMode<S>>>,
+        Arc<dyn PhysicalSink<'env, 'txn, S, ReadWriteExecutionMode<S>>>,
+        Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode<S>>>,
     > {
         Err(self)
     }
@@ -48,19 +50,19 @@ impl<'env, S: StorageEngine> PhysicalNode<'env, S, ReadWriteExecutionMode<S>> fo
     fn as_operator(
         self: Arc<Self>,
     ) -> Result<
-        Arc<dyn PhysicalOperator<'env, S, ReadWriteExecutionMode<S>>>,
-        Arc<dyn PhysicalNode<'env, S, ReadWriteExecutionMode<S>>>,
+        Arc<dyn PhysicalOperator<'env, 'txn, S, ReadWriteExecutionMode<S>>>,
+        Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode<S>>>,
     > {
         Err(self)
     }
 }
 
-impl<'env, S: StorageEngine> PhysicalSource<'env, S, ReadWriteExecutionMode<S>>
+impl<'env, 'txn, S: StorageEngine> PhysicalSource<'env, 'txn, S, ReadWriteExecutionMode<S>>
     for PhysicalDrop<S>
 {
-    fn source<'txn>(
+    fn source(
         self: Arc<Self>,
-        ctx: &'txn ExecutionContext<'env, S, ReadWriteExecutionMode<S>>,
+        ctx: &'txn ExecutionContext<'env, 'txn, S, ReadWriteExecutionMode<S>>,
     ) -> ExecutionResult<TupleStream<'txn, S>> {
         let catalog = ctx.catalog();
         let tx = ctx.tx();
@@ -74,7 +76,7 @@ impl<'env, S: StorageEngine> PhysicalSource<'env, S, ReadWriteExecutionMode<S>>
     }
 }
 
-impl<'env, S: StorageEngine> Explain<S> for PhysicalDrop<S> {
+impl<'env, 'txn, S: StorageEngine> Explain<S> for PhysicalDrop<S> {
     fn explain(
         &self,
         catalog: &Catalog<S>,

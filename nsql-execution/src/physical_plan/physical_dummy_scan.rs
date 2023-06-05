@@ -7,50 +7,53 @@ use crate::TupleStream;
 pub struct PhysicalDummyScan;
 
 impl PhysicalDummyScan {
-    pub(crate) fn plan<'env, S: StorageEngine, M: ExecutionMode<'env, S>>()
-    -> Arc<dyn PhysicalNode<'env, S, M>> {
+    pub(crate) fn plan<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>()
+    -> Arc<dyn PhysicalNode<'env, 'txn, S, M>> {
         Arc::new(Self)
     }
 }
 
-impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSource<'env, S, M>
+impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSource<'env, 'txn, S, M>
     for PhysicalDummyScan
 {
-    fn source<'txn>(
+    fn source(
         self: Arc<Self>,
-        _ctx: &'txn ExecutionContext<'env, S, M>,
+        _ctx: &'txn ExecutionContext<'env, 'txn, S, M>,
     ) -> ExecutionResult<TupleStream<'txn, S>> {
         Ok(Box::new(fallible_iterator::once(Tuple::empty())))
     }
 }
 
-impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode<'env, S, M>
+impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode<'env, 'txn, S, M>
     for PhysicalDummyScan
 {
-    fn children(&self) -> &[Arc<dyn PhysicalNode<'env, S, M>>] {
+    fn children(&self) -> &[Arc<dyn PhysicalNode<'env, 'txn, S, M>>] {
         &[]
     }
 
     fn as_source(
         self: Arc<Self>,
-    ) -> Result<Arc<dyn PhysicalSource<'env, S, M>>, Arc<dyn PhysicalNode<'env, S, M>>> {
+    ) -> Result<Arc<dyn PhysicalSource<'env, 'txn, S, M>>, Arc<dyn PhysicalNode<'env, 'txn, S, M>>>
+    {
         Ok(self)
     }
 
     fn as_sink(
         self: Arc<Self>,
-    ) -> Result<Arc<dyn PhysicalSink<'env, S, M>>, Arc<dyn PhysicalNode<'env, S, M>>> {
+    ) -> Result<Arc<dyn PhysicalSink<'env, 'txn, S, M>>, Arc<dyn PhysicalNode<'env, 'txn, S, M>>>
+    {
         Err(self)
     }
 
     fn as_operator(
         self: Arc<Self>,
-    ) -> Result<Arc<dyn PhysicalOperator<'env, S, M>>, Arc<dyn PhysicalNode<'env, S, M>>> {
+    ) -> Result<Arc<dyn PhysicalOperator<'env, 'txn, S, M>>, Arc<dyn PhysicalNode<'env, 'txn, S, M>>>
+    {
         Err(self)
     }
 }
 
-impl<'env, S: StorageEngine> Explain<S> for PhysicalDummyScan {
+impl<'env, 'txn, S: StorageEngine> Explain<S> for PhysicalDummyScan {
     fn explain(
         &self,
         _catalog: &Catalog<S>,

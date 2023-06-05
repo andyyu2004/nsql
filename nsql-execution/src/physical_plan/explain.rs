@@ -18,31 +18,33 @@ pub trait Explain<S: StorageEngine> {
     ) -> Result;
 }
 
-pub(crate) fn explain_pipeline<'a, 'env, S: StorageEngine, M: ExecutionMode<'env, S>>(
+pub(crate) fn explain_pipeline<'a, 'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
     catalog: &'a Catalog<S>,
     tx: &'a S::Transaction<'env>,
-    root_pipeline: &'a RootPipeline<'env, S, M>,
-) -> RootPipelineExplainer<'a, 'env, S, M> {
+    root_pipeline: &'a RootPipeline<'env, 'txn, S, M>,
+) -> RootPipelineExplainer<'a, 'env, 'txn, S, M> {
     RootPipelineExplainer { catalog, tx, root_pipeline }
 }
 
-pub struct RootPipelineExplainer<'a, 'env, S: StorageEngine, M: ExecutionMode<'env, S>> {
+pub struct RootPipelineExplainer<'a, 'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> {
     catalog: &'a Catalog<S>,
     tx: &'a S::Transaction<'env>,
-    root_pipeline: &'a RootPipeline<'env, S, M>,
+    root_pipeline: &'a RootPipeline<'env, 'txn, S, M>,
 }
 
-pub struct MetaPipelineExplainer<'a, 'env, S: StorageEngine, M: ExecutionMode<'env, S>> {
-    root: &'a RootPipelineExplainer<'a, 'env, S, M>,
+pub struct MetaPipelineExplainer<'a, 'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> {
+    root: &'a RootPipelineExplainer<'a, 'env, 'txn, S, M>,
     tx: &'a S::Transaction<'env>,
     indent: usize,
 }
 
-impl<'a, 'env, S: StorageEngine, M: ExecutionMode<'env, S>> MetaPipelineExplainer<'a, 'env, S, M> {
+impl<'a, 'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
+    MetaPipelineExplainer<'a, 'env, 'txn, S, M>
+{
     fn explain_meta_pipeline(
         &self,
         f: &mut fmt::Formatter<'_>,
-        meta_pipeline: Idx<MetaPipeline<'env, S, M>>,
+        meta_pipeline: Idx<MetaPipeline<'env, 'txn, S, M>>,
     ) -> fmt::Result {
         let arena = &self.root.root_pipeline.arena;
         writeln!(
@@ -80,8 +82,8 @@ impl<'a, 'env, S: StorageEngine, M: ExecutionMode<'env, S>> MetaPipelineExplaine
     }
 }
 
-impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> fmt::Display
-    for RootPipelineExplainer<'_, 'env, S, M>
+impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> fmt::Display
+    for RootPipelineExplainer<'_, 'env, 'txn, S, M>
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         MetaPipelineExplainer { root: self, tx: self.tx, indent: 0 }
@@ -89,32 +91,34 @@ impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> fmt::Display
     }
 }
 
-pub(crate) fn explain<'a, 'env, S: StorageEngine, M: ExecutionMode<'env, S>>(
+pub(crate) fn explain<'a, 'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
     catalog: &'a Catalog<S>,
     tx: &'a S::Transaction<'env>,
-    node: &'a dyn PhysicalNode<'env, S, M>,
-) -> PhysicalNodeExplainer<'a, 'env, S, M> {
+    node: &'a dyn PhysicalNode<'env, 'txn, S, M>,
+) -> PhysicalNodeExplainer<'a, 'env, 'txn, S, M> {
     PhysicalNodeExplainer { catalog, tx, node, indent: 0 }
 }
 
-pub struct PhysicalNodeExplainer<'a, 'env, S: StorageEngine, M: ExecutionMode<'env, S>> {
+pub struct PhysicalNodeExplainer<'a, 'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> {
     catalog: &'a Catalog<S>,
     tx: &'a S::Transaction<'env>,
-    node: &'a dyn PhysicalNode<'env, S, M>,
+    node: &'a dyn PhysicalNode<'env, 'txn, S, M>,
     indent: usize,
 }
 
-impl<'a, 'env, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNodeExplainer<'a, 'env, S, M> {
+impl<'a, 'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
+    PhysicalNodeExplainer<'a, 'env, 'txn, S, M>
+{
     fn explain_child(
         &self,
-        node: &'a dyn PhysicalNode<'env, S, M>,
-    ) -> PhysicalNodeExplainer<'a, 'env, S, M> {
+        node: &'a dyn PhysicalNode<'env, 'txn, S, M>,
+    ) -> PhysicalNodeExplainer<'a, 'env, 'txn, S, M> {
         PhysicalNodeExplainer { catalog: self.catalog, tx: self.tx, node, indent: self.indent + 2 }
     }
 }
 
-impl<'a, 'env, S: StorageEngine, M: ExecutionMode<'env, S>> fmt::Display
-    for PhysicalNodeExplainer<'a, 'env, S, M>
+impl<'a, 'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> fmt::Display
+    for PhysicalNodeExplainer<'a, 'env, 'txn, S, M>
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{:indent$}", "", indent = self.indent)?;

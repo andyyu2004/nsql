@@ -8,45 +8,45 @@ pub struct PhysicalTransaction {
 }
 
 impl PhysicalTransaction {
-    pub(crate) fn plan<'env, S: StorageEngine, M: ExecutionMode<'env, S>>(
+    pub(crate) fn plan<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
         kind: ir::TransactionStmtKind,
-    ) -> Arc<dyn PhysicalNode<'env, S, M>> {
+    ) -> Arc<dyn PhysicalNode<'env, 'txn, S, M>> {
         Arc::new(Self { kind })
     }
 }
 
-impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode<'env, S, M>
+impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode<'env, 'txn, S, M>
     for PhysicalTransaction
 {
-    fn children(&self) -> &[Arc<dyn PhysicalNode<'env, S, M>>] {
+    fn children(&self) -> &[Arc<dyn PhysicalNode<'env, 'txn, S, M>>] {
         &[]
     }
 
     fn as_source(
         self: Arc<Self>,
-    ) -> Result<Arc<dyn PhysicalSource<'env, S, M>>, Arc<dyn PhysicalNode<'env, S, M>>> {
+    ) -> Result<Arc<dyn PhysicalSource<'env, 'txn, S, M>>, Arc<dyn PhysicalNode<'env, 'txn, S, M>>> {
         Ok(self)
     }
 
     fn as_sink(
         self: Arc<Self>,
-    ) -> Result<Arc<dyn PhysicalSink<'env, S, M>>, Arc<dyn PhysicalNode<'env, S, M>>> {
+    ) -> Result<Arc<dyn PhysicalSink<'env, 'txn, S, M>>, Arc<dyn PhysicalNode<'env, 'txn, S, M>>> {
         Err(self)
     }
 
     fn as_operator(
         self: Arc<Self>,
-    ) -> Result<Arc<dyn PhysicalOperator<'env, S, M>>, Arc<dyn PhysicalNode<'env, S, M>>> {
+    ) -> Result<Arc<dyn PhysicalOperator<'env, 'txn, S, M>>, Arc<dyn PhysicalNode<'env, 'txn, S, M>>> {
         Err(self)
     }
 }
 
-impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSource<'env, S, M>
+impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSource<'env, 'txn, S, M>
     for PhysicalTransaction
 {
-    fn source<'txn>(
+    fn source(
         self: Arc<Self>,
-        ctx: &'txn ExecutionContext<'env, S, M>,
+        ctx: &'txn ExecutionContext<'env, 'txn, S, M>,
     ) -> ExecutionResult<TupleStream<'txn, S>> {
         let tx = ctx.tx();
         match self.kind {

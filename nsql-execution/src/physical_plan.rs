@@ -47,15 +47,15 @@ pub struct PhysicalPlanner<S> {
 }
 
 /// Opaque physical plan that is ready to be executed
-pub struct PhysicalPlan<'env, S, M>(Arc<dyn PhysicalNode<'env, S, M>>);
+pub struct PhysicalPlan<'env, 'txn, S, M>(Arc<dyn PhysicalNode<'env, 'txn, S, M>>);
 
-impl<'env, S, M> PhysicalPlan<'env, S, M> {
-    pub(crate) fn root(&self) -> Arc<dyn PhysicalNode<'env, S, M>> {
+impl<'env, 'txn, S, M> PhysicalPlan<'env, 'txn, S, M> {
+    pub(crate) fn root(&self) -> Arc<dyn PhysicalNode<'env, 'txn, S, M>> {
         Arc::clone(&self.0)
     }
 }
 
-impl<'env, S: StorageEngine> PhysicalPlanner<S> {
+impl<'env, 'txn, S: StorageEngine> PhysicalPlanner<S> {
     pub fn new(catalog: Arc<Catalog<S>>) -> Self {
         Self { catalog }
     }
@@ -65,7 +65,7 @@ impl<'env, S: StorageEngine> PhysicalPlanner<S> {
         &self,
         tx: &impl Transaction<'_, S>,
         plan: Box<Plan<S>>,
-    ) -> Result<PhysicalPlan<'env, S, ReadonlyExecutionMode<S>>> {
+    ) -> Result<PhysicalPlan<'env, 'txn, S, ReadonlyExecutionMode<S>>> {
         self.plan_node(tx, plan).map(PhysicalPlan)
     }
 
@@ -74,7 +74,7 @@ impl<'env, S: StorageEngine> PhysicalPlanner<S> {
         &self,
         tx: &impl Transaction<'_, S>,
         plan: Box<Plan<S>>,
-    ) -> Result<PhysicalPlan<'env, S, ReadWriteExecutionMode<S>>> {
+    ) -> Result<PhysicalPlan<'env, 'txn, S, ReadWriteExecutionMode<S>>> {
         self.plan_write_node(tx, plan).map(PhysicalPlan)
     }
 
@@ -82,7 +82,7 @@ impl<'env, S: StorageEngine> PhysicalPlanner<S> {
         &self,
         tx: &impl Transaction<'_, S>,
         plan: Box<Plan<S>>,
-    ) -> Result<Arc<dyn PhysicalNode<'env, S, ReadWriteExecutionMode<S>> + 'env>> {
+    ) -> Result<Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode<S>> + 'env>> {
         match *plan {
             Plan::Update { table_ref, source, returning } => {
                 let source = self.plan_node(tx, source)?;
@@ -107,7 +107,7 @@ impl<'env, S: StorageEngine> PhysicalPlanner<S> {
         &self,
         tx: &impl Transaction<'_, S>,
         plan: Box<Plan<S>>,
-    ) -> Result<Arc<dyn PhysicalNode<'env, S, M>>> {
+    ) -> Result<Arc<dyn PhysicalNode<'env, 'txn, S, M>>> {
         let plan = match *plan {
             Plan::Transaction(kind) => PhysicalTransaction::plan(kind),
             Plan::Scan { table_ref, projection } => PhysicalTableScan::plan(table_ref, projection),

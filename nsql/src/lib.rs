@@ -75,7 +75,7 @@ pub struct Connection<S: StorageEngine> {
     db: Nsql<S>,
 }
 
-pub struct ConnectionState<'env, S: StorageEngine> {
+pub struct ConnectionState<'env, 'txn, S: StorageEngine> {
     current_tx: ArcSwapOption<ReadOrWriteTransaction<'env, S>>,
 }
 

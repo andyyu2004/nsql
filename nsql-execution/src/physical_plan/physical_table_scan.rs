@@ -22,22 +22,22 @@ impl<S: StorageEngine> fmt::Debug for PhysicalTableScan<S> {
     }
 }
 
-impl<'env, S: StorageEngine> PhysicalTableScan<S> {
+impl<'env, 'txn, S: StorageEngine> PhysicalTableScan<S> {
     pub(crate) fn plan<M: ExecutionMode<'env, S>>(
         table_ref: TableRef<S>,
         projection: Option<Box<[ColumnIndex]>>,
-    ) -> Arc<dyn PhysicalNode<'env, S, M>> {
+    ) -> Arc<dyn PhysicalNode<'env, 'txn, S, M>> {
         Arc::new(Self { table_ref, projection, table: Default::default() })
     }
 }
 
-impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSource<'env, S, M>
+impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSource<'env, 'txn, S, M>
     for PhysicalTableScan<S>
 {
     #[tracing::instrument(skip(self, ctx))]
-    fn source<'txn>(
+    fn source(
         self: Arc<Self>,
-        ctx: &'txn ExecutionContext<'env, S, M>,
+        ctx: &'txn ExecutionContext<'env, 'txn, S, M>,
     ) -> ExecutionResult<TupleStream<'txn, S>> {
         let tx = &**ctx.tx();
         let table = self.table.get_or_init(|| self.table_ref.get(&ctx.catalog, tx));
@@ -58,28 +58,28 @@ impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSource<'env, S, 
     }
 }
 
-impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode<'env, S, M>
+impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode<'env, 'txn, S, M>
     for PhysicalTableScan<S>
 {
-    fn children(&self) -> &[Arc<dyn PhysicalNode<'env, S, M>>] {
+    fn children(&self) -> &[Arc<dyn PhysicalNode<'env, 'txn, S, M>>] {
         &[]
     }
 
     fn as_source(
         self: Arc<Self>,
-    ) -> Result<Arc<dyn PhysicalSource<'env, S, M>>, Arc<dyn PhysicalNode<'env, S, M>>> {
+    ) -> Result<Arc<dyn PhysicalSource<'env, 'txn, S, M>>, Arc<dyn PhysicalNode<'env, 'txn, S, M>>> {
         Ok(self)
     }
 
     fn as_sink(
         self: Arc<Self>,
-    ) -> Result<Arc<dyn PhysicalSink<'env, S, M>>, Arc<dyn PhysicalNode<'env, S, M>>> {
+    ) -> Result<Arc<dyn PhysicalSink<'env, 'txn, S, M>>, Arc<dyn PhysicalNode<'env, 'txn, S, M>>> {
         Err(self)
     }
 
     fn as_operator(
         self: Arc<Self>,
-    ) -> Result<Arc<dyn PhysicalOperator<'env, S, M>>, Arc<dyn PhysicalNode<'env, S, M>>> {
+    ) -> Result<Arc<dyn PhysicalOperator<'env, 'txn, S, M>>, Arc<dyn PhysicalNode<'env, 'txn, S, M>>> {
         Err(self)
     }
 }

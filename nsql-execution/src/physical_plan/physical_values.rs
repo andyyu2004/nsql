@@ -10,19 +10,19 @@ pub struct PhysicalValues {
 }
 
 impl PhysicalValues {
-    pub(crate) fn plan<'env, S: StorageEngine, M: ExecutionMode<'env, S>>(
+    pub(crate) fn plan<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
         values: ir::Values,
-    ) -> Arc<dyn PhysicalNode<'env, S, M>> {
+    ) -> Arc<dyn PhysicalNode<'env, 'txn, S, M>> {
         Arc::new(PhysicalValues { values })
     }
 }
 
-impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSource<'env, S, M>
+impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSource<'env, 'txn, S, M>
     for PhysicalValues
 {
-    fn source<'txn>(
+    fn source(
         self: Arc<Self>,
-        _ctx: &'txn ExecutionContext<'env, S, M>,
+        _ctx: &'txn ExecutionContext<'env, 'txn, S, M>,
     ) -> ExecutionResult<TupleStream<'txn, S>> {
         let mut index = 0;
         let iter = fallible_iterator::from_fn(move || {
@@ -41,37 +41,37 @@ impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSource<'env, S, 
     }
 }
 
-impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode<'env, S, M>
+impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode<'env, 'txn, S, M>
     for PhysicalValues
 {
     #[inline]
-    fn children(&self) -> &[Arc<dyn PhysicalNode<'env, S, M>>] {
+    fn children(&self) -> &[Arc<dyn PhysicalNode<'env, 'txn, S, M>>] {
         &[]
     }
 
     #[inline]
     fn as_source(
         self: Arc<Self>,
-    ) -> Result<Arc<dyn PhysicalSource<'env, S, M>>, Arc<dyn PhysicalNode<'env, S, M>>> {
+    ) -> Result<Arc<dyn PhysicalSource<'env, 'txn, S, M>>, Arc<dyn PhysicalNode<'env, 'txn, S, M>>> {
         Ok(self)
     }
 
     #[inline]
     fn as_sink(
         self: Arc<Self>,
-    ) -> Result<Arc<dyn PhysicalSink<'env, S, M>>, Arc<dyn PhysicalNode<'env, S, M>>> {
+    ) -> Result<Arc<dyn PhysicalSink<'env, 'txn, S, M>>, Arc<dyn PhysicalNode<'env, 'txn, S, M>>> {
         Err(self)
     }
 
     #[inline]
     fn as_operator(
         self: Arc<Self>,
-    ) -> Result<Arc<dyn PhysicalOperator<'env, S, M>>, Arc<dyn PhysicalNode<'env, S, M>>> {
+    ) -> Result<Arc<dyn PhysicalOperator<'env, 'txn, S, M>>, Arc<dyn PhysicalNode<'env, 'txn, S, M>>> {
         Err(self)
     }
 }
 
-impl<'env, S: StorageEngine> Explain<S> for PhysicalValues {
+impl<'env, 'txn, S: StorageEngine> Explain<S> for PhysicalValues {
     fn explain(
         &self,
         _catalog: &Catalog<S>,
