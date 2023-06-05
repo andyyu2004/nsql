@@ -1,0 +1,8 @@
+statement ok con1
+BEGIN READ ONLY
+
+# multiple readonly transactions shouldn't block
+statement ok con2
+BEGIN READ ONLY
+
+

@@ -84,19 +84,11 @@ impl<S: StorageEngine> Connection<S> {
         state: &ConnectionState<'env, S>,
         query: &str,
     ) -> Result<MaterializedQueryOutput> {
-        let (auto_commit, tx) = match state.current_tx.swap(None) {
-            // if there's an existing transaction, we reuse it.
-            // It is not an auto_commit if it's still active
-            Some(tx) => (false, tx),
-            // start a fresh transaction (write by default as we don't know what queries will be executed so we can't guarantee that they're all readonly)
-            None => (
-                true,
-                Arc::new(ReadOrWriteTransaction::Write(self.db.shared.storage.begin_write()?)),
-            ),
-        };
+        let tx = state.current_tx.swap(None).map(|tx| {
+            Arc::into_inner(tx).expect("unexpected outstanding references to transaction")
+        });
 
-        let tx = Arc::into_inner(tx).expect("unexpected outstanding references to transaction");
-        let (tx, output) = self.db.shared.query(tx, auto_commit, query)?;
+        let (tx, output) = self.db.shared.query(tx, query)?;
 
         // `tx` was not committed or aborted (including autocommits), so we need to put it back
         if let Some(tx) = tx {
@@ -111,29 +103,46 @@ impl<S: StorageEngine> Connection<S> {
 impl<S: StorageEngine> Shared<S> {
     fn query<'env>(
         &'env self,
-        tx: ReadOrWriteTransaction<'env, S>,
-        auto_commit: bool,
+        tx: Option<ReadOrWriteTransaction<'env, S>>,
         query: &str,
     ) -> Result<(Option<ReadOrWriteTransaction<'env, S>>, MaterializedQueryOutput)> {
         let statements = nsql_parse::parse_statements(query)?;
         if statements.is_empty() {
-            return Ok((Some(tx), MaterializedQueryOutput { types: vec![], tuples: vec![] }));
+            return Ok((tx, MaterializedQueryOutput { types: vec![], tuples: vec![] }));
         }
 
         if statements.len() > 1 {
             todo!("multiple statements");
         }
 
+        let storage = self.storage.storage();
         let catalog = Arc::clone(&self.catalog);
         let stmt = &statements[0];
-        let stmt = Binder::new(Arc::clone(&catalog)).bind(&tx, stmt)?;
 
-        let plan = Planner::default().plan(stmt);
+        let binder = Binder::new(Arc::clone(&catalog));
+        let (auto_commit, tx) = match tx {
+            Some(tx) => (false, tx),
+            None => (
+                true,
+                match binder.requires_write_transaction(storage, stmt)? {
+                    true => {
+                        tracing::info!("beginning fresh write transaction");
+                        ReadOrWriteTransaction::Write(storage.begin_write()?)
+                    }
+                    false => {
+                        tracing::info!("beginning fresh read transaction");
+                        ReadOrWriteTransaction::Read(storage.begin()?)
+                    }
+                },
+            ),
+        };
+
+        let bound_stmt = binder.bind(&tx, stmt)?;
+        let plan = Planner::default().plan(bound_stmt);
 
         let plan = optimize(plan);
 
         let planner = PhysicalPlanner::new(Arc::clone(&catalog));
-        let storage = self.storage.storage();
 
         let (tx, tuples) = match tx {
             ReadOrWriteTransaction::Read(tx) => {
@@ -142,7 +151,7 @@ impl<S: StorageEngine> Shared<S> {
                 let ctx = ExecutionContext::new(
                     storage,
                     catalog,
-                    TransactionContext::new(Some(tx), auto_commit),
+                    TransactionContext::new(tx, auto_commit),
                 );
                 let tuples = nsql_execution::execute(&ctx, physical_plan)?;
                 let (auto_commit, state, tx) = ctx.take_txn();
@@ -159,12 +168,10 @@ impl<S: StorageEngine> Shared<S> {
                 let ctx = ExecutionContext::new(
                     storage,
                     catalog,
-                    TransactionContext::new(Some(tx), auto_commit),
+                    TransactionContext::new(tx, auto_commit),
                 );
                 let tuples = nsql_execution::execute_write(&ctx, physical_plan)?;
                 let (auto_commit, state, tx) = ctx.take_txn();
-                // FIXME need to remember `auto_commit` value for the next call, otherwise
-                // auto_commit will be true again
                 match state {
                     TransactionState::Active if auto_commit => {
                         tracing::info!("auto-committing write transaction");

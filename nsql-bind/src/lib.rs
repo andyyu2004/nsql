@@ -9,7 +9,7 @@ use std::sync::Arc;
 pub use anyhow::Error;
 use anyhow::{anyhow, bail, ensure};
 use ir::expr::EvalNotConst;
-use ir::{Decimal, Path};
+use ir::{Decimal, Path, TransactionMode};
 use itertools::Itertools;
 use nsql_catalog::schema::LogicalType;
 use nsql_catalog::{
@@ -50,6 +50,13 @@ pub type Result<T, E = Error> = std::result::Result<T, E>;
 impl<S: StorageEngine> Binder<S> {
     pub fn new(catalog: Arc<Catalog<S>>) -> Self {
         Self { catalog }
+    }
+
+    pub fn requires_write_transaction(&self, storage: &S, stmt: &ast::Statement) -> Result<bool> {
+        // create a temporary transaction to bind the statement to figure out what transaction mode is required to execute it
+        let tmp_tx = storage.begin()?;
+        let stmt = self.bind(&tmp_tx, stmt)?;
+        Ok(matches!(stmt.required_transaction_mode(), TransactionMode::ReadWrite))
     }
 
     pub fn bind(&self, tx: &dyn Transaction<'_, S>, stmt: &ast::Statement) -> Result<ir::Stmt<S>> {

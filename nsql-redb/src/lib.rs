@@ -80,7 +80,7 @@ impl nsql_storage_engine::StorageEngine for RedbStorageEngine {
     where
         'env: 'txn,
     {
-        match txn.as_read_or_write() {
+        match txn.as_read_or_write_ref() {
             ReadOrWriteTransactionRef::Read(txn) => {
                 match txn.0.open_table(redb::TableDefinition::new(name)) {
                     Ok(table) => Ok(Some(Box::new(table))),
@@ -189,14 +189,14 @@ impl<'env, 'txn> nsql_storage_engine::WriteTree<'env, 'txn, RedbStorageEngine>
 
 impl<'env> nsql_storage_engine::Transaction<'env, RedbStorageEngine> for ReadTransaction<'env> {
     #[inline]
-    fn as_read_or_write(&self) -> ReadOrWriteTransactionRef<'env, '_, RedbStorageEngine> {
+    fn as_read_or_write_ref(&self) -> ReadOrWriteTransactionRef<'env, '_, RedbStorageEngine> {
         ReadOrWriteTransactionRef::Read(self)
     }
 }
 
 impl<'env> nsql_storage_engine::Transaction<'env, RedbStorageEngine> for Transaction<'env> {
     #[inline]
-    fn as_read_or_write(&self) -> ReadOrWriteTransactionRef<'env, '_, RedbStorageEngine> {
+    fn as_read_or_write_ref(&self) -> ReadOrWriteTransactionRef<'env, '_, RedbStorageEngine> {
         ReadOrWriteTransactionRef::Write(self)
     }
 }

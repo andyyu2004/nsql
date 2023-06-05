@@ -11,7 +11,7 @@ mod vis;
 
 use std::fmt;
 use std::sync::atomic::{self, AtomicBool};
-use std::sync::{Arc, OnceLock};
+use std::sync::Arc;
 
 pub use anyhow::Error;
 use nsql_arena::Idx;
@@ -148,7 +148,7 @@ trait PhysicalSink<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>
 }
 
 pub struct TransactionContext<'env, S: StorageEngine, M: ExecutionMode<'env, S>> {
-    tx: OnceLock<M::Transaction>,
+    tx: M::Transaction,
     auto_commit: AtomicBool,
     state: AtomicEnum<TransactionState>,
 }
@@ -178,18 +178,9 @@ impl From<u8> for TransactionState {
 
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> TransactionContext<'env, S, M> {
     #[inline]
-    pub fn new(existing_tx: Option<M::Transaction>, auto_commit: bool) -> Self {
-        let tx = OnceLock::new();
-        if let Some(existing_tx) = existing_tx {
-            // This is a fresh oncelock so this will definitely succeed
-            unsafe { tx.set(existing_tx).unwrap_unchecked() }
-        }
-
-        Self {
-            tx,
-            auto_commit: AtomicBool::new(auto_commit),
-            state: AtomicEnum::new(TransactionState::Active),
-        }
+    pub fn new(tx: M::Transaction, auto_commit: bool) -> Self {
+        let auto_commit = AtomicBool::new(auto_commit);
+        Self { tx, auto_commit, state: AtomicEnum::new(TransactionState::Active) }
     }
 
     #[inline]
@@ -223,11 +214,7 @@ impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> ExecutionContext<'env, S
     #[inline]
     pub fn take_txn(self) -> (bool, TransactionState, M::Transaction) {
         let tx = self.tcx;
-        (
-            tx.auto_commit.into_inner(),
-            tx.state.into_inner(),
-            tx.tx.into_inner().expect("no transaction was started while executing the plan"),
-        )
+        (tx.auto_commit.into_inner(), tx.state.into_inner(), tx.tx)
     }
 }
 
@@ -236,9 +223,9 @@ impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> ExecutionContext<'env, S
     pub fn new(
         storage: &'env S,
         catalog: Arc<Catalog<S>>,
-        tx: TransactionContext<'env, S, M>,
+        tcx: TransactionContext<'env, S, M>,
     ) -> Self {
-        Self { storage, catalog, tcx: tx }
+        Self { storage, catalog, tcx }
     }
 
     #[inline]
@@ -253,7 +240,7 @@ impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> ExecutionContext<'env, S
 
     #[inline]
     pub fn tx(&self) -> Result<&M::Transaction, S::Error> {
-        self.tcx.tx.get_or_try_init(move || M::begin(self.storage))
+        Ok(&self.tcx.tx)
     }
 
     #[inline]

@@ -92,7 +92,7 @@ pub trait WriteTree<'env, 'txn, S: StorageEngine>: ReadTree<'env, 'txn, S> {
 }
 
 pub trait Transaction<'env, S: StorageEngine> {
-    fn as_read_or_write(&self) -> ReadOrWriteTransactionRef<'env, '_, S>;
+    fn as_read_or_write_ref(&self) -> ReadOrWriteTransactionRef<'env, '_, S>;
 }
 
 pub trait WriteTransaction<'env, S: StorageEngine>: Transaction<'env, S> {
@@ -108,7 +108,7 @@ pub enum ReadOrWriteTransaction<'env, S: StorageEngine> {
 
 impl<'env, S: StorageEngine> Transaction<'env, S> for ReadOrWriteTransaction<'env, S> {
     #[inline]
-    fn as_read_or_write(&self) -> ReadOrWriteTransactionRef<'env, '_, S> {
+    fn as_read_or_write_ref(&self) -> ReadOrWriteTransactionRef<'env, '_, S> {
         match self {
             ReadOrWriteTransaction::Read(tx) => ReadOrWriteTransactionRef::Read(tx),
             ReadOrWriteTransaction::Write(tx) => ReadOrWriteTransactionRef::Write(tx),
@@ -133,7 +133,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> Copy for ReadOrWriteTransactionRef<'env
 impl<'env: 'txn, 'txn, S: StorageEngine> Transaction<'env, S>
     for ReadOrWriteTransactionRef<'env, 'txn, S>
 {
-    fn as_read_or_write(&self) -> ReadOrWriteTransactionRef<'env, '_, S> {
+    fn as_read_or_write_ref(&self) -> ReadOrWriteTransactionRef<'env, '_, S> {
         *self
     }
 }

@@ -99,7 +99,7 @@ impl StorageEngine for LmdbStorageEngine {
     where
         'env: 'txn,
     {
-        let txn = match txn.as_read_or_write() {
+        let txn = match txn.as_read_or_write_ref() {
             ReadOrWriteTransactionRef::Read(txn) => &*txn.0,
             ReadOrWriteTransactionRef::Write(txn) => &*txn.0,
         };
@@ -219,14 +219,14 @@ impl<'env, 'txn> WriteTree<'env, 'txn, LmdbStorageEngine> for LmdbWriteTree<'env
 
 impl<'env> Transaction<'env, LmdbStorageEngine> for ReadonlyTx<'env> {
     #[inline]
-    fn as_read_or_write(&self) -> ReadOrWriteTransactionRef<'env, '_, LmdbStorageEngine> {
+    fn as_read_or_write_ref(&self) -> ReadOrWriteTransactionRef<'env, '_, LmdbStorageEngine> {
         ReadOrWriteTransactionRef::Read(self)
     }
 }
 
 impl<'env> Transaction<'env, LmdbStorageEngine> for ReadWriteTx<'env> {
     #[inline]
-    fn as_read_or_write(&self) -> ReadOrWriteTransactionRef<'env, '_, LmdbStorageEngine> {
+    fn as_read_or_write_ref(&self) -> ReadOrWriteTransactionRef<'env, '_, LmdbStorageEngine> {
         ReadOrWriteTransactionRef::Write(self)
     }
 }

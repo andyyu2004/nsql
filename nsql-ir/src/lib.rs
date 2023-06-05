@@ -34,10 +34,10 @@ pub struct CreateNamespaceInfo {
     pub if_not_exists: bool,
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum TransactionMode {
-    ReadWrite,
     ReadOnly,
+    ReadWrite,
 }
 
 impl fmt::Display for TransactionMode {
@@ -102,6 +102,25 @@ pub enum Stmt<S> {
         source: Box<QueryPlan<S>>,
         returning: Option<Box<[Expr]>>,
     },
+}
+
+impl<S> Stmt<S> {
+    pub fn required_transaction_mode(&self) -> TransactionMode {
+        match self {
+            Stmt::Drop(_)
+            | Stmt::CreateNamespace(_)
+            | Stmt::CreateTable(_)
+            | Stmt::Update { .. }
+            | Stmt::Insert { .. } => TransactionMode::ReadWrite,
+            Stmt::Transaction(kind) => match kind {
+                TransactionStmtKind::Begin(mode) => *mode,
+                TransactionStmtKind::Commit | TransactionStmtKind::Abort => {
+                    todo!("when would this occur?")
+                }
+            },
+            Stmt::Show(..) | Stmt::Query(..) | Stmt::Explain(..) => TransactionMode::ReadOnly,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
