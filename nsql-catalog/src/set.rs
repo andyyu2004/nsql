@@ -1,11 +1,13 @@
+use std::collections::HashMap;
 use std::error::Error;
 use std::fmt;
 use std::marker::PhantomData;
 use std::sync::Arc;
 
-use dashmap::DashMap;
+use indexmap::IndexMap;
 use nsql_core::Name;
 use nsql_storage_engine::{StorageEngine, Transaction};
+use parking_lot::RwLock;
 
 use crate::entry::Oid;
 use crate::private::CatalogEntity;
@@ -55,8 +57,8 @@ impl<S: StorageEngine, T: CatalogEntity<S>> fmt::Display for Conflict<S, T> {
 
 #[derive(Debug)]
 pub struct CatalogSet<S, T> {
-    entries: DashMap<Oid<T>, Arc<CatalogEntry<S, T>>>,
-    name_mapping: DashMap<Name, Oid<T>>,
+    entries: RwLock<IndexMap<Oid<T>, Arc<CatalogEntry<S, T>>>>,
+    name_mapping: RwLock<HashMap<Name, Oid<T>>>,
     _marker: std::marker::PhantomData<S>,
 }
 
@@ -81,11 +83,11 @@ impl<S: StorageEngine, T: CatalogEntity<S>> CatalogSet<S, T> {
     }
 
     pub(crate) fn entries(&self, _tx: &impl Transaction<'_, S>) -> Vec<Arc<T>> {
-        self.entries.iter().map(|entry| entry.value().value()).collect()
+        self.entries.read().values().map(|entry| entry.value()).collect()
     }
 
     pub(crate) fn get(&self, _tx: &impl Transaction<'_, S>, oid: Oid<T>) -> Option<Arc<T>> {
-        self.entries.get(&oid).map(|entry| entry.value().value())
+        self.entries.read().get(&oid).map(|entry| entry.value())
     }
 
     pub(crate) fn get_by_name(
@@ -97,7 +99,7 @@ impl<S: StorageEngine, T: CatalogEntity<S>> CatalogSet<S, T> {
     }
 
     pub(crate) fn find(&self, name: impl AsRef<str>) -> Option<Oid<T>> {
-        Some(*self.name_mapping.get(name.as_ref())?.value())
+        Some(*self.name_mapping.read().get(name.as_ref())?)
     }
 
     pub(crate) fn delete(
@@ -105,7 +107,7 @@ impl<S: StorageEngine, T: CatalogEntity<S>> CatalogSet<S, T> {
         _tx: &S::WriteTransaction<'_>,
         oid: Oid<T>,
     ) -> Result<(), Conflict<S, T>> {
-        self.entries.remove(&oid);
+        self.entries.write().remove(&oid);
         Ok(())
     }
 
@@ -116,17 +118,16 @@ impl<S: StorageEngine, T: CatalogEntity<S>> CatalogSet<S, T> {
     ) -> Result<Oid<T>, Conflict<S, T>> {
         let oid = self.next_oid();
         let value = T::create(tx, oid, info);
-        if self.name_mapping.contains_key(&value.name()) {
+        if self.name_mapping.read().contains_key(&value.name()) {
             return Err(Conflict::AlreadyExists(PhantomData, value));
         }
-        self.name_mapping.insert(value.name(), oid);
-        self.entries.insert(oid, Arc::new(CatalogEntry::new(tx, value)));
+        self.name_mapping.write().insert(value.name(), oid);
+        self.entries.write().insert(oid, Arc::new(CatalogEntry::new(tx, value)));
         Ok(oid)
     }
 
     pub fn len(&self) -> usize {
-        // don't read from `name_mapping` here as it will deadlock due to it's usage in `insert`
-        self.entries.len()
+        self.entries.read().len()
     }
 
     fn next_oid(&self) -> Oid<T> {

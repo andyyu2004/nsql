@@ -43,6 +43,8 @@ impl<'env, 'txn, S: StorageEngine> TableStorage<'env, 'txn, S, ReadWriteExecutio
         let mut pk_tuple = vec![];
         let mut non_pk_tuple = vec![];
 
+        assert_eq!(tuple.len(), self.info.columns.len());
+
         for (value, col) in tuple.values().zip(&self.info.columns) {
             assert_eq!(
                 value.ty(),

@@ -1,8 +1,7 @@
 #![deny(rust_2018_idioms)]
 
 use std::path::Path;
-use std::sync::atomic::AtomicBool;
-use std::sync::{atomic, Arc};
+use std::sync::Arc;
 
 pub use anyhow::Error;
 use arc_swap::ArcSwapOption;
