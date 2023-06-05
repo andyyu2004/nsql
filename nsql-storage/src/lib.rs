@@ -48,7 +48,7 @@ impl<S: StorageEngine> Storage<S> {
     }
 
     #[inline]
-    pub fn storage(&self) -> S {
-        self.storage.clone()
+    pub fn storage(&self) -> &S {
+        &self.storage
     }
 }

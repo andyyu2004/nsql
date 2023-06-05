@@ -70,7 +70,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSource<'env, 'txn, S, ReadWrite
         ctx: &'txn ExecutionContext<'env, S, ReadWriteExecutionMode<S>>,
     ) -> ExecutionResult<TupleStream<'txn, S>> {
         let catalog = ctx.catalog();
-        let tx = ctx.tx();
+        let tx = ctx.tx()?;
         let namespace: Arc<Namespace<S>> = catalog
             .get::<Namespace<S>>(tx, self.info.namespace)
             .expect("schema not found during execution");

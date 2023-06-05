@@ -110,7 +110,7 @@ impl<S: StorageEngine> Connection<S> {
 
 impl<S: StorageEngine> Shared<S> {
     fn query<'env>(
-        &self,
+        &'env self,
         tx: ReadOrWriteTransaction<'env, S>,
         auto_commit: bool,
         query: &str,
@@ -133,14 +133,16 @@ impl<S: StorageEngine> Shared<S> {
         let plan = optimize(plan);
 
         let planner = PhysicalPlanner::new(Arc::clone(&catalog));
+        let storage = self.storage.storage();
+
         let (tx, tuples) = match tx {
             ReadOrWriteTransaction::Read(tx) => {
                 tracing::info!("executing readonly query");
                 let physical_plan = planner.plan(&tx, plan)?;
                 let ctx = ExecutionContext::new(
-                    self.storage.storage(),
+                    storage,
                     catalog,
-                    TransactionContext::new(tx, auto_commit),
+                    TransactionContext::new(Some(tx), auto_commit),
                 );
                 let tuples = nsql_execution::execute(&ctx, physical_plan)?;
                 let (auto_commit, state, tx) = ctx.take_txn();
@@ -155,9 +157,9 @@ impl<S: StorageEngine> Shared<S> {
                 tracing::info!("executing write query");
                 let physical_plan = planner.plan_write(&tx, plan)?;
                 let ctx = ExecutionContext::new(
-                    self.storage.storage(),
+                    storage,
                     catalog,
-                    TransactionContext::new(tx, auto_commit),
+                    TransactionContext::new(Some(tx), auto_commit),
                 );
                 let tuples = nsql_execution::execute_write(&ctx, physical_plan)?;
                 let (auto_commit, state, tx) = ctx.take_txn();

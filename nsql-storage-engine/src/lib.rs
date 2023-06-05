@@ -178,6 +178,8 @@ pub trait ExecutionMode<'env, S: StorageEngine>: private::Sealed + Clone + Copy 
     where
         'env: 'txn;
 
+    fn begin(storage: &'env S) -> Result<Self::Transaction, S::Error>;
+
     fn open_tree<'txn>(
         storage: &S,
         txn: &'txn Self::Transaction,
@@ -206,6 +208,10 @@ impl<'env, S: StorageEngine> ExecutionMode<'env, S> for ReadonlyExecutionMode<S>
     type Transaction = S::Transaction<'env>;
 
     type Tree<'txn> = S::ReadTree<'env, 'txn> where 'env: 'txn;
+
+    fn begin(storage: &'env S) -> Result<Self::Transaction, <S as StorageEngine>::Error> {
+        storage.begin()
+    }
 
     fn open_tree<'txn>(
         storage: &S,
@@ -236,6 +242,10 @@ impl<'env, S: StorageEngine> ExecutionMode<'env, S> for ReadWriteExecutionMode<S
     type Tree<'txn> = S::WriteTree<'env, 'txn>
     where
         'env: 'txn;
+
+    fn begin(storage: &'env S) -> Result<Self::Transaction, S::Error> {
+        storage.begin_write()
+    }
 
     fn open_tree<'txn>(
         storage: &S,

@@ -89,7 +89,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSink<'env, 'txn, S, ReadWriteEx
         &self,
         ctx: &'txn ExecutionContext<'env, S, ReadWriteExecutionMode<S>>,
     ) -> ExecutionResult<()> {
-        let tx = ctx.tx();
+        let tx = ctx.tx()?;
         let table = self.table_ref.get(&ctx.catalog(), tx);
         let mut storage = TableStorage::open(
             ctx.storage(),

@@ -65,7 +65,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSource<'env, 'txn, S, ReadWrite
         ctx: &'txn ExecutionContext<'env, S, ReadWriteExecutionMode<S>>,
     ) -> ExecutionResult<TupleStream<'txn, S>> {
         let catalog = ctx.catalog();
-        let tx = ctx.tx();
+        let tx = ctx.tx()?;
         for entity_ref in &self.refs {
             match entity_ref {
                 ir::EntityRef::Table(table_ref) => table_ref.delete(&catalog, tx)?,

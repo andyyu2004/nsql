@@ -62,7 +62,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSource<'env, 'txn, S, ReadWrite
         ctx: &'txn ExecutionContext<'env, S, ReadWriteExecutionMode<S>>,
     ) -> ExecutionResult<TupleStream<'txn, S>> {
         let catalog = ctx.catalog();
-        let tx = ctx.tx();
+        let tx = ctx.tx()?;
         let info = CreateNamespaceInfo { name: self.info.name.clone() };
 
         if let Err(err) = catalog.create::<Namespace<S>>(tx, info) {

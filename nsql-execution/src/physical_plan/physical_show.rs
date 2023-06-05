@@ -54,7 +54,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
         ctx: &'txn ExecutionContext<'env, S, M>,
     ) -> ExecutionResult<TupleStream<'txn, S>> {
         let catalog = ctx.catalog();
-        let tx = ctx.tx();
+        let tx = ctx.tx()?;
         let iter =
             catalog.all::<Namespace<S>>(tx).into_iter().flat_map(move |namespace| {
                 match self.show {
