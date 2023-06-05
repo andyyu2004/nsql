@@ -5,20 +5,20 @@ use fix_hidden_lifetime_bug::fix_hidden_lifetime_bug;
 use next_gen::generator_fn::GeneratorFn;
 use nsql_catalog::{Column, TableRef};
 use nsql_storage_engine::{
-    fallible_iterator, FallibleIterator, ReadTree, StorageEngine, Transaction, WriteTree,
+    fallible_iterator, ExecutionMode, FallibleIterator, ReadTree, ReadWriteExecutionMode,
+    StorageEngine, Transaction, WriteTree,
 };
 
-use crate::tuple::{ArchivedTuple, Tuple, TupleIndex, TupleRef};
+use crate::tuple::{Tuple, TupleIndex};
 use crate::value::Value;
 
-pub struct TableStorage<'env: 'txn, 'txn, S: StorageEngine> {
+pub struct TableStorage<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> {
     storage: S,
-    tree: S::ReadTree<'env, 'txn>,
+    tree: M::Tree<'txn>,
     info: TableStorageInfo,
 }
 
-#[fix_hidden_lifetime_bug]
-impl<'env, 'txn, S: StorageEngine> TableStorage<'env, 'txn, S> {
+impl<'env, 'txn, S: StorageEngine> TableStorage<'env, 'txn, S, ReadWriteExecutionMode<S>> {
     #[inline]
     pub fn initialize(
         storage: S,
@@ -30,17 +30,8 @@ impl<'env, 'txn, S: StorageEngine> TableStorage<'env, 'txn, S> {
         Self::open(storage, tx, info)
     }
 
-    pub fn open(
-        storage: S,
-        tx: &'txn impl Transaction<'env, S>,
-        info: TableStorageInfo,
-    ) -> Result<Self, S::Error> {
-        let tree = storage.open_tree(tx, &info.storage_tree_name)?.expect("tree not found");
-        Ok(Self { storage, info, tree })
-    }
-
     #[inline]
-    pub fn insert(&self, tx: &S::WriteTransaction<'_>, tuple: &Tuple) -> Result<(), S::Error> {
+    pub fn insert(&mut self, _tx: &S::WriteTransaction<'_>, tuple: &Tuple) -> Result<(), S::Error> {
         assert_eq!(
             tuple.len(),
             self.info.columns.len(),
@@ -68,12 +59,23 @@ impl<'env, 'txn, S: StorageEngine> TableStorage<'env, 'txn, S> {
             }
         }
 
-        let mut tree = self.storage.open_write_tree(tx, &self.info.storage_tree_name)?;
         let pk_bytes = nsql_rkyv::to_bytes(&pk_tuple);
         let non_pk_bytes = nsql_rkyv::to_bytes(&non_pk_tuple);
-        tree.put(&pk_bytes, &non_pk_bytes)?;
+        self.tree.put(&pk_bytes, &non_pk_bytes)?;
 
         Ok(())
+    }
+}
+
+#[fix_hidden_lifetime_bug]
+impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> TableStorage<'env, 'txn, S, M> {
+    pub fn open(
+        storage: S,
+        tx: &'txn M::Transaction,
+        info: TableStorageInfo,
+    ) -> Result<Self, S::Error> {
+        let tree = M::open_tree(&storage, tx, &info.storage_tree_name)?;
+        Ok(Self { storage, info, tree })
     }
 
     #[inline]
@@ -83,14 +85,14 @@ impl<'env, 'txn, S: StorageEngine> TableStorage<'env, 'txn, S> {
         projection: Option<Box<[TupleIndex]>>,
     ) -> Result<impl FallibleIterator<Item = Tuple, Error = S::Error> + 'txn, S::Error> {
         let mut gen = Box::pin(GeneratorFn::empty());
-        gen.as_mut().init(range_gen::<S>, (self, projection));
+        gen.as_mut().init(range_gen::<S, M>, (self, projection));
         Ok(fallible_iterator::convert(gen))
     }
 }
 
 #[generator(yield(Result<Tuple, S::Error>))]
-fn range_gen<'env, 'txn, S: StorageEngine>(
-    storage: Arc<TableStorage<'env, 'txn, S>>,
+fn range_gen<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
+    storage: Arc<TableStorage<'env, 'txn, S, M>>,
     projection: Option<Box<[TupleIndex]>>,
 ) {
     let mut range = match storage.tree.range(..) {

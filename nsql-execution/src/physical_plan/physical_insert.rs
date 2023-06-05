@@ -77,7 +77,7 @@ impl<'env, S: StorageEngine> PhysicalSink<'env, S, ReadWriteExecutionMode<S>>
         let tx = &**ctx.tx();
         let table = self.table_ref.get(&catalog, tx);
 
-        let storage = TableStorage::open(
+        let mut storage = TableStorage::open(
             ctx.storage(),
             &**ctx.tx(),
             TableStorageInfo::new(self.table_ref, table.columns(tx)),

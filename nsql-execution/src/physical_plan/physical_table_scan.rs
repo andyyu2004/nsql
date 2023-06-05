@@ -42,7 +42,7 @@ impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSource<'env, S, 
         let tx = &**ctx.tx();
         let table = self.table.get_or_init(|| self.table_ref.get(&ctx.catalog, tx));
 
-        let storage = Arc::new(TableStorage::open(
+        let storage = Arc::new(TableStorage::<S, M>::open(
             ctx.storage(),
             &**ctx.tx(),
             TableStorageInfo::new(self.table_ref, table.columns(tx)),

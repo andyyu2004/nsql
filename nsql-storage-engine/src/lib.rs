@@ -167,3 +167,79 @@ impl<'env, 'txn, S: StorageEngine> ReadTree<'env, 'txn, S> for ReadOrWriteTree<'
         }
     }
 }
+
+pub trait ExecutionMode<'env, S: StorageEngine>: private::Sealed + Clone + Copy + 'env {
+    type Transaction: Transaction<'env, S>;
+
+    type Tree<'txn>: ReadTree<'env, 'txn, S>
+    where
+        'env: 'txn;
+
+    fn open_tree<'txn>(
+        storage: &S,
+        txn: &'txn Self::Transaction,
+        name: &str,
+    ) -> Result<Self::Tree<'txn>, S::Error>;
+}
+
+mod private {
+    pub trait Sealed {}
+}
+
+pub struct ReadonlyExecutionMode<S>(std::marker::PhantomData<S>);
+
+impl<S> Clone for ReadonlyExecutionMode<S> {
+    #[inline]
+    fn clone(&self) -> Self {
+        Self(self.0)
+    }
+}
+
+impl<S> private::Sealed for ReadonlyExecutionMode<S> {}
+
+impl<S> Copy for ReadonlyExecutionMode<S> {}
+
+impl<'env, S: StorageEngine> ExecutionMode<'env, S> for ReadonlyExecutionMode<S> {
+    type Transaction = S::Transaction<'env>;
+
+    type Tree<'txn> = S::ReadTree<'env, 'txn> where 'env: 'txn;
+
+    fn open_tree<'txn>(
+        storage: &S,
+        txn: &'txn Self::Transaction,
+        name: &str,
+    ) -> Result<Self::Tree<'txn>, S::Error> {
+        // FIXME don't unwrap
+        storage.open_tree(txn, name).map(Option::unwrap)
+    }
+}
+
+pub struct ReadWriteExecutionMode<S>(std::marker::PhantomData<S>);
+
+impl<S> Clone for ReadWriteExecutionMode<S> {
+    #[inline]
+    fn clone(&self) -> Self {
+        Self(self.0)
+    }
+}
+
+impl<S> Copy for ReadWriteExecutionMode<S> {}
+
+impl<S> private::Sealed for ReadWriteExecutionMode<S> {}
+
+impl<'env, S: StorageEngine> ExecutionMode<'env, S> for ReadWriteExecutionMode<S> {
+    type Transaction = S::WriteTransaction<'env>;
+
+    type Tree<'txn> = S::WriteTree<'env, 'txn>
+    where
+        'env: 'txn;
+
+    fn open_tree<'txn>(
+        storage: &S,
+        txn: &'txn Self::Transaction,
+        name: &str,
+    ) -> Result<Self::Tree<'txn>, <S as StorageEngine>::Error> {
+        // FIXME don't unwrap
+        storage.open_write_tree(txn, name)
+    }
+}

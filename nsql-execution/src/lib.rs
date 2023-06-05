@@ -18,7 +18,9 @@ pub use anyhow::Error;
 use nsql_arena::Idx;
 use nsql_catalog::Catalog;
 use nsql_storage::tuple::Tuple;
-use nsql_storage_engine::{FallibleIterator, StorageEngine, WriteTransaction};
+use nsql_storage_engine::{
+    ExecutionMode, FallibleIterator, ReadWriteExecutionMode, ReadonlyExecutionMode, StorageEngine,
+};
 use nsql_util::atomic::AtomicEnum;
 pub use physical_plan::PhysicalPlanner;
 use smallvec::SmallVec;
@@ -199,48 +201,6 @@ impl<'short, 'a, T> Reborrow<'short> for &'a mut T {
     fn rb(&'short self) -> &'short Self::Target {
         self
     }
-}
-
-pub trait ExecutionMode<'env, S: StorageEngine>: private::Sealed + Clone + Copy + 'env {
-    type Transaction: nsql_storage_engine::Transaction<'env, S>;
-}
-
-mod private {
-    pub trait Sealed {}
-}
-
-pub struct ReadonlyExecutionMode<S>(std::marker::PhantomData<S>);
-
-impl<S> Clone for ReadonlyExecutionMode<S> {
-    #[inline]
-    fn clone(&self) -> Self {
-        Self(self.0)
-    }
-}
-
-impl<S> private::Sealed for ReadonlyExecutionMode<S> {}
-
-impl<S> Copy for ReadonlyExecutionMode<S> {}
-
-impl<'env, S: StorageEngine> ExecutionMode<'env, S> for ReadonlyExecutionMode<S> {
-    type Transaction = S::Transaction<'env>;
-}
-
-pub struct ReadWriteExecutionMode<S>(std::marker::PhantomData<S>);
-
-impl<S> Clone for ReadWriteExecutionMode<S> {
-    #[inline]
-    fn clone(&self) -> Self {
-        Self(self.0)
-    }
-}
-
-impl<S> Copy for ReadWriteExecutionMode<S> {}
-
-impl<S> private::Sealed for ReadWriteExecutionMode<S> {}
-
-impl<'env, S: StorageEngine> ExecutionMode<'env, S> for ReadWriteExecutionMode<S> {
-    type Transaction = S::WriteTransaction<'env>;
 }
 
 pub struct TransactionContext<'env, S: StorageEngine, M: ExecutionMode<'env, S>> {
