@@ -138,7 +138,7 @@ impl<'env, 'txn, S, M> MetaPipelineBuilder<'env, 'txn, S, M> {
     }
 }
 
-impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PipelineBuilderArena<'env, 'txn, S, M> {
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PipelineBuilderArena<'env, 'txn, S, M> {
     pub(crate) fn new_child_meta_pipeline(
         &mut self,
         parent: Idx<MetaPipelineBuilder<'env, 'txn, S, M>>,

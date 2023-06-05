@@ -6,7 +6,9 @@ pub struct PhysicalFilter<'env, 'txn, S, M> {
     evaluator: Evaluator,
 }
 
-impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalFilter<'env, 'txn, S, M> {
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
+    PhysicalFilter<'env, 'txn, S, M>
+{
     pub(crate) fn plan(
         source: Arc<dyn PhysicalNode<'env, 'txn, S, M>>,
         predicate: ir::Expr,
@@ -15,13 +17,13 @@ impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalFilter<'en
     }
 }
 
-impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalOperator<'env, 'txn, S, M>
-    for PhysicalFilter<'env, 'txn, S, M>
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
+    PhysicalOperator<'env, 'txn, S, M> for PhysicalFilter<'env, 'txn, S, M>
 {
     #[tracing::instrument(skip(self, _ctx, input))]
     fn execute(
         &self,
-        _ctx: &'txn ExecutionContext<'env, 'txn, S, M>,
+        _ctx: &ExecutionContext<'env, 'txn, S, M>,
         input: Tuple,
     ) -> ExecutionResult<OperatorState<Tuple>> {
         let value = self.evaluator.evaluate_expr(&input, &self.predicate);
@@ -35,7 +37,7 @@ impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalOperator<'
     }
 }
 
-impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode<'env, 'txn, S, M>
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode<'env, 'txn, S, M>
     for PhysicalFilter<'env, 'txn, S, M>
 {
     #[inline]
@@ -46,26 +48,31 @@ impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode<'env,
     #[inline]
     fn as_source(
         self: Arc<Self>,
-    ) -> Result<Arc<dyn PhysicalSource<'env, 'txn, S, M>>, Arc<dyn PhysicalNode<'env, 'txn, S, M>>> {
+    ) -> Result<Arc<dyn PhysicalSource<'env, 'txn, S, M>>, Arc<dyn PhysicalNode<'env, 'txn, S, M>>>
+    {
         Err(self)
     }
 
     #[inline]
     fn as_sink(
         self: Arc<Self>,
-    ) -> Result<Arc<dyn PhysicalSink<'env, 'txn, S, M>>, Arc<dyn PhysicalNode<'env, 'txn, S, M>>> {
+    ) -> Result<Arc<dyn PhysicalSink<'env, 'txn, S, M>>, Arc<dyn PhysicalNode<'env, 'txn, S, M>>>
+    {
         Err(self)
     }
 
     #[inline]
     fn as_operator(
         self: Arc<Self>,
-    ) -> Result<Arc<dyn PhysicalOperator<'env, 'txn, S, M>>, Arc<dyn PhysicalNode<'env, 'txn, S, M>>> {
+    ) -> Result<Arc<dyn PhysicalOperator<'env, 'txn, S, M>>, Arc<dyn PhysicalNode<'env, 'txn, S, M>>>
+    {
         Ok(self)
     }
 }
 
-impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Explain<S> for PhysicalFilter<'env, 'txn, S, M> {
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Explain<S>
+    for PhysicalFilter<'env, 'txn, S, M>
+{
     fn explain(
         &self,
         _catalog: &Catalog<S>,

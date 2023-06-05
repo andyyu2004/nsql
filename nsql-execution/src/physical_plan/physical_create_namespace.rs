@@ -19,7 +19,7 @@ impl PhysicalCreateNamespace {
     }
 }
 
-impl<'env, 'txn, S: StorageEngine> PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode<S>>
+impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode<S>>
     for PhysicalCreateNamespace
 {
     fn children(&self) -> &[Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode<S>>>] {
@@ -54,12 +54,12 @@ impl<'env, 'txn, S: StorageEngine> PhysicalNode<'env, 'txn, S, ReadWriteExecutio
     }
 }
 
-impl<'env, 'txn, S: StorageEngine> PhysicalSource<'env, 'txn, S, ReadWriteExecutionMode<S>>
+impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSource<'env, 'txn, S, ReadWriteExecutionMode<S>>
     for PhysicalCreateNamespace
 {
     fn source(
         self: Arc<Self>,
-        ctx: &'txn ExecutionContext<'env, 'txn, S, ReadWriteExecutionMode<S>>,
+        ctx: &ExecutionContext<'env, 'txn, S, ReadWriteExecutionMode<S>>,
     ) -> ExecutionResult<TupleStream<'txn, S>> {
         let catalog = ctx.catalog();
         let tx = ctx.tx();

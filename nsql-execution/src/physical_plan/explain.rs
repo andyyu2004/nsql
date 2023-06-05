@@ -82,7 +82,7 @@ impl<'a, 'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     }
 }
 
-impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> fmt::Display
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> fmt::Display
     for RootPipelineExplainer<'_, 'env, 'txn, S, M>
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

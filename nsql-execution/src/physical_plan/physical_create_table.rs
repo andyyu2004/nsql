@@ -15,7 +15,7 @@ impl<S> fmt::Debug for PhysicalCreateTable<S> {
     }
 }
 
-impl<'env, 'txn, S: StorageEngine> PhysicalCreateTable<S> {
+impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalCreateTable<S> {
     pub(crate) fn plan(
         info: ir::CreateTableInfo<S>,
     ) -> Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode<S>>> {
@@ -23,7 +23,7 @@ impl<'env, 'txn, S: StorageEngine> PhysicalCreateTable<S> {
     }
 }
 
-impl<'env, 'txn, S: StorageEngine> PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode<S>>
+impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode<S>>
     for PhysicalCreateTable<S>
 {
     #[inline]
@@ -62,12 +62,12 @@ impl<'env, 'txn, S: StorageEngine> PhysicalNode<'env, 'txn, S, ReadWriteExecutio
     }
 }
 
-impl<'env, 'txn, S: StorageEngine> PhysicalSource<'env, 'txn, S, ReadWriteExecutionMode<S>>
+impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSource<'env, 'txn, S, ReadWriteExecutionMode<S>>
     for PhysicalCreateTable<S>
 {
     fn source(
         self: Arc<Self>,
-        ctx: &'txn ExecutionContext<'env, 'txn, S, ReadWriteExecutionMode<S>>,
+        ctx: &ExecutionContext<'env, 'txn, S, ReadWriteExecutionMode<S>>,
     ) -> ExecutionResult<TupleStream<'txn, S>> {
         let catalog = ctx.catalog();
         let tx = ctx.tx();

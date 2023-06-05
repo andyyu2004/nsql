@@ -8,7 +8,7 @@ pub(crate) struct Executor<'env, 'txn, S, M> {
     _marker: std::marker::PhantomData<(S, M)>,
 }
 
-impl<'env, 'txn, S: StorageEngine> Executor<'env, 'txn, S, ReadWriteExecutionMode<S>> {
+impl<'env: 'txn, 'txn, S: StorageEngine> Executor<'env, 'txn, S, ReadWriteExecutionMode<S>> {
     fn execute(
         self: Arc<Self>,
         ctx: &ExecutionContext<'env, 'txn, S, ReadWriteExecutionMode<S>>,
@@ -50,7 +50,7 @@ impl<'env, 'txn, S: StorageEngine> Executor<'env, 'txn, S, ReadWriteExecutionMod
     }
 }
 
-impl<'env, 'txn, S: StorageEngine> Executor<'env, 'txn, S, ReadonlyExecutionMode<S>> {
+impl<'env: 'txn, 'txn, S: StorageEngine> Executor<'env, 'txn, S, ReadonlyExecutionMode<S>> {
     fn execute(
         self: Arc<Self>,
         ctx: &ExecutionContext<'env, 'txn, S, ReadonlyExecutionMode<S>>,
@@ -145,7 +145,7 @@ pub(crate) struct OutputSink {
     tuples: RwLock<Vec<Tuple>>,
 }
 
-impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode<'env, 'txn, S, M>
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode<'env, 'txn, S, M>
     for OutputSink
 {
     #[inline]
@@ -178,25 +178,21 @@ impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode<'env,
     }
 }
 
-impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSource<'env, 'txn, S, M>
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSource<'env, 'txn, S, M>
     for OutputSink
 {
     fn source(
         self: Arc<Self>,
-        _ctx: &'txn ExecutionContext<'env, 'txn, S, M>,
+        _ctx: &ExecutionContext<'env, 'txn, S, M>,
     ) -> ExecutionResult<TupleStream<'txn, S>> {
         todo!()
     }
 }
 
-impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSink<'env, 'txn, S, M>
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSink<'env, 'txn, S, M>
     for OutputSink
 {
-    fn sink(
-        &self,
-        _ctx: &'txn ExecutionContext<'env, 'txn, S, M>,
-        tuple: Tuple,
-    ) -> ExecutionResult<()> {
+    fn sink(&self, _ctx: &ExecutionContext<'env, 'txn, S, M>, tuple: Tuple) -> ExecutionResult<()> {
         self.tuples.write().push(tuple);
         Ok(())
     }

@@ -17,12 +17,12 @@ impl PhysicalValues {
     }
 }
 
-impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSource<'env, 'txn, S, M>
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSource<'env, 'txn, S, M>
     for PhysicalValues
 {
     fn source(
         self: Arc<Self>,
-        _ctx: &'txn ExecutionContext<'env, 'txn, S, M>,
+        _ctx: &ExecutionContext<'env, 'txn, S, M>,
     ) -> ExecutionResult<TupleStream<'txn, S>> {
         let mut index = 0;
         let iter = fallible_iterator::from_fn(move || {
@@ -41,7 +41,7 @@ impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSource<'en
     }
 }
 
-impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode<'env, 'txn, S, M>
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode<'env, 'txn, S, M>
     for PhysicalValues
 {
     #[inline]
@@ -52,26 +52,29 @@ impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode<'env,
     #[inline]
     fn as_source(
         self: Arc<Self>,
-    ) -> Result<Arc<dyn PhysicalSource<'env, 'txn, S, M>>, Arc<dyn PhysicalNode<'env, 'txn, S, M>>> {
+    ) -> Result<Arc<dyn PhysicalSource<'env, 'txn, S, M>>, Arc<dyn PhysicalNode<'env, 'txn, S, M>>>
+    {
         Ok(self)
     }
 
     #[inline]
     fn as_sink(
         self: Arc<Self>,
-    ) -> Result<Arc<dyn PhysicalSink<'env, 'txn, S, M>>, Arc<dyn PhysicalNode<'env, 'txn, S, M>>> {
+    ) -> Result<Arc<dyn PhysicalSink<'env, 'txn, S, M>>, Arc<dyn PhysicalNode<'env, 'txn, S, M>>>
+    {
         Err(self)
     }
 
     #[inline]
     fn as_operator(
         self: Arc<Self>,
-    ) -> Result<Arc<dyn PhysicalOperator<'env, 'txn, S, M>>, Arc<dyn PhysicalNode<'env, 'txn, S, M>>> {
+    ) -> Result<Arc<dyn PhysicalOperator<'env, 'txn, S, M>>, Arc<dyn PhysicalNode<'env, 'txn, S, M>>>
+    {
         Err(self)
     }
 }
 
-impl<'env, 'txn, S: StorageEngine> Explain<S> for PhysicalValues {
+impl<'env: 'txn, 'txn, S: StorageEngine> Explain<S> for PhysicalValues {
     fn explain(
         &self,
         _catalog: &Catalog<S>,

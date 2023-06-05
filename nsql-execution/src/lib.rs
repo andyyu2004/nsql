@@ -46,8 +46,8 @@ fn build_pipelines<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
     RootPipeline { arena }
 }
 
-trait PhysicalNode<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>:
-    Send + Sync + Explain<S> + 'env
+trait PhysicalNode<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>:
+    Send + Sync + Explain<S>
 {
     fn children(&self) -> &[Arc<dyn PhysicalNode<'env, 'txn, S, M>>];
 
@@ -148,12 +148,12 @@ enum OperatorState<T> {
     Done,
 }
 
-trait PhysicalOperator<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T = Tuple>:
+trait PhysicalOperator<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T = Tuple>:
     PhysicalNode<'env, 'txn, S, M>
 {
     fn execute(
         &self,
-        ctx: &'txn ExecutionContext<'env, 'txn, S, M>,
+        ctx: &ExecutionContext<'env, 'txn, S, M>,
         input: T,
     ) -> ExecutionResult<OperatorState<T>>;
 }
@@ -161,24 +161,20 @@ trait PhysicalOperator<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, 
 type TupleStream<'txn, S> =
     Box<dyn FallibleIterator<Item = Tuple, Error = <S as StorageEngine>::Error> + 'txn>;
 
-trait PhysicalSource<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T = Tuple>:
+trait PhysicalSource<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T = Tuple>:
     PhysicalNode<'env, 'txn, S, M>
 {
     /// Return the next chunk from the source. An empty chunk indicates that the source is exhausted.
     fn source(
         self: Arc<Self>,
-        ctx: &'txn ExecutionContext<'env, 'txn, S, M>,
+        ctx: &ExecutionContext<'env, 'txn, S, M>,
     ) -> ExecutionResult<TupleStream<'txn, S>>;
 }
 
-trait PhysicalSink<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>:
+trait PhysicalSink<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>:
     PhysicalSource<'env, 'txn, S, M>
 {
-    fn sink(
-        &self,
-        ctx: &'txn ExecutionContext<'env, 'txn, S, M>,
-        tuple: Tuple,
-    ) -> ExecutionResult<()>;
+    fn sink(&self, ctx: &ExecutionContext<'env, 'txn, S, M>, tuple: Tuple) -> ExecutionResult<()>;
 }
 
 trait Reborrow<'short, _Outlives = &'short Self> {
@@ -236,7 +232,9 @@ impl From<u8> for TransactionState {
     }
 }
 
-impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> TransactionContext<'env, 'txn, S, M> {
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
+    TransactionContext<'env, 'txn, S, M>
+{
     #[inline]
     pub fn new(tx: M::Transaction, auto_commit: bool) -> Self {
         Self {
@@ -299,7 +297,7 @@ pub struct ExecutionContext<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env,
     pd: PhantomData<&'txn ()>,
 }
 
-impl<'env, 'txn, S: StorageEngine> ExecutionContext<'env, 'txn, S, ReadonlyExecutionMode<S>> {
+impl<'env: 'txn, 'txn, S: StorageEngine> ExecutionContext<'env, 'txn, S, ReadonlyExecutionMode<S>> {
     #[inline]
     pub fn take_txn(self) -> (bool, TransactionState, S::Transaction<'env>) {
         let tx = self.tx;
@@ -307,7 +305,9 @@ impl<'env, 'txn, S: StorageEngine> ExecutionContext<'env, 'txn, S, ReadonlyExecu
     }
 }
 
-impl<'env, 'txn, S: StorageEngine> ExecutionContext<'env, 'txn, S, ReadWriteExecutionMode<S>> {
+impl<'env: 'txn, 'txn, S: StorageEngine>
+    ExecutionContext<'env, 'txn, S, ReadWriteExecutionMode<S>>
+{
     #[inline]
     pub fn take_txn(self) -> (bool, TransactionState, S::WriteTransaction<'env>) {
         let tx = self.tx;
@@ -315,7 +315,9 @@ impl<'env, 'txn, S: StorageEngine> ExecutionContext<'env, 'txn, S, ReadWriteExec
     }
 }
 
-impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> ExecutionContext<'env, 'txn, S, M> {
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
+    ExecutionContext<'env, 'txn, S, M>
+{
     #[inline]
     pub fn new(
         storage: S,

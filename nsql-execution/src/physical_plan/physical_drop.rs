@@ -14,7 +14,7 @@ impl<S> fmt::Debug for PhysicalDrop<S> {
     }
 }
 
-impl<'env, 'txn, S: StorageEngine> PhysicalDrop<S> {
+impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalDrop<S> {
     pub(crate) fn plan(
         refs: Vec<ir::EntityRef<S>>,
     ) -> Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode<S>>> {
@@ -22,7 +22,7 @@ impl<'env, 'txn, S: StorageEngine> PhysicalDrop<S> {
     }
 }
 
-impl<'env, 'txn, S: StorageEngine> PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode<S>>
+impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode<S>>
     for PhysicalDrop<S>
 {
     fn children(&self) -> &[Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode<S>>>] {
@@ -57,12 +57,12 @@ impl<'env, 'txn, S: StorageEngine> PhysicalNode<'env, 'txn, S, ReadWriteExecutio
     }
 }
 
-impl<'env, 'txn, S: StorageEngine> PhysicalSource<'env, 'txn, S, ReadWriteExecutionMode<S>>
+impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSource<'env, 'txn, S, ReadWriteExecutionMode<S>>
     for PhysicalDrop<S>
 {
     fn source(
         self: Arc<Self>,
-        ctx: &'txn ExecutionContext<'env, 'txn, S, ReadWriteExecutionMode<S>>,
+        ctx: &ExecutionContext<'env, 'txn, S, ReadWriteExecutionMode<S>>,
     ) -> ExecutionResult<TupleStream<'txn, S>> {
         let catalog = ctx.catalog();
         let tx = ctx.tx();
@@ -76,7 +76,7 @@ impl<'env, 'txn, S: StorageEngine> PhysicalSource<'env, 'txn, S, ReadWriteExecut
     }
 }
 
-impl<'env, 'txn, S: StorageEngine> Explain<S> for PhysicalDrop<S> {
+impl<'env: 'txn, 'txn, S: StorageEngine> Explain<S> for PhysicalDrop<S> {
     fn explain(
         &self,
         catalog: &Catalog<S>,

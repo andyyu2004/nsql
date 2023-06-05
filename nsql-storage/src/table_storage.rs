@@ -18,7 +18,7 @@ pub struct TableStorage<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'en
     info: TableStorageInfo,
 }
 
-impl<'env, 'txn, S: StorageEngine> TableStorage<'env, 'txn, S, ReadWriteExecutionMode<S>> {
+impl<'env: 'txn, 'txn, S: StorageEngine> TableStorage<'env, 'txn, S, ReadWriteExecutionMode<S>> {
     #[inline]
     pub fn initialize(
         storage: S,
@@ -70,7 +70,7 @@ impl<'env, 'txn, S: StorageEngine> TableStorage<'env, 'txn, S, ReadWriteExecutio
 }
 
 #[fix_hidden_lifetime_bug]
-impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> TableStorage<'env, 'txn, S, M> {
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> TableStorage<'env, 'txn, S, M> {
     pub fn open(
         storage: S,
         tx: &'txn M::Transaction,

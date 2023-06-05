@@ -13,18 +13,18 @@ impl PhysicalDummyScan {
     }
 }
 
-impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSource<'env, 'txn, S, M>
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSource<'env, 'txn, S, M>
     for PhysicalDummyScan
 {
     fn source(
         self: Arc<Self>,
-        _ctx: &'txn ExecutionContext<'env, 'txn, S, M>,
+        _ctx: &ExecutionContext<'env, 'txn, S, M>,
     ) -> ExecutionResult<TupleStream<'txn, S>> {
         Ok(Box::new(fallible_iterator::once(Tuple::empty())))
     }
 }
 
-impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode<'env, 'txn, S, M>
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode<'env, 'txn, S, M>
     for PhysicalDummyScan
 {
     fn children(&self) -> &[Arc<dyn PhysicalNode<'env, 'txn, S, M>>] {
@@ -53,7 +53,7 @@ impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode<'env,
     }
 }
 
-impl<'env, 'txn, S: StorageEngine> Explain<S> for PhysicalDummyScan {
+impl<'env: 'txn, 'txn, S: StorageEngine> Explain<S> for PhysicalDummyScan {
     fn explain(
         &self,
         _catalog: &Catalog<S>,

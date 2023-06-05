@@ -55,7 +55,7 @@ impl<'env, 'txn, S, M> PhysicalPlan<'env, 'txn, S, M> {
     }
 }
 
-impl<'env, 'txn, S: StorageEngine> PhysicalPlanner<S> {
+impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalPlanner<S> {
     pub fn new(catalog: Arc<Catalog<S>>) -> Self {
         Self { catalog }
     }

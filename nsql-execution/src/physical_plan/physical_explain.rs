@@ -17,7 +17,9 @@ impl<S, M> fmt::Debug for PhysicalExplain<'_, '_, S, M> {
     }
 }
 
-impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalExplain<'env, 'txn, S, M> {
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
+    PhysicalExplain<'env, 'txn, S, M>
+{
     #[inline]
     pub(crate) fn plan(
         stringified_plan: String,
@@ -27,7 +29,7 @@ impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalExplain<'e
     }
 }
 
-impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode<'env, 'txn, S, M>
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode<'env, 'txn, S, M>
     for PhysicalExplain<'env, 'txn, S, M>
 {
     fn children(&self) -> &[Arc<dyn PhysicalNode<'env, 'txn, S, M>>] {
@@ -57,19 +59,19 @@ impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode<'env,
     }
 }
 
-impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSource<'env, 'txn, S, M>
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSource<'env, 'txn, S, M>
     for PhysicalExplain<'env, 'txn, S, M>
 {
     fn source(
         self: Arc<Self>,
-        _ctx: &'txn ExecutionContext<'env, 'txn, S, M>,
+        _ctx: &ExecutionContext<'env, 'txn, S, M>,
     ) -> ExecutionResult<TupleStream<'txn, S>> {
         let plan = self.stringified_plan.take().expect("should not be called again");
         Ok(Box::new(fallible_iterator::once(Tuple::from(vec![Value::Text(plan)]))))
     }
 }
 
-impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Explain<S>
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Explain<S>
     for PhysicalExplain<'env, 'txn, S, M>
 {
     fn explain(

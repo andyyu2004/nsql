@@ -120,16 +120,16 @@ pub enum ReadOrWriteTransactionRef<'env, 'txn, S: StorageEngine> {
     Write(&'txn S::WriteTransaction<'env>),
 }
 
-impl<'env, 'txn, S: StorageEngine> Clone for ReadOrWriteTransactionRef<'env, 'txn, S> {
+impl<'env: 'txn, 'txn, S: StorageEngine> Clone for ReadOrWriteTransactionRef<'env, 'txn, S> {
     #[inline]
     fn clone(&self) -> Self {
         *self
     }
 }
 
-impl<'env, 'txn, S: StorageEngine> Copy for ReadOrWriteTransactionRef<'env, 'txn, S> {}
+impl<'env: 'txn, 'txn, S: StorageEngine> Copy for ReadOrWriteTransactionRef<'env, 'txn, S> {}
 
-impl<'env, 'txn, S: StorageEngine> Transaction<'env, S>
+impl<'env: 'txn, 'txn, S: StorageEngine> Transaction<'env, S>
     for ReadOrWriteTransactionRef<'env, 'txn, S>
 {
     fn as_read_or_write(&self) -> ReadOrWriteTransactionRef<'env, '_, S> {
@@ -142,7 +142,7 @@ pub enum ReadOrWriteTree<'env: 'txn, 'txn, S: StorageEngine> {
     Write(S::WriteTree<'env, 'txn>),
 }
 
-impl<'env, 'txn, S: StorageEngine> ReadTree<'env, 'txn, S> for ReadOrWriteTree<'env, 'txn, S> {
+impl<'env: 'txn, 'txn, S: StorageEngine> ReadTree<'env, 'txn, S> for ReadOrWriteTree<'env, 'txn, S> {
     fn get<'a>(&'a self, key: &[u8]) -> Result<Option<S::Bytes<'a>>, S::Error> {
         match self {
             ReadOrWriteTree::Read(tree) => tree.get(key),

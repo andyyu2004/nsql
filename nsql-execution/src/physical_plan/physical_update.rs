@@ -14,7 +14,7 @@ pub(crate) struct PhysicalUpdate<'env, 'txn, S> {
     returning_evaluator: Evaluator,
 }
 
-impl<'env, 'txn, S: StorageEngine> PhysicalUpdate<'env, 'txn, S> {
+impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalUpdate<'env, 'txn, S> {
     pub fn plan(
         table_ref: TableRef<S>,
         // This is the source of the updates.
@@ -32,7 +32,7 @@ impl<'env, 'txn, S: StorageEngine> PhysicalUpdate<'env, 'txn, S> {
     }
 }
 
-impl<'env, 'txn, S: StorageEngine> PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode<S>>
+impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode<S>>
     for PhysicalUpdate<'env, 'txn, S>
 {
     #[inline]
@@ -71,12 +71,12 @@ impl<'env, 'txn, S: StorageEngine> PhysicalNode<'env, 'txn, S, ReadWriteExecutio
     }
 }
 
-impl<'env, 'txn, S: StorageEngine> PhysicalSink<'env, 'txn, S, ReadWriteExecutionMode<S>>
+impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSink<'env, 'txn, S, ReadWriteExecutionMode<S>>
     for PhysicalUpdate<'env, 'txn, S>
 {
     fn sink(
         &self,
-        ctx: &'txn ExecutionContext<'env, 'txn, S, ReadWriteExecutionMode<S>>,
+        ctx: &ExecutionContext<'env, 'txn, S, ReadWriteExecutionMode<S>>,
         tuple: Tuple,
     ) -> ExecutionResult<()> {
         let tx = &**ctx.tx();
@@ -101,19 +101,19 @@ impl<'env, 'txn, S: StorageEngine> PhysicalSink<'env, 'txn, S, ReadWriteExecutio
     }
 }
 
-impl<'env, 'txn, S: StorageEngine> PhysicalSource<'env, 'txn, S, ReadWriteExecutionMode<S>>
+impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSource<'env, 'txn, S, ReadWriteExecutionMode<S>>
     for PhysicalUpdate<'env, 'txn, S>
 {
     fn source(
         self: Arc<Self>,
-        _ctx: &'txn ExecutionContext<'env, 'txn, S, ReadWriteExecutionMode<S>>,
+        _ctx: &ExecutionContext<'env, 'txn, S, ReadWriteExecutionMode<S>>,
     ) -> ExecutionResult<TupleStream<'txn, S>> {
         let returning = std::mem::take(&mut *self.returning_tuples.write());
         Ok(Box::new(fallible_iterator::convert(returning.into_iter().map(Ok))))
     }
 }
 
-impl<'env, 'txn, S: StorageEngine> Explain<S> for PhysicalUpdate<'env, 'txn, S> {
+impl<'env: 'txn, 'txn, S: StorageEngine> Explain<S> for PhysicalUpdate<'env, 'txn, S> {
     fn explain(
         &self,
         catalog: &Catalog<S>,
