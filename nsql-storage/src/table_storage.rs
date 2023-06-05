@@ -47,6 +47,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> TableStorage<'env, 'txn, S, ReadWriteEx
             // FIXME better error message
             bail!("duplicate key value violates primary key constraint")
         }
+
         self.tree.put(&k, &v)?;
 
         Ok(())
