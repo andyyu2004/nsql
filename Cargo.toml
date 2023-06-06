@@ -4,6 +4,7 @@ members = [
     "nsql",
     "nsql-arena",
     "nsql-bind",
+    "nsql-bootstrap",
     "nsql-catalog",
     "nsql-core",
     "nsql-execution",

@@ -1117,15 +1117,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "nsql-bootstrap"
+version = "0.1.0"
+dependencies = [
+ "nsql-catalog",
+ "nsql-storage",
+ "nsql-storage-engine",
+]
+
+[[package]]
 name = "nsql-catalog"
 version = "0.1.0"
 dependencies = [
  "anyhow",
  "indexmap",
  "nsql-core",
+ "nsql-storage",
  "nsql-storage-engine",
  "nsql-util",
  "parking_lot",
+ "rkyv",
  "tracing",
 ]
 
@@ -1232,7 +1243,6 @@ dependencies = [
  "itertools",
  "next-gen",
  "nsql-arena",
- "nsql-catalog",
  "nsql-core",
  "nsql-rkyv",
  "nsql-storage-engine",

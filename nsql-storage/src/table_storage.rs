@@ -4,7 +4,8 @@ use ::next_gen::prelude::*;
 use anyhow::bail;
 use fix_hidden_lifetime_bug::fix_hidden_lifetime_bug;
 use next_gen::generator_fn::GeneratorFn;
-use nsql_catalog::{Column, TableRef};
+use nsql_core::{LogicalType, Name};
+// use nsql_catalog::{Column, TableRef};
 use nsql_storage_engine::{
     fallible_iterator, ExecutionMode, FallibleIterator, ReadTree, ReadWriteExecutionMode,
     StorageEngine, WriteTree,
@@ -21,13 +22,13 @@ pub struct TableStorage<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'en
 
 impl<'env: 'txn, 'txn, S: StorageEngine> TableStorage<'env, 'txn, S, ReadWriteExecutionMode<S>> {
     #[inline]
-    pub fn initialize(
-        storage: S,
+    pub fn create(
+        storage: &S,
         tx: &'txn S::WriteTransaction<'env>,
         info: TableStorageInfo,
     ) -> Result<Self, S::Error> {
         // create the tree
-        storage.open_write_tree(tx, &info.storage_tree_name)?;
+        storage.open_write_tree(tx, &info.table_name)?;
         Self::open(storage, tx, info)
     }
 
@@ -71,13 +72,13 @@ impl<'env: 'txn, 'txn, S: StorageEngine> TableStorage<'env, 'txn, S, ReadWriteEx
         for (value, col) in tuple.values().zip(&self.info.columns) {
             assert_eq!(
                 value.ty(),
-                col.logical_type(),
+                col.logical_type,
                 "expected column type {:?}, got {:?}",
-                col.logical_type(),
+                col.logical_type,
                 value.ty()
             );
 
-            if col.is_primary_key() {
+            if col.is_primary_key {
                 pk_tuple.push(value);
             } else {
                 non_pk_tuple.push(value);
@@ -94,11 +95,11 @@ impl<'env: 'txn, 'txn, S: StorageEngine> TableStorage<'env, 'txn, S, ReadWriteEx
 #[fix_hidden_lifetime_bug]
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> TableStorage<'env, 'txn, S, M> {
     pub fn open(
-        storage: S,
+        storage: &S,
         tx: &'txn M::Transaction,
         info: TableStorageInfo,
     ) -> Result<Self, S::Error> {
-        let tree = M::open_tree(&storage, tx, &info.storage_tree_name)?;
+        let tree = M::open_tree(storage, tx, &info.table_name)?;
         Ok(Self { info, tree })
     }
 
@@ -144,7 +145,7 @@ fn range_gen<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
                 let mut tuple = Vec::with_capacity(n);
 
                 for col in &storage.info.columns {
-                    if col.is_primary_key() {
+                    if col.is_primary_key {
                         tuple.push(&ks[i]);
                         i += 1;
                     } else {
@@ -164,21 +165,29 @@ fn range_gen<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
     }
 }
 pub struct TableStorageInfo {
-    columns: Vec<Arc<Column>>,
-    storage_tree_name: String,
+    columns: Vec<ColumnStorageInfo>,
+    table_name: Name,
 }
 
 impl TableStorageInfo {
     #[inline]
-    pub fn new<S>(table_ref: TableRef<S>, columns: Vec<Arc<Column>>) -> Self {
+    pub fn new(table_name: Name, columns: Vec<ColumnStorageInfo>) -> Self {
         assert!(
-            columns.iter().any(|c| c.is_primary_key()),
+            columns.iter().any(|c| c.is_primary_key),
             "expected at least one primary key column (this should be checked in the binder)"
         );
 
-        Self { columns, storage_tree_name: format!("{table_ref}") }
+        Self { columns, table_name }
     }
 }
 
-// #[cfg(test)]
-// mod tests;
+pub struct ColumnStorageInfo {
+    logical_type: LogicalType,
+    is_primary_key: bool,
+}
+
+impl ColumnStorageInfo {
+    pub fn new(logical_type: LogicalType, is_primary_key: bool) -> Self {
+        Self { logical_type, is_primary_key }
+    }
+}

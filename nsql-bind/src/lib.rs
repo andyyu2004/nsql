@@ -11,12 +11,11 @@ use anyhow::{anyhow, bail, ensure};
 use ir::expr::EvalNotConst;
 use ir::{Decimal, Path, TransactionMode};
 use itertools::Itertools;
-use nsql_catalog::schema::LogicalType;
 use nsql_catalog::{
     Catalog, Column, Container, CreateColumnInfo, Entity, EntityRef, Namespace, NamespaceEntity,
-    Oid, Table, TableRef, DEFAULT_SCHEMA,
+    Table, TableRef, DEFAULT_SCHEMA,
 };
-use nsql_core::Name;
+use nsql_core::{LogicalType, Name, Oid};
 use nsql_parse::ast::{self, HiveDistributionStyle};
 use nsql_storage_engine::{StorageEngine, Transaction};
 
@@ -306,12 +305,12 @@ impl<S: StorageEngine> Binder<S> {
     fn bind_assignments(
         &self,
         tx: &dyn Transaction<'_, S>,
-        scope: &Scope,
+        scope: &Scope<S>,
         table_ref: TableRef<S>,
         assignments: &[ast::Assignment],
     ) -> Result<Box<[ir::Expr]>> {
         let table = table_ref.get(&self.catalog, tx);
-        let columns = table.all::<Column>(tx);
+        let columns = table.all::<Column<S>>(tx);
 
         for assignment in assignments {
             assert!(!assignment.id.is_empty());
@@ -449,9 +448,9 @@ impl<S: StorageEngine> Binder<S> {
     fn bind_query(
         &self,
         tx: &dyn Transaction<'_, S>,
-        scope: &Scope,
+        scope: &Scope<S>,
         query: &ast::Query,
-    ) -> Result<(Scope, Box<ir::QueryPlan<S>>)> {
+    ) -> Result<(Scope<S>, Box<ir::QueryPlan<S>>)> {
         let ast::Query { with, body, order_by, limit, offset, fetch, locks } = query;
         not_implemented!(with.is_some());
         not_implemented!(!order_by.is_empty());
@@ -478,9 +477,9 @@ impl<S: StorageEngine> Binder<S> {
     fn bind_table_expr(
         &self,
         tx: &dyn Transaction<'_, S>,
-        scope: &Scope,
+        scope: &Scope<S>,
         body: &ast::SetExpr,
-    ) -> Result<(Scope, Box<ir::QueryPlan<S>>)> {
+    ) -> Result<(Scope<S>, Box<ir::QueryPlan<S>>)> {
         let (scope, expr) = match body {
             ast::SetExpr::Select(sel) => self.bind_select(tx, scope, sel)?,
             ast::SetExpr::Query(_) => todo!(),
@@ -500,9 +499,9 @@ impl<S: StorageEngine> Binder<S> {
     fn bind_select(
         &self,
         tx: &dyn Transaction<'_, S>,
-        scope: &Scope,
+        scope: &Scope<S>,
         select: &ast::Select,
-    ) -> Result<(Scope, Box<ir::QueryPlan<S>>)> {
+    ) -> Result<(Scope<S>, Box<ir::QueryPlan<S>>)> {
         let ast::Select {
             distinct,
             projection,
@@ -552,9 +551,9 @@ impl<S: StorageEngine> Binder<S> {
     fn bind_joint_tables(
         &self,
         tx: &dyn Transaction<'_, S>,
-        scope: &Scope,
+        scope: &Scope<S>,
         tables: &ast::TableWithJoins,
-    ) -> Result<(Scope, Box<ir::QueryPlan<S>>)> {
+    ) -> Result<(Scope<S>, Box<ir::QueryPlan<S>>)> {
         not_implemented!(!tables.joins.is_empty());
         let table = &tables.relation;
         self.bind_table_factor(tx, scope, table)
@@ -563,9 +562,9 @@ impl<S: StorageEngine> Binder<S> {
     fn bind_table_factor(
         &self,
         tx: &dyn Transaction<'_, S>,
-        scope: &Scope,
+        scope: &Scope<S>,
         table: &ast::TableFactor,
-    ) -> Result<(Scope, Box<ir::QueryPlan<S>>)> {
+    ) -> Result<(Scope<S>, Box<ir::QueryPlan<S>>)> {
         let (scope, table_expr) = match table {
             ast::TableFactor::Table { name, alias, args, with_hints } => {
                 not_implemented!(args.is_some());
@@ -596,10 +595,10 @@ impl<S: StorageEngine> Binder<S> {
     fn bind_table(
         &self,
         tx: &dyn Transaction<'_, S>,
-        scope: &Scope,
+        scope: &Scope<S>,
         table_name: &ast::ObjectName,
         alias: Option<&ast::TableAlias>,
-    ) -> Result<(Scope, TableRef<S>)> {
+    ) -> Result<(Scope<S>, TableRef<S>)> {
         let alias = alias.map(|alias| self.lower_table_alias(alias));
         let table_name = self.lower_path(&table_name.0)?;
         let (namespace, table) = self.bind_namespaced_entity::<Table<S>>(tx, &table_name)?;
@@ -619,7 +618,7 @@ impl<S: StorageEngine> Binder<S> {
         name.value.as_str().into()
     }
 
-    fn bind_select_item(&self, scope: &Scope, item: &ast::SelectItem) -> Result<Vec<ir::Expr>> {
+    fn bind_select_item(&self, scope: &Scope<S>, item: &ast::SelectItem) -> Result<Vec<ir::Expr>> {
         let expr = match item {
             ast::SelectItem::UnnamedExpr(expr) => self.bind_expr(scope, expr)?,
             ast::SelectItem::ExprWithAlias { expr: _, alias: _ } => todo!(),
@@ -642,7 +641,11 @@ impl<S: StorageEngine> Binder<S> {
         Ok(vec![expr])
     }
 
-    fn bind_values(&self, scope: &Scope, values: &ast::Values) -> Result<(Scope, ir::Values)> {
+    fn bind_values(
+        &self,
+        scope: &Scope<S>,
+        values: &ast::Values,
+    ) -> Result<(Scope<S>, ir::Values)> {
         assert!(!values.rows.is_empty(), "values can't be empty");
 
         let expected_cols = values.rows[0].len();
@@ -668,11 +671,11 @@ impl<S: StorageEngine> Binder<S> {
         Ok((scope.bind_values(&values)?, values))
     }
 
-    fn bind_row(&self, scope: &Scope, row: &[ast::Expr]) -> Result<Vec<ir::Expr>> {
+    fn bind_row(&self, scope: &Scope<S>, row: &[ast::Expr]) -> Result<Vec<ir::Expr>> {
         row.iter().map(|expr| self.bind_expr(scope, expr)).collect()
     }
 
-    fn bind_predicate(&self, scope: &Scope, predicate: &ast::Expr) -> Result<ir::Expr> {
+    fn bind_predicate(&self, scope: &Scope<S>, predicate: &ast::Expr) -> Result<ir::Expr> {
         let predicate = self.bind_expr(scope, predicate)?;
         // We intentionally are being strict here and only allow boolean predicates rather than
         // anything that can be cast to a boolean.
@@ -685,7 +688,7 @@ impl<S: StorageEngine> Binder<S> {
         Ok(predicate)
     }
 
-    fn bind_expr(&self, scope: &Scope, expr: &ast::Expr) -> Result<ir::Expr> {
+    fn bind_expr(&self, scope: &Scope<S>, expr: &ast::Expr) -> Result<ir::Expr> {
         let (ty, kind) = match expr {
             ast::Expr::Value(literal) => self.bind_value_expr(literal),
             ast::Expr::Identifier(ident) => {

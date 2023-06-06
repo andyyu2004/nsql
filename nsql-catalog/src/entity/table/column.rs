@@ -1,24 +1,32 @@
 use std::fmt;
 use std::sync::Arc;
 
+use nsql_core::LogicalType;
+use nsql_storage::ColumnStorageInfo;
 use nsql_storage_engine::{StorageEngine, Transaction};
 
 use super::TableRef;
 use crate::private::CatalogEntity;
-use crate::schema::LogicalType;
 use crate::set::CatalogSet;
 use crate::{Catalog, Entity, EntityRef, Name, Oid, Table};
 
 #[derive(Clone)]
-pub struct Column {
+pub struct Column<S> {
     oid: Oid<Self>,
+    table_oid: Oid<Table<S>>,
     name: Name,
     index: ColumnIndex,
     ty: LogicalType,
     is_primary_key: bool,
 }
 
-impl Column {
+impl<S> From<&Column<S>> for ColumnStorageInfo {
+    fn from(val: &Column<S>) -> Self {
+        ColumnStorageInfo::new(val.ty.clone(), val.is_primary_key)
+    }
+}
+
+impl<S> Column<S> {
     #[inline]
     pub fn index(&self) -> ColumnIndex {
         self.index
@@ -35,7 +43,7 @@ impl Column {
     }
 }
 
-impl fmt::Debug for Column {
+impl<S> fmt::Debug for Column<S> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Column").field("name", &self.name).finish_non_exhaustive()
     }
@@ -68,7 +76,7 @@ pub struct CreateColumnInfo {
     pub is_primary_key: bool,
 }
 
-impl Entity for Column {
+impl<S> Entity for Column<S> {
     #[inline]
     fn oid(&self) -> Oid<Self> {
         self.oid
@@ -85,7 +93,7 @@ impl Entity for Column {
     }
 }
 
-impl<S: StorageEngine> CatalogEntity<S> for Column {
+impl<S: StorageEngine> CatalogEntity<S> for Column<S> {
     type Container = Table<S>;
 
     type CreateInfo = CreateColumnInfo;
@@ -94,9 +102,15 @@ impl<S: StorageEngine> CatalogEntity<S> for Column {
         &table.columns
     }
 
-    fn create(_tx: &S::WriteTransaction<'_>, oid: Oid<Self>, info: Self::CreateInfo) -> Self {
+    fn create(
+        _tx: &S::WriteTransaction<'_>,
+        container: &Self::Container,
+        oid: Oid<Self>,
+        info: Self::CreateInfo,
+    ) -> Self {
         Self {
             oid,
+            table_oid: container.oid(),
             name: info.name,
             index: ColumnIndex::new(info.index),
             ty: info.ty,
@@ -108,7 +122,7 @@ impl<S: StorageEngine> CatalogEntity<S> for Column {
 #[derive(Debug)]
 pub struct ColumnRef<S> {
     pub table_ref: TableRef<S>,
-    pub column: Oid<Column>,
+    pub column: Oid<Column<S>>,
 }
 
 impl<S> Clone for ColumnRef<S> {
@@ -121,7 +135,7 @@ impl<S> Clone for ColumnRef<S> {
 impl<S> Copy for ColumnRef<S> {}
 
 impl<S: StorageEngine> EntityRef<S> for ColumnRef<S> {
-    type Entity = Column;
+    type Entity = Column<S>;
 
     type Container = Table<S>;
 

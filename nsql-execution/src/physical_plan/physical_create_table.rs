@@ -1,4 +1,5 @@
 use nsql_catalog::{Column, Container, CreateTableInfo, Namespace, Table, TableRef};
+use nsql_core::Name;
 use nsql_storage::{TableStorage, TableStorageInfo};
 use nsql_storage_engine::fallible_iterator;
 
@@ -82,15 +83,18 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSource<'env, 'txn, S, ReadWrite
             namespace.get::<Table<S>>(tx, table_oid).expect("table not found during execution");
 
         for info in &self.info.columns {
-            table.create::<Column>(tx, info.clone())?;
+            table.create::<Column<S>>(tx, info.clone())?;
         }
 
-        TableStorage::initialize(
+        TableStorage::create(
             ctx.storage(),
             tx,
             TableStorageInfo::new(
-                TableRef { namespace: self.info.namespace, table: table_oid },
-                table.columns(tx),
+                Name::from(format!(
+                    "{}",
+                    TableRef { namespace: self.info.namespace, table: table_oid }
+                )),
+                table.columns(tx).iter().map(|c| c.as_ref().into()).collect(),
             ),
         )?;
 

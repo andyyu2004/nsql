@@ -2,7 +2,7 @@ use std::error::Error;
 use std::fmt;
 use std::marker::PhantomData;
 
-use nsql_catalog::schema::LogicalType;
+use nsql_core::{LogicalType, UntypedOid};
 use rust_decimal::prelude::ToPrimitive;
 pub use rust_decimal::Decimal;
 
@@ -44,6 +44,7 @@ impl<T> Error for CastError<T> {}
 pub enum Value {
     Null,
     Int(i32),
+    Oid(UntypedOid),
     Bool(bool),
     Decimal(Decimal),
     Text(String),
@@ -96,6 +97,7 @@ impl Value {
             Value::Bool(_) => LogicalType::Bool,
             Value::Decimal(_) => LogicalType::Decimal,
             Value::Text(_) => LogicalType::Text,
+            Value::Oid(_) => LogicalType::Oid,
         }
     }
 }
@@ -109,6 +111,7 @@ impl fmt::Display for Value {
             Value::Decimal(d) => write!(f, "{d}"),
             Value::Text(s) => write!(f, "{s}"),
             Value::Int(i) => write!(f, "{i}"),
+            Value::Oid(oid) => write!(f, "{oid}"),
         }
     }
 }

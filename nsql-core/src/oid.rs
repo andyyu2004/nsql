@@ -2,16 +2,28 @@ use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::marker::PhantomData;
 
+use rkyv::{Archive, Deserialize, Serialize};
+
 /// An opaque identifier for an entity in a catalog set.
 /// This is only unique per catalog set. If you have multiple catalog sets containing the same
 /// type, it is currently possible to misuse this type and read from the wrong set.
 // This must only be constructed internally by the catalog.
+// FIXME move the typedoid to catalog crate but keep the untyped one here
+#[derive(Archive, Serialize, Deserialize)]
 pub struct Oid<T: ?Sized> {
     oid: u64,
-    marker: PhantomData<fn() -> T>,
+    marker: PhantomData<T>,
 }
 
+pub type UntypedOid = Oid<()>;
+
 impl<T: ?Sized> fmt::Debug for Oid<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Oid<{}>({})", std::any::type_name::<T>(), self.oid)
+    }
+}
+
+impl<T: ?Sized> fmt::Debug for ArchivedOid<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "Oid<{}>({})", std::any::type_name::<T>(), self.oid)
     }
@@ -46,7 +58,11 @@ impl<T: ?Sized> Hash for Oid<T> {
 }
 
 impl<T: ?Sized> Oid<T> {
-    pub(crate) fn new(oid: u64) -> Self {
+    pub const fn new(oid: u64) -> Self {
         Self { oid, marker: PhantomData }
+    }
+
+    pub const fn untyped(self) -> UntypedOid {
+        Oid::new(self.oid)
     }
 }

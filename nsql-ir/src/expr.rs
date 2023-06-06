@@ -4,8 +4,8 @@ use std::fmt;
 use std::ops::Deref;
 
 pub use eval::EvalNotConst;
-use nsql_catalog::schema::LogicalType;
 use nsql_catalog::{ColumnIndex, TableRef};
+use nsql_core::LogicalType;
 use nsql_storage::tuple::TupleIndex;
 use nsql_storage::value::Value;
 

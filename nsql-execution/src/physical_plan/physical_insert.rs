@@ -1,5 +1,4 @@
 use nsql_catalog::{EntityRef, TableRef};
-use nsql_storage::{TableStorage, TableStorageInfo};
 use nsql_storage_engine::fallible_iterator;
 use parking_lot::RwLock;
 
@@ -77,12 +76,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSink<'env, 'txn, S, ReadWriteEx
         let tx = ctx.tx()?;
         let table = self.table_ref.get(&catalog, tx);
 
-        let mut storage = TableStorage::open(
-            ctx.storage(),
-            tx,
-            TableStorageInfo::new(self.table_ref, table.columns(tx)),
-        )?;
-
+        let mut storage = table.storage(ctx.storage(), tx)?;
         storage.insert(&tuple)?;
 
         if let Some(return_expr) = &self.returning {

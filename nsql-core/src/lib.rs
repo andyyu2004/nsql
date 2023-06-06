@@ -1,5 +1,6 @@
 #![deny(rust_2018_idioms)]
 
+mod oid;
 pub mod schema;
 pub mod value;
 
@@ -7,6 +8,7 @@ use std::borrow::Borrow;
 use std::fmt;
 use std::ops::Deref;
 
+pub use oid::{Oid, UntypedOid};
 use smol_str::SmolStr;
 
 /// Lowercase name of a catalog entry (for case insensitive lookup)
@@ -64,4 +66,50 @@ impl Borrow<str> for Name {
     fn borrow(&self) -> &str {
         self.name.as_ref()
     }
+}
+
+#[derive(Debug, Eq, PartialEq, Clone)]
+pub enum LogicalType {
+    Null,
+    Bool,
+    Int,
+    Decimal,
+    Text,
+    Oid,
+}
+
+impl LogicalType {
+    pub fn physical_type(&self) -> PhysicalType {
+        match self {
+            LogicalType::Bool => PhysicalType::Bool,
+            LogicalType::Int => PhysicalType::Int32,
+            LogicalType::Decimal => PhysicalType::Decimal,
+            LogicalType::Text => todo!(),
+            LogicalType::Null => todo!(),
+            LogicalType::Oid => todo!(),
+        }
+    }
+}
+
+impl fmt::Display for LogicalType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            LogicalType::Bool => write!(f, "boolean"),
+            LogicalType::Int => write!(f, "int"),
+            LogicalType::Decimal => write!(f, "decimal"),
+            LogicalType::Text => write!(f, "text"),
+            LogicalType::Null => write!(f, "null"),
+            LogicalType::Oid => write!(f, "tid"),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PhysicalType {
+    /// 8-bit boolean
+    Bool,
+    /// 32-bit signed integer
+    Int32,
+    /// 128-bit fixed-size decimal
+    Decimal,
 }

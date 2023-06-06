@@ -3,7 +3,6 @@ use std::sync::OnceLock;
 use itertools::Itertools;
 use nsql_catalog::{Column, ColumnIndex, Container, Entity, Table, TableRef};
 use nsql_storage::tuple::TupleIndex;
-use nsql_storage::{TableStorage, TableStorageInfo};
 
 use super::*;
 
@@ -42,11 +41,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
         let tx = ctx.tx()?;
         let table = self.table.get_or_init(|| self.table_ref.get(&ctx.catalog, tx));
 
-        let storage = Arc::new(TableStorage::<S, M>::open(
-            ctx.storage(),
-            tx,
-            TableStorageInfo::new(self.table_ref, table.columns(tx)),
-        )?);
+        let storage = Arc::new(table.storage::<M>(ctx.storage(), tx)?);
 
         let projection = self
             .projection
@@ -96,7 +91,7 @@ impl<S: StorageEngine> Explain<S> for PhysicalTableScan<S> {
     ) -> explain::Result {
         // In this context, we know the projection indices correspond to the column indices of the source table
         let table = self.table_ref.get(catalog, tx);
-        let columns = table.all::<Column>(tx);
+        let columns = table.all::<Column<S>>(tx);
 
         let column_names = match &self.projection {
             Some(projection) => projection

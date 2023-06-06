@@ -5,11 +5,10 @@ use std::marker::PhantomData;
 use std::sync::Arc;
 
 use indexmap::IndexMap;
-use nsql_core::Name;
+use nsql_core::{Name, Oid};
 use nsql_storage_engine::{StorageEngine, Transaction};
 use parking_lot::RwLock;
 
-use crate::entry::Oid;
 use crate::private::CatalogEntity;
 
 pub enum Conflict<S, T> {
@@ -79,9 +78,10 @@ impl<S: StorageEngine, T: CatalogEntity<S>> CatalogSet<S, T> {
     pub fn create(
         &self,
         tx: &S::WriteTransaction<'_>,
+        container: &T::Container,
         info: T::CreateInfo,
     ) -> Result<Oid<T>, Conflict<S, T>> {
-        self.insert(tx, info)
+        self.insert(tx, container, info)
     }
 
     pub(crate) fn entries(&self, _tx: &dyn Transaction<'_, S>) -> Vec<Arc<T>> {
@@ -116,10 +116,11 @@ impl<S: StorageEngine, T: CatalogEntity<S>> CatalogSet<S, T> {
     pub(crate) fn insert(
         &self,
         tx: &S::WriteTransaction<'_>,
+        container: &T::Container,
         info: T::CreateInfo,
     ) -> Result<Oid<T>, Conflict<S, T>> {
         let oid = self.next_oid();
-        let value = T::create(tx, oid, info);
+        let value = T::create(tx, container, oid, info);
         if self.name_mapping.read().contains_key(&value.name()) {
             return Err(Conflict::AlreadyExists(PhantomData, value));
         }

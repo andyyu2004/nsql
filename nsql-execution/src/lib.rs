@@ -229,8 +229,8 @@ impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> ExecutionContext<'env, S
     }
 
     #[inline]
-    pub fn storage(&self) -> S {
-        self.storage.clone()
+    pub fn storage(&self) -> &S {
+        self.storage
     }
 
     #[inline]

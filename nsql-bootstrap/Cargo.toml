@@ -1,0 +1,9 @@
+[package]
+name = "nsql-bootstrap"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+nsql-catalog = { path = "../nsql-catalog" }
+nsql-storage = { path = "../nsql-storage" }
+nsql-storage-engine = { path = "../nsql-storage-engine" }

@@ -1,16 +1,10 @@
 use std::fmt;
 use std::ops::Index;
-use std::sync::Arc;
 
-use nsql_catalog::schema::Schema;
 use rkyv::with::RefAsBox;
 use rkyv::Archived;
 
 use crate::value::Value;
-
-pub struct TupleDeserializationContext {
-    pub schema: Arc<Schema>,
-}
 
 #[derive(Debug, Clone, PartialEq, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
 #[repr(transparent)]
@@ -76,6 +70,13 @@ impl From<Vec<Value>> for Tuple {
     #[inline]
     fn from(values: Vec<Value>) -> Self {
         Self::new(values.into_boxed_slice())
+    }
+}
+
+impl<const N: usize> From<[Value; N]> for Tuple {
+    #[inline]
+    fn from(values: [Value; N]) -> Self {
+        Self::new(values.into())
     }
 }
 

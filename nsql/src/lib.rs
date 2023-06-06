@@ -6,8 +6,8 @@ use std::sync::Arc;
 pub use anyhow::Error;
 use arc_swap::ArcSwapOption;
 use nsql_bind::Binder;
-pub use nsql_catalog::schema::LogicalType;
 use nsql_catalog::Catalog;
+pub use nsql_core::LogicalType;
 use nsql_execution::{ExecutionContext, PhysicalPlanner, TransactionContext, TransactionState};
 use nsql_opt::optimize;
 use nsql_plan::Planner;
@@ -32,7 +32,7 @@ impl<S: StorageEngine> Nsql<S> {
     pub fn create(path: impl AsRef<Path>) -> Result<Self> {
         let storage = S::create(path)?;
         let tx = storage.begin_write()?;
-        let catalog = Arc::new(Catalog::<S>::create(&tx)?);
+        let catalog = Arc::new(Catalog::<S>::create(&storage, &tx)?);
         tx.commit()?;
 
         Ok(Self::new(Shared { storage: Storage::new(storage), catalog }))
@@ -41,7 +41,7 @@ impl<S: StorageEngine> Nsql<S> {
     pub fn open(path: impl AsRef<Path>) -> Result<Self> {
         let storage = S::open(path)?;
         let tx = storage.begin_write()?;
-        let catalog = Arc::new(Catalog::<S>::create(&tx)?);
+        let catalog = Arc::new(Catalog::<S>::create(&storage, &tx)?);
         tx.commit()?;
 
         Ok(Self::new(Shared { storage: Storage::new(storage), catalog }))

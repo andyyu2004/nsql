@@ -3,8 +3,9 @@ mod column;
 use std::fmt;
 use std::sync::Arc;
 
+use nsql_storage::{TableStorage, TableStorageInfo};
 // use nsql_storage::TableStorage;
-use nsql_storage_engine::{StorageEngine, Transaction};
+use nsql_storage_engine::{ExecutionMode, ReadWriteExecutionMode, StorageEngine, Transaction};
 
 pub use self::column::{Column, ColumnIndex, ColumnRef, CreateColumnInfo};
 use crate::private::CatalogEntity;
@@ -12,9 +13,10 @@ use crate::set::CatalogSet;
 use crate::{Catalog, Container, Entity, EntityRef, Name, Namespace, Oid};
 
 pub struct Table<S> {
+    namespace: Oid<Namespace<S>>,
     oid: Oid<Self>,
     name: Name,
-    columns: CatalogSet<S, Column>,
+    columns: CatalogSet<S, Column<S>>,
 }
 
 impl<S: StorageEngine> Table<S> {
@@ -24,8 +26,38 @@ impl<S: StorageEngine> Table<S> {
     }
 
     #[inline]
-    pub fn columns(&self, tx: &dyn Transaction<'_, S>) -> Vec<Arc<Column>> {
-        self.all::<Column>(tx)
+    pub fn columns(&self, tx: &dyn Transaction<'_, S>) -> Vec<Arc<Column<S>>> {
+        self.all::<Column<S>>(tx)
+    }
+
+    pub fn storage<'env, 'txn, M: ExecutionMode<'env, S>>(
+        &self,
+        storage: &S,
+        tx: &'txn M::Transaction,
+    ) -> Result<TableStorage<'env, 'txn, S, M>, S::Error> {
+        TableStorage::open(
+            storage,
+            tx,
+            TableStorageInfo::new(
+                Name::from(format!("{}", TableRef { namespace: self.namespace, table: self.oid })),
+                self.columns(tx).iter().map(|c| c.as_ref().into()).collect(),
+            ),
+        )
+    }
+
+    pub fn get_or_create_storage<'env, 'txn>(
+        &self,
+        storage: &S,
+        tx: &'txn S::WriteTransaction<'env>,
+    ) -> Result<TableStorage<'env, 'txn, S, ReadWriteExecutionMode<S>>, S::Error> {
+        TableStorage::create(
+            storage,
+            tx,
+            TableStorageInfo::new(
+                Name::from(format!("{}", TableRef { namespace: self.namespace, table: self.oid })),
+                self.columns(tx).iter().map(|c| c.as_ref().into()).collect(),
+            ),
+        )
     }
 }
 
@@ -71,8 +103,13 @@ impl<S: StorageEngine> CatalogEntity<S> for Table<S> {
         &container.tables
     }
 
-    fn create(_tx: &S::WriteTransaction<'_>, oid: Oid<Self>, info: Self::CreateInfo) -> Self {
-        Self { oid, name: info.name, columns: Default::default() }
+    fn create(
+        _tx: &S::WriteTransaction<'_>,
+        container: &Self::Container,
+        oid: Oid<Self>,
+        info: Self::CreateInfo,
+    ) -> Self {
+        Self { oid, namespace: container.oid(), name: info.name, columns: Default::default() }
     }
 }
 

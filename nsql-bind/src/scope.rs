@@ -1,35 +1,43 @@
+use std::marker::PhantomData;
+
 use anyhow::bail;
-use nsql_catalog::schema::LogicalType;
 use nsql_catalog::{Column, Container, Entity, EntityRef, TableRef};
-use nsql_core::Name;
+use nsql_core::{LogicalType, Name};
 use nsql_storage_engine::{StorageEngine, Transaction};
 
 use super::unbound;
 use crate::{Binder, Path, Result, TableAlias};
 
-#[derive(Debug, Clone, Default)]
-pub(crate) struct Scope {
+#[derive(Debug, Clone)]
+pub(crate) struct Scope<S> {
     // FIXME tables need to store more info than this
     tables: rpds::HashTrieMap<Path, ()>,
     columns: rpds::Vector<(Path, LogicalType)>,
+    marker: std::marker::PhantomData<S>,
 }
 
-impl Scope {
+impl<S> Default for Scope<S> {
+    fn default() -> Self {
+        Self { tables: Default::default(), columns: Default::default(), marker: PhantomData }
+    }
+}
+
+impl<S: StorageEngine> Scope<S> {
     /// Insert a table and its columns to the scope
     #[tracing::instrument(skip(self, tx, binder, table_ref))]
-    pub fn bind_table<S: StorageEngine>(
+    pub fn bind_table(
         &self,
         binder: &Binder<S>,
         tx: &dyn Transaction<'_, S>,
         table_path: Path,
         table_ref: TableRef<S>,
         alias: Option<&TableAlias>,
-    ) -> Result<Scope> {
+    ) -> Result<Scope<S>> {
         tracing::debug!("binding table");
         let mut columns = self.columns.clone();
 
         let table = table_ref.get(&binder.catalog, tx);
-        let mut table_columns = table.all::<Column>(tx);
+        let mut table_columns = table.all::<Column<S>>(tx);
         table_columns.sort_by_key(|col| col.index());
 
         if let Some(alias) = alias {
@@ -63,7 +71,7 @@ impl Scope {
                 .push_back((Path::qualified(table_path.clone(), name), column.logical_type()));
         }
 
-        Ok(Self { tables: self.tables.insert(table_path, ()), columns })
+        Ok(Self { tables: self.tables.insert(table_path, ()), columns, marker: PhantomData })
     }
 
     pub fn lookup_column(&self, path: &Path) -> Result<(LogicalType, ir::TupleIndex)> {
@@ -73,7 +81,7 @@ impl Scope {
                     .columns
                     .iter()
                     .position(|(p, _)| p == path)
-                    .ok_or_else(|| unbound!(Column, path))?;
+                    .ok_or_else(|| unbound!(Column<S>, path))?;
 
                 let (_, ty) = &self.columns[idx];
                 Ok((ty.clone(), ir::TupleIndex::new(idx)))
@@ -86,7 +94,7 @@ impl Scope {
                     .filter(|(_, (p, _))| &p.name() == column_name)
                     .collect::<Vec<_>>()[..]
                 {
-                    [] => Err(unbound!(Column, path)),
+                    [] => Err(unbound!(Column<S>, path)),
                     [(idx, (_, ty))] => Ok((ty.clone(), ir::TupleIndex::new(*idx))),
                     matches => {
                         bail!(
@@ -105,7 +113,7 @@ impl Scope {
     }
 
     #[tracing::instrument(skip(self))]
-    pub fn bind_values(&self, values: &ir::Values) -> Result<Scope> {
+    pub fn bind_values(&self, values: &ir::Values) -> Result<Scope<S>> {
         let mut columns = self.columns.clone();
 
         for (i, expr) in values[0].iter().enumerate() {
@@ -114,7 +122,7 @@ impl Scope {
             columns = columns.push_back((Path::Unqualified(name), expr.ty.clone()));
         }
 
-        Ok(Self { tables: self.tables.clone(), columns })
+        Ok(Self { tables: self.tables.clone(), columns, marker: PhantomData })
     }
 
     /// Returns an iterator over the columns in the scope exposed as `Expr`s
@@ -153,6 +161,10 @@ impl Scope {
             columns = columns.push_back((path, ty.clone()));
         }
 
-        Ok(Scope { tables: self.tables.insert(Path::Unqualified(alias.table_name), ()), columns })
+        Ok(Scope {
+            tables: self.tables.insert(Path::Unqualified(alias.table_name), ()),
+            columns,
+            marker: PhantomData,
+        })
     }
 }

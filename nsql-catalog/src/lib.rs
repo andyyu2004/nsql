@@ -1,21 +1,20 @@
 #![deny(rust_2018_idioms)]
 
+mod bootstrap;
 mod entity;
-mod entry;
 pub mod schema;
 mod set;
 
 use std::sync::Arc;
 
 pub use anyhow::Error;
-use nsql_core::Name;
+use nsql_core::{Name, Oid};
 use nsql_storage_engine::{StorageEngine, Transaction};
 
 pub use self::entity::namespace::{CreateNamespaceInfo, Namespace, NamespaceEntity};
 pub use self::entity::table::{
     Column, ColumnIndex, ColumnRef, CreateColumnInfo, CreateTableInfo, Table, TableRef,
 };
-pub use self::entry::Oid;
 use self::private::CatalogEntity;
 use self::set::{CatalogSet, Conflict};
 
@@ -30,7 +29,9 @@ pub const DEFAULT_SCHEMA: &str = "main";
 
 impl<S: StorageEngine> Catalog<S> {
     /// Create a blank catalog with the default schema
-    pub fn create(tx: &S::WriteTransaction<'_>) -> Result<Self> {
+    pub fn create(storage: &S, tx: &S::WriteTransaction<'_>) -> Result<Self> {
+        bootstrap::bootstrap(storage, tx)?;
+
         let catalog = Self { schemas: Default::default() };
         catalog
             .create::<Namespace<S>>(tx, CreateNamespaceInfo { name: DEFAULT_SCHEMA.into() })
@@ -132,7 +133,12 @@ pub(crate) mod private {
         /// extract the `CatalogSet` from the `container` for `Self`
         fn catalog_set(container: &Self::Container) -> &CatalogSet<S, Self>;
 
-        fn create(tx: &S::WriteTransaction<'_>, oid: Oid<Self>, info: Self::CreateInfo) -> Self;
+        fn create(
+            tx: &S::WriteTransaction<'_>,
+            container: &Self::Container,
+            oid: Oid<Self>,
+            info: Self::CreateInfo,
+        ) -> Self;
 
         #[inline]
         fn insert(
@@ -140,7 +146,7 @@ pub(crate) mod private {
             tx: &S::WriteTransaction<'_>,
             info: Self::CreateInfo,
         ) -> Result<Oid<Self>, Conflict<S, Self>> {
-            Self::catalog_set(container).insert(tx, info)
+            Self::catalog_set(container).insert(tx, container, info)
         }
 
         // #[inline]
