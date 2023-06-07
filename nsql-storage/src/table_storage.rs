@@ -140,7 +140,14 @@ fn range_gen<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
                 let ks = unsafe { rkyv::archived_root::<Vec<Value>>(&k) };
                 let vs = unsafe { rkyv::archived_root::<Vec<Value>>(&v) };
                 let n = storage.info.columns.len();
-                debug_assert_eq!(ks.len() + vs.len(), n);
+                debug_assert_eq!(
+                    ks.len() + vs.len(),
+                    n,
+                    "expected {} columns, got {} columns (column_def: {:?})",
+                    n,
+                    ks.len() + vs.len(),
+                    storage.info.columns
+                );
                 let (mut i, mut j) = (0, 0);
                 let mut tuple = Vec::with_capacity(n);
 
@@ -164,6 +171,8 @@ fn range_gen<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
         }
     }
 }
+
+#[derive(Debug)]
 pub struct TableStorageInfo {
     columns: Vec<ColumnStorageInfo>,
     table_name: Name,
@@ -173,6 +182,11 @@ impl TableStorageInfo {
     #[inline]
     pub fn new(table_name: Name, columns: Vec<ColumnStorageInfo>) -> Self {
         assert!(
+            !columns.is_empty(),
+            "expected at least one column (this should be checked in the binder)"
+        );
+
+        assert!(
             columns.iter().any(|c| c.is_primary_key),
             "expected at least one primary key column (this should be checked in the binder)"
         );
@@ -181,6 +195,7 @@ impl TableStorageInfo {
     }
 }
 
+#[derive(Debug)]
 pub struct ColumnStorageInfo {
     logical_type: LogicalType,
     is_primary_key: bool,
