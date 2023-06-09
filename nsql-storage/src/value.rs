@@ -70,7 +70,7 @@ impl<'a, S: rkyv::ser::Serializer> rkyv::Serialize<S> for &'a Value {
 
 impl Value {
     #[inline]
-    pub fn cast<T: Cast>(self, default: T) -> Result<T, CastError<T>> {
+    pub fn cast<T: FromValue>(self, default: T) -> Result<T, CastError<T>> {
         if self.is_null() {
             return Ok(default);
         }
@@ -84,9 +84,9 @@ impl Value {
     }
 
     #[inline]
-    pub fn cast_non_null<T: Cast>(self) -> Result<T, CastError<T>> {
+    pub fn cast_non_null<T: FromValue>(self) -> Result<T, CastError<T>> {
         assert!(!self.is_null());
-        T::cast(self)
+        T::from_value(self)
     }
 
     #[inline]
@@ -117,16 +117,15 @@ impl fmt::Display for Value {
 }
 
 // FIXME missing lots of implementations
-pub trait Cast: private::Sealed + Sized {
+pub trait FromValue: private::Sealed + Sized {
     /// Cast a nsql `value` to a rust value.
-    #[doc(hidden)]
-    fn cast(value: Value) -> Result<Self, CastError<Self>>;
+    fn from_value(value: Value) -> Result<Self, CastError<Self>>;
 }
 
 impl private::Sealed for u64 {}
 
-impl Cast for u64 {
-    fn cast(value: Value) -> Result<Self, CastError<Self>> {
+impl FromValue for u64 {
+    fn from_value(value: Value) -> Result<Self, CastError<Self>> {
         match value {
             Value::Bool(b) => Ok(b as u64),
             Value::Int(i) => Ok(i as u64),
@@ -138,13 +137,17 @@ impl Cast for u64 {
 
 impl private::Sealed for bool {}
 
-impl Cast for bool {
-    fn cast(value: Value) -> Result<Self, CastError<Self>> {
+impl FromValue for bool {
+    fn from_value(value: Value) -> Result<Self, CastError<Self>> {
         match value {
             Value::Bool(b) => Ok(b),
             _ => Err(CastError { value, phantom: PhantomData }),
         }
     }
+}
+
+pub trait ToValue: private::Sealed {
+    fn to_value(self) -> Value;
 }
 
 mod private {

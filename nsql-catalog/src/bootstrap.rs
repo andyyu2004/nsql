@@ -1,29 +1,32 @@
 use nsql_core::LogicalType;
-use nsql_storage::tuple::Tuple;
+use nsql_storage::tuple::{FromTuple, Tuple};
 use nsql_storage::value::Value;
 use nsql_storage::{ColumnStorageInfo, Result, TableStorage, TableStorageInfo};
 use nsql_storage_engine::StorageEngine;
 
 use crate::{Column, Namespace, Oid, Table, TableRef};
 
-pub fn bootstrap<S: StorageEngine>(storage: &S, txn: &S::WriteTransaction<'_>) -> Result<()> {
+pub(crate) fn namespace_storage_info<S: StorageEngine>() -> TableStorageInfo {
+    TableStorageInfo::new(
+        TableRef {
+            namespace: catalog_namespace_oid::<S>(),
+            table: nsql_namespace_table_oid::<S>(),
+        }
+        .to_string()
+        .into(),
+        vec![
+            ColumnStorageInfo::new(LogicalType::Oid, true),
+            ColumnStorageInfo::new(LogicalType::Text, false),
+        ],
+    )
+}
+
+pub(crate) fn bootstrap<S: StorageEngine>(
+    storage: &S,
+    txn: &S::WriteTransaction<'_>,
+) -> Result<()> {
     // FIXME can derive/cleanup a lot of this
-    let mut namespace_storage = TableStorage::create(
-        storage,
-        txn,
-        TableStorageInfo::new(
-            TableRef {
-                namespace: catalog_namespace_oid::<S>(),
-                table: nsql_namespace_table_oid::<S>(),
-            }
-            .to_string()
-            .into(),
-            vec![
-                ColumnStorageInfo::new(LogicalType::Oid, true),
-                ColumnStorageInfo::new(LogicalType::Text, false),
-            ],
-        ),
-    )?;
+    let mut namespace_storage = TableStorage::create(storage, txn, namespace_storage_info::<S>())?;
 
     for namespace in bootstrap_nsql_namespaces::<S>() {
         namespace_storage.insert(&Tuple::from([
@@ -114,6 +117,12 @@ struct BootstrapColumn<S> {
     index: usize,
     ty: LogicalType,
     is_primary_key: bool,
+}
+
+impl<S> FromTuple for BootstrapColumn<S> {
+    fn from_tuple(tuple: &Tuple) -> std::result::Result<Self, nsql_storage::tuple::FromTupleError> {
+        todo!()
+    }
 }
 
 const fn catalog_namespace_oid<S>() -> Oid<Namespace<S>> {

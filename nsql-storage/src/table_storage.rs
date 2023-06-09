@@ -172,7 +172,7 @@ fn range_gen<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct TableStorageInfo {
     columns: Vec<ColumnStorageInfo>,
     table_name: Name,
@@ -195,7 +195,7 @@ impl TableStorageInfo {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ColumnStorageInfo {
     logical_type: LogicalType,
     is_primary_key: bool,

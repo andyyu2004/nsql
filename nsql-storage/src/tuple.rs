@@ -118,3 +118,13 @@ impl TupleIndex {
         self.0
     }
 }
+
+pub enum FromTupleError {}
+
+pub trait FromTuple: Sized {
+    fn from_tuple(tuple: &Tuple) -> Result<Self, FromTupleError>;
+}
+
+pub trait IntoTuple {
+    fn into_tuple(self) -> Tuple;
+}

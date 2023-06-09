@@ -9,7 +9,8 @@ use std::sync::Arc;
 
 pub use anyhow::Error;
 use nsql_core::{Name, Oid};
-use nsql_storage_engine::{StorageEngine, Transaction};
+use nsql_storage::{TableStorage, TableStorageInfo};
+use nsql_storage_engine::{ReadonlyExecutionMode, StorageEngine, Transaction};
 
 pub use self::entity::namespace::{CreateNamespaceInfo, Namespace, NamespaceEntity};
 pub use self::entity::table::{
@@ -23,6 +24,27 @@ pub type Result<T, E = Error> = std::result::Result<T, E>;
 #[derive(Debug)]
 pub struct Catalog<S> {
     schemas: CatalogSet<S, Namespace<S>>,
+}
+
+pub struct SystemTable<S> {
+    storage: S,
+    storage_info: TableStorageInfo,
+}
+
+impl<S: StorageEngine> SystemTable<S> {
+    pub fn new(storage: S, storage_info: TableStorageInfo) -> Self {
+        Self { storage, storage_info }
+    }
+
+    pub fn scan(&self, tx: &S::Transaction<'_>) -> Result<()> {
+        let storage = Arc::new(TableStorage::<S, ReadonlyExecutionMode<S>>::open(
+            &self.storage,
+            tx,
+            self.storage_info.clone(),
+        )?);
+        let tuples = storage.scan(None);
+        Ok(())
+    }
 }
 
 pub const DEFAULT_SCHEMA: &str = "main";
