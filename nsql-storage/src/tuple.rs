@@ -1,10 +1,11 @@
+use std::error::Error;
 use std::fmt;
-use std::ops::Index;
+use std::ops::{Index, IndexMut};
 
 use rkyv::with::RefAsBox;
 use rkyv::Archived;
 
-use crate::value::Value;
+use crate::value::{CastError, FromValue, Value};
 
 #[derive(Debug, Clone, PartialEq, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
 #[repr(transparent)]
@@ -103,6 +104,22 @@ impl Index<TupleIndex> for Tuple {
     }
 }
 
+impl Index<usize> for Tuple {
+    type Output = Value;
+
+    #[inline]
+    fn index(&self, index: usize) -> &Self::Output {
+        &self.0[index]
+    }
+}
+
+impl IndexMut<usize> for Tuple {
+    #[inline]
+    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
+        &mut self.0[index]
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Copy)]
 pub struct TupleIndex(usize);
 
@@ -119,10 +136,33 @@ impl TupleIndex {
     }
 }
 
-pub enum FromTupleError {}
+#[derive(Debug)]
+pub enum FromTupleError {
+    ColumnCountMismatch { expected: usize, actual: usize },
+    InvalidCast(Box<dyn Error + Send + Sync>),
+}
+
+impl fmt::Display for FromTupleError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::ColumnCountMismatch { expected, actual } => {
+                write!(f, "expected {} columns, got {}", expected, actual)
+            }
+            Self::InvalidCast(err) => write!(f, "invalid cast: {}", err),
+        }
+    }
+}
+
+impl Error for FromTupleError {}
+
+impl<T: 'static> From<CastError<T>> for FromTupleError {
+    fn from(err: CastError<T>) -> Self {
+        Self::InvalidCast(Box::new(err))
+    }
+}
 
 pub trait FromTuple: Sized {
-    fn from_tuple(tuple: &Tuple) -> Result<Self, FromTupleError>;
+    fn from_tuple(tuple: Tuple) -> Result<Self, FromTupleError>;
 }
 
 pub trait IntoTuple {

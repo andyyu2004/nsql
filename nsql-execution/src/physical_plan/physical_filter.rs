@@ -27,7 +27,8 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
         input: Tuple,
     ) -> ExecutionResult<OperatorState<Tuple>> {
         let value = self.evaluator.evaluate_expr(&input, &self.predicate);
-        let keep = value.cast::<bool>(false).expect("this should have failed during planning");
+        let keep =
+            value.cast::<bool>().expect("this should have failed during planning").unwrap_or(false);
         tracing::debug!(%keep, %input, "filtering tuple");
         // A null predicate is treated as false.
         match keep {

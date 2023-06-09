@@ -2,13 +2,13 @@ use std::error::Error;
 use std::fmt;
 use std::marker::PhantomData;
 
-use nsql_core::{LogicalType, UntypedOid};
+use nsql_core::{LogicalType, Oid, UntypedOid};
 use rust_decimal::prelude::ToPrimitive;
 pub use rust_decimal::Decimal;
 
 pub struct CastError<T> {
     value: Value,
-    phantom: PhantomData<T>,
+    phantom: PhantomData<fn() -> T>,
 }
 
 impl<T> CastError<T> {
@@ -70,12 +70,17 @@ impl<'a, S: rkyv::ser::Serializer> rkyv::Serialize<S> for &'a Value {
 
 impl Value {
     #[inline]
-    pub fn cast<T: FromValue>(self, default: T) -> Result<T, CastError<T>> {
+    pub fn take(&mut self) -> Self {
+        std::mem::replace(self, Value::Null)
+    }
+
+    #[inline]
+    pub fn cast<T: FromValue>(self) -> Result<Option<T>, CastError<T>> {
         if self.is_null() {
-            return Ok(default);
+            return Ok(None);
         }
 
-        self.cast_non_null()
+        self.cast_non_null().map(Some)
     }
 
     #[inline]
@@ -85,7 +90,10 @@ impl Value {
 
     #[inline]
     pub fn cast_non_null<T: FromValue>(self) -> Result<T, CastError<T>> {
-        assert!(!self.is_null());
+        if self.is_null() {
+            return Err(CastError::new(self));
+        }
+
         T::from_value(self)
     }
 
@@ -135,12 +143,56 @@ impl FromValue for u64 {
     }
 }
 
+impl<T> private::Sealed for Oid<T> {}
+
+impl<T> FromValue for Oid<T> {
+    fn from_value(value: Value) -> Result<Self, CastError<Self>> {
+        match value {
+            Value::Oid(oid) => Ok(oid.cast()),
+            _ => Err(CastError { value, phantom: PhantomData }),
+        }
+    }
+}
+
 impl private::Sealed for bool {}
 
 impl FromValue for bool {
     fn from_value(value: Value) -> Result<Self, CastError<Self>> {
         match value {
             Value::Bool(b) => Ok(b),
+            _ => Err(CastError { value, phantom: PhantomData }),
+        }
+    }
+}
+
+impl private::Sealed for i8 {}
+
+impl FromValue for i8 {
+    fn from_value(value: Value) -> Result<Self, CastError<Self>> {
+        match value {
+            Value::Int(i) => Ok(i as i8),
+            _ => Err(CastError { value, phantom: PhantomData }),
+        }
+    }
+}
+
+impl private::Sealed for u8 {}
+
+impl FromValue for u8 {
+    fn from_value(value: Value) -> Result<Self, CastError<Self>> {
+        match value {
+            Value::Int(i) => Ok(i as u8),
+            _ => Err(CastError { value, phantom: PhantomData }),
+        }
+    }
+}
+
+impl private::Sealed for String {}
+
+impl FromValue for String {
+    fn from_value(value: Value) -> Result<Self, CastError<Self>> {
+        match value {
+            Value::Text(s) => Ok(s),
             _ => Err(CastError { value, phantom: PhantomData }),
         }
     }

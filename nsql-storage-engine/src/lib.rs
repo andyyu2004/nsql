@@ -13,7 +13,7 @@ use std::path::Path;
 pub use fallible_iterator;
 pub use fallible_iterator::FallibleIterator;
 
-pub trait StorageEngine: Clone + Send + Sync + Sized + fmt::Debug + 'static {
+pub trait StorageEngine: Send + Sync + Sized + fmt::Debug + 'static {
     type Error: Send + Sync + Error + 'static;
 
     type Bytes<'txn>: Deref<Target = [u8]>;

@@ -1,5 +1,5 @@
 use nsql_core::LogicalType;
-use nsql_storage::tuple::{FromTuple, Tuple};
+use nsql_storage::tuple::{FromTuple, FromTupleError, IntoTuple, Tuple};
 use nsql_storage::value::Value;
 use nsql_storage::{ColumnStorageInfo, Result, TableStorage, TableStorageInfo};
 use nsql_storage_engine::StorageEngine;
@@ -89,7 +89,7 @@ pub(crate) fn bootstrap<S: StorageEngine>(
         column_storage.insert(&Tuple::from([
             Value::Oid(column.oid.untyped()),
             Value::Oid(column.table.untyped()),
-            Value::Text(column.name.into()),
+            Value::Text(column.name),
             Value::Int(column.index as i32),
             Value::Text(column.ty.to_string()),
             Value::Bool(column.is_primary_key),
@@ -113,15 +113,39 @@ struct BoostrapTable<S> {
 struct BootstrapColumn<S> {
     oid: Oid<Column<S>>,
     table: Oid<Table<S>>,
-    name: &'static str,
-    index: usize,
-    ty: LogicalType,
+    name: String,
+    index: u8,
+    ty: Oid<LogicalType>,
     is_primary_key: bool,
 }
 
-impl<S> FromTuple for BootstrapColumn<S> {
-    fn from_tuple(tuple: &Tuple) -> std::result::Result<Self, nsql_storage::tuple::FromTupleError> {
-        todo!()
+impl<S: StorageEngine> FromTuple for BootstrapColumn<S> {
+    fn from_tuple(mut tuple: Tuple) -> Result<Self, FromTupleError> {
+        if tuple.len() != 6 {
+            return Err(FromTupleError::ColumnCountMismatch { expected: 6, actual: tuple.len() });
+        }
+
+        Ok(Self {
+            oid: tuple[0].take().cast_non_null()?,
+            table: tuple[1].take().cast_non_null()?,
+            name: tuple[2].take().cast_non_null()?,
+            index: tuple[3].take().cast_non_null()?,
+            ty: tuple[4].take().cast_non_null()?,
+            is_primary_key: tuple[5].take().cast_non_null()?,
+        })
+    }
+}
+
+impl<S> IntoTuple for BootstrapColumn<S> {
+    fn into_tuple(self) -> Tuple {
+        Tuple::from([
+            Value::Oid(self.oid.untyped()),
+            Value::Oid(self.table.untyped()),
+            Value::Text(self.name),
+            Value::Int(self.index as i32),
+            Value::Text(self.ty.to_string()),
+            Value::Bool(self.is_primary_key),
+        ])
     }
 }
 
@@ -143,6 +167,26 @@ const fn nsql_table_table_oid<S>() -> Oid<Table<S>> {
 
 const fn nsql_attribute_table_oid<S>() -> Oid<Table<S>> {
     Oid::new(102)
+}
+
+const fn nsql_ty_table_oid<S>() -> Oid<Table<S>> {
+    Oid::new(102)
+}
+
+const fn nsql_ty_oid_oid() -> Oid<LogicalType> {
+    Oid::new(100)
+}
+
+const fn nsql_ty_bool_oid() -> Oid<LogicalType> {
+    Oid::new(101)
+}
+
+const fn nsql_ty_int_oid() -> Oid<LogicalType> {
+    Oid::new(102)
+}
+
+const fn nsql_ty_text_oid() -> Oid<LogicalType> {
+    Oid::new(103)
 }
 
 fn bootstrap_nsql_namespaces<S: StorageEngine>() -> Vec<BoostrapNamespace<S>> {
@@ -176,84 +220,92 @@ fn bootstrap_nsql_column<S: StorageEngine>() -> Vec<BootstrapColumn<S>> {
     vec![
         BootstrapColumn {
             oid: Oid::new(0),
-            name: "oid",
+            name: "oid".into(),
             table: nsql_namespace_table_oid(),
             index: 0,
-            ty: LogicalType::Oid,
+            ty: nsql_ty_oid_oid(),
             is_primary_key: true,
         },
         BootstrapColumn {
             oid: Oid::new(1),
-            name: "name",
+            name: "name".into(),
             table: nsql_namespace_table_oid(),
             index: 1,
-            ty: LogicalType::Text,
+            ty: nsql_ty_text_oid(),
             is_primary_key: false,
         },
         BootstrapColumn {
             oid: Oid::new(2),
-            name: "oid",
+            name: "oid".into(),
             table: nsql_table_table_oid(),
             index: 0,
-            ty: LogicalType::Oid,
+            ty: nsql_ty_oid_oid(),
             is_primary_key: true,
         },
         BootstrapColumn {
             oid: Oid::new(3),
-            name: "name",
+            name: "name".into(),
             table: nsql_table_table_oid(),
             index: 1,
-            ty: LogicalType::Text,
+            ty: nsql_ty_text_oid(),
             is_primary_key: false,
         },
         BootstrapColumn {
             oid: Oid::new(4),
-            name: "oid",
+            name: "oid".into(),
             table: nsql_attribute_table_oid(),
             index: 0,
-            ty: LogicalType::Oid,
+            ty: nsql_ty_oid_oid(),
             is_primary_key: true,
         },
         BootstrapColumn {
             oid: Oid::new(5),
-            name: "table",
+            name: "table".into(),
             table: nsql_attribute_table_oid(),
             index: 1,
-            ty: LogicalType::Oid,
+            ty: nsql_ty_oid_oid(),
             is_primary_key: false,
         },
         BootstrapColumn {
             oid: Oid::new(6),
-            name: "name",
+            name: "name".into(),
             table: nsql_attribute_table_oid(),
             index: 2,
-            ty: LogicalType::Text,
+            ty: nsql_ty_text_oid(),
             is_primary_key: false,
         },
         BootstrapColumn {
             oid: Oid::new(7),
-            name: "index",
+            name: "index".into(),
             table: nsql_attribute_table_oid(),
             index: 3,
-            ty: LogicalType::Int,
+            ty: nsql_ty_int_oid(),
             is_primary_key: false,
         },
         BootstrapColumn {
             oid: Oid::new(8),
-            name: "ty",
+            name: "ty".into(),
             table: nsql_attribute_table_oid(),
             index: 4,
             // text for now, but should probably reference `nsql_type` table
-            ty: LogicalType::Text,
+            ty: nsql_ty_text_oid(),
             is_primary_key: false,
         },
         BootstrapColumn {
             oid: Oid::new(9),
-            name: "is_primary_key",
+            name: "is_primary_key".into(),
             table: nsql_attribute_table_oid(),
             index: 5,
-            ty: LogicalType::Bool,
+            ty: nsql_ty_bool_oid(),
             is_primary_key: false,
+        },
+        BootstrapColumn {
+            oid: Oid::new(10),
+            name: "oid".into(),
+            table: nsql_ty_table_oid(),
+            index: 0,
+            ty: nsql_ty_oid_oid(),
+            is_primary_key: true,
         },
     ]
 }

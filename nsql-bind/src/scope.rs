@@ -8,12 +8,18 @@ use nsql_storage_engine::{StorageEngine, Transaction};
 use super::unbound;
 use crate::{Binder, Path, Result, TableAlias};
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub(crate) struct Scope<S> {
     // FIXME tables need to store more info than this
     tables: rpds::HashTrieMap<Path, ()>,
     columns: rpds::Vector<(Path, LogicalType)>,
     marker: std::marker::PhantomData<S>,
+}
+
+impl<S> Clone for Scope<S> {
+    fn clone(&self) -> Self {
+        Self { tables: self.tables.clone(), columns: self.columns.clone(), marker: PhantomData }
+    }
 }
 
 impl<S> Default for Scope<S> {

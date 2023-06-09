@@ -18,9 +18,14 @@ use nsql_storage_engine::{ReadOrWriteTransaction, StorageEngine, WriteTransactio
 
 pub type Result<T, E = anyhow::Error> = std::result::Result<T, E>;
 
-#[derive(Clone)]
 pub struct Nsql<S> {
     shared: Arc<Shared<S>>,
+}
+
+impl<S> Clone for Nsql<S> {
+    fn clone(&self) -> Self {
+        Self { shared: self.shared.clone() }
+    }
 }
 
 pub struct MaterializedQueryOutput {

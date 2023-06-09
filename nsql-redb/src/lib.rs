@@ -12,9 +12,9 @@ use redb::{AccessGuard, ReadableTable};
 
 type Result<T, E = redb::Error> = std::result::Result<T, E>;
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct RedbStorageEngine {
-    db: Arc<redb::Database>,
+    db: redb::Database,
 }
 
 #[derive(Clone)]
@@ -48,7 +48,7 @@ impl nsql_storage_engine::StorageEngine for RedbStorageEngine {
     where
         Self: Sized,
     {
-        Ok(redb::Database::create(path).map(Arc::new).map(|db| Self { db })?)
+        Ok(redb::Database::create(path).map(|db| Self { db })?)
     }
 
     #[inline]
@@ -56,7 +56,7 @@ impl nsql_storage_engine::StorageEngine for RedbStorageEngine {
     where
         Self: Sized,
     {
-        Ok(redb::Database::open(path).map(Arc::new).map(|db| Self { db })?)
+        Ok(redb::Database::open(path).map(|db| Self { db })?)
     }
 
     #[inline]

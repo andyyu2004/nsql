@@ -1130,6 +1130,7 @@ name = "nsql-catalog"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "fix-hidden-lifetime-bug",
  "indexmap",
  "nsql-core",
  "nsql-storage",

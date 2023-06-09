@@ -66,3 +66,9 @@ impl<T: ?Sized> Oid<T> {
         Oid::new(self.oid)
     }
 }
+
+impl UntypedOid {
+    pub fn cast<T: ?Sized>(self) -> Oid<T> {
+        Oid::new(self.oid)
+    }
+}

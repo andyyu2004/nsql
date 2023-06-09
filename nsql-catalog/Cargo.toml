@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1.0.70"
+fix-hidden-lifetime-bug = "0.2.5"
 indexmap = "1.9.3"
 nsql-core = { path = "../nsql-core" }
 nsql-storage = { path = "../nsql-storage" }
