@@ -2,40 +2,38 @@ use nsql_core::LogicalType;
 use nsql_storage::tuple::{FromTuple, FromTupleError, IntoTuple, Tuple};
 use nsql_storage::value::Value;
 use nsql_storage::{ColumnStorageInfo, Result, TableStorage, TableStorageInfo};
-use nsql_storage_engine::StorageEngine;
+use nsql_storage_engine::{ReadWriteExecutionMode, StorageEngine};
 
+use crate::system_table::SystemTableView;
 use crate::{Column, Namespace, Oid, Table, TableRef};
 
-pub(crate) fn namespace_storage_info<S: StorageEngine>() -> TableStorageInfo {
-    TableStorageInfo::new(
-        TableRef {
-            namespace: catalog_namespace_oid::<S>(),
-            table: nsql_namespace_table_oid::<S>(),
-        }
-        .to_string()
-        .into(),
-        vec![
-            ColumnStorageInfo::new(LogicalType::Oid, true),
-            ColumnStorageInfo::new(LogicalType::Text, false),
-        ],
-    )
-}
-
-pub(crate) fn bootstrap<S: StorageEngine>(
-    storage: &S,
-    txn: &S::WriteTransaction<'_>,
+pub(crate) fn bootstrap<'env, S: StorageEngine>(
+    storage: &'env S,
+    txn: &S::WriteTransaction<'env>,
 ) -> Result<()> {
-    // FIXME can derive/cleanup a lot of this
-    let mut namespace_storage = TableStorage::create(storage, txn, namespace_storage_info::<S>())?;
+    let mut namespace_table =
+        SystemTableView::<S, ReadWriteExecutionMode, BootstrapNamespace<S>>::new(
+            storage,
+            txn,
+            TableStorageInfo::new(
+                TableRef {
+                    namespace: catalog_namespace_oid::<S>(),
+                    table: nsql_namespace_table_oid::<S>(),
+                }
+                .to_string()
+                .into(),
+                vec![
+                    ColumnStorageInfo::new(LogicalType::Oid, true),
+                    ColumnStorageInfo::new(LogicalType::Text, false),
+                ],
+            ),
+        )?;
 
     for namespace in bootstrap_nsql_namespaces::<S>() {
-        namespace_storage.insert(&Tuple::from([
-            Value::Oid(namespace.oid.untyped()),
-            Value::Text(namespace.name.into()),
-        ]))?;
+        namespace_table.insert(namespace)?;
     }
 
-    let mut table_storage = TableStorage::create(
+    let mut table_table = SystemTableView::<S, ReadWriteExecutionMode, BootstrapTable<S>>::new(
         storage,
         txn,
         TableStorageInfo::new(
@@ -55,14 +53,10 @@ pub(crate) fn bootstrap<S: StorageEngine>(
 
     let tables = bootstrap_nsql_tables::<S>();
     for table in tables {
-        table_storage.insert(&Tuple::from([
-            Value::Oid(table.oid.untyped()),
-            Value::Oid(table.namespace.untyped()),
-            Value::Text(table.name.into()),
-        ]))?;
+        table_table.insert(table)?;
     }
 
-    let mut column_storage = TableStorage::create(
+    let mut column_table = SystemTableView::<S, ReadWriteExecutionMode, BootstrapColumn<S>>::new(
         storage,
         txn,
         TableStorageInfo::new(
@@ -84,30 +78,48 @@ pub(crate) fn bootstrap<S: StorageEngine>(
     )?;
 
     let columns = bootstrap_nsql_column::<S>();
-
     for column in columns {
-        column_storage.insert(&Tuple::from([
-            Value::Oid(column.oid.untyped()),
-            Value::Oid(column.table.untyped()),
-            Value::Text(column.name),
-            Value::Int(column.index as i32),
-            Value::Text(column.ty.to_string()),
-            Value::Bool(column.is_primary_key),
-        ]))?;
+        column_table.insert(column)?;
     }
 
     Ok(())
 }
 
-struct BoostrapNamespace<S> {
+struct BootstrapNamespace<S> {
     oid: Oid<Namespace<S>>,
-    name: &'static str,
+    name: String,
 }
 
-struct BoostrapTable<S> {
+impl<S: StorageEngine> FromTuple for BootstrapNamespace<S> {
+    fn from_tuple(mut tuple: Tuple) -> std::result::Result<Self, FromTupleError> {
+        if tuple.len() != 2 {
+            return Err(FromTupleError::ColumnCountMismatch { expected: 2, actual: tuple.len() });
+        }
+
+        Ok(Self { oid: tuple[0].take().cast_non_null()?, name: tuple[1].take().cast_non_null()? })
+    }
+}
+
+impl<S> IntoTuple for BootstrapNamespace<S> {
+    fn into_tuple(self) -> Tuple {
+        Tuple::from([Value::Oid(self.oid.untyped()), Value::Text(self.name)])
+    }
+}
+
+struct BootstrapTable<S> {
     oid: Oid<Table<S>>,
     namespace: Oid<Namespace<S>>,
-    name: &'static str,
+    name: String,
+}
+
+impl<S> IntoTuple for BootstrapTable<S> {
+    fn into_tuple(self) -> Tuple {
+        Tuple::from([
+            Value::Oid(self.oid.untyped()),
+            Value::Oid(self.namespace.untyped()),
+            Value::Text(self.name),
+        ])
+    }
 }
 
 struct BootstrapColumn<S> {
@@ -170,7 +182,7 @@ const fn nsql_attribute_table_oid<S>() -> Oid<Table<S>> {
 }
 
 const fn nsql_ty_table_oid<S>() -> Oid<Table<S>> {
-    Oid::new(102)
+    Oid::new(103)
 }
 
 const fn nsql_ty_oid_oid() -> Oid<LogicalType> {
@@ -189,28 +201,33 @@ const fn nsql_ty_text_oid() -> Oid<LogicalType> {
     Oid::new(103)
 }
 
-fn bootstrap_nsql_namespaces<S: StorageEngine>() -> Vec<BoostrapNamespace<S>> {
+fn bootstrap_nsql_namespaces<S: StorageEngine>() -> Vec<BootstrapNamespace<S>> {
     vec![
-        BoostrapNamespace { oid: main_namespace_oid(), name: "main" },
-        BoostrapNamespace { oid: catalog_namespace_oid(), name: "nsql_catalog" },
+        BootstrapNamespace { oid: main_namespace_oid(), name: "main".into() },
+        BootstrapNamespace { oid: catalog_namespace_oid(), name: "nsql_catalog".into() },
     ]
 }
 
-fn bootstrap_nsql_tables<S: StorageEngine>() -> Vec<BoostrapTable<S>> {
+fn bootstrap_nsql_tables<S: StorageEngine>() -> Vec<BootstrapTable<S>> {
     vec![
-        BoostrapTable {
+        BootstrapTable {
             oid: nsql_namespace_table_oid(),
-            name: "nsql_namespace",
+            name: "nsql_namespace".into(),
             namespace: catalog_namespace_oid(),
         },
-        BoostrapTable {
+        BootstrapTable {
             oid: nsql_table_table_oid(),
-            name: "nsql_table",
+            name: "nsql_table.into()".into(),
             namespace: catalog_namespace_oid(),
         },
-        BoostrapTable {
+        BootstrapTable {
             oid: nsql_attribute_table_oid(),
-            name: "nsql_attribute",
+            name: "nsql_attribute.into()".into(),
+            namespace: catalog_namespace_oid(),
+        },
+        BootstrapTable {
+            oid: nsql_ty_table_oid(),
+            name: "nsql_ty.into()".into(),
             namespace: catalog_namespace_oid(),
         },
     ]

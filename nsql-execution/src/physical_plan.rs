@@ -76,7 +76,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalPlanner<S> {
         &self,
         tx: &dyn Transaction<'env, S>,
         plan: Box<Plan<S>>,
-    ) -> Result<PhysicalPlan<'env, 'txn, S, ReadWriteExecutionMode<S>>> {
+    ) -> Result<PhysicalPlan<'env, 'txn, S, ReadWriteExecutionMode>> {
         self.plan_write_node(tx, plan).map(PhysicalPlan)
     }
 
@@ -84,7 +84,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalPlanner<S> {
         &self,
         tx: &dyn Transaction<'env, S>,
         plan: Box<Plan<S>>,
-    ) -> Result<Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode<S>>>> {
+    ) -> Result<Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode>>> {
         let plan = match *plan {
             Plan::Update { table_ref, source, returning } => {
                 let source = self.plan_write_node(tx, source)?;

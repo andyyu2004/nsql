@@ -48,7 +48,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
             .as_ref()
             .map(|p| p.iter().map(|&idx| TupleIndex::new(idx.as_usize())).collect());
 
-        let stream = storage.scan(projection)?;
+        let stream = storage.scan_arc(projection)?;
         Ok(Box::new(stream) as _)
     }
 }

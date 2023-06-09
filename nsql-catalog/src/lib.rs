@@ -30,7 +30,7 @@ pub const DEFAULT_SCHEMA: &str = "main";
 
 impl<S: StorageEngine> Catalog<S> {
     /// Create a blank catalog with the default schema
-    pub fn create(storage: &S, tx: &S::WriteTransaction<'_>) -> Result<Self> {
+    pub fn create<'env>(storage: &'env S, tx: &S::WriteTransaction<'env>) -> Result<Self> {
         bootstrap::bootstrap(storage, tx)?;
 
         let catalog = Self { schemas: Default::default() };

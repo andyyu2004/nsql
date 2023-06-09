@@ -12,7 +12,7 @@ use rkyv::{Archive, Deserialize, Serialize};
 #[derive(Archive, Serialize, Deserialize)]
 pub struct Oid<T: ?Sized> {
     oid: u64,
-    marker: PhantomData<T>,
+    marker: PhantomData<fn() -> T>,
 }
 
 pub type UntypedOid = Oid<()>;

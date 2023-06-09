@@ -49,7 +49,7 @@ impl<S: StorageEngine> Table<S> {
         &self,
         storage: &S,
         tx: &'txn S::WriteTransaction<'env>,
-    ) -> Result<TableStorage<'env, 'txn, S, ReadWriteExecutionMode<S>>, S::Error> {
+    ) -> Result<TableStorage<'env, 'txn, S, ReadWriteExecutionMode>, S::Error> {
         TableStorage::create(
             storage,
             tx,

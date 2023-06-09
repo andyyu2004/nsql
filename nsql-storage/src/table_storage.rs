@@ -20,7 +20,7 @@ pub struct TableStorage<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'en
     info: TableStorageInfo,
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine> TableStorage<'env, 'txn, S, ReadWriteExecutionMode<S>> {
+impl<'env: 'txn, 'txn, S: StorageEngine> TableStorage<'env, 'txn, S, ReadWriteExecutionMode> {
     #[inline]
     pub fn create(
         storage: &S,
@@ -46,7 +46,8 @@ impl<'env: 'txn, 'txn, S: StorageEngine> TableStorage<'env, 'txn, S, ReadWriteEx
         let (k, v) = self.split_tuple(tuple);
         if self.tree.exists(&k)? {
             // FIXME better error message
-            bail!("duplicate key value violates primary key constraint")
+            let key = unsafe { rkyv::archived_root::<Vec<Value>>(&k) };
+            bail!("duplicate key value violates primary key constraint: {:?}", key)
         }
 
         self.tree.put(&k, &v)?;
@@ -106,17 +107,97 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> TableStorage
     #[inline]
     #[fix_hidden_lifetime_bug]
     pub fn scan(
-        self: Arc<Self>,
+        &self,
         projection: Option<Box<[TupleIndex]>>,
-    ) -> Result<impl FallibleIterator<Item = Tuple, Error = S::Error> + 'txn, S::Error> {
+    ) -> Result<impl FallibleIterator<Item = Tuple, Error = S::Error> + '_, S::Error> {
         let mut gen = Box::pin(GeneratorFn::empty());
         gen.as_mut().init(range_gen::<S, M>, (self, projection));
         Ok(fallible_iterator::convert(gen))
     }
+
+    /// The `arc` variant is useful for when you want to return the iterator from a function and
+    /// the storage is a local variable for example.
+    #[inline]
+    #[fix_hidden_lifetime_bug]
+    pub fn scan_arc(
+        self: Arc<Self>,
+        projection: Option<Box<[TupleIndex]>>,
+    ) -> Result<impl FallibleIterator<Item = Tuple, Error = S::Error> + 'txn, S::Error> {
+        let mut gen = Box::pin(GeneratorFn::empty());
+        gen.as_mut().init(range_gen_arc::<S, M>, (self, projection));
+        Ok(fallible_iterator::convert(gen))
+    }
 }
 
+fn unsplit_tuple(
+    info: &TableStorageInfo,
+    projection: Option<&[TupleIndex]>,
+    k: &[u8],
+    v: &[u8],
+) -> Tuple {
+    // FIXME this is a very naive and inefficient algorithm
+    let ks = unsafe { rkyv::archived_root::<Vec<Value>>(k) };
+    let vs = unsafe { rkyv::archived_root::<Vec<Value>>(v) };
+    let n = info.columns.len();
+    debug_assert_eq!(
+        ks.len() + vs.len(),
+        n,
+        "expected {} columns, got {} columns (column_def: {:?})",
+        n,
+        ks.len() + vs.len(),
+        info.columns
+    );
+    let (mut i, mut j) = (0, 0);
+    let mut tuple = Vec::with_capacity(n);
+
+    for col in &info.columns {
+        if col.is_primary_key {
+            tuple.push(&ks[i]);
+            i += 1;
+        } else {
+            tuple.push(&vs[j]);
+            j += 1;
+        }
+    }
+
+    match &projection {
+        Some(projection) => Tuple::project_archived(tuple.as_slice(), projection),
+        None => tuple.into_iter().map(nsql_rkyv::deserialize).collect(),
+    }
+}
+
+// FIXME dedup the code from below
 #[generator(yield(Result<Tuple, S::Error>))]
 fn range_gen<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
+    storage: &TableStorage<'env, 'txn, S, M>,
+    projection: Option<Box<[TupleIndex]>>,
+) {
+    let mut range = match storage.tree.range(..) {
+        Ok(range) => range,
+        Err(err) => {
+            yield_!(Err(err));
+            return;
+        }
+    };
+
+    loop {
+        match range.next() {
+            Err(err) => {
+                yield_!(Err(err));
+                return;
+            }
+            Ok(None) => return,
+            Ok(Some((k, v))) => {
+                let tuple = unsplit_tuple(&storage.info, projection.as_deref(), &k, &v);
+                yield_!(Ok(tuple))
+            }
+        }
+    }
+}
+
+// FIXME dedup the code from above
+#[generator(yield(Result<Tuple, S::Error>))]
+fn range_gen_arc<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
     storage: Arc<TableStorage<'env, 'txn, S, M>>,
     projection: Option<Box<[TupleIndex]>>,
 ) {
@@ -136,36 +217,7 @@ fn range_gen<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
             }
             Ok(None) => return,
             Ok(Some((k, v))) => {
-                // FIXME this is a very naive and inefficient algorithm
-                let ks = unsafe { rkyv::archived_root::<Vec<Value>>(&k) };
-                let vs = unsafe { rkyv::archived_root::<Vec<Value>>(&v) };
-                let n = storage.info.columns.len();
-                debug_assert_eq!(
-                    ks.len() + vs.len(),
-                    n,
-                    "expected {} columns, got {} columns (column_def: {:?})",
-                    n,
-                    ks.len() + vs.len(),
-                    storage.info.columns
-                );
-                let (mut i, mut j) = (0, 0);
-                let mut tuple = Vec::with_capacity(n);
-
-                for col in &storage.info.columns {
-                    if col.is_primary_key {
-                        tuple.push(&ks[i]);
-                        i += 1;
-                    } else {
-                        tuple.push(&vs[j]);
-                        j += 1;
-                    }
-                }
-
-                let tuple = match &projection {
-                    Some(projection) => Tuple::project_archived(tuple.as_slice(), projection),
-                    None => tuple.into_iter().map(nsql_rkyv::deserialize).collect(),
-                };
-
+                let tuple = unsplit_tuple(&storage.info, projection.as_deref(), &k, &v);
                 yield_!(Ok(tuple))
             }
         }

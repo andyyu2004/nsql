@@ -6,7 +6,7 @@ use super::*;
 use crate::ReadWriteExecutionMode;
 
 pub(crate) struct PhysicalInsert<'env, 'txn, S> {
-    children: [Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode<S>>>; 1],
+    children: [Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode>>; 1],
     table_ref: TableRef<S>,
     returning: Option<Box<[ir::Expr]>>,
     returning_tuples: RwLock<Vec<Tuple>>,
@@ -16,9 +16,9 @@ pub(crate) struct PhysicalInsert<'env, 'txn, S> {
 impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalInsert<'env, 'txn, S> {
     pub fn plan(
         table_ref: TableRef<S>,
-        source: Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode<S>>>,
+        source: Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode>>,
         returning: Option<Box<[ir::Expr]>>,
-    ) -> Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode<S>>> {
+    ) -> Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode>> {
         Arc::new(Self {
             table_ref,
             returning,
@@ -29,18 +29,18 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalInsert<'env, 'txn, S> {
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode<S>>
+impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode>
     for PhysicalInsert<'env, 'txn, S>
 {
-    fn children(&self) -> &[Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode<S>>>] {
+    fn children(&self) -> &[Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode>>] {
         &self.children
     }
 
     fn as_source(
         self: Arc<Self>,
     ) -> Result<
-        Arc<dyn PhysicalSource<'env, 'txn, S, ReadWriteExecutionMode<S>>>,
-        Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode<S>>>,
+        Arc<dyn PhysicalSource<'env, 'txn, S, ReadWriteExecutionMode>>,
+        Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode>>,
     > {
         Ok(self)
     }
@@ -48,8 +48,8 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalNode<'env, 'txn, S, ReadWriteEx
     fn as_sink(
         self: Arc<Self>,
     ) -> Result<
-        Arc<dyn PhysicalSink<'env, 'txn, S, ReadWriteExecutionMode<S>>>,
-        Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode<S>>>,
+        Arc<dyn PhysicalSink<'env, 'txn, S, ReadWriteExecutionMode>>,
+        Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode>>,
     > {
         Ok(self)
     }
@@ -57,19 +57,19 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalNode<'env, 'txn, S, ReadWriteEx
     fn as_operator(
         self: Arc<Self>,
     ) -> Result<
-        Arc<dyn PhysicalOperator<'env, 'txn, S, ReadWriteExecutionMode<S>>>,
-        Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode<S>>>,
+        Arc<dyn PhysicalOperator<'env, 'txn, S, ReadWriteExecutionMode>>,
+        Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode>>,
     > {
         Err(self)
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSink<'env, 'txn, S, ReadWriteExecutionMode<S>>
+impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSink<'env, 'txn, S, ReadWriteExecutionMode>
     for PhysicalInsert<'env, 'txn, S>
 {
     fn sink(
         &self,
-        ctx: &'txn ExecutionContext<'env, S, ReadWriteExecutionMode<S>>,
+        ctx: &'txn ExecutionContext<'env, S, ReadWriteExecutionMode>,
         tuple: Tuple,
     ) -> ExecutionResult<()> {
         let catalog = ctx.catalog();
@@ -89,12 +89,12 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSink<'env, 'txn, S, ReadWriteEx
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSource<'env, 'txn, S, ReadWriteExecutionMode<S>>
+impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSource<'env, 'txn, S, ReadWriteExecutionMode>
     for PhysicalInsert<'env, 'txn, S>
 {
     fn source(
         self: Arc<Self>,
-        _ctx: &'txn ExecutionContext<'env, S, ReadWriteExecutionMode<S>>,
+        _ctx: &'txn ExecutionContext<'env, S, ReadWriteExecutionMode>,
     ) -> ExecutionResult<TupleStream<'txn, S>> {
         let returning = std::mem::take(&mut *self.returning_tuples.write());
         Ok(Box::new(fallible_iterator::convert(returning.into_iter().map(Ok))))

@@ -238,20 +238,12 @@ impl<'env, S: StorageEngine> ExecutionMode<'env, S> for ReadonlyExecutionMode<S>
     }
 }
 
-pub struct ReadWriteExecutionMode<S>(std::marker::PhantomData<S>);
+#[derive(Clone, Copy)]
+pub struct ReadWriteExecutionMode;
 
-impl<S> Clone for ReadWriteExecutionMode<S> {
-    #[inline]
-    fn clone(&self) -> Self {
-        Self(self.0)
-    }
-}
+impl private::Sealed for ReadWriteExecutionMode {}
 
-impl<S> Copy for ReadWriteExecutionMode<S> {}
-
-impl<S> private::Sealed for ReadWriteExecutionMode<S> {}
-
-impl<'env, S: StorageEngine> ExecutionMode<'env, S> for ReadWriteExecutionMode<S> {
+impl<'env, S: StorageEngine> ExecutionMode<'env, S> for ReadWriteExecutionMode {
     type Transaction = S::WriteTransaction<'env>;
 
     type Tree<'txn> = S::WriteTree<'env, 'txn>
