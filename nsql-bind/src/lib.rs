@@ -58,7 +58,11 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
         Ok(matches!(stmt.required_transaction_mode(), TransactionMode::ReadWrite))
     }
 
-    pub fn bind(&self, tx: &dyn Transaction<'_, S>, stmt: &ast::Statement) -> Result<ir::Stmt<S>> {
+    pub fn bind(
+        &self,
+        tx: &dyn Transaction<'env, S>,
+        stmt: &ast::Statement,
+    ) -> Result<ir::Stmt<S>> {
         let scope = &Scope::default();
         let stmt = match stmt {
             ast::Statement::CreateTable {
@@ -304,12 +308,13 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
 
     fn bind_assignments(
         &self,
-        tx: &dyn Transaction<'_, S>,
+        tx: &dyn Transaction<'env, S>,
         scope: &Scope<S>,
         table_ref: TableRef<S>,
         assignments: &[ast::Assignment],
     ) -> Result<Box<[ir::Expr]>> {
-        let table = table_ref.get(&self.catalog, tx);
+        let table: Table<S> = todo!();
+        // let table = table_ref.get(&self.catalog, tx);
         let columns = table.all::<Column<S>>(tx);
 
         for assignment in assignments {
@@ -391,11 +396,14 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
         match path {
             Path::Qualified { prefix, .. } => match prefix.as_ref() {
                 Path::Qualified { .. } => not_implemented!("qualified schemas"),
-                Path::Unqualified(name) => self
-                    .catalog
-                    .find::<Namespace<S>>(name.as_str())?
-                    // .ok_or_else(|| Error::Unbound { kind: Namespace::desc(), path: path.clone() }),
-                    .ok_or_else(|| unbound!(Namespace<S>, path)),
+                Path::Unqualified(name) => {
+                    todo!();
+                    // self
+                    // .catalog
+                    // .find::<Namespace<S>>(name.as_str())?
+                    // // .ok_or_else(|| Error::Unbound { kind: Namespace::desc(), path: path.clone() }),
+                    // .ok_or_else(|| unbound!(Namespace<S>, path)),
+                }
             },
             Path::Unqualified(name) => self.bind_namespace(&Path::Qualified {
                 prefix: Box::new(Path::Unqualified(DEFAULT_SCHEMA.into())),
@@ -406,7 +414,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
 
     fn bind_namespaced_entity<T: NamespaceEntity<S>>(
         &self,
-        tx: &dyn Transaction<'_, S>,
+        tx: &dyn Transaction<'env, S>,
         path: &Path,
     ) -> Result<(Oid<Namespace<S>>, Oid<T>)> {
         match path {
@@ -420,7 +428,8 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
             Path::Qualified { prefix, name } => match prefix.as_ref() {
                 Path::Qualified { .. } => not_implemented!("qualified schemas"),
                 Path::Unqualified(schema) => {
-                    self.catalog.namespaces::<ReadonlyExecutionMode>(tx);
+                    // self.catalog.namespaces::<ReadonlyExecutionMode>(tx);
+                    // self.catalog.namespaces::<ReadonlyExecutionMode>(());
                     todo!();
                     // let (schema_oid, schema) = self
                     //     .catalog
@@ -449,7 +458,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
 
     fn bind_query(
         &self,
-        tx: &dyn Transaction<'_, S>,
+        tx: &dyn Transaction<'env, S>,
         scope: &Scope<S>,
         query: &ast::Query,
     ) -> Result<(Scope<S>, Box<ir::QueryPlan<S>>)> {
@@ -479,7 +488,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
 
     fn bind_table_expr(
         &self,
-        tx: &dyn Transaction<'_, S>,
+        tx: &dyn Transaction<'env, S>,
         scope: &Scope<S>,
         body: &ast::SetExpr,
     ) -> Result<(Scope<S>, Box<ir::QueryPlan<S>>)> {
@@ -501,7 +510,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
 
     fn bind_select(
         &self,
-        tx: &dyn Transaction<'_, S>,
+        tx: &dyn Transaction<'env, S>,
         scope: &Scope<S>,
         select: &ast::Select,
     ) -> Result<(Scope<S>, Box<ir::QueryPlan<S>>)> {
@@ -553,7 +562,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
 
     fn bind_joint_tables(
         &self,
-        tx: &dyn Transaction<'_, S>,
+        tx: &dyn Transaction<'env, S>,
         scope: &Scope<S>,
         tables: &ast::TableWithJoins,
     ) -> Result<(Scope<S>, Box<ir::QueryPlan<S>>)> {
@@ -564,7 +573,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
 
     fn bind_table_factor(
         &self,
-        tx: &dyn Transaction<'_, S>,
+        tx: &dyn Transaction<'env, S>,
         scope: &Scope<S>,
         table: &ast::TableFactor,
     ) -> Result<(Scope<S>, Box<ir::QueryPlan<S>>)> {
@@ -597,7 +606,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
 
     fn bind_table(
         &self,
-        tx: &dyn Transaction<'_, S>,
+        tx: &dyn Transaction<'env, S>,
         scope: &Scope<S>,
         table_name: &ast::ObjectName,
         alias: Option<&ast::TableAlias>,

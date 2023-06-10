@@ -33,14 +33,14 @@ impl<S: StorageEngine> Table<S> {
     pub fn storage<'env, 'txn, M: ExecutionMode<'env, S>>(
         &self,
         storage: &S,
-        tx: &'txn M::Transaction,
+        tx: &'txn M::TransactionDyn,
     ) -> Result<TableStorage<'env, 'txn, S, M>, S::Error> {
         TableStorage::open(
             storage,
             tx,
             TableStorageInfo::new(
                 Name::from(format!("{}", TableRef { namespace: self.namespace, table: self.oid })),
-                self.columns(tx).iter().map(|c| c.as_ref().into()).collect(),
+                self.columns(tx.as_dyn()).iter().map(|c| c.as_ref().into()).collect(),
             ),
         )
     }

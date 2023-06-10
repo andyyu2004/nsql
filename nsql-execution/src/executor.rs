@@ -51,11 +51,11 @@ impl<'env: 'txn, 'txn, S: StorageEngine> Executor<'env, 'txn, S, ReadWriteExecut
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine> Executor<'env, 'txn, S, ReadonlyExecutionMode<S>> {
+impl<'env: 'txn, 'txn, S: StorageEngine> Executor<'env, 'txn, S, ReadonlyExecutionMode> {
     fn execute(
         self: Arc<Self>,
-        ctx: &'txn ExecutionContext<'env, S, ReadonlyExecutionMode<S>>,
-        root: Idx<MetaPipeline<'env, 'txn, S, ReadonlyExecutionMode<S>>>,
+        ctx: &'txn ExecutionContext<'env, S, ReadonlyExecutionMode>,
+        root: Idx<MetaPipeline<'env, 'txn, S, ReadonlyExecutionMode>>,
     ) -> ExecutionResult<()> {
         let root = &self.arena[root];
         for &child in &root.children {
@@ -71,8 +71,8 @@ impl<'env: 'txn, 'txn, S: StorageEngine> Executor<'env, 'txn, S, ReadonlyExecuti
 
     fn execute_pipeline(
         self: Arc<Self>,
-        ctx: &'txn ExecutionContext<'env, S, ReadonlyExecutionMode<S>>,
-        pipeline: Idx<Pipeline<'env, 'txn, S, ReadonlyExecutionMode<S>>>,
+        ctx: &'txn ExecutionContext<'env, S, ReadonlyExecutionMode>,
+        pipeline: Idx<Pipeline<'env, 'txn, S, ReadonlyExecutionMode>>,
     ) -> ExecutionResult<()> {
         let pipeline = &self.arena[pipeline];
         let mut stream = Arc::clone(&pipeline.source).source(ctx)?;
@@ -94,8 +94,8 @@ impl<'env: 'txn, 'txn, S: StorageEngine> Executor<'env, 'txn, S, ReadonlyExecuti
 }
 
 fn execute_root_pipeline<'env, 'txn, S: StorageEngine>(
-    ctx: &'txn ExecutionContext<'env, S, ReadonlyExecutionMode<S>>,
-    pipeline: RootPipeline<'env, 'txn, S, ReadonlyExecutionMode<S>>,
+    ctx: &'txn ExecutionContext<'env, S, ReadonlyExecutionMode>,
+    pipeline: RootPipeline<'env, 'txn, S, ReadonlyExecutionMode>,
 ) -> ExecutionResult<()> {
     let root = pipeline.arena.root();
     let executor = Arc::new(Executor { arena: pipeline.arena, _marker: std::marker::PhantomData });
@@ -112,12 +112,12 @@ fn execute_root_pipeline_write<'env, 'txn, S: StorageEngine>(
 }
 
 pub fn execute<'env: 'txn, 'txn, S: StorageEngine>(
-    ctx: &'txn ExecutionContext<'env, S, ReadonlyExecutionMode<S>>,
-    plan: PhysicalPlan<'env, 'txn, S, ReadonlyExecutionMode<S>>,
+    ctx: &'txn ExecutionContext<'env, S, ReadonlyExecutionMode>,
+    plan: PhysicalPlan<'env, 'txn, S, ReadonlyExecutionMode>,
 ) -> ExecutionResult<Vec<Tuple>> {
     let sink = Arc::new(OutputSink::default());
     let root_pipeline = build_pipelines(
-        Arc::clone(&sink) as Arc<dyn PhysicalSink<'env, 'txn, S, ReadonlyExecutionMode<S>> + 'txn>,
+        Arc::clone(&sink) as Arc<dyn PhysicalSink<'env, 'txn, S, ReadonlyExecutionMode> + 'txn>,
         plan,
     );
 

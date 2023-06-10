@@ -97,7 +97,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> TableStorage<'env, 'txn, S, ReadWriteEx
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> TableStorage<'env, 'txn, S, M> {
     pub fn open(
         storage: &S,
-        tx: &'txn M::Transaction,
+        tx: &'txn M::TransactionDyn,
         info: TableStorageInfo,
     ) -> Result<Self, S::Error> {
         let tree = M::open_tree(storage, tx, &info.table_name)?;

@@ -192,12 +192,22 @@ impl<'env> nsql_storage_engine::Transaction<'env, RedbStorageEngine> for ReadTra
     fn as_read_or_write_ref(&self) -> ReadOrWriteTransactionRef<'env, '_, RedbStorageEngine> {
         ReadOrWriteTransactionRef::Read(self)
     }
+
+    #[inline]
+    fn as_dyn(&self) -> &dyn nsql_storage_engine::Transaction<'env, RedbStorageEngine> {
+        self
+    }
 }
 
 impl<'env> nsql_storage_engine::Transaction<'env, RedbStorageEngine> for Transaction<'env> {
     #[inline]
     fn as_read_or_write_ref(&self) -> ReadOrWriteTransactionRef<'env, '_, RedbStorageEngine> {
         ReadOrWriteTransactionRef::Write(self)
+    }
+
+    #[inline]
+    fn as_dyn(&self) -> &dyn nsql_storage_engine::Transaction<'env, RedbStorageEngine> {
+        self
     }
 }
 

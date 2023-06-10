@@ -1,7 +1,7 @@
 use std::marker::PhantomData;
 
 use anyhow::bail;
-use nsql_catalog::{Column, Container, Entity, EntityRef, TableRef};
+use nsql_catalog::{Column, Container, Entity, EntityRef, Table, TableRef};
 use nsql_core::{LogicalType, Name};
 use nsql_storage_engine::{StorageEngine, Transaction};
 
@@ -33,7 +33,7 @@ impl<S: StorageEngine> Scope<S> {
     #[tracing::instrument(skip(self, tx, binder, table_ref))]
     pub fn bind_table(
         &self,
-        binder: &Binder<S>,
+        binder: &Binder<'_, S>,
         tx: &dyn Transaction<'_, S>,
         table_path: Path,
         table_ref: TableRef<S>,
@@ -42,7 +42,8 @@ impl<S: StorageEngine> Scope<S> {
         tracing::debug!("binding table");
         let mut columns = self.columns.clone();
 
-        let table = table_ref.get(&binder.catalog, tx);
+        // let table = table_ref.get(&binder.catalog, tx);
+        let table: Table<S> = todo!();
         let mut table_columns = table.all::<Column<S>>(tx);
         table_columns.sort_by_key(|col| col.index());
 

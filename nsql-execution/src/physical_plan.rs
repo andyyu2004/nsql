@@ -67,7 +67,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalPlanner<S> {
         &self,
         tx: &dyn Transaction<'env, S>,
         plan: Box<Plan<S>>,
-    ) -> Result<PhysicalPlan<'env, 'txn, S, ReadonlyExecutionMode<S>>> {
+    ) -> Result<PhysicalPlan<'env, 'txn, S, ReadonlyExecutionMode>> {
         self.plan_node(tx, plan).map(PhysicalPlan)
     }
 

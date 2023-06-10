@@ -220,12 +220,22 @@ impl<'env> Transaction<'env, LmdbStorageEngine> for ReadonlyTx<'env> {
     fn as_read_or_write_ref(&self) -> ReadOrWriteTransactionRef<'env, '_, LmdbStorageEngine> {
         ReadOrWriteTransactionRef::Read(self)
     }
+
+    #[inline]
+    fn as_dyn(&self) -> &dyn Transaction<'env, LmdbStorageEngine> {
+        self
+    }
 }
 
 impl<'env> Transaction<'env, LmdbStorageEngine> for ReadWriteTx<'env> {
     #[inline]
     fn as_read_or_write_ref(&self) -> ReadOrWriteTransactionRef<'env, '_, LmdbStorageEngine> {
         ReadOrWriteTransactionRef::Write(self)
+    }
+
+    #[inline]
+    fn as_dyn(&self) -> &dyn Transaction<'env, LmdbStorageEngine> {
+        self
     }
 }
 
