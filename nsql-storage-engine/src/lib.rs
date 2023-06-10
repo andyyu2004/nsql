@@ -229,7 +229,9 @@ impl<'env: 'txn, 'txn, S: StorageEngine> ReadTree<'env, 'txn, S>
 pub trait ExecutionMode<'env, S: StorageEngine>: private::Sealed + Clone + Copy + 'static {
     type Transaction: Transaction<'env, S>;
 
-    type TransactionDyn: Transaction<'env, S> + ?Sized;
+    type TransactionRef<'txn>: Transaction<'env, S> + 'txn + Copy
+    where
+        'env: 'txn;
 
     type Tree<'txn>: ReadTree<'env, 'txn, S>
     where
@@ -239,7 +241,7 @@ pub trait ExecutionMode<'env, S: StorageEngine>: private::Sealed + Clone + Copy 
 
     fn open_tree<'txn>(
         storage: &S,
-        txn: &'txn Self::TransactionDyn,
+        txn: Self::TransactionRef<'txn>,
         name: &str,
     ) -> Result<Self::Tree<'txn>, S::Error>;
 }
@@ -256,7 +258,7 @@ impl private::Sealed for ReadonlyExecutionMode {}
 impl<'env, S: StorageEngine> ExecutionMode<'env, S> for ReadonlyExecutionMode {
     type Transaction = S::Transaction<'env>;
 
-    type TransactionDyn = dyn Transaction<'env, S>;
+    type TransactionRef<'txn> = &'txn dyn Transaction<'env, S> where 'env: 'txn;
 
     type Tree<'txn> = S::ReadTree<'env, 'txn> where 'env: 'txn;
 
@@ -266,7 +268,7 @@ impl<'env, S: StorageEngine> ExecutionMode<'env, S> for ReadonlyExecutionMode {
 
     fn open_tree<'txn>(
         storage: &S,
-        txn: &'txn Self::TransactionDyn,
+        txn: Self::TransactionRef<'txn>,
         name: &str,
     ) -> Result<Self::Tree<'txn>, S::Error> {
         // FIXME don't unwrap
@@ -282,7 +284,7 @@ impl private::Sealed for ReadWriteExecutionMode {}
 impl<'env, S: StorageEngine> ExecutionMode<'env, S> for ReadWriteExecutionMode {
     type Transaction = S::WriteTransaction<'env>;
 
-    type TransactionDyn = S::WriteTransaction<'env>;
+    type TransactionRef<'txn> = &'txn S::WriteTransaction<'env> where 'env: 'txn;
 
     type Tree<'txn> = S::WriteTree<'env, 'txn>
     where
@@ -294,7 +296,7 @@ impl<'env, S: StorageEngine> ExecutionMode<'env, S> for ReadWriteExecutionMode {
 
     fn open_tree<'txn>(
         storage: &S,
-        txn: &'txn Self::TransactionDyn,
+        txn: Self::TransactionRef<'txn>,
         name: &str,
     ) -> Result<Self::Tree<'txn>, <S as StorageEngine>::Error> {
         // FIXME don't unwrap

@@ -124,7 +124,7 @@ impl<S: StorageEngine> Shared<S> {
         let catalog = Arc::clone(&self.catalog);
         let stmt = &statements[0];
 
-        let binder = Binder::new(Arc::clone(&catalog));
+        let binder = Binder::new(todo!());
         let (auto_commit, tx) = match tx {
             Some(tx) => (false, tx),
             None => (

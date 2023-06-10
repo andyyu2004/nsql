@@ -428,7 +428,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
             Path::Qualified { prefix, name } => match prefix.as_ref() {
                 Path::Qualified { .. } => not_implemented!("qualified schemas"),
                 Path::Unqualified(schema) => {
-                    // self.catalog.namespaces::<ReadonlyExecutionMode>(tx);
+                    self.catalog.namespaces::<ReadonlyExecutionMode>(tx);
                     // self.catalog.namespaces::<ReadonlyExecutionMode>(());
                     todo!();
                     // let (schema_oid, schema) = self

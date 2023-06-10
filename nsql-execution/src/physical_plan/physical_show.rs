@@ -56,10 +56,10 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
         let catalog = ctx.catalog();
         let tx = ctx.tx()?;
         let iter =
-            catalog.all::<Namespace<S>>(tx).into_iter().flat_map(move |namespace| {
+            catalog.all::<Namespace<S>>(&tx).into_iter().flat_map(move |namespace| {
                 match self.show {
                     ir::ObjectType::Table => namespace
-                        .all::<Table<S>>(tx)
+                        .all::<Table<S>>(&tx)
                         .into_iter()
                         .map(|table| Ok(Tuple::from(vec![Value::Text(table.name().to_string())]))),
                 }

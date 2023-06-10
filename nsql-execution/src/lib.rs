@@ -239,8 +239,10 @@ impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> ExecutionContext<'env, S
     }
 
     #[inline]
-    pub fn tx(&self) -> Result<&M::Transaction, S::Error> {
-        Ok(&self.tcx.tx)
+    pub fn tx(&self) -> Result<M::TransactionRef<'_>, S::Error> {
+        todo!();
+        // need some trait bound that allows this converson
+        // Ok(&self.tcx.tx)
     }
 
     #[inline]

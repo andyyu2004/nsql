@@ -31,7 +31,7 @@ impl<'env, S: StorageEngine> Catalog2<'env, S> {
     #[inline]
     pub fn namespaces<'txn, M: ExecutionMode<'env, S>>(
         &self,
-        tx: &'txn M::TransactionDyn,
+        tx: M::TransactionRef<'txn>,
     ) -> Result<SystemTableView<'env, 'txn, S, M, BootstrapNamespace<S>>, S::Error> {
         self.system_table(tx)
     }
@@ -39,7 +39,7 @@ impl<'env, S: StorageEngine> Catalog2<'env, S> {
     #[inline]
     fn system_table<'txn, M: ExecutionMode<'env, S>, T: SystemEntity>(
         &self,
-        tx: &'txn M::TransactionDyn,
+        tx: M::TransactionRef<'txn>,
     ) -> Result<SystemTableView<'env, 'txn, S, M, T>, S::Error> {
         SystemTableView::new(self.storage, tx)
     }

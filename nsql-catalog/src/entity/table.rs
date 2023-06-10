@@ -33,7 +33,7 @@ impl<S: StorageEngine> Table<S> {
     pub fn storage<'env, 'txn, M: ExecutionMode<'env, S>>(
         &self,
         storage: &S,
-        tx: &'txn M::TransactionDyn,
+        tx: M::TransactionRef<'txn>,
     ) -> Result<TableStorage<'env, 'txn, S, M>, S::Error> {
         TableStorage::open(
             storage,

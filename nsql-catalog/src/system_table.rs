@@ -19,7 +19,7 @@ pub struct SystemTableView<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, 
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: SystemEntity>
     SystemTableView<'env, 'txn, S, M, T>
 {
-    pub fn new(storage: &'env S, tx: &'txn M::TransactionDyn) -> Result<Self, S::Error> {
+    pub fn new(storage: &'env S, tx: M::TransactionRef<'txn>) -> Result<Self, S::Error> {
         let storage = TableStorage::<'env, 'txn, S, M>::open(storage, tx, T::storage_info())?;
 
         Ok(Self { storage, phantom: PhantomData })
