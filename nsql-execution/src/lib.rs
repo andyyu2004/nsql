@@ -19,7 +19,7 @@ use nsql_catalog::Catalog;
 use nsql_storage::tuple::Tuple;
 use nsql_storage_engine::{
     ExecutionMode, FallibleIterator, ReadWriteExecutionMode, ReadonlyExecutionMode, StorageEngine,
-    Transaction,
+    Transaction, TransactionConversionHack,
 };
 use nsql_util::atomic::AtomicEnum;
 pub use physical_plan::PhysicalPlanner;
@@ -240,14 +240,7 @@ impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> ExecutionContext<'env, S
 
     #[inline]
     pub fn tx(&self) -> Result<M::TransactionRef<'_>, S::Error> {
-        todo!();
-        // need some trait bound that allows this converson
-        // Ok(&self.tcx.tx)
-    }
-
-    #[inline]
-    pub fn tx_mut(&mut self) -> &mut TransactionContext<'env, S, M> {
-        &mut self.tcx
+        Ok(TransactionConversionHack::as_tx_ref(&self.tcx.tx))
     }
 
     #[inline]

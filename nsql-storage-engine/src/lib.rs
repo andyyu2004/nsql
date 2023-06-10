@@ -226,10 +226,34 @@ impl<'env: 'txn, 'txn, S: StorageEngine> ReadTree<'env, 'txn, S>
     }
 }
 
+// helper trait to help with conversion
+// there is probably a way to do this without this trait
+#[doc(hidden)]
+pub trait TransactionConversionHack<'txn, Tx> {
+    fn as_tx_ref(tx: &'txn Tx) -> Self;
+}
+
+impl<'env, 'txn, S: StorageEngine> TransactionConversionHack<'txn, S::Transaction<'env>>
+    for &'txn dyn Transaction<'env, S>
+{
+    fn as_tx_ref(tx: &'txn S::Transaction<'env>) -> Self {
+        tx
+    }
+}
+
+impl<'txn, T> TransactionConversionHack<'txn, T> for &'txn T {
+    fn as_tx_ref(tx: &'txn T) -> Self {
+        tx
+    }
+}
+
 pub trait ExecutionMode<'env, S: StorageEngine>: private::Sealed + Clone + Copy + 'static {
     type Transaction: Transaction<'env, S>;
 
-    type TransactionRef<'txn>: Transaction<'env, S> + 'txn + Copy
+    type TransactionRef<'txn>: Transaction<'env, S>
+        + 'txn
+        + Copy
+        + TransactionConversionHack<'txn, Self::Transaction>
     where
         'env: 'txn;
 
