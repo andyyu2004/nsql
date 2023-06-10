@@ -68,7 +68,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSource<'env, 'txn, S, ReadWrite
         for entity_ref in &self.refs {
             todo!();
             // match entity_ref {
-            //     ir::EntityRef::Table(table_ref) => table_ref.delete(&catalog, tx)?,
+            //     ir::EntityRef::Table(table_ref) => table_ref.delete(Catalog<'_, S>, tx)?,
             // }
         }
 
@@ -79,7 +79,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSource<'env, 'txn, S, ReadWrite
 impl<'env: 'txn, 'txn, S: StorageEngine> Explain<S> for PhysicalDrop {
     fn explain(
         &self,
-        catalog: &Catalog,
+        catalog: Catalog<'_, S>,
         tx: &dyn Transaction<'_, S>,
         f: &mut fmt::Formatter<'_>,
     ) -> explain::Result {

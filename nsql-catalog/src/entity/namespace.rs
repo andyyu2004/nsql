@@ -28,8 +28,8 @@
 //     type CreateInfo = CreateNamespaceInfo;
 //
 //     #[inline]
-//     fn catalog_set(catalog: &Catalog) -> &CatalogSet<S, Self> {
-//         &catalog.schemas
+//     fn catalog_set(catalog: Catalog<'_, S>,) -> Catalog<'_, S>,Set<S, Self> {
+//         Catalog<'_, S>,.schemas
 //     }
 //
 //     #[inline]

@@ -44,8 +44,8 @@ use crate::{
     Tuple, TupleStream,
 };
 
-pub struct PhysicalPlanner {
-    catalog: Arc<Catalog>,
+pub struct PhysicalPlanner<'env, S> {
+    catalog: Catalog<'env, S>,
 }
 
 /// Opaque physical plan that is ready to be executed
@@ -57,13 +57,13 @@ impl<'env, 'txn, S, M> PhysicalPlan<'env, 'txn, S, M> {
     }
 }
 
-impl<'env: 'txn, 'txn> PhysicalPlanner {
-    pub fn new(catalog: Arc<Catalog>) -> Self {
+impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalPlanner<'env, S> {
+    pub fn new(catalog: Catalog<'env, S>) -> Self {
         Self { catalog }
     }
 
     #[inline]
-    pub fn plan<S: StorageEngine>(
+    pub fn plan(
         &self,
         tx: &dyn Transaction<'env, S>,
         plan: Box<Plan>,
@@ -72,7 +72,7 @@ impl<'env: 'txn, 'txn> PhysicalPlanner {
     }
 
     #[inline]
-    pub fn plan_write<S: StorageEngine>(
+    pub fn plan_write(
         &self,
         tx: &dyn Transaction<'env, S>,
         plan: Box<Plan>,
@@ -80,7 +80,7 @@ impl<'env: 'txn, 'txn> PhysicalPlanner {
         self.plan_write_node(tx, plan).map(PhysicalPlan)
     }
 
-    fn plan_write_node<S: StorageEngine>(
+    fn plan_write_node(
         &self,
         tx: &dyn Transaction<'env, S>,
         plan: Box<Plan>,
@@ -106,7 +106,7 @@ impl<'env: 'txn, 'txn> PhysicalPlanner {
         Ok(plan)
     }
 
-    fn explain_plan<S: StorageEngine, M: ExecutionMode<'env, S>>(
+    fn explain_plan<M: ExecutionMode<'env, S>>(
         &self,
         tx: &dyn Transaction<'env, S>,
         kind: ir::ExplainMode,
@@ -114,13 +114,12 @@ impl<'env: 'txn, 'txn> PhysicalPlanner {
     ) -> Result<Arc<dyn PhysicalNode<'env, 'txn, S, M>>> {
         let stringified = match kind {
             ir::ExplainMode::Physical => {
-                explain::display(&self.catalog, tx, &explain::explain(Arc::clone(&plan)))
-                    .to_string()
+                explain::display(self.catalog, tx, &explain::explain(Arc::clone(&plan))).to_string()
             }
             ir::ExplainMode::Pipeline => {
                 let sink = Arc::new(OutputSink::default());
                 let pipeline = crate::build_pipelines(sink, PhysicalPlan(Arc::clone(&plan)));
-                explain::display(&self.catalog, tx, &explain::explain_pipeline(&pipeline))
+                explain::display(self.catalog, tx, &explain::explain_pipeline(&pipeline))
                     .to_string()
             }
         };
@@ -129,7 +128,7 @@ impl<'env: 'txn, 'txn> PhysicalPlanner {
     }
 
     #[allow(clippy::boxed_local)]
-    fn plan_node<S: StorageEngine, M: ExecutionMode<'env, S>>(
+    fn plan_node<M: ExecutionMode<'env, S>>(
         &self,
         tx: &dyn Transaction<'env, S>,
         plan: Box<Plan>,
@@ -138,7 +137,7 @@ impl<'env: 'txn, 'txn> PhysicalPlanner {
     }
 
     #[allow(clippy::boxed_local)]
-    fn fold_plan<S: StorageEngine, M: ExecutionMode<'env, S>>(
+    fn fold_plan<M: ExecutionMode<'env, S>>(
         &self,
         tx: &dyn Transaction<'env, S>,
         plan: Box<Plan>,

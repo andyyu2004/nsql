@@ -37,19 +37,15 @@ impl<S: StorageEngine> Nsql<S> {
     pub fn create(path: impl AsRef<Path>) -> Result<Self> {
         let storage = S::create(path)?;
         let tx = storage.begin_write()?;
-        let catalog = Arc::new(Catalog::create(&storage, &tx)?);
+        Catalog::create(&storage, &tx)?;
         tx.commit()?;
 
-        Ok(Self::new(Shared { storage: Storage::new(storage), catalog }))
+        Ok(Self::new(Shared { storage: Storage::new(storage) }))
     }
 
     pub fn open(path: impl AsRef<Path>) -> Result<Self> {
         let storage = S::open(path)?;
-        let tx = storage.begin_write()?;
-        let catalog = Arc::new(Catalog::create(&storage, &tx)?);
-        tx.commit()?;
-
-        Ok(Self::new(Shared { storage: Storage::new(storage), catalog }))
+        Ok(Self::new(Shared { storage: Storage::new(storage) }))
     }
 
     #[inline]
@@ -65,7 +61,6 @@ impl<S: StorageEngine> Nsql<S> {
 
 struct Shared<S> {
     storage: Storage<S>,
-    catalog: Arc<Catalog>,
 }
 
 pub struct Connection<S: StorageEngine> {
@@ -121,10 +116,10 @@ impl<S: StorageEngine> Shared<S> {
         }
 
         let storage = self.storage.storage();
-        let catalog = Arc::clone(&self.catalog);
+        let catalog = Catalog::open(storage);
         let stmt = &statements[0];
 
-        let binder = Binder::new(todo!());
+        let binder = Binder::new(catalog);
         let (auto_commit, tx) = match tx {
             Some(tx) => (false, tx),
             None => (
@@ -147,7 +142,7 @@ impl<S: StorageEngine> Shared<S> {
 
         let plan = optimize(plan);
 
-        let planner = PhysicalPlanner::new(Arc::clone(&catalog));
+        let planner = PhysicalPlanner::new(catalog);
 
         let (tx, tuples) = match tx {
             ReadOrWriteTransaction::Read(tx) => {

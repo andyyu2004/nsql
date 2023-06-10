@@ -13,14 +13,14 @@ pub type Result<T = ()> = std::result::Result<T, fmt::Error>;
 pub trait Explain<S: StorageEngine> {
     fn explain(
         &self,
-        catalog: &Catalog,
+        catalog: Catalog<'_, S>,
         tx: &dyn Transaction<'_, S>,
         f: &mut fmt::Formatter<'_>,
     ) -> Result;
 }
 
 pub(crate) fn display<'a, 'env: 'a, S: StorageEngine>(
-    catalog: &'a Catalog,
+    catalog: Catalog<'env, S>,
     tx: &'a dyn Transaction<'env, S>,
     explain: &'a dyn Explain<S>,
 ) -> Display<'a, 'env, S> {
@@ -28,7 +28,7 @@ pub(crate) fn display<'a, 'env: 'a, S: StorageEngine>(
 }
 
 pub(crate) struct Display<'a, 'env, S: StorageEngine> {
-    catalog: &'a Catalog,
+    catalog: Catalog<'env, S>,
     tx: &'a dyn Transaction<'env, S>,
     explain: &'a dyn Explain<S>,
     marker: std::marker::PhantomData<&'env ()>,
@@ -60,7 +60,7 @@ impl<'a, 'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
 {
     fn explain_meta_pipeline(
         &self,
-        catalog: &Catalog,
+        catalog: Catalog<'_, S>,
         tx: &dyn Transaction<'_, S>,
         f: &mut fmt::Formatter<'_>,
         meta_pipeline: Idx<MetaPipeline<'env, 'txn, S, M>>,
@@ -106,7 +106,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Explain<S>
 {
     fn explain(
         &self,
-        catalog: &Catalog,
+        catalog: Catalog<'_, S>,
         tx: &dyn Transaction<'_, S>,
         f: &mut fmt::Formatter<'_>,
     ) -> Result {
@@ -146,7 +146,7 @@ impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Explain<S>
 {
     fn explain(
         &self,
-        catalog: &Catalog,
+        catalog: Catalog<'_, S>,
         tx: &dyn Transaction<'_, S>,
         f: &mut fmt::Formatter<'_>,
     ) -> Result {

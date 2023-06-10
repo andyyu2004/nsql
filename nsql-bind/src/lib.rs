@@ -11,17 +11,17 @@ use ir::expr::EvalNotConst;
 use ir::{Decimal, Path, TransactionMode};
 use itertools::Itertools;
 use nsql_catalog::{
-    BootstrapNamespace, BootstrapTable, Catalog, Catalog2, Column, CreateColumnInfo, Entity,
-    Namespace, SystemEntity, Table, TableRef, DEFAULT_SCHEMA,
+    BootstrapNamespace, BootstrapTable, Catalog, Column, CreateColumnInfo, Entity, Namespace,
+    SystemEntity, Table, TableRef, DEFAULT_SCHEMA,
 };
 use nsql_core::{LogicalType, Name, Oid};
 use nsql_parse::ast::{self, HiveDistributionStyle};
-use nsql_storage_engine::{ReadonlyExecutionMode, StorageEngine, Transaction};
+use nsql_storage_engine::{StorageEngine, Transaction};
 
 use self::scope::Scope;
 
 pub struct Binder<'env, S> {
-    catalog: Catalog2<'env, S>,
+    catalog: Catalog<'env, S>,
 }
 
 macro_rules! not_implemented {
@@ -46,7 +46,7 @@ use unbound;
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 
 impl<'env, S: StorageEngine> Binder<'env, S> {
-    pub fn new(catalog: Catalog2<'env, S>) -> Self {
+    pub fn new(catalog: Catalog<'env, S>) -> Self {
         Self { catalog }
     }
 

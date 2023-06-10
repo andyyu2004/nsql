@@ -206,7 +206,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> TransactionC
 
 pub struct ExecutionContext<'env, S: StorageEngine, M: ExecutionMode<'env, S>> {
     storage: &'env S,
-    catalog: Arc<Catalog>,
+    catalog: Catalog<'env, S>,
     tcx: TransactionContext<'env, S, M>,
 }
 
@@ -222,7 +222,7 @@ impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> ExecutionContext<'env, S
     #[inline]
     pub fn new(
         storage: &'env S,
-        catalog: Arc<Catalog>,
+        catalog: Catalog<'env, S>,
         tcx: TransactionContext<'env, S, M>,
     ) -> Self {
         Self { storage, catalog, tcx }
@@ -244,8 +244,8 @@ impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> ExecutionContext<'env, S
     }
 
     #[inline]
-    pub fn catalog(&self) -> Arc<Catalog> {
-        Arc::clone(&self.catalog)
+    pub fn catalog(&self) -> Catalog<'env, S> {
+        self.catalog
     }
 }
 

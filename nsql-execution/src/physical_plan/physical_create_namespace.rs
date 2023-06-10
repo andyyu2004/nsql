@@ -79,7 +79,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSource<'env, 'txn, S, ReadWrite
 impl<S: StorageEngine> Explain<S> for PhysicalCreateNamespace {
     fn explain(
         &self,
-        _catalog: &Catalog,
+        _catalog: Catalog<'_, S>,
         _tx: &dyn Transaction<'_, S>,
         f: &mut fmt::Formatter<'_>,
     ) -> explain::Result {

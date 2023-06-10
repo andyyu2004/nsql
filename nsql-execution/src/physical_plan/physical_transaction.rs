@@ -84,7 +84,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
 impl<S: StorageEngine> Explain<S> for PhysicalTransaction {
     fn explain(
         &self,
-        _catalog: &Catalog,
+        _catalog: Catalog<'_, S>,
         _tx: &dyn Transaction<'_, S>,
         f: &mut fmt::Formatter<'_>,
     ) -> explain::Result {

@@ -97,7 +97,7 @@ impl Entity for Column {
 //
 //     type CreateInfo = CreateColumnInfo;
 //
-//     fn catalog_set(table: &Self::Container) -> &CatalogSet<S, Self> {
+//     fn catalog_set(table: &Self::Container) -> Catalog<'_, S>,Set<S, Self> {
 //         &table.columns
 //     }
 //
@@ -139,7 +139,7 @@ impl Entity for Column {
 //     type Container = Table<S>;
 //
 //     #[inline]
-//     fn container(self, catalog: &Catalog, tx: &dyn Transaction<'_, S>) -> Arc<Self::Container> {
+//     fn container(self, catalog: Catalog<'_, S>, tx: &dyn Transaction<'_, S>) -> Arc<Self::Container> {
 //         self.table_ref.get(catalog, tx)
 //     }
 //

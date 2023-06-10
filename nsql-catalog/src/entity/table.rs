@@ -94,7 +94,7 @@ impl Entity for Table {
 //
 //     type CreateInfo = CreateTableInfo;
 //
-//     fn catalog_set(container: &Self::Container) -> &CatalogSet<S, Self> {
+//     fn catalog_set(container: &Self::Container) -> Catalog<'_, S>,Set<S, Self> {
 //         &container.tables
 //     }
 //
@@ -145,7 +145,7 @@ impl Copy for TableRef {}
 //     type Container = Namespace;
 //
 //     #[inline]
-//     fn container(self, catalog: &Catalog, tx: &dyn Transaction<'_, S>) -> Arc<Self::Container> {
+//     fn container(self, catalog: Catalog<'_, S>, tx: &dyn Transaction<'_, S>) -> Arc<Self::Container> {
 //         catalog.get(tx, self.namespace).expect("namespace should exist for `tx`")
 //     }
 //

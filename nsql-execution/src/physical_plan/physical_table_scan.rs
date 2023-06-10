@@ -86,7 +86,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode
 impl<S: StorageEngine> Explain<S> for PhysicalTableScan {
     fn explain(
         &self,
-        catalog: &Catalog,
+        catalog: Catalog<'_, S>,
         tx: &dyn Transaction<'_, S>,
         f: &mut fmt::Formatter<'_>,
     ) -> explain::Result {

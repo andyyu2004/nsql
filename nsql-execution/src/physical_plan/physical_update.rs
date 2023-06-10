@@ -125,7 +125,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSource<'env, 'txn, S, ReadWrite
 impl<'env: 'txn, 'txn, S: StorageEngine> Explain<S> for PhysicalUpdate<'env, 'txn, S> {
     fn explain(
         &self,
-        catalog: &Catalog,
+        catalog: Catalog<'_, S>,
         tx: &dyn Transaction<'_, S>,
         f: &mut fmt::Formatter<'_>,
     ) -> explain::Result {

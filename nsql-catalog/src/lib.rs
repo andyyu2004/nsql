@@ -7,8 +7,6 @@ pub mod schema;
 mod set;
 mod system_table;
 
-use std::sync::Arc;
-
 pub use anyhow::Error;
 use nsql_core::{Name, Oid};
 use nsql_storage_engine::{ReadonlyExecutionMode, StorageEngine, Transaction};
@@ -25,11 +23,20 @@ use self::system_table::SystemTableView;
 
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 
-pub struct Catalog2<'env, S> {
+pub struct Catalog<'env, S> {
     storage: &'env S,
 }
 
-impl<'env, S: StorageEngine> Catalog2<'env, S> {
+impl<'env, S> Clone for Catalog<'env, S> {
+    #[inline]
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<'env, S> Copy for Catalog<'env, S> {}
+
+impl<'env, S: StorageEngine> Catalog<'env, S> {
     #[inline]
     pub fn namespaces<'txn>(
         &self,
@@ -48,22 +55,18 @@ impl<'env, S: StorageEngine> Catalog2<'env, S> {
     }
 }
 
-#[derive(Debug)]
-pub struct Catalog {
-    // schemas: CatalogSet<S, Namespace<S>>,
-}
-
 pub const DEFAULT_SCHEMA: &str = "main";
 
-impl Catalog {
+impl<'env, S: StorageEngine> Catalog<'env, S> {
+    pub fn open(storage: &'env S) -> Self {
+        Self { storage }
+    }
+
     /// Create a blank catalog with the default schema
-    pub fn create<'env, S: StorageEngine>(
-        storage: &'env S,
-        tx: &S::WriteTransaction<'env>,
-    ) -> Result<Self> {
+    pub fn create(storage: &'env S, tx: &S::WriteTransaction<'env>) -> Result<Self> {
         bootstrap::bootstrap(storage, tx)?;
 
-        let catalog = Self {};
+        let catalog = Self { storage };
         Ok(catalog)
     }
 }
@@ -83,17 +86,17 @@ pub trait Entity {
 //
 //     type Container: Container<S>;
 //
-//     fn container(self, catalog: &Catalog, tx: &dyn Transaction<'_, S>) -> Arc<Self::Container>;
+//     fn container(self, catalog: Catalog<'_, S>, tx: &dyn Transaction<'_, S>) -> Arc<Self::Container>;
 //
 //     fn entity_oid(self) -> Oid<Self::Entity>;
 //
-//     fn get(self, catalog: &Catalog, tx: &dyn Transaction<'_, S>) -> Arc<Self::Entity> {
+//     fn get(self, catalog: Catalog<'_, S>, tx: &dyn Transaction<'_, S>) -> Arc<Self::Entity> {
 //         self.container(catalog, tx)
 //             .get(tx, self.entity_oid())
 //             .expect("`oid` should be valid for `tx`")
 //     }
 //
-//     fn delete(self, catalog: &Catalog, tx: &S::WriteTransaction<'_>) -> Result<()> {
+//     fn delete(self, catalog: Catalog<'_, S>, tx: &S::WriteTransaction<'_>) -> Result<()> {
 //         self.container(catalog, tx).delete(tx, self.entity_oid())?;
 //         Ok(())
 //     }
@@ -159,7 +162,7 @@ pub trait Entity {
 //         type CreateInfo;
 //
 //         /// extract the `CatalogSet` from the `container` for `Self`
-//         fn catalog_set(container: &Self::Container) -> &CatalogSet<S, Self>;
+//         fn catalog_set(container: &Self::Container) -> Catalog<'_, S>,Set<S, Self>;
 //
 //         fn create(
 //             tx: &S::WriteTransaction<'_>,

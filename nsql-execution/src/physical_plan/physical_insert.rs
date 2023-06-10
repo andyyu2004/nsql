@@ -75,7 +75,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSink<'env, 'txn, S, ReadWriteEx
         let catalog = ctx.catalog();
         let tx = ctx.tx()?;
         todo!();
-        // let table = self.table_ref.get(&catalog, tx);
+        // let table = self.table_ref.get(Catalog<'_, S>, tx);
         //
         // let mut storage = table.storage(ctx.storage(), tx)?;
         // storage.insert(&tuple)?;
@@ -105,7 +105,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSource<'env, 'txn, S, ReadWrite
 impl<'env: 'txn, 'txn, S: StorageEngine> Explain<S> for PhysicalInsert<'env, 'txn, S> {
     fn explain(
         &self,
-        catalog: &Catalog,
+        catalog: Catalog<'_, S>,
         tx: &dyn Transaction<'_, S>,
         f: &mut fmt::Formatter<'_>,
     ) -> explain::Result {
