@@ -7,12 +7,16 @@ pub mod schema;
 mod set;
 mod system_table;
 
+use std::sync::atomic::AtomicU64;
+
 pub use anyhow::Error;
 use nsql_core::{Name, Oid};
-use nsql_storage_engine::{ReadonlyExecutionMode, StorageEngine, Transaction};
+use nsql_storage_engine::{
+    ReadWriteExecutionMode, ReadonlyExecutionMode, StorageEngine, Transaction,
+};
 
-pub use self::bootstrap::{BootstrapNamespace, BootstrapTable, Namespace};
-// pub use self::entity::namespace::{CreateNamespaceInfo, Namespace, NamespaceEntity};
+pub use self::bootstrap::{BootstrapNamespace, BootstrapTable};
+pub use self::entity::namespace::{CreateNamespaceInfo, Namespace};
 pub use self::entity::table::{
     Column, ColumnIndex, CreateColumnInfo, CreateTableInfo, Table, TableRef,
 };
@@ -34,6 +38,11 @@ impl<'env, S> Clone for Catalog<'env, S> {
     }
 }
 
+fn hack_new_oid_tmp<T>() -> Oid<T> {
+    static NEXT: AtomicU64 = AtomicU64::new(1000);
+    Oid::new(NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed))
+}
+
 impl<'env, S> Copy for Catalog<'env, S> {}
 
 impl<'env, S: StorageEngine> Catalog<'env, S> {
@@ -51,6 +60,14 @@ impl<'env, S: StorageEngine> Catalog<'env, S> {
         &self,
         tx: &'txn dyn Transaction<'env, S>,
     ) -> Result<SystemTableView<'env, 'txn, S, ReadonlyExecutionMode, T>, S::Error> {
+        SystemTableView::new(self.storage, tx)
+    }
+
+    #[inline]
+    pub fn system_table_write<'txn, T: SystemEntity>(
+        &self,
+        tx: &'txn S::WriteTransaction<'env>,
+    ) -> Result<SystemTableView<'env, 'txn, S, ReadWriteExecutionMode, T>, S::Error> {
         SystemTableView::new(self.storage, tx)
     }
 }

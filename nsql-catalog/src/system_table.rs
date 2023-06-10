@@ -65,13 +65,11 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: SystemEnt
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine, T>
+impl<'env: 'txn, 'txn, S: StorageEngine, T: SystemEntity>
     SystemTableView<'env, 'txn, S, ReadWriteExecutionMode, T>
 {
-    pub fn insert(&mut self, value: T) -> Result<()>
-    where
-        T: IntoTuple,
-    {
+    #[inline]
+    pub fn insert(&mut self, value: T) -> Result<()> {
         self.storage.insert(&value.into_tuple())
     }
 }

@@ -10,17 +10,88 @@
 //     name: Name,
 //     pub(crate) tables: CatalogSet<S, Table<S>>,
 // }
+//
+
+use nsql_core::{LogicalType, Name, Oid};
+use nsql_storage::tuple::{FromTuple, FromTupleError, IntoTuple, Tuple};
+use nsql_storage::value::Value;
+use nsql_storage::{ColumnStorageInfo, TableStorageInfo};
+
+use crate::SystemEntity;
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Namespace {
+    pub(crate) oid: Oid<Namespace>,
+    pub(crate) name: String,
+}
+
+impl Namespace {
+    #[inline]
+    pub fn new(oid: Oid<Namespace>, name: String) -> Self {
+        Self { oid, name }
+    }
+}
+
+impl SystemEntity for Namespace {
+    type Parent = !;
+
+    fn storage_info() -> TableStorageInfo {
+        TableStorageInfo::new(
+            "nsql_catalog.nsql_namespace",
+            vec![
+                ColumnStorageInfo::new(LogicalType::Oid, true),
+                ColumnStorageInfo::new(LogicalType::Text, false),
+            ],
+        )
+    }
+
+    #[inline]
+    fn name(&self) -> &str {
+        &self.name
+    }
+
+    #[inline]
+    fn oid(&self) -> Oid<Self> {
+        self.oid
+    }
+
+    #[inline]
+    fn parent_oid(&self) -> Option<Oid<Self::Parent>> {
+        None
+    }
+
+    fn desc() -> &'static str {
+        "namespace"
+    }
+}
+
+impl FromTuple for Namespace {
+    fn from_tuple(mut tuple: Tuple) -> Result<Self, FromTupleError> {
+        if tuple.len() != 2 {
+            return Err(FromTupleError::ColumnCountMismatch { expected: 2, actual: tuple.len() });
+        }
+
+        Ok(Self { oid: tuple[0].take().cast_non_null()?, name: tuple[1].take().cast_non_null()? })
+    }
+}
+
+impl IntoTuple for Namespace {
+    fn into_tuple(self) -> Tuple {
+        Tuple::from([Value::Oid(self.oid.untyped()), Value::Text(self.name)])
+    }
+}
 
 // pub trait NamespaceEntity<S: StorageEngine>: CatalogEntity<S, Container = Namespace<S>> {}
 //
 // impl<S: StorageEngine, T: CatalogEntity<S, Container = Namespace<S>>> NamespaceEntity<S> for T {}
 //
 // impl<S: StorageEngine> Container<S> for Namespace<S> {}
-//
-// #[derive(Debug)]
-// pub struct CreateNamespaceInfo {
-//     pub name: Name,
-// }
+
+#[derive(Debug, Clone)]
+pub struct CreateNamespaceInfo {
+    pub name: Name,
+    pub if_not_exists: bool,
+}
 //
 // impl<S: StorageEngine> CatalogEntity<S> for Namespace<S> {
 //     type Container = Catalog;

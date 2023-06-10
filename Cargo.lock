@@ -1207,7 +1207,6 @@ version = "0.1.0"
 dependencies = [
  "nsql-catalog",
  "nsql-ir",
- "nsql-storage-engine",
 ]
 
 [[package]]

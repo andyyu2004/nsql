@@ -1,6 +1,6 @@
 use std::fmt;
 
-use nsql_catalog::Namespace;
+use nsql_catalog::{CreateNamespaceInfo, Namespace};
 use nsql_storage_engine::fallible_iterator;
 
 use super::*;
@@ -8,12 +8,12 @@ use crate::{ReadWriteExecutionMode, TupleStream};
 
 #[derive(Debug)]
 pub struct PhysicalCreateNamespace {
-    info: ir::CreateNamespaceInfo,
+    info: CreateNamespaceInfo,
 }
 
 impl PhysicalCreateNamespace {
     pub(crate) fn plan<'env: 'txn, 'txn, S: StorageEngine>(
-        info: ir::CreateNamespaceInfo,
+        info: CreateNamespaceInfo,
     ) -> Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode>> {
         Arc::new(Self { info })
     }
@@ -63,16 +63,18 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSource<'env, 'txn, S, ReadWrite
     ) -> ExecutionResult<TupleStream<'txn, S>> {
         let catalog = ctx.catalog();
         let tx = ctx.tx()?;
-        todo!();
-        // let info = CreateNamespaceInfo { name: self.info.name.clone() };
-        //
-        // if let Err(err) = catalog.create::<Namespace<S>>(tx, info) {
-        //     if !self.info.if_not_exists {
-        //         return Err(err)?;
-        //     }
-        // }
-        //
-        // Ok(Box::new(fallible_iterator::empty()))
+        let namespaces = catalog.system_table_write::<Namespace>(tx)?;
+        let info = self.info.clone();
+
+        namespaces.insert(Namespace::new(info.name.clone()));
+
+        if let Err(err) = catalog.create::<Namespace<S>>(tx, info) {
+            if !self.info.if_not_exists {
+                return Err(err)?;
+            }
+        }
+
+        Ok(Box::new(fallible_iterator::empty()))
     }
 }
 

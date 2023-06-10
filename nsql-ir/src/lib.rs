@@ -4,7 +4,7 @@
 pub mod expr;
 use std::fmt;
 
-use nsql_catalog::{CreateColumnInfo, Namespace, TableRef};
+use nsql_catalog::{CreateColumnInfo, CreateNamespaceInfo, Namespace, TableRef};
 use nsql_core::{Name, Oid};
 pub use nsql_storage::tuple::TupleIndex;
 pub use nsql_storage::value::{Decimal, Value};
@@ -26,12 +26,6 @@ impl fmt::Debug for CreateTableInfo {
             .field("columns", &self.columns)
             .finish()
     }
-}
-
-#[derive(Debug, Clone)]
-pub struct CreateNamespaceInfo {
-    pub name: Name,
-    pub if_not_exists: bool,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]

@@ -5,7 +5,7 @@ use nsql_storage::{ColumnStorageInfo, Result, TableStorageInfo};
 use nsql_storage_engine::{ReadWriteExecutionMode, StorageEngine};
 
 use crate::system_table::{SystemEntity, SystemTableView};
-use crate::{Column, ColumnIndex, Oid, Table};
+use crate::{Column, ColumnIndex, Namespace, Oid, Table};
 
 pub(crate) fn bootstrap<'env, S: StorageEngine>(
     storage: &'env S,
@@ -66,86 +66,7 @@ impl<T: SystemEntity> CatalogPath<T> {
     }
 }
 
-pub type Namespace = BootstrapNamespace;
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct BootstrapNamespace {
-    oid: Oid<BootstrapNamespace>,
-    name: String,
-}
-
-impl SystemEntity for ! {
-    type Parent = !;
-
-    fn storage_info() -> TableStorageInfo {
-        todo!()
-    }
-
-    fn name(&self) -> &str {
-        unreachable!()
-    }
-
-    fn oid(&self) -> Oid<Self> {
-        unreachable!()
-    }
-
-    fn parent_oid(&self) -> Option<Oid<Self::Parent>> {
-        unreachable!()
-    }
-
-    fn desc() -> &'static str {
-        "catalog"
-    }
-}
-
-impl SystemEntity for BootstrapNamespace {
-    type Parent = !;
-
-    fn storage_info() -> TableStorageInfo {
-        TableStorageInfo::new(
-            "nsql_catalog.nsql_namespace",
-            vec![
-                ColumnStorageInfo::new(LogicalType::Oid, true),
-                ColumnStorageInfo::new(LogicalType::Text, false),
-            ],
-        )
-    }
-
-    #[inline]
-    fn name(&self) -> &str {
-        &self.name
-    }
-
-    #[inline]
-    fn oid(&self) -> Oid<Self> {
-        self.oid
-    }
-
-    #[inline]
-    fn parent_oid(&self) -> Option<Oid<Self::Parent>> {
-        None
-    }
-
-    fn desc() -> &'static str {
-        "namespace"
-    }
-}
-
-impl FromTuple for BootstrapNamespace {
-    fn from_tuple(mut tuple: Tuple) -> Result<Self, FromTupleError> {
-        if tuple.len() != 2 {
-            return Err(FromTupleError::ColumnCountMismatch { expected: 2, actual: tuple.len() });
-        }
-
-        Ok(Self { oid: tuple[0].take().cast_non_null()?, name: tuple[1].take().cast_non_null()? })
-    }
-}
-
-impl IntoTuple for BootstrapNamespace {
-    fn into_tuple(self) -> Tuple {
-        Tuple::from([Value::Oid(self.oid.untyped()), Value::Text(self.name)])
-    }
-}
+pub type BootstrapNamespace = Namespace;
 
 pub type BootstrapTable = Table;
 
@@ -328,8 +249,17 @@ impl SystemEntity for BootstrapType {
     type Parent = !;
 
     #[inline]
+    fn oid(&self) -> Oid<Self> {
+        self.oid
+    }
+
+    #[inline]
     fn name(&self) -> &str {
         &self.name
+    }
+
+    fn parent_oid(&self) -> Option<Oid<Self::Parent>> {
+        None
     }
 
     fn storage_info() -> TableStorageInfo {
@@ -340,15 +270,6 @@ impl SystemEntity for BootstrapType {
                 ColumnStorageInfo::new(LogicalType::Text, false),
             ],
         )
-    }
-
-    #[inline]
-    fn oid(&self) -> Oid<Self> {
-        self.oid
-    }
-
-    fn parent_oid(&self) -> Option<Oid<Self::Parent>> {
-        None
     }
 
     fn desc() -> &'static str {
@@ -382,4 +303,28 @@ fn bootstrap_nsql_types() -> Vec<BootstrapType> {
         BootstrapType { oid: nsql_ty_int_oid(), name: "int".into() },
         BootstrapType { oid: nsql_ty_text_oid(), name: "text".into() },
     ]
+}
+
+impl SystemEntity for ! {
+    type Parent = !;
+
+    fn storage_info() -> TableStorageInfo {
+        todo!()
+    }
+
+    fn name(&self) -> &str {
+        unreachable!()
+    }
+
+    fn oid(&self) -> Oid<Self> {
+        unreachable!()
+    }
+
+    fn parent_oid(&self) -> Option<Oid<Self::Parent>> {
+        unreachable!()
+    }
+
+    fn desc() -> &'static str {
+        "catalog"
+    }
 }

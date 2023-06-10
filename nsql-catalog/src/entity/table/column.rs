@@ -153,8 +153,18 @@ impl SystemEntity for Column {
     type Parent = Table;
 
     #[inline]
+    fn oid(&self) -> Oid<Self> {
+        self.oid
+    }
+
+    #[inline]
     fn name(&self) -> &str {
         &self.name
+    }
+
+    #[inline]
+    fn parent_oid(&self) -> Option<Oid<Self::Parent>> {
+        Some(self.table)
     }
 
     fn storage_info() -> TableStorageInfo {
@@ -169,16 +179,6 @@ impl SystemEntity for Column {
                 ColumnStorageInfo::new(LogicalType::Bool, false),
             ],
         )
-    }
-
-    #[inline]
-    fn oid(&self) -> Oid<Self> {
-        self.oid
-    }
-
-    #[inline]
-    fn parent_oid(&self) -> Option<Oid<Self::Parent>> {
-        Some(self.table)
     }
 
     fn desc() -> &'static str {

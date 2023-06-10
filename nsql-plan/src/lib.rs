@@ -1,14 +1,13 @@
 //! fixme this crate seems a bit useless
 
-use nsql_catalog::{ColumnIndex, TableRef};
-use nsql_storage_engine::StorageEngine;
+use nsql_catalog::{ColumnIndex, CreateNamespaceInfo, TableRef};
 
 #[derive(Debug)]
 pub enum Plan {
     Empty,
     Transaction(ir::TransactionStmtKind),
     CreateTable(ir::CreateTableInfo),
-    CreateNamespace(ir::CreateNamespaceInfo),
+    CreateNamespace(CreateNamespaceInfo),
     Drop(Vec<ir::EntityRef>),
     Show(ir::ObjectType),
     Explain(ir::ExplainMode, Box<Plan>),

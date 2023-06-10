@@ -159,8 +159,18 @@ impl SystemEntity for BootstrapTable {
     type Parent = BootstrapNamespace;
 
     #[inline]
+    fn oid(&self) -> Oid<Self> {
+        self.oid
+    }
+
+    #[inline]
     fn name(&self) -> &str {
         &self.name
+    }
+
+    #[inline]
+    fn parent_oid(&self) -> Option<Oid<Self::Parent>> {
+        Some(self.namespace)
     }
 
     fn storage_info() -> TableStorageInfo {
@@ -172,16 +182,6 @@ impl SystemEntity for BootstrapTable {
                 ColumnStorageInfo::new(LogicalType::Text, false),
             ],
         )
-    }
-
-    #[inline]
-    fn oid(&self) -> Oid<Self> {
-        self.oid
-    }
-
-    #[inline]
-    fn parent_oid(&self) -> Option<Oid<Self::Parent>> {
-        Some(self.namespace)
     }
 
     fn desc() -> &'static str {

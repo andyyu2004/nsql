@@ -11,8 +11,8 @@ use ir::expr::EvalNotConst;
 use ir::{Decimal, Path, TransactionMode};
 use itertools::Itertools;
 use nsql_catalog::{
-    BootstrapNamespace, BootstrapTable, Catalog, Column, CreateColumnInfo, Entity, Namespace,
-    SystemEntity, Table, TableRef, DEFAULT_SCHEMA,
+    BootstrapNamespace, BootstrapTable, Catalog, Column, CreateColumnInfo, CreateNamespaceInfo,
+    Entity, Namespace, SystemEntity, Table, TableRef, DEFAULT_SCHEMA,
 };
 use nsql_core::{LogicalType, Name, Oid};
 use nsql_parse::ast::{self, HiveDistributionStyle};
@@ -134,7 +134,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                         not_implemented!("schema name with authorization")
                     }
                 };
-                ir::Stmt::CreateNamespace(ir::CreateNamespaceInfo {
+                ir::Stmt::CreateNamespace(CreateNamespaceInfo {
                     name,
                     if_not_exists: *if_not_exists,
                 })
