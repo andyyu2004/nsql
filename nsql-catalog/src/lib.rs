@@ -1,4 +1,5 @@
 #![deny(rust_2018_idioms)]
+#![feature(never_type)]
 
 mod bootstrap;
 mod entity;
@@ -10,16 +11,17 @@ use std::sync::Arc;
 
 pub use anyhow::Error;
 use nsql_core::{Name, Oid};
-use nsql_storage_engine::{ExecutionMode, StorageEngine, Transaction};
+use nsql_storage_engine::{ReadonlyExecutionMode, StorageEngine, Transaction};
 
-use self::bootstrap::BootstrapNamespace;
+pub use self::bootstrap::{BootstrapNamespace, BootstrapTable};
 pub use self::entity::namespace::{CreateNamespaceInfo, Namespace, NamespaceEntity};
 pub use self::entity::table::{
     Column, ColumnIndex, ColumnRef, CreateColumnInfo, CreateTableInfo, Table, TableRef,
 };
 use self::private::CatalogEntity;
 use self::set::{CatalogSet, Conflict};
-use self::system_table::{SystemEntity, SystemTableView};
+pub use self::system_table::SystemEntity;
+use self::system_table::SystemTableView;
 
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 
@@ -29,18 +31,19 @@ pub struct Catalog2<'env, S> {
 
 impl<'env, S: StorageEngine> Catalog2<'env, S> {
     #[inline]
-    pub fn namespaces<'txn, M: ExecutionMode<'env, S>>(
+    pub fn namespaces<'txn>(
         &self,
-        tx: M::TransactionRef<'txn>,
-    ) -> Result<SystemTableView<'env, 'txn, S, M, BootstrapNamespace<S>>, S::Error> {
+        tx: &'txn dyn Transaction<'env, S>,
+    ) -> Result<SystemTableView<'env, 'txn, S, ReadonlyExecutionMode, BootstrapNamespace>, S::Error>
+    {
         self.system_table(tx)
     }
 
     #[inline]
-    fn system_table<'txn, M: ExecutionMode<'env, S>, T: SystemEntity>(
+    pub fn system_table<'txn, T: SystemEntity>(
         &self,
-        tx: M::TransactionRef<'txn>,
-    ) -> Result<SystemTableView<'env, 'txn, S, M, T>, S::Error> {
+        tx: &'txn dyn Transaction<'env, S>,
+    ) -> Result<SystemTableView<'env, 'txn, S, ReadonlyExecutionMode, T>, S::Error> {
         SystemTableView::new(self.storage, tx)
     }
 }

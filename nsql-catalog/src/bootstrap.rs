@@ -5,31 +5,31 @@ use nsql_storage::{ColumnStorageInfo, Result, TableStorageInfo};
 use nsql_storage_engine::{ReadWriteExecutionMode, StorageEngine};
 
 use crate::system_table::{SystemEntity, SystemTableView};
-use crate::{Column, Namespace, Oid, Table};
+use crate::Oid;
 
 pub(crate) fn bootstrap<'env, S: StorageEngine>(
     storage: &'env S,
     txn: &S::WriteTransaction<'env>,
 ) -> Result<()> {
     let mut namespace_table =
-        SystemTableView::<S, ReadWriteExecutionMode, BootstrapNamespace<S>>::new(storage, txn)?;
+        SystemTableView::<S, ReadWriteExecutionMode, BootstrapNamespace>::new(storage, txn)?;
 
-    for namespace in bootstrap_nsql_namespaces::<S>() {
+    for namespace in bootstrap_nsql_namespaces() {
         namespace_table.insert(namespace)?;
     }
 
     let mut table_table =
-        SystemTableView::<S, ReadWriteExecutionMode, BootstrapTable<S>>::new(storage, txn)?;
+        SystemTableView::<S, ReadWriteExecutionMode, BootstrapTable>::new(storage, txn)?;
 
-    let tables = bootstrap_nsql_tables::<S>();
+    let tables = bootstrap_nsql_tables();
     for table in tables {
         table_table.insert(table)?;
     }
 
     let mut column_table =
-        SystemTableView::<S, ReadWriteExecutionMode, BootstrapColumn<S>>::new(storage, txn)?;
+        SystemTableView::<S, ReadWriteExecutionMode, BootstrapColumn>::new(storage, txn)?;
 
-    let columns = bootstrap_nsql_column::<S>();
+    let columns = bootstrap_nsql_column();
     for column in columns {
         column_table.insert(column)?;
     }
@@ -43,12 +43,62 @@ pub(crate) fn bootstrap<'env, S: StorageEngine>(
     Ok(())
 }
 
-pub struct BootstrapNamespace<S> {
-    oid: Oid<Namespace<S>>,
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct CatalogPath<T: SystemEntity> {
+    oid: Oid<T>,
+    parent_oid: Option<Oid<T::Parent>>,
+}
+
+impl<T: SystemEntity> CatalogPath<T> {
+    #[inline]
+    pub fn new(oid: Oid<T>, parent_oid: Option<Oid<T::Parent>>) -> Self {
+        Self { oid, parent_oid }
+    }
+
+    #[inline]
+    pub fn oid(&self) -> Oid<T> {
+        self.oid
+    }
+
+    #[inline]
+    pub fn parent_oid(&self) -> Option<Oid<<T as SystemEntity>::Parent>> {
+        self.parent_oid
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct BootstrapNamespace {
+    oid: Oid<BootstrapNamespace>,
     name: String,
 }
 
-impl<S> SystemEntity for BootstrapNamespace<S> {
+impl SystemEntity for ! {
+    type Parent = !;
+
+    fn storage_info() -> TableStorageInfo {
+        todo!()
+    }
+
+    fn name(&self) -> &str {
+        unreachable!()
+    }
+
+    fn oid(&self) -> Oid<Self> {
+        unreachable!()
+    }
+
+    fn parent_oid(&self) -> Option<Oid<Self::Parent>> {
+        unreachable!()
+    }
+
+    fn desc() -> &'static str {
+        "catalog"
+    }
+}
+
+impl SystemEntity for BootstrapNamespace {
+    type Parent = !;
+
     fn storage_info() -> TableStorageInfo {
         TableStorageInfo::new(
             "nsql_catalog.nsql_namespace",
@@ -58,10 +108,29 @@ impl<S> SystemEntity for BootstrapNamespace<S> {
             ],
         )
     }
+
+    #[inline]
+    fn name(&self) -> &str {
+        &self.name
+    }
+
+    #[inline]
+    fn oid(&self) -> Oid<Self> {
+        self.oid
+    }
+
+    #[inline]
+    fn parent_oid(&self) -> Option<Oid<Self::Parent>> {
+        None
+    }
+
+    fn desc() -> &'static str {
+        "namespace"
+    }
 }
 
-impl<S: StorageEngine> FromTuple for BootstrapNamespace<S> {
-    fn from_tuple(mut tuple: Tuple) -> std::result::Result<Self, FromTupleError> {
+impl FromTuple for BootstrapNamespace {
+    fn from_tuple(mut tuple: Tuple) -> Result<Self, FromTupleError> {
         if tuple.len() != 2 {
             return Err(FromTupleError::ColumnCountMismatch { expected: 2, actual: tuple.len() });
         }
@@ -70,19 +139,27 @@ impl<S: StorageEngine> FromTuple for BootstrapNamespace<S> {
     }
 }
 
-impl<S> IntoTuple for BootstrapNamespace<S> {
+impl IntoTuple for BootstrapNamespace {
     fn into_tuple(self) -> Tuple {
         Tuple::from([Value::Oid(self.oid.untyped()), Value::Text(self.name)])
     }
 }
 
-struct BootstrapTable<S> {
-    oid: Oid<Table<S>>,
-    namespace: Oid<Namespace<S>>,
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct BootstrapTable {
+    oid: Oid<Self>,
+    namespace: Oid<BootstrapNamespace>,
     name: String,
 }
 
-impl<S> SystemEntity for BootstrapTable<S> {
+impl SystemEntity for BootstrapTable {
+    type Parent = BootstrapNamespace;
+
+    #[inline]
+    fn name(&self) -> &str {
+        &self.name
+    }
+
     fn storage_info() -> TableStorageInfo {
         TableStorageInfo::new(
             "nsql_catalog.nsql_table",
@@ -93,9 +170,23 @@ impl<S> SystemEntity for BootstrapTable<S> {
             ],
         )
     }
+
+    #[inline]
+    fn oid(&self) -> Oid<Self> {
+        self.oid
+    }
+
+    #[inline]
+    fn parent_oid(&self) -> Option<Oid<Self::Parent>> {
+        Some(self.namespace)
+    }
+
+    fn desc() -> &'static str {
+        "table"
+    }
 }
 
-impl<S> IntoTuple for BootstrapTable<S> {
+impl IntoTuple for BootstrapTable {
     fn into_tuple(self) -> Tuple {
         Tuple::from([
             Value::Oid(self.oid.untyped()),
@@ -105,16 +196,38 @@ impl<S> IntoTuple for BootstrapTable<S> {
     }
 }
 
-struct BootstrapColumn<S> {
-    oid: Oid<Column<S>>,
-    table: Oid<Table<S>>,
+impl FromTuple for BootstrapTable {
+    fn from_tuple(mut tuple: Tuple) -> Result<Self, FromTupleError> {
+        if tuple.len() != 3 {
+            return Err(FromTupleError::ColumnCountMismatch { expected: 3, actual: tuple.len() });
+        }
+
+        Ok(Self {
+            oid: tuple[0].take().cast_non_null()?,
+            namespace: tuple[1].take().cast_non_null()?,
+            name: tuple[2].take().cast_non_null()?,
+        })
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct BootstrapColumn {
+    oid: Oid<Self>,
+    table: Oid<BootstrapTable>,
     name: String,
     index: u8,
-    ty: Oid<LogicalType>,
+    ty: Oid<BootstrapType>,
     is_primary_key: bool,
 }
 
-impl<S> SystemEntity for BootstrapColumn<S> {
+impl SystemEntity for BootstrapColumn {
+    type Parent = BootstrapTable;
+
+    #[inline]
+    fn name(&self) -> &str {
+        &self.name
+    }
+
     fn storage_info() -> TableStorageInfo {
         TableStorageInfo::new(
             "nsql_catalog.nsql_column",
@@ -128,9 +241,23 @@ impl<S> SystemEntity for BootstrapColumn<S> {
             ],
         )
     }
+
+    #[inline]
+    fn oid(&self) -> Oid<Self> {
+        self.oid
+    }
+
+    #[inline]
+    fn parent_oid(&self) -> Option<Oid<Self::Parent>> {
+        Some(self.table)
+    }
+
+    fn desc() -> &'static str {
+        "column"
+    }
 }
 
-impl<S: StorageEngine> FromTuple for BootstrapColumn<S> {
+impl FromTuple for BootstrapColumn {
     fn from_tuple(mut tuple: Tuple) -> Result<Self, FromTupleError> {
         if tuple.len() != 6 {
             return Err(FromTupleError::ColumnCountMismatch { expected: 6, actual: tuple.len() });
@@ -147,7 +274,7 @@ impl<S: StorageEngine> FromTuple for BootstrapColumn<S> {
     }
 }
 
-impl<S> IntoTuple for BootstrapColumn<S> {
+impl IntoTuple for BootstrapColumn {
     fn into_tuple(self) -> Tuple {
         Tuple::from([
             Value::Oid(self.oid.untyped()),
@@ -160,54 +287,54 @@ impl<S> IntoTuple for BootstrapColumn<S> {
     }
 }
 
-const fn catalog_namespace_oid<S>() -> Oid<Namespace<S>> {
+const fn catalog_namespace_oid() -> Oid<BootstrapNamespace> {
     Oid::new(100)
 }
 
-const fn main_namespace_oid<S>() -> Oid<Namespace<S>> {
+const fn main_namespace_oid() -> Oid<BootstrapNamespace> {
     Oid::new(101)
 }
 
-const fn nsql_namespace_table_oid<S>() -> Oid<Table<S>> {
+const fn nsql_namespace_table_oid() -> Oid<BootstrapTable> {
     Oid::new(100)
 }
 
-const fn nsql_table_table_oid<S>() -> Oid<Table<S>> {
+const fn nsql_table_table_oid() -> Oid<BootstrapTable> {
     Oid::new(101)
 }
 
-const fn nsql_attribute_table_oid<S>() -> Oid<Table<S>> {
+const fn nsql_attribute_table_oid() -> Oid<BootstrapTable> {
     Oid::new(102)
 }
 
-const fn nsql_ty_table_oid<S>() -> Oid<Table<S>> {
+const fn nsql_ty_table_oid() -> Oid<BootstrapTable> {
     Oid::new(103)
 }
 
-const fn nsql_ty_oid_oid() -> Oid<LogicalType> {
+const fn nsql_ty_oid_oid() -> Oid<BootstrapType> {
     Oid::new(100)
 }
 
-const fn nsql_ty_bool_oid() -> Oid<LogicalType> {
+const fn nsql_ty_bool_oid() -> Oid<BootstrapType> {
     Oid::new(101)
 }
 
-const fn nsql_ty_int_oid() -> Oid<LogicalType> {
+const fn nsql_ty_int_oid() -> Oid<BootstrapType> {
     Oid::new(102)
 }
 
-const fn nsql_ty_text_oid() -> Oid<LogicalType> {
+const fn nsql_ty_text_oid() -> Oid<BootstrapType> {
     Oid::new(103)
 }
 
-fn bootstrap_nsql_namespaces<S: StorageEngine>() -> Vec<BootstrapNamespace<S>> {
+fn bootstrap_nsql_namespaces() -> Vec<BootstrapNamespace> {
     vec![
         BootstrapNamespace { oid: main_namespace_oid(), name: "main".into() },
         BootstrapNamespace { oid: catalog_namespace_oid(), name: "nsql_catalog".into() },
     ]
 }
 
-fn bootstrap_nsql_tables<S: StorageEngine>() -> Vec<BootstrapTable<S>> {
+fn bootstrap_nsql_tables() -> Vec<BootstrapTable> {
     vec![
         BootstrapTable {
             oid: nsql_namespace_table_oid(),
@@ -232,7 +359,7 @@ fn bootstrap_nsql_tables<S: StorageEngine>() -> Vec<BootstrapTable<S>> {
     ]
 }
 
-fn bootstrap_nsql_column<S: StorageEngine>() -> Vec<BootstrapColumn<S>> {
+fn bootstrap_nsql_column() -> Vec<BootstrapColumn> {
     vec![
         BootstrapColumn {
             oid: Oid::new(0),
@@ -326,12 +453,21 @@ fn bootstrap_nsql_column<S: StorageEngine>() -> Vec<BootstrapColumn<S>> {
     ]
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 struct BootstrapType {
-    oid: Oid<LogicalType>,
+    oid: Oid<BootstrapType>,
     name: String,
 }
 
 impl SystemEntity for BootstrapType {
+    // should types be namespaced?
+    type Parent = !;
+
+    #[inline]
+    fn name(&self) -> &str {
+        &self.name
+    }
+
     fn storage_info() -> TableStorageInfo {
         TableStorageInfo::new(
             "nsql_catalog.nsql_type",
@@ -340,6 +476,32 @@ impl SystemEntity for BootstrapType {
                 ColumnStorageInfo::new(LogicalType::Text, false),
             ],
         )
+    }
+
+    #[inline]
+    fn oid(&self) -> Oid<Self> {
+        self.oid
+    }
+
+    fn parent_oid(&self) -> Option<Oid<Self::Parent>> {
+        None
+    }
+
+    fn desc() -> &'static str {
+        "type"
+    }
+}
+
+impl FromTuple for BootstrapType {
+    fn from_tuple(mut tuple: Tuple) -> Result<Self, FromTupleError> {
+        if tuple.len() != 2 {
+            return Err(FromTupleError::ColumnCountMismatch { expected: 2, actual: tuple.len() });
+        }
+
+        Ok(BootstrapType {
+            oid: tuple[0].take().cast_non_null()?,
+            name: tuple[1].take().cast_non_null()?,
+        })
     }
 }
 

@@ -4,7 +4,6 @@
 mod scope;
 
 use std::str::FromStr;
-use std::sync::Arc;
 
 pub use anyhow::Error;
 use anyhow::{anyhow, bail, ensure};
@@ -12,8 +11,8 @@ use ir::expr::EvalNotConst;
 use ir::{Decimal, Path, TransactionMode};
 use itertools::Itertools;
 use nsql_catalog::{
-    Catalog, Catalog2, Column, Container, CreateColumnInfo, Entity, EntityRef, Namespace,
-    NamespaceEntity, Table, TableRef, DEFAULT_SCHEMA,
+    BootstrapNamespace, BootstrapTable, Catalog, Catalog2, Column, Container, CreateColumnInfo,
+    Entity, EntityRef, Namespace, NamespaceEntity, SystemEntity, Table, TableRef, DEFAULT_SCHEMA,
 };
 use nsql_core::{LogicalType, Name, Oid};
 use nsql_parse::ast::{self, HiveDistributionStyle};
@@ -235,7 +234,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                     .map(|name| match object_type {
                         ast::ObjectType::Table => {
                             let (namespace, table) =
-                                self.bind_namespaced_entity::<Table<S>>(tx, name)?;
+                                self.bind_namespaced_entity::<BootstrapTable>(tx, name)?;
                             Ok(ir::EntityRef::Table(TableRef { namespace, table }))
                         }
                         ast::ObjectType::View => todo!(),
@@ -412,7 +411,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
         }
     }
 
-    fn bind_namespaced_entity<T: NamespaceEntity<S>>(
+    fn bind_namespaced_entity<T: SystemEntity<Parent = BootstrapNamespace>>(
         &self,
         tx: &dyn Transaction<'env, S>,
         path: &Path,
@@ -428,15 +427,16 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
             Path::Qualified { prefix, name } => match prefix.as_ref() {
                 Path::Qualified { .. } => not_implemented!("qualified schemas"),
                 Path::Unqualified(schema) => {
-                    self.catalog.namespaces::<ReadonlyExecutionMode>(tx);
-                    // self.catalog.namespaces::<ReadonlyExecutionMode>(());
-                    todo!();
-                    // let (schema_oid, schema) = self
-                    //     .catalog
-                    //     .get_by_name::<Namespace<S>>(tx, schema.as_str())?
-                    //     .ok_or_else(|| unbound!(Namespace<S>, path))?;
+                    let namespaces = self.catalog.namespaces(tx)?;
+                    let namespace = namespaces
+                        .find(None, schema.as_str())?
+                        .ok_or_else(|| unbound!(Namespace<S>, path))?;
 
                     // let entity_oid = schema.find(name)?.ok_or_else(|| unbound!(T, path))?;
+                    let entities = self.catalog.system_table::<T>(tx)?;
+                    entities
+                        .find(Some(namespace.oid()), name.as_str())?
+                        .ok_or_else(|| unbound!(T, path))?;
 
                     // Ok((schema_oid, entity_oid))
                 }

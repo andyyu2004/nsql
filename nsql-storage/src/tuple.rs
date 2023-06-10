@@ -165,6 +165,25 @@ pub trait FromTuple: Sized {
     fn from_tuple(tuple: Tuple) -> Result<Self, FromTupleError>;
 }
 
+impl FromTuple for ! {
+    fn from_tuple(_tuple: Tuple) -> Result<Self, FromTupleError> {
+        panic!()
+    }
+}
+
 pub trait IntoTuple {
     fn into_tuple(self) -> Tuple;
+}
+
+impl IntoTuple for Tuple {
+    #[inline]
+    fn into_tuple(self) -> Tuple {
+        self
+    }
+}
+
+impl IntoTuple for ! {
+    fn into_tuple(self) -> Tuple {
+        self
+    }
 }

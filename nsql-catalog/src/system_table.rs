@@ -1,14 +1,32 @@
+use std::fmt;
 use std::marker::PhantomData;
 
 use fix_hidden_lifetime_bug::fix_hidden_lifetime_bug;
+use nsql_core::Oid;
 use nsql_storage::tuple::{FromTuple, IntoTuple};
 use nsql_storage::{TableStorage, TableStorageInfo};
 use nsql_storage_engine::{ExecutionMode, FallibleIterator, ReadWriteExecutionMode, StorageEngine};
 
+use crate::bootstrap::CatalogPath;
 use crate::Result;
 
-pub trait SystemEntity {
+pub trait SystemEntity: FromTuple + IntoTuple + Eq + fmt::Debug {
+    type Parent: SystemEntity;
+
+    fn oid(&self) -> Oid<Self>;
+
+    fn name(&self) -> &str;
+
+    fn parent_oid(&self) -> Option<Oid<Self::Parent>>;
+
     fn storage_info() -> TableStorageInfo;
+
+    fn desc() -> &'static str;
+
+    #[inline]
+    fn path(&self) -> CatalogPath<Self> {
+        CatalogPath::new(self.oid(), self.parent_oid())
+    }
 }
 
 pub struct SystemTableView<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T> {
@@ -27,21 +45,22 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: SystemEnt
 }
 
 #[fix_hidden_lifetime_bug]
-impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T>
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: SystemEntity>
     SystemTableView<'env, 'txn, S, M, T>
 {
-    pub fn get(&self) -> Result<Option<T>>
-    where
-        T: FromTuple,
-    {
-        self.scan()?.find(|entry| Ok(true))
+    #[inline]
+    pub fn get(&self, path: CatalogPath<T>) -> Result<Option<T>> {
+        self.scan()?.find(|entry| Ok(entry.path() == path))
     }
 
+    #[inline]
+    pub fn find(&self, parent: Option<Oid<T::Parent>>, name: &str) -> Result<Option<T>> {
+        self.scan()?.find(|entry| Ok(entry.parent_oid() == parent && entry.name() == name))
+    }
+
+    #[inline]
     #[fix_hidden_lifetime_bug]
-    pub fn scan(&self) -> Result<impl FallibleIterator<Item = T, Error = anyhow::Error> + '_>
-    where
-        T: FromTuple,
-    {
+    pub fn scan(&self) -> Result<impl FallibleIterator<Item = T, Error = anyhow::Error> + '_> {
         Ok(self.storage.scan(None)?.map_err(Into::into).map(|tuple| Ok(T::from_tuple(tuple)?)))
     }
 }
