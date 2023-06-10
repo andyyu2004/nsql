@@ -1,6 +1,6 @@
 use std::fmt;
 
-use nsql_catalog::{Container, CreateNamespaceInfo, Namespace};
+use nsql_catalog::Namespace;
 use nsql_storage_engine::fallible_iterator;
 
 use super::*;
@@ -63,22 +63,23 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSource<'env, 'txn, S, ReadWrite
     ) -> ExecutionResult<TupleStream<'txn, S>> {
         let catalog = ctx.catalog();
         let tx = ctx.tx()?;
-        let info = CreateNamespaceInfo { name: self.info.name.clone() };
-
-        if let Err(err) = catalog.create::<Namespace<S>>(tx, info) {
-            if !self.info.if_not_exists {
-                return Err(err)?;
-            }
-        }
-
-        Ok(Box::new(fallible_iterator::empty()))
+        todo!();
+        // let info = CreateNamespaceInfo { name: self.info.name.clone() };
+        //
+        // if let Err(err) = catalog.create::<Namespace<S>>(tx, info) {
+        //     if !self.info.if_not_exists {
+        //         return Err(err)?;
+        //     }
+        // }
+        //
+        // Ok(Box::new(fallible_iterator::empty()))
     }
 }
 
 impl<S: StorageEngine> Explain<S> for PhysicalCreateNamespace {
     fn explain(
         &self,
-        _catalog: &Catalog<S>,
+        _catalog: &Catalog,
         _tx: &dyn Transaction<'_, S>,
         f: &mut fmt::Formatter<'_>,
     ) -> explain::Result {

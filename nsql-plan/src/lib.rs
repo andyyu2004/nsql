@@ -4,58 +4,51 @@ use nsql_catalog::{ColumnIndex, TableRef};
 use nsql_storage_engine::StorageEngine;
 
 #[derive(Debug)]
-pub enum Plan<S> {
+pub enum Plan {
     Empty,
     Transaction(ir::TransactionStmtKind),
-    CreateTable(ir::CreateTableInfo<S>),
+    CreateTable(ir::CreateTableInfo),
     CreateNamespace(ir::CreateNamespaceInfo),
-    Drop(Vec<ir::EntityRef<S>>),
+    Drop(Vec<ir::EntityRef>),
     Show(ir::ObjectType),
-    Explain(ir::ExplainMode, Box<Plan<S>>),
+    Explain(ir::ExplainMode, Box<Plan>),
     Update {
-        table_ref: TableRef<S>,
-        source: Box<Plan<S>>,
+        table_ref: TableRef,
+        source: Box<Plan>,
         returning: Option<Box<[ir::Expr]>>,
     },
     Filter {
-        source: Box<Plan<S>>,
+        source: Box<Plan>,
         predicate: ir::Expr,
     },
     Projection {
-        source: Box<Plan<S>>,
+        source: Box<Plan>,
         projection: Box<[ir::Expr]>,
     },
     Insert {
-        table_ref: TableRef<S>,
+        table_ref: TableRef,
         projection: Box<[ir::Expr]>,
-        source: Box<Plan<S>>,
+        source: Box<Plan>,
         returning: Option<Box<[ir::Expr]>>,
     },
     Values {
         values: ir::Values,
     },
     Scan {
-        table_ref: TableRef<S>,
+        table_ref: TableRef,
         projection: Option<Box<[ColumnIndex]>>,
     },
     Limit {
-        source: Box<Plan<S>>,
+        source: Box<Plan>,
         limit: u64,
     },
 }
 
-pub struct Planner<S> {
-    _marker: std::marker::PhantomData<S>,
-}
+#[derive(Debug, Default)]
+pub struct Planner {}
 
-impl<S> Default for Planner<S> {
-    fn default() -> Self {
-        Self { _marker: std::marker::PhantomData }
-    }
-}
-
-impl<S: StorageEngine> Planner<S> {
-    pub fn plan(&self, stmt: ir::Stmt<S>) -> Box<Plan<S>> {
+impl Planner {
+    pub fn plan(&self, stmt: ir::Stmt) -> Box<Plan> {
         let plan = match stmt {
             ir::Stmt::Transaction(kind) => Plan::Transaction(kind),
             ir::Stmt::CreateTable(info) => Plan::CreateTable(info),
@@ -77,7 +70,7 @@ impl<S: StorageEngine> Planner<S> {
     }
 
     #[allow(clippy::boxed_local)]
-    fn plan_query(&self, plan: Box<ir::QueryPlan<S>>) -> Box<Plan<S>> {
+    fn plan_query(&self, plan: Box<ir::QueryPlan>) -> Box<Plan> {
         let plan = match *plan {
             ir::QueryPlan::Values(values) => Plan::Values { values },
             ir::QueryPlan::Filter { source, predicate } => {

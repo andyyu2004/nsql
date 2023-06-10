@@ -11,8 +11,8 @@ use ir::expr::EvalNotConst;
 use ir::{Decimal, Path, TransactionMode};
 use itertools::Itertools;
 use nsql_catalog::{
-    BootstrapNamespace, BootstrapTable, Catalog, Catalog2, Column, Container, CreateColumnInfo,
-    Entity, EntityRef, Namespace, NamespaceEntity, SystemEntity, Table, TableRef, DEFAULT_SCHEMA,
+    BootstrapNamespace, BootstrapTable, Catalog, Catalog2, Column, CreateColumnInfo, Entity,
+    Namespace, SystemEntity, Table, TableRef, DEFAULT_SCHEMA,
 };
 use nsql_core::{LogicalType, Name, Oid};
 use nsql_parse::ast::{self, HiveDistributionStyle};
@@ -57,11 +57,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
         Ok(matches!(stmt.required_transaction_mode(), TransactionMode::ReadWrite))
     }
 
-    pub fn bind(
-        &self,
-        tx: &dyn Transaction<'env, S>,
-        stmt: &ast::Statement,
-    ) -> Result<ir::Stmt<S>> {
+    pub fn bind(&self, tx: &dyn Transaction<'env, S>, stmt: &ast::Statement) -> Result<ir::Stmt> {
         let scope = &Scope::default();
         let stmt = match stmt {
             ast::Statement::CreateTable {
@@ -235,7 +231,8 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                         ast::ObjectType::Table => {
                             let (namespace, table) =
                                 self.bind_namespaced_entity::<BootstrapTable>(tx, name)?;
-                            Ok(ir::EntityRef::Table(TableRef { namespace, table }))
+                            todo!();
+                            // Ok(ir::EntityRef::Table(TableRef { namespace, table }))
                         }
                         ast::ObjectType::View => todo!(),
                         ast::ObjectType::Index => todo!(),
@@ -309,54 +306,55 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
         &self,
         tx: &dyn Transaction<'env, S>,
         scope: &Scope<S>,
-        table_ref: TableRef<S>,
+        table_ref: TableRef,
         assignments: &[ast::Assignment],
     ) -> Result<Box<[ir::Expr]>> {
-        let table: Table<S> = todo!();
+        let table: Table = todo!();
         // let table = table_ref.get(&self.catalog, tx);
-        let columns = table.all::<Column<S>>(tx);
+        // let columns = table.all::<Column<S>>(tx);
+        todo!()
 
-        for assignment in assignments {
-            assert!(!assignment.id.is_empty());
-            if assignment.id.len() > 1 {
-                not_implemented!("compound assignment")
-            }
-
-            if !columns.iter().any(|column| column.name().as_str() == assignment.id[0].value) {
-                bail!(
-                    "referenced update column `{}` does not exist in table `{}`",
-                    assignment.id[0].value,
-                    table.name(),
-                )
-            }
-        }
-
-        // We desugar the update assignments into a projection
-        let mut projections = Vec::with_capacity(columns.len());
-        for column in columns {
-            let expr = if let Some(assignment) =
-                assignments.iter().find(|assn| assn.id[0].value == column.name().as_str())
-            {
-                // we don't allow updating primary keys
-                if column.is_primary_key() {
-                    bail!(
-                        "cannot update primary key column `{}` of table `{}`",
-                        column.name(),
-                        table.name()
-                    )
-                }
-
-                // if the column is being updated, we bind the expression in the assignment
-                self.bind_expr(scope, &assignment.value)?
-            } else {
-                // otherwise, we bind the column to itself (effectively an identity projection)
-                self.bind_expr(scope, &ast::Expr::Identifier(ast::Ident::new(column.name())))?
-            };
-
-            projections.push(expr);
-        }
-
-        Ok(projections.into_boxed_slice())
+        // for assignment in assignments {
+        //     assert!(!assignment.id.is_empty());
+        //     if assignment.id.len() > 1 {
+        //         not_implemented!("compound assignment")
+        //     }
+        //
+        //     if !columns.iter().any(|column| column.name().as_str() == assignment.id[0].value) {
+        //         bail!(
+        //             "referenced update column `{}` does not exist in table `{}`",
+        //             assignment.id[0].value,
+        //             table.name(),
+        //         )
+        //     }
+        // }
+        //
+        // // We desugar the update assignments into a projection
+        // let mut projections = Vec::with_capacity(columns.len());
+        // for column in columns {
+        //     let expr = if let Some(assignment) =
+        //         assignments.iter().find(|assn| assn.id[0].value == column.name().as_str())
+        //     {
+        //         // we don't allow updating primary keys
+        //         if column.is_primary_key() {
+        //             bail!(
+        //                 "cannot update primary key column `{}` of table `{}`",
+        //                 column.name(),
+        //                 table.name()
+        //             )
+        //         }
+        //
+        //         // if the column is being updated, we bind the expression in the assignment
+        //         self.bind_expr(scope, &assignment.value)?
+        //     } else {
+        //         // otherwise, we bind the column to itself (effectively an identity projection)
+        //         self.bind_expr(scope, &ast::Expr::Identifier(ast::Ident::new(column.name())))?
+        //     };
+        //
+        //     projections.push(expr);
+        // }
+        //
+        // Ok(projections.into_boxed_slice())
     }
 
     fn lower_columns(&self, columns: &[ast::ColumnDef]) -> Result<Vec<CreateColumnInfo>> {
@@ -391,7 +389,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
         }
     }
 
-    fn bind_namespace(&self, path: &Path) -> Result<Oid<Namespace<S>>> {
+    fn bind_namespace(&self, path: &Path) -> Result<Oid<Namespace>> {
         match path {
             Path::Qualified { prefix, .. } => match prefix.as_ref() {
                 Path::Qualified { .. } => not_implemented!("qualified schemas"),
@@ -415,7 +413,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
         &self,
         tx: &dyn Transaction<'env, S>,
         path: &Path,
-    ) -> Result<(Oid<Namespace<S>>, Oid<T>)> {
+    ) -> Result<(Oid<BootstrapNamespace>, Oid<T>)> {
         match path {
             Path::Unqualified(name) => self.bind_namespaced_entity(
                 tx,
@@ -427,18 +425,19 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
             Path::Qualified { prefix, name } => match prefix.as_ref() {
                 Path::Qualified { .. } => not_implemented!("qualified schemas"),
                 Path::Unqualified(schema) => {
-                    let namespaces = self.catalog.namespaces(tx)?;
-                    let namespace = namespaces
+                    let namespace = self
+                        .catalog
+                        .namespaces(tx)?
                         .find(None, schema.as_str())?
-                        .ok_or_else(|| unbound!(Namespace<S>, path))?;
+                        .ok_or_else(|| unbound!(Namespace, path))?;
 
-                    // let entity_oid = schema.find(name)?.ok_or_else(|| unbound!(T, path))?;
-                    let entities = self.catalog.system_table::<T>(tx)?;
-                    entities
+                    let entity = self
+                        .catalog
+                        .system_table::<T>(tx)?
                         .find(Some(namespace.oid()), name.as_str())?
                         .ok_or_else(|| unbound!(T, path))?;
 
-                    // Ok((schema_oid, entity_oid))
+                    Ok((namespace.oid(), entity.oid()))
                 }
             },
         }
@@ -461,7 +460,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
         tx: &dyn Transaction<'env, S>,
         scope: &Scope<S>,
         query: &ast::Query,
-    ) -> Result<(Scope<S>, Box<ir::QueryPlan<S>>)> {
+    ) -> Result<(Scope<S>, Box<ir::QueryPlan>)> {
         let ast::Query { with, body, order_by, limit, offset, fetch, locks } = query;
         not_implemented!(with.is_some());
         not_implemented!(!order_by.is_empty());
@@ -491,7 +490,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
         tx: &dyn Transaction<'env, S>,
         scope: &Scope<S>,
         body: &ast::SetExpr,
-    ) -> Result<(Scope<S>, Box<ir::QueryPlan<S>>)> {
+    ) -> Result<(Scope<S>, Box<ir::QueryPlan>)> {
         let (scope, expr) = match body {
             ast::SetExpr::Select(sel) => self.bind_select(tx, scope, sel)?,
             ast::SetExpr::Query(_) => todo!(),
@@ -513,7 +512,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
         tx: &dyn Transaction<'env, S>,
         scope: &Scope<S>,
         select: &ast::Select,
-    ) -> Result<(Scope<S>, Box<ir::QueryPlan<S>>)> {
+    ) -> Result<(Scope<S>, Box<ir::QueryPlan>)> {
         let ast::Select {
             distinct,
             projection,
@@ -565,7 +564,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
         tx: &dyn Transaction<'env, S>,
         scope: &Scope<S>,
         tables: &ast::TableWithJoins,
-    ) -> Result<(Scope<S>, Box<ir::QueryPlan<S>>)> {
+    ) -> Result<(Scope<S>, Box<ir::QueryPlan>)> {
         not_implemented!(!tables.joins.is_empty());
         let table = &tables.relation;
         self.bind_table_factor(tx, scope, table)
@@ -576,7 +575,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
         tx: &dyn Transaction<'env, S>,
         scope: &Scope<S>,
         table: &ast::TableFactor,
-    ) -> Result<(Scope<S>, Box<ir::QueryPlan<S>>)> {
+    ) -> Result<(Scope<S>, Box<ir::QueryPlan>)> {
         let (scope, table_expr) = match table {
             ast::TableFactor::Table { name, alias, args, with_hints } => {
                 not_implemented!(args.is_some());
@@ -610,10 +609,10 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
         scope: &Scope<S>,
         table_name: &ast::ObjectName,
         alias: Option<&ast::TableAlias>,
-    ) -> Result<(Scope<S>, TableRef<S>)> {
+    ) -> Result<(Scope<S>, TableRef)> {
         let alias = alias.map(|alias| self.lower_table_alias(alias));
         let table_name = self.lower_path(&table_name.0)?;
-        let (namespace, table) = self.bind_namespaced_entity::<Table<S>>(tx, &table_name)?;
+        let (namespace, table) = self.bind_namespaced_entity::<BootstrapTable>(tx, &table_name)?;
         let table_ref = TableRef { namespace, table };
 
         Ok((scope.bind_table(self, tx, table_name, table_ref, alias.as_ref())?, table_ref))
@@ -775,7 +774,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
         match val {
             ast::Value::Number(n, b) => {
                 if let Ok(i) = n.parse::<i32>() {
-                    return ir::Value::Int(i);
+                    return ir::Value::Int32(i);
                 }
 
                 assert!(!b, "what does this bool mean?");

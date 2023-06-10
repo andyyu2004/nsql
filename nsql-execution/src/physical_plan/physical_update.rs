@@ -1,4 +1,4 @@
-use nsql_catalog::{EntityRef, TableRef};
+use nsql_catalog::TableRef;
 use nsql_storage_engine::fallible_iterator;
 use parking_lot::RwLock;
 
@@ -7,7 +7,7 @@ use crate::ReadWriteExecutionMode;
 
 pub(crate) struct PhysicalUpdate<'env, 'txn, S> {
     children: [Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode>>; 1],
-    table_ref: TableRef<S>,
+    table_ref: TableRef,
     tuples: RwLock<Vec<Tuple>>,
     returning: Option<Box<[ir::Expr]>>,
     returning_tuples: RwLock<Vec<Tuple>>,
@@ -16,7 +16,7 @@ pub(crate) struct PhysicalUpdate<'env, 'txn, S> {
 
 impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalUpdate<'env, 'txn, S> {
     pub fn plan(
-        table_ref: TableRef<S>,
+        table_ref: TableRef,
         // This is the source of the updates.
         // The schema should be that of the table being updated + the `tid` in the rightmost column
         source: Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode>>,
@@ -89,21 +89,22 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSink<'env, 'txn, S, ReadWriteEx
         ctx: &'txn ExecutionContext<'env, S, ReadWriteExecutionMode>,
     ) -> ExecutionResult<()> {
         let tx = ctx.tx()?;
-        let table = self.table_ref.get(&ctx.catalog(), tx);
-        let mut storage = table.storage(ctx.storage(), tx)?;
-
-        let tuples = self.tuples.read();
-        for tuple in &*tuples {
-            // FIXME we need to detect whether or not we actually updated something before adding it
-            // to the returning set
-            storage.update(tuple)?;
-
-            if let Some(return_expr) = &self.returning {
-                self.returning_tuples
-                    .write()
-                    .push(self.returning_evaluator.evaluate(tuple, return_expr));
-            }
-        }
+        todo!();
+        // let table = self.table_ref.get(&ctx.catalog(), tx);
+        // let mut storage = table.storage(ctx.storage(), tx)?;
+        //
+        // let tuples = self.tuples.read();
+        // for tuple in &*tuples {
+        //     // FIXME we need to detect whether or not we actually updated something before adding it
+        //     // to the returning set
+        //     storage.update(tuple)?;
+        //
+        //     if let Some(return_expr) = &self.returning {
+        //         self.returning_tuples
+        //             .write()
+        //             .push(self.returning_evaluator.evaluate(tuple, return_expr));
+        //     }
+        // }
 
         Ok(())
     }
@@ -124,11 +125,12 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSource<'env, 'txn, S, ReadWrite
 impl<'env: 'txn, 'txn, S: StorageEngine> Explain<S> for PhysicalUpdate<'env, 'txn, S> {
     fn explain(
         &self,
-        catalog: &Catalog<S>,
+        catalog: &Catalog,
         tx: &dyn Transaction<'_, S>,
         f: &mut fmt::Formatter<'_>,
     ) -> explain::Result {
-        write!(f, "update {}", self.table_ref.get(catalog, tx).name())?;
+        todo!();
+        // write!(f, "update {}", self.table_ref.get(catalog, tx).name())?;
         Ok(())
     }
 }

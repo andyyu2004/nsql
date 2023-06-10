@@ -18,7 +18,7 @@ use std::fmt;
 use std::sync::Arc;
 
 use anyhow::Result;
-use nsql_catalog::{Catalog, EntityRef};
+use nsql_catalog::Catalog;
 use nsql_plan::Plan;
 use nsql_storage_engine::{StorageEngine, Transaction};
 
@@ -44,8 +44,8 @@ use crate::{
     Tuple, TupleStream,
 };
 
-pub struct PhysicalPlanner<S> {
-    catalog: Arc<Catalog<S>>,
+pub struct PhysicalPlanner {
+    catalog: Arc<Catalog>,
 }
 
 /// Opaque physical plan that is ready to be executed
@@ -57,33 +57,33 @@ impl<'env, 'txn, S, M> PhysicalPlan<'env, 'txn, S, M> {
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalPlanner<S> {
-    pub fn new(catalog: Arc<Catalog<S>>) -> Self {
+impl<'env: 'txn, 'txn> PhysicalPlanner {
+    pub fn new(catalog: Arc<Catalog>) -> Self {
         Self { catalog }
     }
 
     #[inline]
-    pub fn plan(
+    pub fn plan<S: StorageEngine>(
         &self,
         tx: &dyn Transaction<'env, S>,
-        plan: Box<Plan<S>>,
+        plan: Box<Plan>,
     ) -> Result<PhysicalPlan<'env, 'txn, S, ReadonlyExecutionMode>> {
         self.plan_node(tx, plan).map(PhysicalPlan)
     }
 
     #[inline]
-    pub fn plan_write(
+    pub fn plan_write<S: StorageEngine>(
         &self,
         tx: &dyn Transaction<'env, S>,
-        plan: Box<Plan<S>>,
+        plan: Box<Plan>,
     ) -> Result<PhysicalPlan<'env, 'txn, S, ReadWriteExecutionMode>> {
         self.plan_write_node(tx, plan).map(PhysicalPlan)
     }
 
-    fn plan_write_node(
+    fn plan_write_node<S: StorageEngine>(
         &self,
         tx: &dyn Transaction<'env, S>,
-        plan: Box<Plan<S>>,
+        plan: Box<Plan>,
     ) -> Result<Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode>>> {
         let plan = match *plan {
             Plan::Update { table_ref, source, returning } => {
@@ -106,7 +106,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalPlanner<S> {
         Ok(plan)
     }
 
-    fn explain_plan<M: ExecutionMode<'env, S>>(
+    fn explain_plan<S: StorageEngine, M: ExecutionMode<'env, S>>(
         &self,
         tx: &dyn Transaction<'env, S>,
         kind: ir::ExplainMode,
@@ -129,23 +129,23 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalPlanner<S> {
     }
 
     #[allow(clippy::boxed_local)]
-    fn plan_node<M: ExecutionMode<'env, S>>(
+    fn plan_node<S: StorageEngine, M: ExecutionMode<'env, S>>(
         &self,
         tx: &dyn Transaction<'env, S>,
-        plan: Box<Plan<S>>,
+        plan: Box<Plan>,
     ) -> Result<Arc<dyn PhysicalNode<'env, 'txn, S, M>>> {
         self.fold_plan(tx, plan, Self::plan_node)
     }
 
     #[allow(clippy::boxed_local)]
-    fn fold_plan<M: ExecutionMode<'env, S>>(
+    fn fold_plan<S: StorageEngine, M: ExecutionMode<'env, S>>(
         &self,
         tx: &dyn Transaction<'env, S>,
-        plan: Box<Plan<S>>,
+        plan: Box<Plan>,
         f: impl FnOnce(
             &Self,
             &dyn Transaction<'env, S>,
-            Box<Plan<S>>,
+            Box<Plan>,
         ) -> Result<Arc<dyn PhysicalNode<'env, 'txn, S, M>>>,
     ) -> Result<Arc<dyn PhysicalNode<'env, 'txn, S, M>>> {
         let plan = match *plan {

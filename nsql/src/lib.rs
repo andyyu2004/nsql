@@ -37,7 +37,7 @@ impl<S: StorageEngine> Nsql<S> {
     pub fn create(path: impl AsRef<Path>) -> Result<Self> {
         let storage = S::create(path)?;
         let tx = storage.begin_write()?;
-        let catalog = Arc::new(Catalog::<S>::create(&storage, &tx)?);
+        let catalog = Arc::new(Catalog::create(&storage, &tx)?);
         tx.commit()?;
 
         Ok(Self::new(Shared { storage: Storage::new(storage), catalog }))
@@ -46,7 +46,7 @@ impl<S: StorageEngine> Nsql<S> {
     pub fn open(path: impl AsRef<Path>) -> Result<Self> {
         let storage = S::open(path)?;
         let tx = storage.begin_write()?;
-        let catalog = Arc::new(Catalog::<S>::create(&storage, &tx)?);
+        let catalog = Arc::new(Catalog::create(&storage, &tx)?);
         tx.commit()?;
 
         Ok(Self::new(Shared { storage: Storage::new(storage), catalog }))
@@ -65,7 +65,7 @@ impl<S: StorageEngine> Nsql<S> {
 
 struct Shared<S> {
     storage: Storage<S>,
-    catalog: Arc<Catalog<S>>,
+    catalog: Arc<Catalog>,
 }
 
 pub struct Connection<S: StorageEngine> {

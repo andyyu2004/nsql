@@ -1,4 +1,4 @@
-use nsql_catalog::{EntityRef, TableRef};
+use nsql_catalog::TableRef;
 use nsql_storage_engine::fallible_iterator;
 use parking_lot::RwLock;
 
@@ -7,7 +7,7 @@ use crate::ReadWriteExecutionMode;
 
 pub(crate) struct PhysicalInsert<'env, 'txn, S> {
     children: [Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode>>; 1],
-    table_ref: TableRef<S>,
+    table_ref: TableRef,
     returning: Option<Box<[ir::Expr]>>,
     returning_tuples: RwLock<Vec<Tuple>>,
     returning_evaluator: Evaluator,
@@ -15,7 +15,7 @@ pub(crate) struct PhysicalInsert<'env, 'txn, S> {
 
 impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalInsert<'env, 'txn, S> {
     pub fn plan(
-        table_ref: TableRef<S>,
+        table_ref: TableRef,
         source: Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode>>,
         returning: Option<Box<[ir::Expr]>>,
     ) -> Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode>> {
@@ -74,16 +74,17 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSink<'env, 'txn, S, ReadWriteEx
     ) -> ExecutionResult<()> {
         let catalog = ctx.catalog();
         let tx = ctx.tx()?;
-        let table = self.table_ref.get(&catalog, tx);
-
-        let mut storage = table.storage(ctx.storage(), tx)?;
-        storage.insert(&tuple)?;
-
-        if let Some(return_expr) = &self.returning {
-            self.returning_tuples
-                .write()
-                .push(self.returning_evaluator.evaluate(&tuple, return_expr));
-        }
+        todo!();
+        // let table = self.table_ref.get(&catalog, tx);
+        //
+        // let mut storage = table.storage(ctx.storage(), tx)?;
+        // storage.insert(&tuple)?;
+        //
+        // if let Some(return_expr) = &self.returning {
+        //     self.returning_tuples
+        //         .write()
+        //         .push(self.returning_evaluator.evaluate(&tuple, return_expr));
+        // }
 
         Ok(())
     }
@@ -104,11 +105,12 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSource<'env, 'txn, S, ReadWrite
 impl<'env: 'txn, 'txn, S: StorageEngine> Explain<S> for PhysicalInsert<'env, 'txn, S> {
     fn explain(
         &self,
-        catalog: &Catalog<S>,
+        catalog: &Catalog,
         tx: &dyn Transaction<'_, S>,
         f: &mut fmt::Formatter<'_>,
     ) -> explain::Result {
-        write!(f, "insert into {}", self.table_ref.get(catalog, tx).name())?;
+        todo!();
+        // write!(f, "insert into {}", self.table_ref.get(catalog, tx).name())?;
         Ok(())
     }
 }

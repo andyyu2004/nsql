@@ -1,4 +1,4 @@
-use nsql_catalog::{Container, Namespace, Table};
+use nsql_catalog::{Namespace, Table};
 use nsql_storage::value::Value;
 use nsql_storage_engine::fallible_iterator;
 
@@ -55,24 +55,25 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
     ) -> ExecutionResult<TupleStream<'txn, S>> {
         let catalog = ctx.catalog();
         let tx = ctx.tx()?;
-        let iter =
-            catalog.all::<Namespace<S>>(&tx).into_iter().flat_map(move |namespace| {
-                match self.show {
-                    ir::ObjectType::Table => namespace
-                        .all::<Table<S>>(&tx)
-                        .into_iter()
-                        .map(|table| Ok(Tuple::from(vec![Value::Text(table.name().to_string())]))),
-                }
-            });
+        todo!();
+        // let iter =
+        //     catalog.all::<Namespace<S>>(&tx).into_iter().flat_map(move |namespace| {
+        //         match self.show {
+        //             ir::ObjectType::Table => namespace
+        //                 .all::<Table<S>>(&tx)
+        //                 .into_iter()
+        //                 .map(|table| Ok(Tuple::from(vec![Value::Text(table.name().to_string())]))),
+        //         }
+        //     });
 
-        Ok(Box::new(fallible_iterator::convert(iter)))
+        // Ok(Box::new(fallible_iterator::convert(iter)))
     }
 }
 
 impl<S: StorageEngine> Explain<S> for PhysicalShow {
     fn explain(
         &self,
-        _catalog: &Catalog<S>,
+        _catalog: &Catalog,
         _tx: &dyn Transaction<'_, S>,
         f: &mut fmt::Formatter<'_>,
     ) -> explain::Result {

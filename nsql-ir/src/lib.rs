@@ -12,13 +12,13 @@ pub use nsql_storage::value::{Decimal, Value};
 pub use self::expr::*;
 
 #[derive(Clone)]
-pub struct CreateTableInfo<S> {
+pub struct CreateTableInfo {
     pub name: Name,
-    pub namespace: Oid<Namespace<S>>,
+    pub namespace: Oid<Namespace>,
     pub columns: Vec<CreateColumnInfo>,
 }
 
-impl<S> fmt::Debug for CreateTableInfo<S> {
+impl fmt::Debug for CreateTableInfo {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("CreateTableInfo")
             .field("name", &self.name)
@@ -70,11 +70,11 @@ impl fmt::Display for ObjectType {
 }
 
 #[derive(Clone)]
-pub enum EntityRef<S> {
-    Table(TableRef<S>),
+pub enum EntityRef {
+    Table(TableRef),
 }
 
-impl<S> fmt::Debug for EntityRef<S> {
+impl fmt::Debug for EntityRef {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Table(table) => write!(f, "{table:?}"),
@@ -83,28 +83,28 @@ impl<S> fmt::Debug for EntityRef<S> {
 }
 
 #[derive(Debug, Clone)]
-pub enum Stmt<S> {
+pub enum Stmt {
     Show(ObjectType),
-    Drop(Vec<EntityRef<S>>),
+    Drop(Vec<EntityRef>),
     Transaction(TransactionStmtKind),
     CreateNamespace(CreateNamespaceInfo),
-    CreateTable(CreateTableInfo<S>),
-    Query(Box<QueryPlan<S>>),
-    Explain(ExplainMode, Box<Stmt<S>>),
+    CreateTable(CreateTableInfo),
+    Query(Box<QueryPlan>),
+    Explain(ExplainMode, Box<Stmt>),
     Insert {
-        table_ref: TableRef<S>,
+        table_ref: TableRef,
         projection: Box<[Expr]>,
-        source: Box<QueryPlan<S>>,
+        source: Box<QueryPlan>,
         returning: Option<Box<[Expr]>>,
     },
     Update {
-        table_ref: TableRef<S>,
-        source: Box<QueryPlan<S>>,
+        table_ref: TableRef,
+        source: Box<QueryPlan>,
         returning: Option<Box<[Expr]>>,
     },
 }
 
-impl<S> Stmt<S> {
+impl Stmt {
     pub fn required_transaction_mode(&self) -> TransactionMode {
         match self {
             Stmt::Drop(_)

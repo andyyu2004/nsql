@@ -5,7 +5,7 @@ use nsql_storage::{ColumnStorageInfo, Result, TableStorageInfo};
 use nsql_storage_engine::{ReadWriteExecutionMode, StorageEngine};
 
 use crate::system_table::{SystemEntity, SystemTableView};
-use crate::Oid;
+use crate::{Column, ColumnIndex, Oid, Table};
 
 pub(crate) fn bootstrap<'env, S: StorageEngine>(
     storage: &'env S,
@@ -65,6 +65,8 @@ impl<T: SystemEntity> CatalogPath<T> {
         self.parent_oid
     }
 }
+
+pub type Namespace = BootstrapNamespace;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct BootstrapNamespace {
@@ -145,147 +147,9 @@ impl IntoTuple for BootstrapNamespace {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct BootstrapTable {
-    oid: Oid<Self>,
-    namespace: Oid<BootstrapNamespace>,
-    name: String,
-}
+pub type BootstrapTable = Table;
 
-impl SystemEntity for BootstrapTable {
-    type Parent = BootstrapNamespace;
-
-    #[inline]
-    fn name(&self) -> &str {
-        &self.name
-    }
-
-    fn storage_info() -> TableStorageInfo {
-        TableStorageInfo::new(
-            "nsql_catalog.nsql_table",
-            vec![
-                ColumnStorageInfo::new(LogicalType::Oid, true),
-                ColumnStorageInfo::new(LogicalType::Oid, false),
-                ColumnStorageInfo::new(LogicalType::Text, false),
-            ],
-        )
-    }
-
-    #[inline]
-    fn oid(&self) -> Oid<Self> {
-        self.oid
-    }
-
-    #[inline]
-    fn parent_oid(&self) -> Option<Oid<Self::Parent>> {
-        Some(self.namespace)
-    }
-
-    fn desc() -> &'static str {
-        "table"
-    }
-}
-
-impl IntoTuple for BootstrapTable {
-    fn into_tuple(self) -> Tuple {
-        Tuple::from([
-            Value::Oid(self.oid.untyped()),
-            Value::Oid(self.namespace.untyped()),
-            Value::Text(self.name),
-        ])
-    }
-}
-
-impl FromTuple for BootstrapTable {
-    fn from_tuple(mut tuple: Tuple) -> Result<Self, FromTupleError> {
-        if tuple.len() != 3 {
-            return Err(FromTupleError::ColumnCountMismatch { expected: 3, actual: tuple.len() });
-        }
-
-        Ok(Self {
-            oid: tuple[0].take().cast_non_null()?,
-            namespace: tuple[1].take().cast_non_null()?,
-            name: tuple[2].take().cast_non_null()?,
-        })
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-struct BootstrapColumn {
-    oid: Oid<Self>,
-    table: Oid<BootstrapTable>,
-    name: String,
-    index: u8,
-    ty: Oid<BootstrapType>,
-    is_primary_key: bool,
-}
-
-impl SystemEntity for BootstrapColumn {
-    type Parent = BootstrapTable;
-
-    #[inline]
-    fn name(&self) -> &str {
-        &self.name
-    }
-
-    fn storage_info() -> TableStorageInfo {
-        TableStorageInfo::new(
-            "nsql_catalog.nsql_column",
-            vec![
-                ColumnStorageInfo::new(LogicalType::Oid, true),
-                ColumnStorageInfo::new(LogicalType::Oid, false),
-                ColumnStorageInfo::new(LogicalType::Text, false),
-                ColumnStorageInfo::new(LogicalType::Int, false),
-                ColumnStorageInfo::new(LogicalType::Text, false),
-                ColumnStorageInfo::new(LogicalType::Bool, false),
-            ],
-        )
-    }
-
-    #[inline]
-    fn oid(&self) -> Oid<Self> {
-        self.oid
-    }
-
-    #[inline]
-    fn parent_oid(&self) -> Option<Oid<Self::Parent>> {
-        Some(self.table)
-    }
-
-    fn desc() -> &'static str {
-        "column"
-    }
-}
-
-impl FromTuple for BootstrapColumn {
-    fn from_tuple(mut tuple: Tuple) -> Result<Self, FromTupleError> {
-        if tuple.len() != 6 {
-            return Err(FromTupleError::ColumnCountMismatch { expected: 6, actual: tuple.len() });
-        }
-
-        Ok(Self {
-            oid: tuple[0].take().cast_non_null()?,
-            table: tuple[1].take().cast_non_null()?,
-            name: tuple[2].take().cast_non_null()?,
-            index: tuple[3].take().cast_non_null()?,
-            ty: tuple[4].take().cast_non_null()?,
-            is_primary_key: tuple[5].take().cast_non_null()?,
-        })
-    }
-}
-
-impl IntoTuple for BootstrapColumn {
-    fn into_tuple(self) -> Tuple {
-        Tuple::from([
-            Value::Oid(self.oid.untyped()),
-            Value::Oid(self.table.untyped()),
-            Value::Text(self.name),
-            Value::Int(self.index as i32),
-            Value::Text(self.ty.to_string()),
-            Value::Bool(self.is_primary_key),
-        ])
-    }
-}
+type BootstrapColumn = Column;
 
 const fn catalog_namespace_oid() -> Oid<BootstrapNamespace> {
     Oid::new(100)
@@ -365,7 +229,7 @@ fn bootstrap_nsql_column() -> Vec<BootstrapColumn> {
             oid: Oid::new(0),
             name: "oid".into(),
             table: nsql_namespace_table_oid(),
-            index: 0,
+            index: ColumnIndex::new(0),
             ty: nsql_ty_oid_oid(),
             is_primary_key: true,
         },
@@ -373,7 +237,7 @@ fn bootstrap_nsql_column() -> Vec<BootstrapColumn> {
             oid: Oid::new(1),
             name: "name".into(),
             table: nsql_namespace_table_oid(),
-            index: 1,
+            index: ColumnIndex::new(1),
             ty: nsql_ty_text_oid(),
             is_primary_key: false,
         },
@@ -381,7 +245,7 @@ fn bootstrap_nsql_column() -> Vec<BootstrapColumn> {
             oid: Oid::new(2),
             name: "oid".into(),
             table: nsql_table_table_oid(),
-            index: 0,
+            index: ColumnIndex::new(0),
             ty: nsql_ty_oid_oid(),
             is_primary_key: true,
         },
@@ -389,7 +253,7 @@ fn bootstrap_nsql_column() -> Vec<BootstrapColumn> {
             oid: Oid::new(3),
             name: "name".into(),
             table: nsql_table_table_oid(),
-            index: 1,
+            index: ColumnIndex::new(1),
             ty: nsql_ty_text_oid(),
             is_primary_key: false,
         },
@@ -397,7 +261,7 @@ fn bootstrap_nsql_column() -> Vec<BootstrapColumn> {
             oid: Oid::new(4),
             name: "oid".into(),
             table: nsql_attribute_table_oid(),
-            index: 0,
+            index: ColumnIndex::new(0),
             ty: nsql_ty_oid_oid(),
             is_primary_key: true,
         },
@@ -405,7 +269,7 @@ fn bootstrap_nsql_column() -> Vec<BootstrapColumn> {
             oid: Oid::new(5),
             name: "table".into(),
             table: nsql_attribute_table_oid(),
-            index: 1,
+            index: ColumnIndex::new(1),
             ty: nsql_ty_oid_oid(),
             is_primary_key: false,
         },
@@ -413,7 +277,7 @@ fn bootstrap_nsql_column() -> Vec<BootstrapColumn> {
             oid: Oid::new(6),
             name: "name".into(),
             table: nsql_attribute_table_oid(),
-            index: 2,
+            index: ColumnIndex::new(2),
             ty: nsql_ty_text_oid(),
             is_primary_key: false,
         },
@@ -421,7 +285,7 @@ fn bootstrap_nsql_column() -> Vec<BootstrapColumn> {
             oid: Oid::new(7),
             name: "index".into(),
             table: nsql_attribute_table_oid(),
-            index: 3,
+            index: ColumnIndex::new(3),
             ty: nsql_ty_int_oid(),
             is_primary_key: false,
         },
@@ -429,7 +293,7 @@ fn bootstrap_nsql_column() -> Vec<BootstrapColumn> {
             oid: Oid::new(8),
             name: "ty".into(),
             table: nsql_attribute_table_oid(),
-            index: 4,
+            index: ColumnIndex::new(4),
             // text for now, but should probably reference `nsql_type` table
             ty: nsql_ty_text_oid(),
             is_primary_key: false,
@@ -438,7 +302,7 @@ fn bootstrap_nsql_column() -> Vec<BootstrapColumn> {
             oid: Oid::new(9),
             name: "is_primary_key".into(),
             table: nsql_attribute_table_oid(),
-            index: 5,
+            index: ColumnIndex::new(5),
             ty: nsql_ty_bool_oid(),
             is_primary_key: false,
         },
@@ -446,7 +310,7 @@ fn bootstrap_nsql_column() -> Vec<BootstrapColumn> {
             oid: Oid::new(10),
             name: "oid".into(),
             table: nsql_ty_table_oid(),
-            index: 0,
+            index: ColumnIndex::new(0),
             ty: nsql_ty_oid_oid(),
             is_primary_key: true,
         },
@@ -454,7 +318,7 @@ fn bootstrap_nsql_column() -> Vec<BootstrapColumn> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-struct BootstrapType {
+pub struct BootstrapType {
     oid: Oid<BootstrapType>,
     name: String,
 }

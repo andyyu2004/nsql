@@ -2,7 +2,7 @@ use std::error::Error;
 use std::fmt;
 use std::marker::PhantomData;
 
-use nsql_core::{LogicalType, Oid, UntypedOid};
+use nsql_core::{LogicalType, Name, Oid, UntypedOid};
 use rust_decimal::prelude::ToPrimitive;
 pub use rust_decimal::Decimal;
 
@@ -43,7 +43,7 @@ impl<T> Error for CastError<T> {}
 #[archive_attr(derive(Debug))]
 pub enum Value {
     Null,
-    Int(i32),
+    Int32(i32),
     Oid(UntypedOid),
     Bool(bool),
     Decimal(Decimal),
@@ -101,7 +101,7 @@ impl Value {
     pub fn ty(&self) -> LogicalType {
         match self {
             Value::Null => LogicalType::Null,
-            Value::Int(_) => LogicalType::Int,
+            Value::Int32(_) => LogicalType::Int,
             Value::Bool(_) => LogicalType::Bool,
             Value::Decimal(_) => LogicalType::Decimal,
             Value::Text(_) => LogicalType::Text,
@@ -118,32 +118,28 @@ impl fmt::Display for Value {
             Value::Bool(b) => write!(f, "{b}"),
             Value::Decimal(d) => write!(f, "{d}"),
             Value::Text(s) => write!(f, "{s}"),
-            Value::Int(i) => write!(f, "{i}"),
+            Value::Int32(i) => write!(f, "{i}"),
             Value::Oid(oid) => write!(f, "{oid}"),
         }
     }
 }
 
 // FIXME missing lots of implementations
-pub trait FromValue: private::Sealed + Sized {
+pub trait FromValue: Sized {
     /// Cast a nsql `value` to a rust value.
     fn from_value(value: Value) -> Result<Self, CastError<Self>>;
 }
-
-impl private::Sealed for u64 {}
 
 impl FromValue for u64 {
     fn from_value(value: Value) -> Result<Self, CastError<Self>> {
         match value {
             Value::Bool(b) => Ok(b as u64),
-            Value::Int(i) => Ok(i as u64),
+            Value::Int32(i) => Ok(i as u64),
             Value::Decimal(d) => d.to_u64().ok_or_else(|| CastError::new(value)),
             _ => Err(CastError { value, phantom: PhantomData }),
         }
     }
 }
-
-impl<T> private::Sealed for Oid<T> {}
 
 impl<T> FromValue for Oid<T> {
     fn from_value(value: Value) -> Result<Self, CastError<Self>> {
@@ -154,8 +150,6 @@ impl<T> FromValue for Oid<T> {
     }
 }
 
-impl private::Sealed for bool {}
-
 impl FromValue for bool {
     fn from_value(value: Value) -> Result<Self, CastError<Self>> {
         match value {
@@ -165,29 +159,23 @@ impl FromValue for bool {
     }
 }
 
-impl private::Sealed for i8 {}
-
 impl FromValue for i8 {
     fn from_value(value: Value) -> Result<Self, CastError<Self>> {
         match value {
-            Value::Int(i) => Ok(i as i8),
+            Value::Int32(i) => Ok(i as i8),
             _ => Err(CastError { value, phantom: PhantomData }),
         }
     }
 }
-
-impl private::Sealed for u8 {}
 
 impl FromValue for u8 {
     fn from_value(value: Value) -> Result<Self, CastError<Self>> {
         match value {
-            Value::Int(i) => Ok(i as u8),
+            Value::Int32(i) => Ok(i as u8),
             _ => Err(CastError { value, phantom: PhantomData }),
         }
     }
 }
-
-impl private::Sealed for String {}
 
 impl FromValue for String {
     fn from_value(value: Value) -> Result<Self, CastError<Self>> {
@@ -198,10 +186,15 @@ impl FromValue for String {
     }
 }
 
-pub trait ToValue: private::Sealed {
-    fn to_value(self) -> Value;
+impl FromValue for Name {
+    fn from_value(value: Value) -> Result<Self, CastError<Self>> {
+        match value {
+            Value::Text(s) => Ok(s.into()),
+            _ => Err(CastError { value, phantom: PhantomData }),
+        }
+    }
 }
 
-mod private {
-    pub trait Sealed {}
+pub trait ToValue {
+    fn to_value(self) -> Value;
 }

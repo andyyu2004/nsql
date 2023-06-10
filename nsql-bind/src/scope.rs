@@ -1,7 +1,7 @@
 use std::marker::PhantomData;
 
 use anyhow::bail;
-use nsql_catalog::{Column, Container, Entity, EntityRef, Table, TableRef};
+use nsql_catalog::{Column, Entity, Table, TableRef};
 use nsql_core::{LogicalType, Name};
 use nsql_storage_engine::{StorageEngine, Transaction};
 
@@ -36,49 +36,50 @@ impl<S: StorageEngine> Scope<S> {
         binder: &Binder<'_, S>,
         tx: &dyn Transaction<'_, S>,
         table_path: Path,
-        table_ref: TableRef<S>,
+        table_ref: TableRef,
         alias: Option<&TableAlias>,
     ) -> Result<Scope<S>> {
         tracing::debug!("binding table");
         let mut columns = self.columns.clone();
 
         // let table = table_ref.get(&binder.catalog, tx);
-        let table: Table<S> = todo!();
-        let mut table_columns = table.all::<Column<S>>(tx);
-        table_columns.sort_by_key(|col| col.index());
-
-        if let Some(alias) = alias {
-            // if no columns are specified, we only rename the table
-            if !alias.columns.is_empty() && table_columns.len() != alias.columns.len() {
-                bail!(
-                    "table `{}` has {} columns, but {} columns were specified in alias",
-                    table_path,
-                    table_columns.len(),
-                    alias.columns.len()
-                );
-            }
-        }
-
-        let table_path = match alias {
-            Some(alias) => Path::Unqualified(alias.table_name.clone()),
-            None => table_path,
-        };
-
-        for (i, column) in table_columns.into_iter().enumerate() {
-            let name = match alias {
-                Some(alias) if !alias.columns.is_empty() => alias.columns[i].clone(),
-                _ => column.name(),
-            };
-
-            if columns.iter().any(|(p, _)| p.name() == name) {
-                todo!("handle duplicate names (this will not work with current impl correctly)")
-            }
-
-            columns = columns
-                .push_back((Path::qualified(table_path.clone(), name), column.logical_type()));
-        }
-
-        Ok(Self { tables: self.tables.insert(table_path, ()), columns, marker: PhantomData })
+        let table: Table = todo!();
+        todo!();
+        // let mut table_columns = table.all::<Column<S>>(tx);
+        // table_columns.sort_by_key(|col| col.index());
+        //
+        // if let Some(alias) = alias {
+        //     // if no columns are specified, we only rename the table
+        //     if !alias.columns.is_empty() && table_columns.len() != alias.columns.len() {
+        //         bail!(
+        //             "table `{}` has {} columns, but {} columns were specified in alias",
+        //             table_path,
+        //             table_columns.len(),
+        //             alias.columns.len()
+        //         );
+        //     }
+        // }
+        //
+        // let table_path = match alias {
+        //     Some(alias) => Path::Unqualified(alias.table_name.clone()),
+        //     None => table_path,
+        // };
+        //
+        // for (i, column) in table_columns.into_iter().enumerate() {
+        //     let name = match alias {
+        //         Some(alias) if !alias.columns.is_empty() => alias.columns[i].clone(),
+        //         _ => column.name(),
+        //     };
+        //
+        //     if columns.iter().any(|(p, _)| p.name() == name) {
+        //         todo!("handle duplicate names (this will not work with current impl correctly)")
+        //     }
+        //
+        //     columns = columns
+        //         .push_back((Path::qualified(table_path.clone(), name), column.logical_type()));
+        // }
+        //
+        // Ok(Self { tables: self.tables.insert(table_path, ()), columns, marker: PhantomData })
     }
 
     pub fn lookup_column(&self, path: &Path) -> Result<(LogicalType, ir::TupleIndex)> {
@@ -88,7 +89,7 @@ impl<S: StorageEngine> Scope<S> {
                     .columns
                     .iter()
                     .position(|(p, _)| p == path)
-                    .ok_or_else(|| unbound!(Column<S>, path))?;
+                    .ok_or_else(|| unbound!(Column, path))?;
 
                 let (_, ty) = &self.columns[idx];
                 Ok((ty.clone(), ir::TupleIndex::new(idx)))
@@ -101,7 +102,7 @@ impl<S: StorageEngine> Scope<S> {
                     .filter(|(_, (p, _))| &p.name() == column_name)
                     .collect::<Vec<_>>()[..]
                 {
-                    [] => Err(unbound!(Column<S>, path)),
+                    [] => Err(unbound!(Column, path)),
                     [(idx, (_, ty))] => Ok((ty.clone(), ir::TupleIndex::new(*idx))),
                     matches => {
                         bail!(

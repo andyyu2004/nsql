@@ -56,7 +56,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode
 impl<'env: 'txn, 'txn, S: StorageEngine> Explain<S> for PhysicalDummyScan {
     fn explain(
         &self,
-        _catalog: &Catalog<S>,
+        _catalog: &Catalog,
         _tx: &dyn Transaction<'_, S>,
         f: &mut fmt::Formatter<'_>,
     ) -> explain::Result {

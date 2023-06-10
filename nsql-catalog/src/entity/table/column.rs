@@ -1,32 +1,29 @@
-use std::fmt;
-use std::sync::Arc;
-
 use nsql_core::LogicalType;
-use nsql_storage::ColumnStorageInfo;
-use nsql_storage_engine::{StorageEngine, Transaction};
+use nsql_storage::tuple::{FromTuple, FromTupleError, IntoTuple, Tuple};
+use nsql_storage::value::{CastError, FromValue, Value};
+use nsql_storage::{ColumnStorageInfo, TableStorageInfo};
 
-use super::TableRef;
-use crate::private::CatalogEntity;
-use crate::set::CatalogSet;
-use crate::{Catalog, Entity, EntityRef, Name, Oid, Table};
+use crate::bootstrap::BootstrapType;
+use crate::{Entity, Name, Oid, SystemEntity, Table};
 
-#[derive(Clone)]
-pub struct Column<S> {
-    oid: Oid<Self>,
-    table_oid: Oid<Table<S>>,
-    name: Name,
-    index: ColumnIndex,
-    ty: LogicalType,
-    is_primary_key: bool,
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Column {
+    pub(crate) oid: Oid<Self>,
+    pub(crate) table: Oid<Table>,
+    pub(crate) name: Name,
+    pub(crate) index: ColumnIndex,
+    pub(crate) ty: Oid<BootstrapType>,
+    pub(crate) is_primary_key: bool,
 }
 
-impl<S> From<&Column<S>> for ColumnStorageInfo {
-    fn from(val: &Column<S>) -> Self {
-        ColumnStorageInfo::new(val.ty.clone(), val.is_primary_key)
+impl From<&Column> for ColumnStorageInfo {
+    fn from(val: &Column) -> Self {
+        todo!();
+        // ColumnStorageInfo::new(val.ty.clone(), val.is_primary_key)
     }
 }
 
-impl<S> Column<S> {
+impl Column {
     #[inline]
     pub fn index(&self) -> ColumnIndex {
         self.index
@@ -34,7 +31,8 @@ impl<S> Column<S> {
 
     #[inline]
     pub fn logical_type(&self) -> LogicalType {
-        self.ty.clone()
+        todo!();
+        // self.ty.clone()
     }
 
     #[inline]
@@ -43,15 +41,16 @@ impl<S> Column<S> {
     }
 }
 
-impl<S> fmt::Debug for Column<S> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Column").field("name", &self.name).finish_non_exhaustive()
-    }
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ColumnIndex {
     index: u8,
+}
+
+impl FromValue for ColumnIndex {
+    #[inline]
+    fn from_value(value: Value) -> Result<Self, CastError<Self>> {
+        todo!()
+    }
 }
 
 impl ColumnIndex {
@@ -76,7 +75,7 @@ pub struct CreateColumnInfo {
     pub is_primary_key: bool,
 }
 
-impl<S> Entity for Column<S> {
+impl Entity for Column {
     #[inline]
     fn oid(&self) -> Oid<Self> {
         self.oid
@@ -93,59 +92,126 @@ impl<S> Entity for Column<S> {
     }
 }
 
-impl<S: StorageEngine> CatalogEntity<S> for Column<S> {
-    type Container = Table<S>;
+// impl CatalogEntity for Column {
+//     type Container = Table<S>;
+//
+//     type CreateInfo = CreateColumnInfo;
+//
+//     fn catalog_set(table: &Self::Container) -> &CatalogSet<S, Self> {
+//         &table.columns
+//     }
+//
+//     fn create(
+//         _tx: &S::WriteTransaction<'_>,
+//         container: &Self::Container,
+//         oid: Oid<Self>,
+//         info: Self::CreateInfo,
+//     ) -> Self {
+//         Self {
+//             oid,
+//             table_oid: container.oid(),
+//             name: info.name,
+//             index: ColumnIndex::new(info.index),
+//             ty: info.ty,
+//             is_primary_key: info.is_primary_key,
+//         }
+//     }
+// }
 
-    type CreateInfo = CreateColumnInfo;
+// #[derive(Debug)]
+// pub struct ColumnRef {
+//     pub table_ref: TableRef,
+//     pub column: Oid<Column>,
+// }
+//
+// impl<S> Clone for ColumnRef {
+//     #[inline]
+//     fn clone(&self) -> Self {
+//         *self
+//     }
+// }
+//
+// impl<S> Copy for ColumnRef<S> {}
 
-    fn catalog_set(table: &Self::Container) -> &CatalogSet<S, Self> {
-        &table.columns
+// impl<S: StorageEngine> EntityRef<S> for ColumnRef<S> {
+//     type Entity = Column<S>;
+//
+//     type Container = Table<S>;
+//
+//     #[inline]
+//     fn container(self, catalog: &Catalog, tx: &dyn Transaction<'_, S>) -> Arc<Self::Container> {
+//         self.table_ref.get(catalog, tx)
+//     }
+//
+//     #[inline]
+//     fn entity_oid(self) -> Oid<Self::Entity> {
+//         self.column
+//     }
+// }
+
+impl SystemEntity for Column {
+    type Parent = Table;
+
+    #[inline]
+    fn name(&self) -> &str {
+        &self.name
     }
 
-    fn create(
-        _tx: &S::WriteTransaction<'_>,
-        container: &Self::Container,
-        oid: Oid<Self>,
-        info: Self::CreateInfo,
-    ) -> Self {
-        Self {
-            oid,
-            table_oid: container.oid(),
-            name: info.name,
-            index: ColumnIndex::new(info.index),
-            ty: info.ty,
-            is_primary_key: info.is_primary_key,
+    fn storage_info() -> TableStorageInfo {
+        TableStorageInfo::new(
+            "nsql_catalog.nsql_column",
+            vec![
+                ColumnStorageInfo::new(LogicalType::Oid, true),
+                ColumnStorageInfo::new(LogicalType::Oid, false),
+                ColumnStorageInfo::new(LogicalType::Text, false),
+                ColumnStorageInfo::new(LogicalType::Int, false),
+                ColumnStorageInfo::new(LogicalType::Text, false),
+                ColumnStorageInfo::new(LogicalType::Bool, false),
+            ],
+        )
+    }
+
+    #[inline]
+    fn oid(&self) -> Oid<Self> {
+        self.oid
+    }
+
+    #[inline]
+    fn parent_oid(&self) -> Option<Oid<Self::Parent>> {
+        Some(self.table)
+    }
+
+    fn desc() -> &'static str {
+        "column"
+    }
+}
+
+impl FromTuple for Column {
+    fn from_tuple(mut tuple: Tuple) -> Result<Self, FromTupleError> {
+        if tuple.len() != 6 {
+            return Err(FromTupleError::ColumnCountMismatch { expected: 6, actual: tuple.len() });
         }
+
+        Ok(Self {
+            oid: tuple[0].take().cast_non_null()?,
+            table: tuple[1].take().cast_non_null()?,
+            name: tuple[2].take().cast_non_null()?,
+            index: tuple[3].take().cast_non_null()?,
+            ty: tuple[4].take().cast_non_null()?,
+            is_primary_key: tuple[5].take().cast_non_null()?,
+        })
     }
 }
 
-#[derive(Debug)]
-pub struct ColumnRef<S> {
-    pub table_ref: TableRef<S>,
-    pub column: Oid<Column<S>>,
-}
-
-impl<S> Clone for ColumnRef<S> {
-    #[inline]
-    fn clone(&self) -> Self {
-        *self
-    }
-}
-
-impl<S> Copy for ColumnRef<S> {}
-
-impl<S: StorageEngine> EntityRef<S> for ColumnRef<S> {
-    type Entity = Column<S>;
-
-    type Container = Table<S>;
-
-    #[inline]
-    fn container(self, catalog: &Catalog<S>, tx: &dyn Transaction<'_, S>) -> Arc<Self::Container> {
-        self.table_ref.get(catalog, tx)
-    }
-
-    #[inline]
-    fn entity_oid(self) -> Oid<Self::Entity> {
-        self.column
+impl IntoTuple for Column {
+    fn into_tuple(self) -> Tuple {
+        Tuple::from([
+            Value::Oid(self.oid.untyped()),
+            Value::Oid(self.table.untyped()),
+            Value::Text(self.name.into()),
+            Value::Int32(self.index.index as i32),
+            Value::Text(self.ty.to_string()),
+            Value::Bool(self.is_primary_key),
+        ])
     }
 }
