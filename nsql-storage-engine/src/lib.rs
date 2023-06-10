@@ -100,6 +100,16 @@ pub trait Transaction<'env, S: StorageEngine> {
     fn as_read_or_write_ref(&self) -> ReadOrWriteTransactionRef<'env, '_, S>;
 }
 
+impl<'a, 'env, Tx, S: StorageEngine> Transaction<'env, S> for &'a Tx
+where
+    Tx: Transaction<'env, S>,
+{
+    #[inline]
+    fn as_read_or_write_ref(&self) -> ReadOrWriteTransactionRef<'env, '_, S> {
+        (*self).as_read_or_write_ref()
+    }
+}
+
 pub trait WriteTransaction<'env, S: StorageEngine>: Transaction<'env, S> {
     fn commit(self) -> Result<(), S::Error>;
 

@@ -1,93 +1,63 @@
 use nsql_core::LogicalType;
 use nsql_storage::tuple::{FromTuple, FromTupleError, IntoTuple, Tuple};
 use nsql_storage::value::Value;
-use nsql_storage::{ColumnStorageInfo, Result, TableStorage, TableStorageInfo};
+use nsql_storage::{ColumnStorageInfo, Result, TableStorageInfo};
 use nsql_storage_engine::{ReadWriteExecutionMode, StorageEngine};
 
-use crate::system_table::SystemTableView;
-use crate::{Column, Namespace, Oid, Table, TableRef};
+use crate::system_table::{SystemEntity, SystemTableView};
+use crate::{Column, Namespace, Oid, Table};
 
 pub(crate) fn bootstrap<'env, S: StorageEngine>(
     storage: &'env S,
     txn: &S::WriteTransaction<'env>,
 ) -> Result<()> {
     let mut namespace_table =
-        SystemTableView::<S, ReadWriteExecutionMode, BootstrapNamespace<S>>::new(
-            storage,
-            txn,
-            TableStorageInfo::new(
-                TableRef {
-                    namespace: catalog_namespace_oid::<S>(),
-                    table: nsql_namespace_table_oid::<S>(),
-                }
-                .to_string()
-                .into(),
-                vec![
-                    ColumnStorageInfo::new(LogicalType::Oid, true),
-                    ColumnStorageInfo::new(LogicalType::Text, false),
-                ],
-            ),
-        )?;
+        SystemTableView::<S, ReadWriteExecutionMode, BootstrapNamespace<S>>::new(storage, txn)?;
 
     for namespace in bootstrap_nsql_namespaces::<S>() {
         namespace_table.insert(namespace)?;
     }
 
-    let mut table_table = SystemTableView::<S, ReadWriteExecutionMode, BootstrapTable<S>>::new(
-        storage,
-        txn,
-        TableStorageInfo::new(
-            TableRef {
-                namespace: catalog_namespace_oid::<S>(),
-                table: nsql_table_table_oid::<S>(),
-            }
-            .to_string()
-            .into(),
-            vec![
-                ColumnStorageInfo::new(LogicalType::Oid, true),
-                ColumnStorageInfo::new(LogicalType::Oid, false),
-                ColumnStorageInfo::new(LogicalType::Text, false),
-            ],
-        ),
-    )?;
+    let mut table_table =
+        SystemTableView::<S, ReadWriteExecutionMode, BootstrapTable<S>>::new(storage, txn)?;
 
     let tables = bootstrap_nsql_tables::<S>();
     for table in tables {
         table_table.insert(table)?;
     }
 
-    let mut column_table = SystemTableView::<S, ReadWriteExecutionMode, BootstrapColumn<S>>::new(
-        storage,
-        txn,
-        TableStorageInfo::new(
-            TableRef {
-                namespace: catalog_namespace_oid::<S>(),
-                table: nsql_attribute_table_oid::<S>(),
-            }
-            .to_string()
-            .into(),
-            vec![
-                ColumnStorageInfo::new(LogicalType::Oid, true),
-                ColumnStorageInfo::new(LogicalType::Oid, false),
-                ColumnStorageInfo::new(LogicalType::Text, false),
-                ColumnStorageInfo::new(LogicalType::Int, false),
-                ColumnStorageInfo::new(LogicalType::Text, false),
-                ColumnStorageInfo::new(LogicalType::Bool, false),
-            ],
-        ),
-    )?;
+    let mut column_table =
+        SystemTableView::<S, ReadWriteExecutionMode, BootstrapColumn<S>>::new(storage, txn)?;
 
     let columns = bootstrap_nsql_column::<S>();
     for column in columns {
         column_table.insert(column)?;
     }
 
+    let mut ty_table =
+        SystemTableView::<S, ReadWriteExecutionMode, BootstrapType>::new(storage, txn)?;
+    for ty in bootstrap_nsql_types() {
+        ty_table.insert(ty)?;
+    }
+
     Ok(())
 }
 
-struct BootstrapNamespace<S> {
+pub struct BootstrapNamespace<S> {
     oid: Oid<Namespace<S>>,
     name: String,
+}
+
+impl<S> SystemEntity for BootstrapNamespace<S> {
+    fn storage_info() -> TableStorageInfo {
+        TableStorageInfo::new(
+            "nsql_catalog.nsql_namespace",
+            vec![
+                ColumnStorageInfo::new(LogicalType::Oid, true),
+                ColumnStorageInfo::new(LogicalType::Text, false),
+            ],
+        )
+    }
 }
 
 impl<S: StorageEngine> FromTuple for BootstrapNamespace<S> {
@@ -112,6 +82,19 @@ struct BootstrapTable<S> {
     name: String,
 }
 
+impl<S> SystemEntity for BootstrapTable<S> {
+    fn storage_info() -> TableStorageInfo {
+        TableStorageInfo::new(
+            "nsql_catalog.nsql_table",
+            vec![
+                ColumnStorageInfo::new(LogicalType::Oid, true),
+                ColumnStorageInfo::new(LogicalType::Oid, false),
+                ColumnStorageInfo::new(LogicalType::Text, false),
+            ],
+        )
+    }
+}
+
 impl<S> IntoTuple for BootstrapTable<S> {
     fn into_tuple(self) -> Tuple {
         Tuple::from([
@@ -129,6 +112,22 @@ struct BootstrapColumn<S> {
     index: u8,
     ty: Oid<LogicalType>,
     is_primary_key: bool,
+}
+
+impl<S> SystemEntity for BootstrapColumn<S> {
+    fn storage_info() -> TableStorageInfo {
+        TableStorageInfo::new(
+            "nsql_catalog.nsql_column",
+            vec![
+                ColumnStorageInfo::new(LogicalType::Oid, true),
+                ColumnStorageInfo::new(LogicalType::Oid, false),
+                ColumnStorageInfo::new(LogicalType::Text, false),
+                ColumnStorageInfo::new(LogicalType::Int, false),
+                ColumnStorageInfo::new(LogicalType::Text, false),
+                ColumnStorageInfo::new(LogicalType::Bool, false),
+            ],
+        )
+    }
 }
 
 impl<S: StorageEngine> FromTuple for BootstrapColumn<S> {
@@ -324,5 +323,37 @@ fn bootstrap_nsql_column<S: StorageEngine>() -> Vec<BootstrapColumn<S>> {
             ty: nsql_ty_oid_oid(),
             is_primary_key: true,
         },
+    ]
+}
+
+struct BootstrapType {
+    oid: Oid<LogicalType>,
+    name: String,
+}
+
+impl SystemEntity for BootstrapType {
+    fn storage_info() -> TableStorageInfo {
+        TableStorageInfo::new(
+            "nsql_catalog.nsql_type",
+            vec![
+                ColumnStorageInfo::new(LogicalType::Oid, true),
+                ColumnStorageInfo::new(LogicalType::Text, false),
+            ],
+        )
+    }
+}
+
+impl IntoTuple for BootstrapType {
+    fn into_tuple(self) -> Tuple {
+        Tuple::from([Value::Oid(self.oid.untyped()), Value::Text(self.name)])
+    }
+}
+
+fn bootstrap_nsql_types() -> Vec<BootstrapType> {
+    vec![
+        BootstrapType { oid: nsql_ty_oid_oid(), name: "oid".into() },
+        BootstrapType { oid: nsql_ty_bool_oid(), name: "bool".into() },
+        BootstrapType { oid: nsql_ty_int_oid(), name: "int".into() },
+        BootstrapType { oid: nsql_ty_text_oid(), name: "text".into() },
     ]
 }

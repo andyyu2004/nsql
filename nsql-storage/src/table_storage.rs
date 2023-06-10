@@ -226,13 +226,13 @@ fn range_gen_arc<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
 
 #[derive(Debug, Clone)]
 pub struct TableStorageInfo {
-    columns: Vec<ColumnStorageInfo>,
     table_name: Name,
+    columns: Vec<ColumnStorageInfo>,
 }
 
 impl TableStorageInfo {
     #[inline]
-    pub fn new(table_name: Name, columns: Vec<ColumnStorageInfo>) -> Self {
+    pub fn new(table_name: impl Into<Name>, columns: Vec<ColumnStorageInfo>) -> Self {
         assert!(
             !columns.is_empty(),
             "expected at least one column (this should be checked in the binder)"
@@ -242,6 +242,9 @@ impl TableStorageInfo {
             columns.iter().any(|c| c.is_primary_key),
             "expected at least one primary key column (this should be checked in the binder)"
         );
+
+        let table_name = table_name.into();
+        assert!(table_name.contains('.'), "expected a qualified table name");
 
         Self { columns, table_name }
     }

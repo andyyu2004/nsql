@@ -7,20 +7,20 @@ use nsql_storage_engine::{ExecutionMode, FallibleIterator, ReadWriteExecutionMod
 
 use crate::Result;
 
+pub trait SystemEntity {
+    fn storage_info() -> TableStorageInfo;
+}
+
 pub struct SystemTableView<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T> {
     storage: TableStorage<'env, 'txn, S, M>,
     phantom: PhantomData<T>,
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T>
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: SystemEntity>
     SystemTableView<'env, 'txn, S, M, T>
 {
-    pub fn new(
-        storage: &'env S,
-        tx: &'txn M::Transaction,
-        storage_info: TableStorageInfo,
-    ) -> Result<Self, S::Error> {
-        let storage = TableStorage::<'env, 'txn, S, M>::open(storage, tx, storage_info)?;
+    pub fn new(storage: &'env S, tx: &'txn M::Transaction) -> Result<Self, S::Error> {
+        let storage = TableStorage::<'env, 'txn, S, M>::open(storage, tx, T::storage_info())?;
 
         Ok(Self { storage, phantom: PhantomData })
     }
@@ -30,6 +30,13 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T>
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T>
     SystemTableView<'env, 'txn, S, M, T>
 {
+    pub fn get(&self) -> Result<Option<T>>
+    where
+        T: FromTuple,
+    {
+        self.scan()?.find(|entry| Ok(true))
+    }
+
     #[fix_hidden_lifetime_bug]
     pub fn scan(&self) -> Result<impl FallibleIterator<Item = T, Error = anyhow::Error> + '_>
     where

@@ -10,16 +10,40 @@ use std::sync::Arc;
 
 pub use anyhow::Error;
 use nsql_core::{Name, Oid};
-use nsql_storage_engine::{StorageEngine, Transaction};
+use nsql_storage_engine::{ExecutionMode, StorageEngine, Transaction};
 
+use self::bootstrap::BootstrapNamespace;
 pub use self::entity::namespace::{CreateNamespaceInfo, Namespace, NamespaceEntity};
 pub use self::entity::table::{
     Column, ColumnIndex, ColumnRef, CreateColumnInfo, CreateTableInfo, Table, TableRef,
 };
 use self::private::CatalogEntity;
 use self::set::{CatalogSet, Conflict};
+use self::system_table::{SystemEntity, SystemTableView};
 
 pub type Result<T, E = Error> = std::result::Result<T, E>;
+
+pub struct Catalog2<'env, S> {
+    storage: &'env S,
+}
+
+impl<'env, S: StorageEngine> Catalog2<'env, S> {
+    #[inline]
+    pub fn namespaces<'txn, M: ExecutionMode<'env, S>>(
+        &self,
+        tx: &'txn M::Transaction,
+    ) -> Result<SystemTableView<'env, 'txn, S, M, BootstrapNamespace<S>>, S::Error> {
+        self.system_table(tx)
+    }
+
+    #[inline]
+    fn system_table<'txn, M: ExecutionMode<'env, S>, T: SystemEntity>(
+        &self,
+        tx: &'txn M::Transaction,
+    ) -> Result<SystemTableView<'env, 'txn, S, M, T>, S::Error> {
+        SystemTableView::new(self.storage, tx)
+    }
+}
 
 #[derive(Debug)]
 pub struct Catalog<S> {

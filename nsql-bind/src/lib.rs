@@ -12,17 +12,17 @@ use ir::expr::EvalNotConst;
 use ir::{Decimal, Path, TransactionMode};
 use itertools::Itertools;
 use nsql_catalog::{
-    Catalog, Column, Container, CreateColumnInfo, Entity, EntityRef, Namespace, NamespaceEntity,
-    Table, TableRef, DEFAULT_SCHEMA,
+    Catalog, Catalog2, Column, Container, CreateColumnInfo, Entity, EntityRef, Namespace,
+    NamespaceEntity, Table, TableRef, DEFAULT_SCHEMA,
 };
 use nsql_core::{LogicalType, Name, Oid};
 use nsql_parse::ast::{self, HiveDistributionStyle};
-use nsql_storage_engine::{StorageEngine, Transaction};
+use nsql_storage_engine::{ReadonlyExecutionMode, StorageEngine, Transaction};
 
 use self::scope::Scope;
 
-pub struct Binder<S> {
-    catalog: Arc<Catalog<S>>,
+pub struct Binder<'env, S> {
+    catalog: Catalog2<'env, S>,
 }
 
 macro_rules! not_implemented {
@@ -46,8 +46,8 @@ use unbound;
 
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 
-impl<S: StorageEngine> Binder<S> {
-    pub fn new(catalog: Arc<Catalog<S>>) -> Self {
+impl<'env, S: StorageEngine> Binder<'env, S> {
+    pub fn new(catalog: Catalog2<'env, S>) -> Self {
         Self { catalog }
     }
 
@@ -420,14 +420,16 @@ impl<S: StorageEngine> Binder<S> {
             Path::Qualified { prefix, name } => match prefix.as_ref() {
                 Path::Qualified { .. } => not_implemented!("qualified schemas"),
                 Path::Unqualified(schema) => {
-                    let (schema_oid, schema) = self
-                        .catalog
-                        .get_by_name::<Namespace<S>>(tx, schema.as_str())?
-                        .ok_or_else(|| unbound!(Namespace<S>, path))?;
+                    self.catalog.namespaces::<ReadonlyExecutionMode>(tx);
+                    todo!();
+                    // let (schema_oid, schema) = self
+                    //     .catalog
+                    //     .get_by_name::<Namespace<S>>(tx, schema.as_str())?
+                    //     .ok_or_else(|| unbound!(Namespace<S>, path))?;
 
-                    let entity_oid = schema.find(name)?.ok_or_else(|| unbound!(T, path))?;
+                    // let entity_oid = schema.find(name)?.ok_or_else(|| unbound!(T, path))?;
 
-                    Ok((schema_oid, entity_oid))
+                    // Ok((schema_oid, entity_oid))
                 }
             },
         }
