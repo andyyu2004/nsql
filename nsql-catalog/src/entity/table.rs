@@ -12,19 +12,17 @@ use nsql_storage_engine::{
 };
 
 pub use self::column::{Column, ColumnIndex, CreateColumnInfo};
-use crate::{
-    BootstrapNamespace, BootstrapTable, Catalog, Entity, Name, Namespace, Oid, SystemEntity,
-};
+use crate::{Catalog, Entity, Name, Namespace, Oid, SystemEntity};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Table {
     pub(crate) oid: Oid<Self>,
-    pub(crate) namespace: Oid<BootstrapNamespace>,
+    pub(crate) namespace: Oid<Namespace>,
     pub(crate) name: Name,
 }
 
 impl Table {
-    pub fn new(namespace: Oid<BootstrapNamespace>, name: Name) -> Self {
+    pub fn new(namespace: Oid<Namespace>, name: Name) -> Self {
         Self { oid: crate::hack_new_oid_tmp(), namespace, name }
     }
 
@@ -133,8 +131,8 @@ impl Entity for Table {
 // impl Container for Table {}
 
 pub struct TableRef {
-    pub namespace: Oid<BootstrapNamespace>,
-    pub table: Oid<BootstrapTable>,
+    pub namespace: Oid<Namespace>,
+    pub table: Oid<Table>,
 }
 
 impl fmt::Debug for TableRef {
@@ -162,7 +160,7 @@ impl Clone for TableRef {
 impl Copy for TableRef {}
 
 // impl EntityRef for TableRef {
-//     type Entity = BootstrapTable;
+//     type Entity = Table;
 //
 //     type Container = Namespace;
 //
@@ -178,7 +176,7 @@ impl Copy for TableRef {}
 // }
 
 impl SystemEntity for Table {
-    type Parent = BootstrapNamespace;
+    type Parent = Namespace;
 
     #[inline]
     fn oid(&self) -> Oid<Self> {
@@ -211,7 +209,7 @@ impl SystemEntity for Table {
     }
 }
 
-impl IntoTuple for BootstrapTable {
+impl IntoTuple for Table {
     fn into_tuple(self) -> Tuple {
         Tuple::from([
             Value::Oid(self.oid.untyped()),
@@ -221,7 +219,7 @@ impl IntoTuple for BootstrapTable {
     }
 }
 
-impl FromTuple for BootstrapTable {
+impl FromTuple for Table {
     fn from_tuple(mut tuple: Tuple) -> Result<Self, FromTupleError> {
         if tuple.len() != 3 {
             return Err(FromTupleError::ColumnCountMismatch { expected: 3, actual: tuple.len() });

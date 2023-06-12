@@ -13,21 +13,19 @@ pub(crate) fn bootstrap<'env, S: StorageEngine>(
 ) -> Result<()> {
     tracing::debug!("bootstrapping namespaces");
     let mut namespace_table =
-        SystemTableView::<S, ReadWriteExecutionMode, BootstrapNamespace>::new(storage, txn)?;
+        SystemTableView::<S, ReadWriteExecutionMode, Namespace>::new(storage, txn)?;
     for namespace in bootstrap_nsql_namespaces() {
         namespace_table.insert(namespace)?;
     }
 
     tracing::debug!("bootstrapping tables");
-    let mut table_table =
-        SystemTableView::<S, ReadWriteExecutionMode, BootstrapTable>::new(storage, txn)?;
+    let mut table_table = SystemTableView::<S, ReadWriteExecutionMode, Table>::new(storage, txn)?;
     for table in bootstrap_nsql_tables() {
         table_table.insert(table)?;
     }
 
     tracing::debug!("bootstrapping columns");
-    let mut column_table =
-        SystemTableView::<S, ReadWriteExecutionMode, BootstrapColumn>::new(storage, txn)?;
+    let mut column_table = SystemTableView::<S, ReadWriteExecutionMode, Column>::new(storage, txn)?;
     for column in bootstrap_nsql_column() {
         column_table.insert(column)?;
     }
@@ -64,19 +62,13 @@ impl<T: SystemEntity> CatalogPath<T> {
     }
 }
 
-pub type BootstrapNamespace = Namespace;
-
-pub type BootstrapTable = Table;
-
-type BootstrapColumn = Column;
-
 mod oid {
     use super::*;
 
-    pub(super) const TABLE_NAMESPACE: Oid<BootstrapTable> = Oid::new(100);
-    pub(super) const TABLE_TABLE: Oid<BootstrapTable> = Oid::new(101);
-    pub(super) const TABLE_ATTRIBUTE: Oid<BootstrapTable> = Oid::new(102);
-    pub(super) const TABLE_TYPE: Oid<BootstrapTable> = Oid::new(103);
+    pub(super) const TABLE_NAMESPACE: Oid<Table> = Oid::new(100);
+    pub(super) const TABLE_TABLE: Oid<Table> = Oid::new(101);
+    pub(super) const TABLE_ATTRIBUTE: Oid<Table> = Oid::new(102);
+    pub(super) const TABLE_TYPE: Oid<Table> = Oid::new(103);
 
     pub(super) const TY_OID: Oid<Type> = Oid::new(100);
     pub(super) const TY_BOOL: Oid<Type> = Oid::new(101);
@@ -91,34 +83,26 @@ fn bootstrap_nsql_namespaces() -> Vec<Namespace> {
     ]
 }
 
-fn bootstrap_nsql_tables() -> Vec<BootstrapTable> {
+fn bootstrap_nsql_tables() -> Vec<Table> {
     vec![
-        BootstrapTable {
+        Table {
             oid: oid::TABLE_NAMESPACE,
             name: "nsql_namespace".into(),
             namespace: Namespace::CATALOG,
         },
-        BootstrapTable {
-            oid: oid::TABLE_TABLE,
-            name: "nsql_table".into(),
-            namespace: Namespace::CATALOG,
-        },
-        BootstrapTable {
+        Table { oid: oid::TABLE_TABLE, name: "nsql_table".into(), namespace: Namespace::CATALOG },
+        Table {
             oid: oid::TABLE_ATTRIBUTE,
             name: "nsql_attribute".into(),
             namespace: Namespace::CATALOG,
         },
-        BootstrapTable {
-            oid: oid::TABLE_TYPE,
-            name: "nsql_type".into(),
-            namespace: Namespace::CATALOG,
-        },
+        Table { oid: oid::TABLE_TYPE, name: "nsql_type".into(), namespace: Namespace::CATALOG },
     ]
 }
 
-fn bootstrap_nsql_column() -> Vec<BootstrapColumn> {
+fn bootstrap_nsql_column() -> Vec<Column> {
     vec![
-        BootstrapColumn {
+        Column {
             oid: Oid::new(0),
             name: "oid".into(),
             table: oid::TABLE_NAMESPACE,
@@ -126,7 +110,7 @@ fn bootstrap_nsql_column() -> Vec<BootstrapColumn> {
             ty: oid::TY_OID,
             is_primary_key: true,
         },
-        BootstrapColumn {
+        Column {
             oid: Oid::new(1),
             name: "name".into(),
             table: oid::TABLE_NAMESPACE,
@@ -134,7 +118,7 @@ fn bootstrap_nsql_column() -> Vec<BootstrapColumn> {
             ty: oid::TY_TEXT,
             is_primary_key: false,
         },
-        BootstrapColumn {
+        Column {
             oid: Oid::new(2),
             name: "oid".into(),
             table: oid::TABLE_TABLE,
@@ -142,7 +126,7 @@ fn bootstrap_nsql_column() -> Vec<BootstrapColumn> {
             ty: oid::TY_OID,
             is_primary_key: true,
         },
-        BootstrapColumn {
+        Column {
             oid: Oid::new(3),
             name: "name".into(),
             table: oid::TABLE_TABLE,
@@ -150,7 +134,7 @@ fn bootstrap_nsql_column() -> Vec<BootstrapColumn> {
             ty: oid::TY_TEXT,
             is_primary_key: false,
         },
-        BootstrapColumn {
+        Column {
             oid: Oid::new(4),
             name: "oid".into(),
             table: oid::TABLE_ATTRIBUTE,
@@ -158,7 +142,7 @@ fn bootstrap_nsql_column() -> Vec<BootstrapColumn> {
             ty: oid::TY_OID,
             is_primary_key: true,
         },
-        BootstrapColumn {
+        Column {
             oid: Oid::new(5),
             name: "table".into(),
             table: oid::TABLE_ATTRIBUTE,
@@ -166,7 +150,7 @@ fn bootstrap_nsql_column() -> Vec<BootstrapColumn> {
             ty: oid::TY_OID,
             is_primary_key: false,
         },
-        BootstrapColumn {
+        Column {
             oid: Oid::new(6),
             name: "name".into(),
             table: oid::TABLE_ATTRIBUTE,
@@ -174,7 +158,7 @@ fn bootstrap_nsql_column() -> Vec<BootstrapColumn> {
             ty: oid::TY_TEXT,
             is_primary_key: false,
         },
-        BootstrapColumn {
+        Column {
             oid: Oid::new(7),
             name: "index".into(),
             table: oid::TABLE_ATTRIBUTE,
@@ -182,7 +166,7 @@ fn bootstrap_nsql_column() -> Vec<BootstrapColumn> {
             ty: oid::TY_INT,
             is_primary_key: false,
         },
-        BootstrapColumn {
+        Column {
             oid: Oid::new(8),
             name: "ty".into(),
             table: oid::TABLE_ATTRIBUTE,
@@ -190,7 +174,7 @@ fn bootstrap_nsql_column() -> Vec<BootstrapColumn> {
             ty: oid::TY_OID,
             is_primary_key: false,
         },
-        BootstrapColumn {
+        Column {
             oid: Oid::new(9),
             name: "is_primary_key".into(),
             table: oid::TABLE_ATTRIBUTE,
@@ -198,7 +182,7 @@ fn bootstrap_nsql_column() -> Vec<BootstrapColumn> {
             ty: oid::TY_BOOL,
             is_primary_key: false,
         },
-        BootstrapColumn {
+        Column {
             oid: Oid::new(10),
             name: "oid".into(),
             table: oid::TABLE_TYPE,

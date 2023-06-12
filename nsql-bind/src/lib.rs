@@ -11,8 +11,8 @@ use ir::expr::EvalNotConst;
 use ir::{Decimal, Path, TransactionMode};
 use itertools::Itertools;
 use nsql_catalog::{
-    BootstrapNamespace, BootstrapTable, Catalog, CreateColumnInfo, CreateNamespaceInfo, Namespace,
-    SystemEntity, Table, TableRef, DEFAULT_SCHEMA,
+    Catalog, CreateColumnInfo, CreateNamespaceInfo, Namespace, SystemEntity, Table, TableRef,
+    DEFAULT_SCHEMA,
 };
 use nsql_core::{LogicalType, Name, Oid};
 use nsql_parse::ast::{self, HiveDistributionStyle};
@@ -230,9 +230,8 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                     .map(|name| match object_type {
                         ast::ObjectType::Table => {
                             let (namespace, table) =
-                                self.bind_namespaced_entity::<BootstrapTable>(tx, name)?;
-                            todo!();
-                            // Ok(ir::EntityRef::Table(TableRef { namespace, table }))
+                                self.bind_namespaced_entity::<Table>(tx, name)?;
+                            Ok(ir::EntityRef::Table(TableRef { namespace, table }))
                         }
                         ast::ObjectType::View => todo!(),
                         ast::ObjectType::Index => todo!(),
@@ -412,11 +411,11 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
         }
     }
 
-    fn bind_namespaced_entity<T: SystemEntity<Parent = BootstrapNamespace>>(
+    fn bind_namespaced_entity<T: SystemEntity<Parent = Namespace>>(
         &self,
         tx: &dyn Transaction<'env, S>,
         path: &Path,
-    ) -> Result<(Oid<BootstrapNamespace>, Oid<T>)> {
+    ) -> Result<(Oid<Namespace>, Oid<T>)> {
         match path {
             Path::Unqualified(name) => self.bind_namespaced_entity(
                 tx,
@@ -615,7 +614,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
     ) -> Result<(Scope<S>, TableRef)> {
         let alias = alias.map(|alias| self.lower_table_alias(alias));
         let table_name = self.lower_path(&table_name.0)?;
-        let (namespace, table) = self.bind_namespaced_entity::<BootstrapTable>(tx, &table_name)?;
+        let (namespace, table) = self.bind_namespaced_entity::<Table>(tx, &table_name)?;
         let table_ref = TableRef { namespace, table };
 
         Ok((scope.bind_table(self, tx, table_name, table_ref, alias.as_ref())?, table_ref))

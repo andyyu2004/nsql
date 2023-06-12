@@ -15,7 +15,7 @@ use nsql_storage_engine::{
     ReadWriteExecutionMode, ReadonlyExecutionMode, StorageEngine, Transaction,
 };
 
-pub use self::bootstrap::{BootstrapNamespace, BootstrapTable, CatalogPath, Type};
+pub use self::bootstrap::{CatalogPath, Type};
 pub use self::entity::namespace::{CreateNamespaceInfo, Namespace};
 pub use self::entity::table::{
     Column, ColumnIndex, CreateColumnInfo, CreateTableInfo, Table, TableRef,
