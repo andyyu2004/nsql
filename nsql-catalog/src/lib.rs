@@ -15,8 +15,9 @@ use nsql_storage_engine::{
     ReadWriteExecutionMode, ReadonlyExecutionMode, StorageEngine, Transaction,
 };
 
-pub use self::bootstrap::{BootstrapNamespace, BootstrapTable};
+pub use self::bootstrap::{BootstrapNamespace, BootstrapTable, CatalogPath, Type};
 pub use self::entity::namespace::{CreateNamespaceInfo, Namespace};
+
 pub use self::entity::table::{
     Column, ColumnIndex, CreateColumnInfo, CreateTableInfo, Table, TableRef,
 };
@@ -50,8 +51,23 @@ impl<'env, S: StorageEngine> Catalog<'env, S> {
     pub fn namespaces<'txn>(
         &self,
         tx: &'txn dyn Transaction<'env, S>,
-    ) -> Result<SystemTableView<'env, 'txn, S, ReadonlyExecutionMode, BootstrapNamespace>, S::Error>
-    {
+    ) -> Result<SystemTableView<'env, 'txn, S, ReadonlyExecutionMode, Namespace>, S::Error> {
+        self.system_table(tx)
+    }
+
+    #[inline]
+    pub fn tables<'txn>(
+        &self,
+        tx: &'txn dyn Transaction<'env, S>,
+    ) -> Result<SystemTableView<'env, 'txn, S, ReadonlyExecutionMode, Table>, S::Error> {
+        self.system_table(tx)
+    }
+
+    #[inline]
+    pub fn columns<'txn>(
+        &self,
+        tx: &'txn dyn Transaction<'env, S>,
+    ) -> Result<SystemTableView<'env, 'txn, S, ReadonlyExecutionMode, Column>, S::Error> {
         self.system_table(tx)
     }
 
@@ -85,6 +101,10 @@ impl<'env, S: StorageEngine> Catalog<'env, S> {
 
         let catalog = Self { storage };
         Ok(catalog)
+    }
+
+    pub(crate) fn storage(&self) -> &'env S {
+        self.storage
     }
 }
 

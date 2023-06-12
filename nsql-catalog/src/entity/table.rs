@@ -1,16 +1,18 @@
 mod column;
 
 use std::fmt;
-use std::sync::Arc;
 
+use anyhow::Result;
 use nsql_core::LogicalType;
 use nsql_storage::tuple::{FromTuple, FromTupleError, IntoTuple, Tuple};
 use nsql_storage::value::Value;
 use nsql_storage::{ColumnStorageInfo, TableStorage, TableStorageInfo};
-use nsql_storage_engine::{ExecutionMode, ReadWriteExecutionMode, StorageEngine, Transaction};
+use nsql_storage_engine::{
+    ExecutionMode, FallibleIterator, ReadWriteExecutionMode, StorageEngine, Transaction,
+};
 
 pub use self::column::{Column, ColumnIndex, CreateColumnInfo};
-use crate::{BootstrapNamespace, BootstrapTable, Entity, Name, Oid, SystemEntity};
+use crate::{BootstrapNamespace, BootstrapTable, Catalog, Entity, Name, Oid, SystemEntity};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Table {
@@ -20,45 +22,55 @@ pub struct Table {
 }
 
 impl Table {
+    pub fn new(namespace: Oid<BootstrapNamespace>, name: Name) -> Self {
+        Self { oid: crate::hack_new_oid_tmp(), namespace, name }
+    }
+
     #[inline]
     pub fn name(&self) -> &Name {
         &self.name
     }
 
-    #[inline]
-    pub fn columns<S: StorageEngine>(&self, tx: &dyn Transaction<'_, S>) -> Vec<Arc<Column>> {
-        todo!()
-        // self.all::<Column<S>>(tx)
-    }
-
     pub fn storage<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
         &self,
-        storage: &S,
+        catalog: Catalog<'env, S>,
         tx: M::TransactionRef<'txn>,
-    ) -> Result<TableStorage<'env, 'txn, S, M>, S::Error> {
-        TableStorage::open(
-            storage,
-            tx,
-            TableStorageInfo::new(
-                Name::from(format!("{}", TableRef { namespace: self.namespace, table: self.oid })),
-                self.columns(tx.as_dyn()).iter().map(|c| c.as_ref().into()).collect(),
-            ),
-        )
+    ) -> Result<TableStorage<'env, 'txn, S, M>> {
+        Ok(TableStorage::open(catalog.storage, tx, self.table_storage_info(catalog, &tx)?)?)
     }
 
     pub fn get_or_create_storage<'env, 'txn, S: StorageEngine>(
         &self,
-        storage: &S,
+        catalog: Catalog<'env, S>,
         tx: &'txn S::WriteTransaction<'env>,
-    ) -> Result<TableStorage<'env, 'txn, S, ReadWriteExecutionMode>, S::Error> {
-        TableStorage::create(
-            storage,
-            tx,
-            TableStorageInfo::new(
-                Name::from(format!("{}", TableRef { namespace: self.namespace, table: self.oid })),
-                self.columns(tx).iter().map(|c| c.as_ref().into()).collect(),
-            ),
-        )
+    ) -> Result<TableStorage<'env, 'txn, S, ReadWriteExecutionMode>> {
+        let storage = catalog.storage();
+        Ok(TableStorage::create(storage, tx, self.table_storage_info(catalog, tx)?)?)
+    }
+
+    fn table_storage_info<'env, S: StorageEngine>(
+        &self,
+        catalog: Catalog<'env, S>,
+        tx: &dyn Transaction<'env, S>,
+    ) -> Result<TableStorageInfo> {
+        Ok(TableStorageInfo::new(
+            Name::from(format!("{}", TableRef { namespace: self.namespace, table: self.oid })),
+            self.columns(catalog, tx)?.iter().map(|c| c.into()).collect(),
+        ))
+    }
+
+    fn columns<'env, S: StorageEngine>(
+        &self,
+        catalog: Catalog<'env, S>,
+        tx: &dyn Transaction<'env, S>,
+    ) -> Result<Vec<Column>> {
+        let columns = catalog
+            .columns(tx)?
+            .scan()?
+            .filter(|col| Ok(col.table == self.oid))
+            .collect::<Vec<_>>()?;
+        assert!(!columns.is_empty(), "no columns found for table `{}` {}`", self.oid, self.name);
+        Ok(columns)
     }
 }
 
@@ -155,7 +167,7 @@ impl Copy for TableRef {}
 //     }
 // }
 
-impl SystemEntity for BootstrapTable {
+impl SystemEntity for Table {
     type Parent = BootstrapNamespace;
 
     #[inline]

@@ -9,7 +9,7 @@ use rkyv::{Archive, Deserialize, Serialize};
 /// type, it is currently possible to misuse this type and read from the wrong set.
 // This must only be constructed internally by the catalog.
 // FIXME move the typedoid to catalog crate but keep the untyped one here
-#[derive(Archive, Serialize, Deserialize)]
+#[derive(PartialEq, Eq, Archive, Serialize, Deserialize)]
 pub struct Oid<T: ?Sized> {
     oid: u64,
     marker: PhantomData<fn() -> T>,
@@ -42,14 +42,6 @@ impl<T: ?Sized> Clone for Oid<T> {
         Self { oid: self.oid, marker: self.marker }
     }
 }
-
-impl<T: ?Sized> PartialEq for Oid<T> {
-    fn eq(&self, other: &Self) -> bool {
-        self.oid == other.oid
-    }
-}
-
-impl<T: ?Sized> Eq for Oid<T> {}
 
 impl<T: ?Sized> Hash for Oid<T> {
     fn hash<H: Hasher>(&self, state: &mut H) {

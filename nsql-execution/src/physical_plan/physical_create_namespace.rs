@@ -63,16 +63,16 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSource<'env, 'txn, S, ReadWrite
     ) -> ExecutionResult<TupleStream<'txn, S>> {
         let catalog = ctx.catalog();
         let tx = ctx.tx()?;
-        let namespaces = catalog.system_table_write::<Namespace>(tx)?;
+        let mut namespaces = catalog.system_table_write::<Namespace>(tx)?;
         let info = self.info.clone();
 
-        namespaces.insert(Namespace::new(info.name.clone()));
+        namespaces.insert(Namespace::new(info.name))?;
 
-        if let Err(err) = catalog.create::<Namespace<S>>(tx, info) {
-            if !self.info.if_not_exists {
-                return Err(err)?;
-            }
-        }
+        // if let Err(err) = catalog.create::<Namespace<S>>(tx, info) {
+        //     if !self.info.if_not_exists {
+        //         return Err(err)?;
+        //     }
+        // }
 
         Ok(Box::new(fallible_iterator::empty()))
     }

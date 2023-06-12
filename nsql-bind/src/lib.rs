@@ -11,8 +11,8 @@ use ir::expr::EvalNotConst;
 use ir::{Decimal, Path, TransactionMode};
 use itertools::Itertools;
 use nsql_catalog::{
-    BootstrapNamespace, BootstrapTable, Catalog, Column, CreateColumnInfo, CreateNamespaceInfo,
-    Entity, Namespace, SystemEntity, Table, TableRef, DEFAULT_SCHEMA,
+    BootstrapNamespace, BootstrapTable, Catalog, CreateColumnInfo, CreateNamespaceInfo, Namespace,
+    SystemEntity, Table, TableRef, DEFAULT_SCHEMA,
 };
 use nsql_core::{LogicalType, Name, Oid};
 use nsql_parse::ast::{self, HiveDistributionStyle};
@@ -111,7 +111,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                 not_implemented!(order_by.is_some());
 
                 let path = self.lower_path(&name.0)?;
-                let namespace = self.bind_namespace(&path)?;
+                let namespace = self.bind_namespace(tx, &path)?;
                 let columns = self.lower_columns(columns)?;
                 if columns.iter().all(|c| !c.is_primary_key) {
                     bail!("table must have a primary key defined")
@@ -389,23 +389,26 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
         }
     }
 
-    fn bind_namespace(&self, path: &Path) -> Result<Oid<Namespace>> {
+    fn bind_namespace(&self, tx: &dyn Transaction<'env, S>, path: &Path) -> Result<Oid<Namespace>> {
         match path {
             Path::Qualified { prefix, .. } => match prefix.as_ref() {
                 Path::Qualified { .. } => not_implemented!("qualified schemas"),
                 Path::Unqualified(name) => {
-                    todo!();
-                    // self
-                    // .catalog
-                    // .find::<Namespace<S>>(name.as_str())?
-                    // // .ok_or_else(|| Error::Unbound { kind: Namespace::desc(), path: path.clone() }),
-                    // .ok_or_else(|| unbound!(Namespace<S>, path)),
+                    let ns = self
+                        .catalog
+                        .namespaces(tx)?
+                        .find(None, name.as_str())?
+                        .ok_or_else(|| unbound!(Namespace, path))?;
+                    Ok(ns.oid())
                 }
             },
-            Path::Unqualified(name) => self.bind_namespace(&Path::Qualified {
-                prefix: Box::new(Path::Unqualified(DEFAULT_SCHEMA.into())),
-                name: name.clone(),
-            }),
+            Path::Unqualified(name) => self.bind_namespace(
+                tx,
+                &Path::Qualified {
+                    prefix: Box::new(Path::Unqualified(DEFAULT_SCHEMA.into())),
+                    name: name.clone(),
+                },
+            ),
         }
     }
 

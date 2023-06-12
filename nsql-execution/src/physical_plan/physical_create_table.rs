@@ -1,4 +1,6 @@
-use nsql_catalog::{Column, CreateTableInfo, Namespace, Table, TableRef};
+use nsql_catalog::{
+    Column, ColumnIndex, CreateTableInfo, Namespace, SystemEntity, Table, TableRef, Type,
+};
 use nsql_core::Name;
 use nsql_storage::{TableStorage, TableStorageInfo};
 use nsql_storage_engine::fallible_iterator;
@@ -70,36 +72,32 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSource<'env, 'txn, S, ReadWrite
         self: Arc<Self>,
         ctx: &'txn ExecutionContext<'env, S, ReadWriteExecutionMode>,
     ) -> ExecutionResult<TupleStream<'txn, S>> {
+        tracing::debug!(name = %self.info.name, "physical create table");
+        assert!(!self.info.columns.is_empty());
+
         let catalog = ctx.catalog();
+
         let tx = ctx.tx()?;
-        todo!();
-        // let namespace: Arc<Namespace> = catalog
-        //     .get::<Namespace>(tx, self.info.namespace)
-        //     .expect("schema not found during execution");
-        //
-        // let info = CreateTableInfo { name: self.info.name.clone() };
-        //
-        // let table_oid = namespace.create::<Table<S>>(tx, info)?;
-        // let table: Arc<Table<S>> =
-        //     namespace.get::<Table<S>>(tx, table_oid).expect("table not found during execution");
-        //
-        // for info in &self.info.columns {
-        //     table.create::<Column<S>>(tx, info.clone())?;
-        // }
-        //
-        // TableStorage::create(
-        //     ctx.storage(),
-        //     tx,
-        //     TableStorageInfo::new(
-        //         Name::from(format!(
-        //             "{}",
-        //             TableRef { namespace: self.info.namespace, table: table_oid }
-        //         )),
-        //         table.columns(tx).iter().map(|c| c.as_ref().into()).collect(),
-        //     ),
-        // )?;
-        //
-        // Ok(Box::new(fallible_iterator::empty()))
+
+        let table = Table::new(self.info.namespace, self.info.name.clone());
+
+        catalog.system_table_write(tx)?.insert(table.clone())?;
+
+        let mut columns = catalog.system_table_write(tx)?;
+        for info in &self.info.columns {
+            columns.insert(Column::new(
+                table.oid(),
+                info.name.clone(),
+                ColumnIndex::new(info.index),
+                Type::logical_type_to_oid(&info.ty),
+                info.is_primary_key,
+            ))?;
+        }
+
+        // this must be called after creating the columns
+        table.get_or_create_storage(catalog, tx)?;
+
+        Ok(Box::new(fallible_iterator::empty()))
     }
 }
 

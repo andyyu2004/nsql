@@ -3,7 +3,7 @@ use nsql_storage::tuple::{FromTuple, FromTupleError, IntoTuple, Tuple};
 use nsql_storage::value::{CastError, FromValue, Value};
 use nsql_storage::{ColumnStorageInfo, TableStorageInfo};
 
-use crate::bootstrap::BootstrapType;
+use crate::bootstrap::Type;
 use crate::{Entity, Name, Oid, SystemEntity, Table};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -12,18 +12,27 @@ pub struct Column {
     pub(crate) table: Oid<Table>,
     pub(crate) name: Name,
     pub(crate) index: ColumnIndex,
-    pub(crate) ty: Oid<BootstrapType>,
+    pub(crate) ty: Oid<Type>,
     pub(crate) is_primary_key: bool,
 }
 
 impl From<&Column> for ColumnStorageInfo {
     fn from(val: &Column) -> Self {
-        todo!();
-        // ColumnStorageInfo::new(val.ty.clone(), val.is_primary_key)
+        ColumnStorageInfo::new(Type::oid_to_logical_type(val.ty), val.is_primary_key)
     }
 }
 
 impl Column {
+    pub fn new(
+        table: Oid<Table>,
+        name: Name,
+        index: ColumnIndex,
+        ty: Oid<Type>,
+        is_primary_key: bool,
+    ) -> Self {
+        Self { oid: crate::hack_new_oid_tmp(), table, name, index, ty, is_primary_key }
+    }
+
     #[inline]
     pub fn index(&self) -> ColumnIndex {
         self.index
@@ -49,7 +58,8 @@ pub struct ColumnIndex {
 impl FromValue for ColumnIndex {
     #[inline]
     fn from_value(value: Value) -> Result<Self, CastError<Self>> {
-        todo!()
+        let index = value.cast_non_null::<u8>().map_err(CastError::cast)?;
+        Ok(Self { index })
     }
 }
 
@@ -173,9 +183,9 @@ impl SystemEntity for Column {
             vec![
                 ColumnStorageInfo::new(LogicalType::Oid, true),
                 ColumnStorageInfo::new(LogicalType::Oid, false),
+                ColumnStorageInfo::new(LogicalType::Oid, false),
                 ColumnStorageInfo::new(LogicalType::Text, false),
                 ColumnStorageInfo::new(LogicalType::Int, false),
-                ColumnStorageInfo::new(LogicalType::Text, false),
                 ColumnStorageInfo::new(LogicalType::Bool, false),
             ],
         )
@@ -195,9 +205,9 @@ impl FromTuple for Column {
         Ok(Self {
             oid: tuple[0].take().cast_non_null()?,
             table: tuple[1].take().cast_non_null()?,
-            name: tuple[2].take().cast_non_null()?,
-            index: tuple[3].take().cast_non_null()?,
-            ty: tuple[4].take().cast_non_null()?,
+            ty: tuple[2].take().cast_non_null()?,
+            name: tuple[3].take().cast_non_null()?,
+            index: tuple[4].take().cast_non_null()?,
             is_primary_key: tuple[5].take().cast_non_null()?,
         })
     }
@@ -208,9 +218,9 @@ impl IntoTuple for Column {
         Tuple::from([
             Value::Oid(self.oid.untyped()),
             Value::Oid(self.table.untyped()),
+            Value::Oid(self.ty.untyped()),
             Value::Text(self.name.into()),
             Value::Int32(self.index.index as i32),
-            Value::Text(self.ty.to_string()),
             Value::Bool(self.is_primary_key),
         ])
     }

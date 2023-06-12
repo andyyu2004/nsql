@@ -15,6 +15,10 @@ impl<T> CastError<T> {
     pub fn new(value: Value) -> Self {
         Self { value, phantom: PhantomData }
     }
+
+    pub fn cast<U>(self) -> CastError<U> {
+        CastError::new(self.value)
+    }
 }
 
 impl<T> fmt::Debug for CastError<T> {

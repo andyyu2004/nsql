@@ -17,18 +17,19 @@ use nsql_storage::tuple::{FromTuple, FromTupleError, IntoTuple, Tuple};
 use nsql_storage::value::Value;
 use nsql_storage::{ColumnStorageInfo, TableStorageInfo};
 
+use crate::bootstrap::CatalogPath;
 use crate::SystemEntity;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Namespace {
     pub(crate) oid: Oid<Namespace>,
-    pub(crate) name: String,
+    pub(crate) name: Name,
 }
 
 impl Namespace {
     #[inline]
-    pub fn new(oid: Oid<Namespace>, name: String) -> Self {
-        Self { oid, name }
+    pub fn new(name: Name) -> Self {
+        Self { oid: crate::hack_new_oid_tmp(), name }
     }
 }
 
@@ -60,6 +61,11 @@ impl SystemEntity for Namespace {
         None
     }
 
+    #[inline]
+    fn path(&self) -> CatalogPath<Self> {
+        CatalogPath::new(self.oid(), self.parent_oid())
+    }
+
     fn desc() -> &'static str {
         "namespace"
     }
@@ -77,7 +83,7 @@ impl FromTuple for Namespace {
 
 impl IntoTuple for Namespace {
     fn into_tuple(self) -> Tuple {
-        Tuple::from([Value::Oid(self.oid.untyped()), Value::Text(self.name)])
+        Tuple::from([Value::Oid(self.oid.untyped()), Value::Text(self.name.into())])
     }
 }
 

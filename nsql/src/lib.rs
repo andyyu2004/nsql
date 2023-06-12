@@ -170,7 +170,16 @@ impl<S: StorageEngine> Shared<S> {
                     catalog,
                     TransactionContext::new(tx, auto_commit),
                 );
-                let tuples = nsql_execution::execute_write(&ctx, physical_plan)?;
+                let tuples = match nsql_execution::execute_write(&ctx, physical_plan) {
+                    Ok(tuples) => tuples,
+                    Err(err) => {
+                        tracing::info!(error = %err, "aborting write transaction due to error during execution");
+                        let (_, _, tx) = ctx.take_txn();
+                        tx.abort()?;
+                        return Err(err);
+                    }
+                };
+
                 let (auto_commit, state, tx) = ctx.take_txn();
                 match state {
                     TransactionState::Active if auto_commit => {

@@ -68,7 +68,7 @@ impl Borrow<str> for Name {
     }
 }
 
-#[derive(Debug, Eq, PartialEq, Clone)]
+#[derive(Debug, Eq, PartialEq, Clone, Hash)]
 pub enum LogicalType {
     Null,
     Bool,
