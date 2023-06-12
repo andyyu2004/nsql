@@ -60,7 +60,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSource<'env, 'txn, S, ReadWrite
     fn source(
         self: Arc<Self>,
         ctx: &'txn ExecutionContext<'env, S, ReadWriteExecutionMode>,
-    ) -> ExecutionResult<TupleStream<'txn, S>> {
+    ) -> ExecutionResult<TupleStream<'txn>> {
         let catalog = ctx.catalog();
         let tx = ctx.tx()?;
         let mut namespaces = catalog.system_table_write::<Namespace>(tx)?;

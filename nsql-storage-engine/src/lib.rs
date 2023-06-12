@@ -64,6 +64,8 @@ pub trait StorageEngine: Send + Sync + Sized + fmt::Debug + 'static {
     ) -> Result<Self::WriteTree<'env, 'txn>, Self::Error>
     where
         'env: 'txn;
+
+    fn drop_tree(&self, txn: &Self::WriteTransaction<'_>, name: &str) -> Result<(), Self::Error>;
 }
 
 pub type Range<'a, S> = Box<
@@ -229,21 +231,37 @@ impl<'env: 'txn, 'txn, S: StorageEngine> ReadTree<'env, 'txn, S>
 // helper trait to help with conversion
 // there is probably a way to do this without this trait
 #[doc(hidden)]
-pub trait TransactionConversionHack<'txn, Tx> {
+pub trait TransactionConversionHack<'env, 'txn, Tx, S> {
     fn as_tx_ref(tx: &'txn Tx) -> Self;
+
+    fn dyn_ref(self) -> &'txn dyn Transaction<'env, S>;
 }
 
-impl<'env, 'txn, S: StorageEngine> TransactionConversionHack<'txn, S::Transaction<'env>>
+impl<'env, 'txn, S: StorageEngine> TransactionConversionHack<'env, 'txn, S::Transaction<'env>, S>
     for &'txn dyn Transaction<'env, S>
 {
+    #[inline]
     fn as_tx_ref(tx: &'txn S::Transaction<'env>) -> Self {
         tx
     }
+
+    #[inline]
+    fn dyn_ref(self) -> &'txn dyn Transaction<'env, S> {
+        self
+    }
 }
 
-impl<'txn, T> TransactionConversionHack<'txn, T> for &'txn T {
+impl<'env, 'txn, T: Transaction<'env, S>, S: StorageEngine>
+    TransactionConversionHack<'env, 'txn, T, S> for &'txn T
+{
+    #[inline]
     fn as_tx_ref(tx: &'txn T) -> Self {
         tx
+    }
+
+    #[inline]
+    fn dyn_ref(self) -> &'txn dyn Transaction<'env, S> {
+        self
     }
 }
 
@@ -253,7 +271,7 @@ pub trait ExecutionMode<'env, S: StorageEngine>: private::Sealed + Clone + Copy 
     type TransactionRef<'txn>: Transaction<'env, S>
         + 'txn
         + Copy
-        + TransactionConversionHack<'txn, Self::Transaction>
+        + TransactionConversionHack<'env, 'txn, Self::Transaction, S>
     where
         'env: 'txn;
 
@@ -323,7 +341,6 @@ impl<'env, S: StorageEngine> ExecutionMode<'env, S> for ReadWriteExecutionMode {
         txn: Self::TransactionRef<'txn>,
         name: &str,
     ) -> Result<Self::Tree<'txn>, <S as StorageEngine>::Error> {
-        // FIXME don't unwrap
         storage.open_write_tree(txn, name)
     }
 }

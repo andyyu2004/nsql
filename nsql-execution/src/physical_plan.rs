@@ -150,7 +150,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalPlanner<'env, S> {
         let plan = match *plan {
             Plan::Transaction(kind) => PhysicalTransaction::plan(kind),
             Plan::Scan { table_ref, projection } => PhysicalTableScan::plan(table_ref, projection),
-            Plan::Show(show) => PhysicalShow::plan(show),
+            Plan::Show(object_type) => PhysicalShow::plan(object_type),
             Plan::Explain(kind, plan) => {
                 return self.explain_plan(tx, kind, f(self, tx, plan)?);
             }

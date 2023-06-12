@@ -20,8 +20,6 @@ pub use self::entity::namespace::{CreateNamespaceInfo, Namespace};
 pub use self::entity::table::{
     Column, ColumnIndex, CreateColumnInfo, CreateTableInfo, Table, TableRef,
 };
-// use self::private::CatalogEntity;
-// use self::set::{CatalogSet, Conflict};
 pub use self::system_table::SystemEntity;
 use self::system_table::SystemTableView;
 
@@ -93,6 +91,11 @@ impl<'env, S: StorageEngine> Catalog<'env, S> {
         tx: &'txn S::WriteTransaction<'env>,
     ) -> Result<SystemTableView<'env, 'txn, S, ReadWriteExecutionMode, T>, S::Error> {
         SystemTableView::new(self.storage, tx)
+    }
+
+    pub fn drop_table(&self, tx: &S::WriteTransaction<'env>, oid: Oid<Table>) -> Result<()> {
+        self.storage.drop_tree(tx, &oid.to_string());
+        Ok(())
     }
 }
 

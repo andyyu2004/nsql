@@ -186,7 +186,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
     fn source(
         self: Arc<Self>,
         _ctx: &'txn ExecutionContext<'env, S, M>,
-    ) -> ExecutionResult<TupleStream<'txn, S>> {
+    ) -> ExecutionResult<TupleStream<'txn>> {
         todo!()
     }
 }

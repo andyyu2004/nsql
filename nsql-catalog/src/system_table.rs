@@ -1,5 +1,6 @@
 use std::fmt;
 use std::marker::PhantomData;
+use std::sync::Arc;
 
 use fix_hidden_lifetime_bug::fix_hidden_lifetime_bug;
 use nsql_core::Oid;
@@ -29,6 +30,7 @@ pub trait SystemEntity: FromTuple + IntoTuple + Eq + fmt::Debug {
     }
 }
 
+#[repr(transparent)]
 pub struct SystemTableView<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T> {
     storage: TableStorage<'env, 'txn, S, M>,
     phantom: PhantomData<T>,
@@ -62,6 +64,19 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: SystemEnt
     #[fix_hidden_lifetime_bug]
     pub fn scan(&self) -> Result<impl FallibleIterator<Item = T, Error = anyhow::Error> + '_> {
         Ok(self.storage.scan(None)?.map_err(Into::into).map(|tuple| Ok(T::from_tuple(tuple)?)))
+    }
+
+    #[inline]
+    #[fix_hidden_lifetime_bug]
+    pub fn scan_arc(
+        self: Arc<Self>,
+    ) -> Result<impl FallibleIterator<Item = T, Error = anyhow::Error> + 'txn> {
+        // Safety
+        // We are effectively transmuting the type within the `Arc`
+        // This is safe because we are ``#[repr(transparent)]``
+        let raw = Arc::<Self>::into_raw(self);
+        let inner = unsafe { Arc::<TableStorage<'env, 'txn, S, M>>::from_raw(raw as _) };
+        Ok(inner.scan_arc(None)?.map_err(Into::into).map(|tuple| Ok(T::from_tuple(tuple)?)))
     }
 }
 

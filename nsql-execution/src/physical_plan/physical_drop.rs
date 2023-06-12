@@ -62,25 +62,24 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSource<'env, 'txn, S, ReadWrite
     fn source(
         self: Arc<Self>,
         ctx: &'txn ExecutionContext<'env, S, ReadWriteExecutionMode>,
-    ) -> ExecutionResult<TupleStream<'txn, S>> {
+    ) -> ExecutionResult<TupleStream<'txn>> {
         let catalog = ctx.catalog();
         let tx = ctx.tx()?;
         for entity_ref in &self.refs {
-            todo!();
-            // match entity_ref {
-            //     ir::EntityRef::Table(table_ref) => table_ref.delete(Catalog<'_, S>, tx)?,
-            // }
+            match entity_ref {
+                ir::EntityRef::Table(table_ref) => catalog.drop_table(tx, table_ref.table)?,
+            }
         }
 
         Ok(Box::new(fallible_iterator::empty()))
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine> Explain<'_, S> for PhysicalDrop {
+impl<'env: 'txn, 'txn, S: StorageEngine> Explain<'env, S> for PhysicalDrop {
     fn explain(
         &self,
-        catalog: Catalog<'_, S>,
-        tx: &dyn Transaction<'_, S>,
+        catalog: Catalog<'env, S>,
+        tx: &dyn Transaction<'env, S>,
         f: &mut fmt::Formatter<'_>,
     ) -> explain::Result {
         write!(f, "drop ")?;
@@ -89,12 +88,11 @@ impl<'env: 'txn, 'txn, S: StorageEngine> Explain<'_, S> for PhysicalDrop {
                 write!(f, ", ")?;
             }
 
-            todo!();
-            // match entity_ref {
-            //     ir::EntityRef::Table(table_ref) => {
-            //         write!(f, "table {}", table_ref.get(catalog, tx).name())?
-            //     }
-            // }
+            match entity_ref {
+                ir::EntityRef::Table(table_ref) => {
+                    write!(f, "table {}", catalog.get(tx, table_ref.table)?.name())?
+                }
+            }
         }
 
         Ok(())

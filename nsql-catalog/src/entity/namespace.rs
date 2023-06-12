@@ -27,6 +27,12 @@ pub struct Namespace {
 }
 
 impl Namespace {
+    pub const MAIN: Oid<Self> = Oid::new(101);
+
+    pub(crate) const CATALOG: Oid<Self> = Oid::new(100);
+}
+
+impl Namespace {
     #[inline]
     pub fn new(name: Name) -> Self {
         Self { oid: crate::hack_new_oid_tmp(), name }

@@ -71,7 +71,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSource<'env, 'txn, S, ReadWrite
     fn source(
         self: Arc<Self>,
         ctx: &'txn ExecutionContext<'env, S, ReadWriteExecutionMode>,
-    ) -> ExecutionResult<TupleStream<'txn, S>> {
+    ) -> ExecutionResult<TupleStream<'txn>> {
         tracing::debug!(name = %self.info.name, "physical create table");
         assert!(!self.info.columns.is_empty());
 
@@ -93,6 +93,10 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSource<'env, 'txn, S, ReadWrite
                 info.is_primary_key,
             ))?;
         }
+
+        // must drop the columns before the next line otherwise the next line will fail as it will
+        // try to open the `columns` table again
+        drop(columns);
 
         // this must be called after creating the columns
         table.get_or_create_storage(catalog, tx)?;

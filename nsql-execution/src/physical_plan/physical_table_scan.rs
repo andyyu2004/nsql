@@ -3,6 +3,7 @@ use std::sync::OnceLock;
 use itertools::Itertools;
 use nsql_catalog::{Column, ColumnIndex, Entity, Table, TableRef};
 use nsql_storage::tuple::TupleIndex;
+use nsql_storage_engine::FallibleIterator;
 
 use super::*;
 
@@ -37,20 +38,19 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
     fn source(
         self: Arc<Self>,
         ctx: &'txn ExecutionContext<'env, S, M>,
-    ) -> ExecutionResult<TupleStream<'txn, S>> {
-        todo!();
-        // let tx = ctx.tx()?;
-        // let table = self.table.get_or_init(|| self.table_ref.get(&ctx.catalog, &tx));
-        //
-        // let storage = Arc::new(table.storage::<M>(ctx.storage(), tx)?);
-        //
-        // let projection = self
-        //     .projection
-        //     .as_ref()
-        //     .map(|p| p.iter().map(|&idx| TupleIndex::new(idx.as_usize())).collect());
-        //
-        // let stream = storage.scan_arc(projection)?;
-        // Ok(Box::new(stream) as _)
+    ) -> ExecutionResult<TupleStream<'txn>> {
+        let tx = ctx.tx()?;
+        let catalog = ctx.catalog();
+        let table = catalog.get(&tx, self.table_ref.table)?;
+        let storage = Arc::new(table.storage::<S, M>(catalog, tx)?);
+
+        let projection = self
+            .projection
+            .as_ref()
+            .map(|p| p.iter().map(|&idx| TupleIndex::new(idx.as_usize())).collect());
+
+        let stream = storage.scan_arc(projection)?.map_err(Into::into);
+        Ok(Box::new(stream) as _)
     }
 }
 
@@ -83,33 +83,25 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode
     }
 }
 
-impl<S: StorageEngine> Explain<'_, S> for PhysicalTableScan {
+impl<'env, S: StorageEngine> Explain<'env, S> for PhysicalTableScan {
     fn explain(
         &self,
-        catalog: Catalog<'_, S>,
-        tx: &dyn Transaction<'_, S>,
+        catalog: Catalog<'env, S>,
+        tx: &dyn Transaction<'env, S>,
         f: &mut fmt::Formatter<'_>,
     ) -> explain::Result {
         // In this context, we know the projection indices correspond to the column indices of the source table
-        // let table = self.table_ref.get(catalog, tx);
-        todo!();
-        // let columns = table.all::<Column<S>>(tx);
-        //
-        // let column_names = match &self.projection {
-        //     Some(projection) => projection
-        //         .iter()
-        //         .map(|&idx| {
-        //             columns
-        //                 .get(idx.as_usize())
-        //                 .map(|col| col.name())
-        //                 // FIXME centralize this logic
-        //                 .unwrap_or_else(|| "tid".into())
-        //         })
-        //         .collect::<Vec<_>>(),
-        //     None => columns.iter().map(|col| col.name()).collect::<Vec<_>>(),
-        // };
-        //
-        // write!(f, "scan {} ({})", table.name(), column_names.iter().join(", "))?;
-        // Ok(())
+        let table = catalog.get(tx, self.table_ref.table)?;
+        let columns = table.columns(catalog, tx)?;
+
+        let column_names = match &self.projection {
+            Some(projection) => {
+                projection.iter().map(|&idx| columns[idx.as_usize()].name()).collect::<Vec<_>>()
+            }
+            None => columns.iter().map(|col| col.name()).collect::<Vec<_>>(),
+        };
+
+        write!(f, "scan {} ({})", table.name(), column_names.iter().join(", "))?;
+        Ok(())
     }
 }

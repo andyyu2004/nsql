@@ -12,7 +12,9 @@ use nsql_storage_engine::{
 };
 
 pub use self::column::{Column, ColumnIndex, CreateColumnInfo};
-use crate::{BootstrapNamespace, BootstrapTable, Catalog, Entity, Name, Oid, SystemEntity};
+use crate::{
+    BootstrapNamespace, BootstrapTable, Catalog, Entity, Name, Namespace, Oid, SystemEntity,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Table {
@@ -74,6 +76,11 @@ impl Table {
         columns.sort_by_key(|col| col.index());
 
         Ok(columns)
+    }
+
+    #[inline]
+    pub fn namespace(&self) -> Oid<Namespace> {
+        self.namespace
     }
 }
 

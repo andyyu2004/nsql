@@ -1,19 +1,19 @@
 use nsql_catalog::{Namespace, Table};
 use nsql_storage::value::Value;
-use nsql_storage_engine::fallible_iterator;
+use nsql_storage_engine::{fallible_iterator, FallibleIterator, TransactionConversionHack};
 
 use super::*;
 
 #[derive(Debug)]
 pub struct PhysicalShow {
-    show: ir::ObjectType,
+    object_type: ir::ObjectType,
 }
 
 impl PhysicalShow {
     pub(crate) fn plan<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
-        show: ir::ObjectType,
+        object_type: ir::ObjectType,
     ) -> Arc<dyn PhysicalNode<'env, 'txn, S, M>> {
-        Arc::new(Self { show })
+        Arc::new(Self { object_type })
     }
 }
 
@@ -52,21 +52,19 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
     fn source(
         self: Arc<Self>,
         ctx: &'txn ExecutionContext<'env, S, M>,
-    ) -> ExecutionResult<TupleStream<'txn, S>> {
+    ) -> ExecutionResult<TupleStream<'txn>> {
+        let tx: M::TransactionRef<'txn> = ctx.tx()?;
+        let tx: &'txn dyn Transaction<'env, S> = tx.dyn_ref();
         let catalog = ctx.catalog();
-        let tx = ctx.tx()?;
-        todo!();
-        // let iter =
-        //     catalog.all::<Namespace<S>>(&tx).into_iter().flat_map(move |namespace| {
-        //         match self.show {
-        //             ir::ObjectType::Table => namespace
-        //                 .all::<Table<S>>(&tx)
-        //                 .into_iter()
-        //                 .map(|table| Ok(Tuple::from(vec![Value::Text(table.name().to_string())]))),
-        //         }
-        //     });
 
-        // Ok(Box::new(fallible_iterator::convert(iter)))
+        let iter = match self.object_type {
+            ir::ObjectType::Table => Arc::new(catalog.tables(tx.dyn_ref())?)
+                .scan_arc()?
+                .filter(|table| Ok(table.namespace() == Namespace::MAIN))
+                .map(|table| Ok(Tuple::from(vec![Value::Text(table.name().to_string())]))),
+        };
+
+        Ok(Box::new(iter))
     }
 }
 
@@ -77,7 +75,7 @@ impl<S: StorageEngine> Explain<'_, S> for PhysicalShow {
         _tx: &dyn Transaction<'_, S>,
         f: &mut fmt::Formatter<'_>,
     ) -> explain::Result {
-        write!(f, "show {}s", self.show)?;
+        write!(f, "show {}s", self.object_type)?;
         Ok(())
     }
 }

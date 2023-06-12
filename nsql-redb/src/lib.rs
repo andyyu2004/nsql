@@ -113,6 +113,11 @@ impl nsql_storage_engine::StorageEngine for RedbStorageEngine {
             Err(e) => Err(e)?,
         }
     }
+
+    fn drop_tree(&self, txn: &Self::WriteTransaction<'_>, name: &str) -> Result<(), Self::Error> {
+        txn.0.delete_table(redb::TableDefinition::<(), ()>::new(name))?;
+        Ok(())
+    }
 }
 
 pub struct AccessGuardDerefWrapper<'a>(AccessGuard<'a, &'a [u8]>);

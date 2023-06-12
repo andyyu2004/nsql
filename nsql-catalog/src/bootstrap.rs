@@ -73,9 +73,6 @@ type BootstrapColumn = Column;
 mod oid {
     use super::*;
 
-    pub(super) const NS_CATALOG: Oid<BootstrapNamespace> = Oid::new(100);
-    pub(super) const NS_MAIN: Oid<BootstrapNamespace> = Oid::new(101);
-
     pub(super) const TABLE_NAMESPACE: Oid<BootstrapTable> = Oid::new(100);
     pub(super) const TABLE_TABLE: Oid<BootstrapTable> = Oid::new(101);
     pub(super) const TABLE_ATTRIBUTE: Oid<BootstrapTable> = Oid::new(102);
@@ -87,10 +84,10 @@ mod oid {
     pub(super) const TY_TEXT: Oid<Type> = Oid::new(103);
 }
 
-fn bootstrap_nsql_namespaces() -> Vec<BootstrapNamespace> {
+fn bootstrap_nsql_namespaces() -> Vec<Namespace> {
     vec![
-        BootstrapNamespace { oid: oid::NS_MAIN, name: "main".into() },
-        BootstrapNamespace { oid: oid::NS_CATALOG, name: "nsql_catalog".into() },
+        Namespace { oid: Namespace::MAIN, name: "main".into() },
+        Namespace { oid: Namespace::CATALOG, name: "nsql_catalog".into() },
     ]
 }
 
@@ -99,22 +96,22 @@ fn bootstrap_nsql_tables() -> Vec<BootstrapTable> {
         BootstrapTable {
             oid: oid::TABLE_NAMESPACE,
             name: "nsql_namespace".into(),
-            namespace: oid::NS_CATALOG,
+            namespace: Namespace::CATALOG,
         },
         BootstrapTable {
             oid: oid::TABLE_TABLE,
             name: "nsql_table".into(),
-            namespace: oid::NS_CATALOG,
+            namespace: Namespace::CATALOG,
         },
         BootstrapTable {
             oid: oid::TABLE_ATTRIBUTE,
             name: "nsql_attribute".into(),
-            namespace: oid::NS_CATALOG,
+            namespace: Namespace::CATALOG,
         },
         BootstrapTable {
             oid: oid::TABLE_TYPE,
             name: "nsql_type".into(),
-            namespace: oid::NS_CATALOG,
+            namespace: Namespace::CATALOG,
         },
     ]
 }

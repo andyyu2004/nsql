@@ -124,8 +124,7 @@ trait PhysicalOperator<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env
     ) -> ExecutionResult<OperatorState<T>>;
 }
 
-type TupleStream<'txn, S> =
-    Box<dyn FallibleIterator<Item = Tuple, Error = <S as StorageEngine>::Error> + 'txn>;
+type TupleStream<'txn> = Box<dyn FallibleIterator<Item = Tuple, Error = anyhow::Error> + 'txn>;
 
 trait PhysicalSource<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T = Tuple>:
     PhysicalNode<'env, 'txn, S, M>
@@ -134,7 +133,7 @@ trait PhysicalSource<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, 
     fn source(
         self: Arc<Self>,
         ctx: &'txn ExecutionContext<'env, S, M>,
-    ) -> ExecutionResult<TupleStream<'txn, S>>;
+    ) -> ExecutionResult<TupleStream<'txn>>;
 }
 
 trait PhysicalSink<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>:
