@@ -1,6 +1,6 @@
-use nsql_catalog::{Namespace, Table};
+use nsql_catalog::{Namespace};
 use nsql_storage::value::Value;
-use nsql_storage_engine::{fallible_iterator, FallibleIterator, TransactionConversionHack};
+use nsql_storage_engine::{FallibleIterator, TransactionConversionHack};
 
 use super::*;
 

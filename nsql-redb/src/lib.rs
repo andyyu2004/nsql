@@ -115,7 +115,10 @@ impl nsql_storage_engine::StorageEngine for RedbStorageEngine {
     }
 
     fn drop_tree(&self, txn: &Self::WriteTransaction<'_>, name: &str) -> Result<(), Self::Error> {
-        txn.0.delete_table(redb::TableDefinition::<(), ()>::new(name))?;
+        assert!(
+            txn.0.delete_table(redb::TableDefinition::<(), ()>::new(name))?,
+            "didn't drop anything"
+        );
         Ok(())
     }
 }

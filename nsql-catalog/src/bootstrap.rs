@@ -62,18 +62,18 @@ impl<T: SystemEntity> CatalogPath<T> {
     }
 }
 
-mod oid {
+pub(super) mod oid {
     use super::*;
 
-    pub(super) const TABLE_NAMESPACE: Oid<Table> = Oid::new(100);
-    pub(super) const TABLE_TABLE: Oid<Table> = Oid::new(101);
-    pub(super) const TABLE_ATTRIBUTE: Oid<Table> = Oid::new(102);
-    pub(super) const TABLE_TYPE: Oid<Table> = Oid::new(103);
+    pub(crate) const TABLE_NAMESPACE: Oid<Table> = Oid::new(100);
+    pub(crate) const TABLE_TABLE: Oid<Table> = Oid::new(101);
+    pub(crate) const TABLE_ATTRIBUTE: Oid<Table> = Oid::new(102);
+    pub(crate) const TABLE_TYPE: Oid<Table> = Oid::new(103);
 
-    pub(super) const TY_OID: Oid<Type> = Oid::new(100);
-    pub(super) const TY_BOOL: Oid<Type> = Oid::new(101);
-    pub(super) const TY_INT: Oid<Type> = Oid::new(102);
-    pub(super) const TY_TEXT: Oid<Type> = Oid::new(103);
+    pub(crate) const TY_OID: Oid<Type> = Oid::new(100);
+    pub(crate) const TY_BOOL: Oid<Type> = Oid::new(101);
+    pub(crate) const TY_INT: Oid<Type> = Oid::new(102);
+    pub(crate) const TY_TEXT: Oid<Type> = Oid::new(103);
 }
 
 fn bootstrap_nsql_namespaces() -> Vec<Namespace> {
@@ -201,7 +201,7 @@ pub struct Type {
 
 impl SystemEntity for Type {
     // should types be namespaced?
-    type Parent = !;
+    type Parent = ();
 
     #[inline]
     fn oid(&self) -> Oid<Self> {
@@ -219,7 +219,7 @@ impl SystemEntity for Type {
 
     fn storage_info() -> TableStorageInfo {
         TableStorageInfo::new(
-            "nsql_catalog.nsql_type",
+            oid::TABLE_TYPE.untyped(),
             vec![
                 ColumnStorageInfo::new(LogicalType::Oid, true),
                 ColumnStorageInfo::new(LogicalType::Text, false),
@@ -279,8 +279,8 @@ impl Type {
     }
 }
 
-impl SystemEntity for ! {
-    type Parent = !;
+impl SystemEntity for () {
+    type Parent = ();
 
     fn storage_info() -> TableStorageInfo {
         todo!()

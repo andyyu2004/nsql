@@ -5,7 +5,7 @@ use std::ops::{Index, IndexMut};
 use rkyv::with::RefAsBox;
 use rkyv::Archived;
 
-use crate::value::{CastError, FromValue, Value};
+use crate::value::{CastError, Value};
 
 #[derive(Debug, Clone, PartialEq, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
 #[repr(transparent)]
@@ -165,6 +165,16 @@ pub trait FromTuple: Sized {
     fn from_tuple(tuple: Tuple) -> Result<Self, FromTupleError>;
 }
 
+impl FromTuple for () {
+    fn from_tuple(tuple: Tuple) -> Result<Self, FromTupleError> {
+        if tuple.is_empty() {
+            Ok(())
+        } else {
+            Err(FromTupleError::ColumnCountMismatch { expected: 0, actual: tuple.len() })
+        }
+    }
+}
+
 impl FromTuple for ! {
     fn from_tuple(_tuple: Tuple) -> Result<Self, FromTupleError> {
         panic!()
@@ -179,6 +189,13 @@ impl IntoTuple for Tuple {
     #[inline]
     fn into_tuple(self) -> Tuple {
         self
+    }
+}
+
+impl IntoTuple for () {
+    #[inline]
+    fn into_tuple(self) -> Tuple {
+        Tuple::empty()
     }
 }
 

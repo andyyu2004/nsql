@@ -17,7 +17,7 @@ use nsql_storage::tuple::{FromTuple, FromTupleError, IntoTuple, Tuple};
 use nsql_storage::value::Value;
 use nsql_storage::{ColumnStorageInfo, TableStorageInfo};
 
-use crate::bootstrap::CatalogPath;
+use crate::bootstrap::{self, CatalogPath};
 use crate::SystemEntity;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -40,11 +40,11 @@ impl Namespace {
 }
 
 impl SystemEntity for Namespace {
-    type Parent = !;
+    type Parent = ();
 
     fn storage_info() -> TableStorageInfo {
         TableStorageInfo::new(
-            "nsql_catalog.nsql_namespace",
+            bootstrap::oid::TABLE_NAMESPACE.untyped(),
             vec![
                 ColumnStorageInfo::new(LogicalType::Oid, true),
                 ColumnStorageInfo::new(LogicalType::Text, false),

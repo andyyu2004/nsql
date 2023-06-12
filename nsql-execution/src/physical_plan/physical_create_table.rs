@@ -1,8 +1,8 @@
 use nsql_catalog::{
-    Column, ColumnIndex, CreateTableInfo, Namespace, SystemEntity, Table, TableRef, Type,
+    Column, ColumnIndex, SystemEntity, Table, Type,
 };
-use nsql_core::Name;
-use nsql_storage::{TableStorage, TableStorageInfo};
+
+
 use nsql_storage_engine::fallible_iterator;
 
 use super::*;

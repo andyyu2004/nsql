@@ -36,7 +36,7 @@ pub(crate) struct Display<'a, 'env, S: StorageEngine> {
 
 impl<'a, 'env, S: StorageEngine> fmt::Display for Display<'a, 'env, S> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.explain.explain(self.catalog, self.tx, f).map_err(|e| fmt::Error)
+        self.explain.explain(self.catalog, self.tx, f).map_err(|_e| fmt::Error)
     }
 }
 

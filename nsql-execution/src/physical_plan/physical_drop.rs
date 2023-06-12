@@ -63,9 +63,12 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSource<'env, 'txn, S, ReadWrite
         self: Arc<Self>,
         ctx: &'txn ExecutionContext<'env, S, ReadWriteExecutionMode>,
     ) -> ExecutionResult<TupleStream<'txn>> {
+        tracing::debug!("executing physical drop");
+
         let catalog = ctx.catalog();
         let tx = ctx.tx()?;
         for entity_ref in &self.refs {
+            tracing::debug!(entity = ?entity_ref, "dropping");
             match entity_ref {
                 ir::EntityRef::Table(table_ref) => catalog.drop_table(tx, table_ref.table)?,
             }

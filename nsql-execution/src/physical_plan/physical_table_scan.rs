@@ -1,7 +1,7 @@
 use std::sync::OnceLock;
 
 use itertools::Itertools;
-use nsql_catalog::{Column, ColumnIndex, Entity, Table, TableRef};
+use nsql_catalog::{ColumnIndex, Entity, Table, TableRef};
 use nsql_storage::tuple::TupleIndex;
 use nsql_storage_engine::FallibleIterator;
 

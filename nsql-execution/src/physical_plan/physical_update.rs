@@ -88,7 +88,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSink<'env, 'txn, S, ReadWriteEx
         &self,
         ctx: &'txn ExecutionContext<'env, S, ReadWriteExecutionMode>,
     ) -> ExecutionResult<()> {
-        let tx = ctx.tx()?;
+        let _tx = ctx.tx()?;
         todo!();
         // let table = self.table_ref.get(&ctx.catalog(), tx);
         // let mut storage = table.storage(ctx.storage(), tx)?;
@@ -125,9 +125,9 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSource<'env, 'txn, S, ReadWrite
 impl<'env: 'txn, 'txn, S: StorageEngine> Explain<'_, S> for PhysicalUpdate<'env, 'txn, S> {
     fn explain(
         &self,
-        catalog: Catalog<'_, S>,
-        tx: &dyn Transaction<'_, S>,
-        f: &mut fmt::Formatter<'_>,
+        _catalog: Catalog<'_, S>,
+        _tx: &dyn Transaction<'_, S>,
+        _f: &mut fmt::Formatter<'_>,
     ) -> explain::Result {
         todo!();
         // write!(f, "update {}", self.table_ref.get(catalog, tx).name())?;

@@ -303,12 +303,12 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
 
     fn bind_assignments(
         &self,
-        tx: &dyn Transaction<'env, S>,
-        scope: &Scope<S>,
-        table_ref: TableRef,
-        assignments: &[ast::Assignment],
+        _tx: &dyn Transaction<'env, S>,
+        _scope: &Scope<S>,
+        _table_ref: TableRef,
+        _assignments: &[ast::Assignment],
     ) -> Result<Box<[ir::Expr]>> {
-        let table: Table = todo!();
+        let _table: Table = todo!();
         // let table = table_ref.get(&self.catalog, tx);
         // let columns = table.all::<Column<S>>(tx);
         todo!()

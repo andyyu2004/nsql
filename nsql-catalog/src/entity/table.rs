@@ -12,7 +12,7 @@ use nsql_storage_engine::{
 };
 
 pub use self::column::{Column, ColumnIndex, CreateColumnInfo};
-use crate::{Catalog, Entity, Name, Namespace, Oid, SystemEntity};
+use crate::{bootstrap, Catalog, Entity, Name, Namespace, Oid, SystemEntity};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Table {
@@ -54,7 +54,7 @@ impl Table {
         tx: &dyn Transaction<'env, S>,
     ) -> Result<TableStorageInfo> {
         Ok(TableStorageInfo::new(
-            Name::from(format!("{}", TableRef { namespace: self.namespace, table: self.oid })),
+            self.oid.untyped(),
             self.columns(catalog, tx)?.iter().map(|c| c.into()).collect(),
         ))
     }
@@ -195,7 +195,7 @@ impl SystemEntity for Table {
 
     fn storage_info() -> TableStorageInfo {
         TableStorageInfo::new(
-            "nsql_catalog.nsql_table",
+            bootstrap::oid::TABLE_TABLE.untyped(),
             vec![
                 ColumnStorageInfo::new(LogicalType::Oid, true),
                 ColumnStorageInfo::new(LogicalType::Oid, false),

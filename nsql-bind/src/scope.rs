@@ -1,7 +1,7 @@
 use std::marker::PhantomData;
 
 use anyhow::bail;
-use nsql_catalog::{Column, Entity, Table, TableRef};
+use nsql_catalog::{Column, Entity, TableRef};
 use nsql_core::{LogicalType, Name};
 use nsql_storage_engine::{StorageEngine, Transaction};
 

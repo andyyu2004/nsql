@@ -94,7 +94,7 @@ impl<'env, S: StorageEngine> Catalog<'env, S> {
     }
 
     pub fn drop_table(&self, tx: &S::WriteTransaction<'env>, oid: Oid<Table>) -> Result<()> {
-        self.storage.drop_tree(tx, &oid.to_string());
+        self.storage.drop_tree(tx, &oid.to_string())?;
         Ok(())
     }
 }

@@ -4,7 +4,7 @@ use ::next_gen::prelude::*;
 use anyhow::bail;
 use fix_hidden_lifetime_bug::fix_hidden_lifetime_bug;
 use next_gen::generator_fn::GeneratorFn;
-use nsql_core::{LogicalType, Name};
+use nsql_core::{LogicalType, Name, Oid};
 // use nsql_catalog::{Column, TableRef};
 use nsql_storage_engine::{
     fallible_iterator, ExecutionMode, FallibleIterator, ReadTree, ReadWriteExecutionMode,
@@ -232,7 +232,7 @@ pub struct TableStorageInfo {
 
 impl TableStorageInfo {
     #[inline]
-    pub fn new(table_name: impl Into<Name>, columns: Vec<ColumnStorageInfo>) -> Self {
+    pub fn new(oid: Oid<()>, columns: Vec<ColumnStorageInfo>) -> Self {
         assert!(
             !columns.is_empty(),
             "expected at least one column (this should be checked in the binder)"
@@ -243,10 +243,7 @@ impl TableStorageInfo {
             "expected at least one primary key column (this should be checked in the binder)"
         );
 
-        let table_name = table_name.into();
-        assert!(table_name.contains('.'), "expected a qualified table name");
-
-        Self { columns, table_name }
+        Self { columns, table_name: format!("t{}", oid).into() }
     }
 }
 
