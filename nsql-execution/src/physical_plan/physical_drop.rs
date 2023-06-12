@@ -76,7 +76,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSource<'env, 'txn, S, ReadWrite
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine> Explain<S> for PhysicalDrop {
+impl<'env: 'txn, 'txn, S: StorageEngine> Explain<'_, S> for PhysicalDrop {
     fn explain(
         &self,
         catalog: Catalog<'_, S>,

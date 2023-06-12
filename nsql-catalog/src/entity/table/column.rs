@@ -40,8 +40,7 @@ impl Column {
 
     #[inline]
     pub fn logical_type(&self) -> LogicalType {
-        todo!();
-        // self.ty.clone()
+        Type::oid_to_logical_type(self.ty)
     }
 
     #[inline]

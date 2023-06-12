@@ -200,13 +200,14 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSink
     }
 }
 
-impl<S: StorageEngine> Explain<S> for OutputSink {
+impl<S: StorageEngine> Explain<'_, S> for OutputSink {
     fn explain(
         &self,
         _catalog: Catalog<'_, S>,
         _tx: &dyn Transaction<'_, S>,
         f: &mut fmt::Formatter<'_>,
     ) -> explain::Result {
-        write!(f, "output")
+        write!(f, "output")?;
+        Ok(())
     }
 }

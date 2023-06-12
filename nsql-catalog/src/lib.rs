@@ -17,7 +17,6 @@ use nsql_storage_engine::{
 
 pub use self::bootstrap::{BootstrapNamespace, BootstrapTable, CatalogPath, Type};
 pub use self::entity::namespace::{CreateNamespaceInfo, Namespace};
-
 pub use self::entity::table::{
     Column, ColumnIndex, CreateColumnInfo, CreateTableInfo, Table, TableRef,
 };
@@ -47,6 +46,15 @@ fn hack_new_oid_tmp<T>() -> Oid<T> {
 impl<'env, S> Copy for Catalog<'env, S> {}
 
 impl<'env, S: StorageEngine> Catalog<'env, S> {
+    pub fn get<'txn, T: SystemEntity>(
+        &self,
+        tx: &'txn dyn Transaction<'env, S>,
+        oid: Oid<T>,
+    ) -> Result<T> {
+        let table = SystemTableView::<S, ReadonlyExecutionMode, T>::new(self.storage, tx)?;
+        table.get(oid)
+    }
+
     #[inline]
     pub fn namespaces<'txn>(
         &self,

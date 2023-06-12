@@ -59,17 +59,20 @@ impl Table {
         ))
     }
 
-    fn columns<'env, S: StorageEngine>(
+    pub fn columns<'env, S: StorageEngine>(
         &self,
         catalog: Catalog<'env, S>,
         tx: &dyn Transaction<'env, S>,
     ) -> Result<Vec<Column>> {
-        let columns = catalog
+        let mut columns = catalog
             .columns(tx)?
             .scan()?
             .filter(|col| Ok(col.table == self.oid))
             .collect::<Vec<_>>()?;
         assert!(!columns.is_empty(), "no columns found for table `{}` {}`", self.oid, self.name);
+
+        columns.sort_by_key(|col| col.index());
+
         Ok(columns)
     }
 }

@@ -49,8 +49,8 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: SystemEnt
     SystemTableView<'env, 'txn, S, M, T>
 {
     #[inline]
-    pub fn get(&self, oid: Oid<T>) -> Result<Option<T>> {
-        self.scan()?.find(|entry| Ok(entry.oid() == oid))
+    pub fn get(&self, oid: Oid<T>) -> Result<T> {
+        Ok(self.scan()?.find(|entry| Ok(entry.oid() == oid))?.expect("got invalid oid"))
     }
 
     #[inline]

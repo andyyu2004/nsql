@@ -12,91 +12,92 @@ use crate::{Binder, Path, Result, TableAlias};
 pub(crate) struct Scope<S> {
     // FIXME tables need to store more info than this
     tables: rpds::HashTrieMap<Path, ()>,
-    columns: rpds::Vector<(Path, LogicalType)>,
+    bound_columns: rpds::Vector<(Path, LogicalType)>,
     marker: std::marker::PhantomData<S>,
 }
 
 impl<S> Clone for Scope<S> {
     fn clone(&self) -> Self {
-        Self { tables: self.tables.clone(), columns: self.columns.clone(), marker: PhantomData }
+        Self {
+            tables: self.tables.clone(),
+            bound_columns: self.bound_columns.clone(),
+            marker: PhantomData,
+        }
     }
 }
 
 impl<S> Default for Scope<S> {
     fn default() -> Self {
-        Self { tables: Default::default(), columns: Default::default(), marker: PhantomData }
+        Self { tables: Default::default(), bound_columns: Default::default(), marker: PhantomData }
     }
 }
 
 impl<S: StorageEngine> Scope<S> {
     /// Insert a table and its columns to the scope
     #[tracing::instrument(skip(self, tx, binder, table_ref))]
-    pub fn bind_table(
+    pub fn bind_table<'env>(
         &self,
-        binder: &Binder<'_, S>,
-        tx: &dyn Transaction<'_, S>,
+        binder: &Binder<'env, S>,
+        tx: &dyn Transaction<'env, S>,
         table_path: Path,
         table_ref: TableRef,
         alias: Option<&TableAlias>,
     ) -> Result<Scope<S>> {
         tracing::debug!("binding table");
-        let mut columns = self.columns.clone();
+        let mut bound_columns = self.bound_columns.clone();
 
-        // let table = table_ref.get(&binder.catalog, tx);
-        let table: Table = todo!();
-        todo!();
-        // let mut table_columns = table.all::<Column<S>>(tx);
-        // table_columns.sort_by_key(|col| col.index());
-        //
-        // if let Some(alias) = alias {
-        //     // if no columns are specified, we only rename the table
-        //     if !alias.columns.is_empty() && table_columns.len() != alias.columns.len() {
-        //         bail!(
-        //             "table `{}` has {} columns, but {} columns were specified in alias",
-        //             table_path,
-        //             table_columns.len(),
-        //             alias.columns.len()
-        //         );
-        //     }
-        // }
-        //
-        // let table_path = match alias {
-        //     Some(alias) => Path::Unqualified(alias.table_name.clone()),
-        //     None => table_path,
-        // };
-        //
-        // for (i, column) in table_columns.into_iter().enumerate() {
-        //     let name = match alias {
-        //         Some(alias) if !alias.columns.is_empty() => alias.columns[i].clone(),
-        //         _ => column.name(),
-        //     };
-        //
-        //     if columns.iter().any(|(p, _)| p.name() == name) {
-        //         todo!("handle duplicate names (this will not work with current impl correctly)")
-        //     }
-        //
-        //     columns = columns
-        //         .push_back((Path::qualified(table_path.clone(), name), column.logical_type()));
-        // }
-        //
-        // Ok(Self { tables: self.tables.insert(table_path, ()), columns, marker: PhantomData })
+        let table = binder.catalog.get(tx, table_ref.table)?;
+        let table_columns = table.columns(binder.catalog, tx)?;
+
+        if let Some(alias) = alias {
+            // if no columns are specified, we only rename the table
+            if !alias.columns.is_empty() && table_columns.len() != alias.columns.len() {
+                bail!(
+                    "table `{}` has {} columns, but {} columns were specified in alias",
+                    table_path,
+                    table_columns.len(),
+                    alias.columns.len()
+                );
+            }
+        }
+
+        let table_path = match alias {
+            Some(alias) => Path::Unqualified(alias.table_name.clone()),
+            None => table_path,
+        };
+
+        for (i, column) in table_columns.into_iter().enumerate() {
+            let name = match alias {
+                Some(alias) if !alias.columns.is_empty() => alias.columns[i].clone(),
+                _ => column.name(),
+            };
+
+            if bound_columns.iter().any(|(p, _)| p.name() == name) {
+                todo!("handle duplicate names (this will not work with current impl correctly)")
+            }
+
+            bound_columns = bound_columns
+                .push_back((Path::qualified(table_path.clone(), name), column.logical_type()));
+        }
+
+        Ok(Self { tables: self.tables.insert(table_path, ()), bound_columns, marker: PhantomData })
     }
 
     pub fn lookup_column(&self, path: &Path) -> Result<(LogicalType, ir::TupleIndex)> {
         match path {
             Path::Qualified { .. } => {
                 let idx = self
-                    .columns
+                    .bound_columns
                     .iter()
                     .position(|(p, _)| p == path)
                     .ok_or_else(|| unbound!(Column, path))?;
 
-                let (_, ty) = &self.columns[idx];
+                let (_, ty) = &self.bound_columns[idx];
                 Ok((ty.clone(), ir::TupleIndex::new(idx)))
             }
             Path::Unqualified(column_name) => {
                 match &self
-                    .columns
+                    .bound_columns
                     .iter()
                     .enumerate()
                     .filter(|(_, (p, _))| &p.name() == column_name)
@@ -122,20 +123,20 @@ impl<S: StorageEngine> Scope<S> {
 
     #[tracing::instrument(skip(self))]
     pub fn bind_values(&self, values: &ir::Values) -> Result<Scope<S>> {
-        let mut columns = self.columns.clone();
+        let mut bound_columns = self.bound_columns.clone();
 
         for (i, expr) in values[0].iter().enumerate() {
             // default column names are col1, col2, etc.
             let name = Name::from(format!("col{}", i + 1));
-            columns = columns.push_back((Path::Unqualified(name), expr.ty.clone()));
+            bound_columns = bound_columns.push_back((Path::Unqualified(name), expr.ty.clone()));
         }
 
-        Ok(Self { tables: self.tables.clone(), columns, marker: PhantomData })
+        Ok(Self { tables: self.tables.clone(), bound_columns, marker: PhantomData })
     }
 
     /// Returns an iterator over the columns in the scope exposed as `Expr`s
     pub fn column_refs(&self) -> impl Iterator<Item = ir::Expr> + '_ {
-        self.columns.iter().enumerate().map(|(i, (path, ty))| ir::Expr {
+        self.bound_columns.iter().enumerate().map(|(i, (path, ty))| ir::Expr {
             ty: ty.clone(),
             kind: ir::ExprKind::ColumnRef { path: path.clone(), index: ir::TupleIndex::new(i) },
         })
@@ -145,16 +146,16 @@ impl<S: StorageEngine> Scope<S> {
         assert!(self.tables.is_empty(), "not sure when this occurs");
 
         // if no columns are specified, we only rename the table
-        if !alias.columns.is_empty() && self.columns.len() != alias.columns.len() {
+        if !alias.columns.is_empty() && self.bound_columns.len() != alias.columns.len() {
             bail!(
                 "table expression has {} columns, but {} columns were specified in alias",
-                self.columns.len(),
+                self.bound_columns.len(),
                 alias.columns.len()
             );
         }
 
         let mut columns = rpds::Vector::new();
-        for (i, (path, ty)) in self.columns.iter().enumerate() {
+        for (i, (path, ty)) in self.bound_columns.iter().enumerate() {
             let path = match alias.columns.get(i) {
                 Some(name) => {
                     Path::qualified(Path::Unqualified(alias.table_name.clone()), name.clone())
@@ -162,7 +163,7 @@ impl<S: StorageEngine> Scope<S> {
                 None => path.clone(),
             };
 
-            if self.columns.iter().any(|(p, _)| p == &path) {
+            if self.bound_columns.iter().any(|(p, _)| p == &path) {
                 todo!("handle duplicate names (this will not work with current impl correctly)")
             }
 
@@ -171,7 +172,7 @@ impl<S: StorageEngine> Scope<S> {
 
         Ok(Scope {
             tables: self.tables.insert(Path::Unqualified(alias.table_name), ()),
-            columns,
+            bound_columns: columns,
             marker: PhantomData,
         })
     }

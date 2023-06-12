@@ -122,7 +122,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSource<'env, 'txn, S, ReadWrite
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine> Explain<S> for PhysicalUpdate<'env, 'txn, S> {
+impl<'env: 'txn, 'txn, S: StorageEngine> Explain<'_, S> for PhysicalUpdate<'env, 'txn, S> {
     fn explain(
         &self,
         catalog: Catalog<'_, S>,

@@ -78,7 +78,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSource<'env, 'txn, S, ReadWrite
     }
 }
 
-impl<S: StorageEngine> Explain<S> for PhysicalCreateNamespace {
+impl<S: StorageEngine> Explain<'_, S> for PhysicalCreateNamespace {
     fn explain(
         &self,
         _catalog: Catalog<'_, S>,

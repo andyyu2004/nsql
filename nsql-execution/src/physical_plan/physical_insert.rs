@@ -74,17 +74,16 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSink<'env, 'txn, S, ReadWriteEx
     ) -> ExecutionResult<()> {
         let catalog = ctx.catalog();
         let tx = ctx.tx()?;
-        todo!();
-        // let table = self.table_ref.get(Catalog<'_, S>, tx);
-        //
-        // let mut storage = table.storage(ctx.storage(), tx)?;
-        // storage.insert(&tuple)?;
-        //
-        // if let Some(return_expr) = &self.returning {
-        //     self.returning_tuples
-        //         .write()
-        //         .push(self.returning_evaluator.evaluate(&tuple, return_expr));
-        // }
+        let table = catalog.get(tx, self.table_ref.table)?;
+
+        let mut storage = table.storage::<S, ReadWriteExecutionMode>(catalog, tx)?;
+        storage.insert(&tuple)?;
+
+        if let Some(return_expr) = &self.returning {
+            self.returning_tuples
+                .write()
+                .push(self.returning_evaluator.evaluate(&tuple, return_expr));
+        }
 
         Ok(())
     }
@@ -102,15 +101,14 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSource<'env, 'txn, S, ReadWrite
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine> Explain<S> for PhysicalInsert<'env, 'txn, S> {
+impl<'env: 'txn, 'txn, S: StorageEngine> Explain<'env, S> for PhysicalInsert<'env, 'txn, S> {
     fn explain(
         &self,
-        catalog: Catalog<'_, S>,
-        tx: &dyn Transaction<'_, S>,
+        catalog: Catalog<'env, S>,
+        tx: &dyn Transaction<'env, S>,
         f: &mut fmt::Formatter<'_>,
     ) -> explain::Result {
-        todo!();
-        // write!(f, "insert into {}", self.table_ref.get(catalog, tx).name())?;
+        write!(f, "insert into {}", catalog.get(tx, self.table_ref.table)?.name())?;
         Ok(())
     }
 }

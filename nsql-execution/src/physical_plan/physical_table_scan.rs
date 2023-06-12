@@ -83,7 +83,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode
     }
 }
 
-impl<S: StorageEngine> Explain<S> for PhysicalTableScan {
+impl<S: StorageEngine> Explain<'_, S> for PhysicalTableScan {
     fn explain(
         &self,
         catalog: Catalog<'_, S>,

@@ -53,7 +53,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine> Explain<S> for PhysicalDummyScan {
+impl<'env: 'txn, 'txn, S: StorageEngine> Explain<'_, S> for PhysicalDummyScan {
     fn explain(
         &self,
         _catalog: Catalog<'_, S>,

@@ -72,7 +72,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine> Explain<S> for PhysicalValues {
+impl<'env: 'txn, 'txn, S: StorageEngine> Explain<'_, S> for PhysicalValues {
     fn explain(
         &self,
         _catalog: Catalog<'_, S>,

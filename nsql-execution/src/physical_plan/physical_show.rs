@@ -70,7 +70,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
     }
 }
 
-impl<S: StorageEngine> Explain<S> for PhysicalShow {
+impl<S: StorageEngine> Explain<'_, S> for PhysicalShow {
     fn explain(
         &self,
         _catalog: Catalog<'_, S>,

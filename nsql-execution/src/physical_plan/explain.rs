@@ -8,13 +8,13 @@ use nsql_storage_engine::{StorageEngine, Transaction};
 use crate::pipeline::MetaPipeline;
 use crate::{ExecutionMode, PhysicalNode, RootPipeline};
 
-pub type Result<T = ()> = std::result::Result<T, fmt::Error>;
+pub type Result<T = ()> = anyhow::Result<T>;
 
-pub trait Explain<S: StorageEngine> {
+pub trait Explain<'env, S: StorageEngine> {
     fn explain(
         &self,
-        catalog: Catalog<'_, S>,
-        tx: &dyn Transaction<'_, S>,
+        catalog: Catalog<'env, S>,
+        tx: &dyn Transaction<'env, S>,
         f: &mut fmt::Formatter<'_>,
     ) -> Result;
 }
@@ -22,7 +22,7 @@ pub trait Explain<S: StorageEngine> {
 pub(crate) fn display<'a, 'env: 'a, S: StorageEngine>(
     catalog: Catalog<'env, S>,
     tx: &'a dyn Transaction<'env, S>,
-    explain: &'a dyn Explain<S>,
+    explain: &'a dyn Explain<'env, S>,
 ) -> Display<'a, 'env, S> {
     Display { catalog, tx, explain, marker: std::marker::PhantomData }
 }
@@ -30,13 +30,13 @@ pub(crate) fn display<'a, 'env: 'a, S: StorageEngine>(
 pub(crate) struct Display<'a, 'env, S: StorageEngine> {
     catalog: Catalog<'env, S>,
     tx: &'a dyn Transaction<'env, S>,
-    explain: &'a dyn Explain<S>,
+    explain: &'a dyn Explain<'env, S>,
     marker: std::marker::PhantomData<&'env ()>,
 }
 
 impl<'a, 'env, S: StorageEngine> fmt::Display for Display<'a, 'env, S> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.explain.explain(self.catalog, self.tx, f)
+        self.explain.explain(self.catalog, self.tx, f).map_err(|e| fmt::Error)
     }
 }
 
@@ -60,11 +60,11 @@ impl<'a, 'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
 {
     fn explain_meta_pipeline(
         &self,
-        catalog: Catalog<'_, S>,
-        tx: &dyn Transaction<'_, S>,
+        catalog: Catalog<'env, S>,
+        tx: &dyn Transaction<'env, S>,
         f: &mut fmt::Formatter<'_>,
         meta_pipeline: Idx<MetaPipeline<'env, 'txn, S, M>>,
-    ) -> fmt::Result {
+    ) -> Result {
         let arena = &self.root.root_pipeline.arena;
         writeln!(
             f,
@@ -101,13 +101,13 @@ impl<'a, 'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Explain<S>
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Explain<'env, S>
     for RootPipelineExplainer<'_, 'env, 'txn, S, M>
 {
     fn explain(
         &self,
-        catalog: Catalog<'_, S>,
-        tx: &dyn Transaction<'_, S>,
+        catalog: Catalog<'env, S>,
+        tx: &dyn Transaction<'env, S>,
         f: &mut fmt::Formatter<'_>,
     ) -> Result {
         MetaPipelineExplainer { root: self, indent: 0 }.explain_meta_pipeline(
@@ -141,13 +141,13 @@ impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     }
 }
 
-impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Explain<S>
+impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Explain<'env, S>
     for PhysicalNodeExplainer<'env, 'txn, S, M>
 {
     fn explain(
         &self,
-        catalog: Catalog<'_, S>,
-        tx: &dyn Transaction<'_, S>,
+        catalog: Catalog<'env, S>,
+        tx: &dyn Transaction<'env, S>,
         f: &mut fmt::Formatter<'_>,
     ) -> Result {
         write!(f, "{:indent$}", "", indent = self.indent)?;
