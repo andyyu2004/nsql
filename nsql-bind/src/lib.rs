@@ -303,57 +303,54 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
 
     fn bind_assignments(
         &self,
-        _tx: &dyn Transaction<'env, S>,
-        _scope: &Scope<S>,
-        _table_ref: TableRef,
-        _assignments: &[ast::Assignment],
+        tx: &dyn Transaction<'env, S>,
+        scope: &Scope<S>,
+        table_ref: TableRef,
+        assignments: &[ast::Assignment],
     ) -> Result<Box<[ir::Expr]>> {
-        let _table: Table = todo!();
-        // let table = table_ref.get(&self.catalog, tx);
-        // let columns = table.all::<Column<S>>(tx);
-        todo!()
+        let table = self.catalog.get(tx, table_ref.table)?;
+        let columns = table.columns(self.catalog, tx)?;
 
-        // for assignment in assignments {
-        //     assert!(!assignment.id.is_empty());
-        //     if assignment.id.len() > 1 {
-        //         not_implemented!("compound assignment")
-        //     }
-        //
-        //     if !columns.iter().any(|column| column.name().as_str() == assignment.id[0].value) {
-        //         bail!(
-        //             "referenced update column `{}` does not exist in table `{}`",
-        //             assignment.id[0].value,
-        //             table.name(),
-        //         )
-        //     }
-        // }
-        //
-        // // We desugar the update assignments into a projection
-        // let mut projections = Vec::with_capacity(columns.len());
-        // for column in columns {
-        //     let expr = if let Some(assignment) =
-        //         assignments.iter().find(|assn| assn.id[0].value == column.name().as_str())
-        //     {
-        //         // we don't allow updating primary keys
-        //         if column.is_primary_key() {
-        //             bail!(
-        //                 "cannot update primary key column `{}` of table `{}`",
-        //                 column.name(),
-        //                 table.name()
-        //             )
-        //         }
-        //
-        //         // if the column is being updated, we bind the expression in the assignment
-        //         self.bind_expr(scope, &assignment.value)?
-        //     } else {
-        //         // otherwise, we bind the column to itself (effectively an identity projection)
-        //         self.bind_expr(scope, &ast::Expr::Identifier(ast::Ident::new(column.name())))?
-        //     };
-        //
-        //     projections.push(expr);
-        // }
-        //
-        // Ok(projections.into_boxed_slice())
+        for assignment in assignments {
+            assert!(!assignment.id.is_empty());
+            if assignment.id.len() > 1 {
+                not_implemented!("compound assignment")
+            }
+
+            if !columns.iter().any(|column| column.name() == assignment.id[0].value) {
+                bail!(
+                    "referenced update column `{}` does not exist in table `{}`",
+                    assignment.id[0].value,
+                    table.name(),
+                )
+            }
+        }
+
+        let mut projections = Vec::with_capacity(columns.len());
+        for column in columns {
+            let expr = if let Some(assignment) =
+                assignments.iter().find(|assn| assn.id[0].value == column.name())
+            {
+                // we don't allow updating primary keys
+                if column.is_primary_key() {
+                    bail!(
+                        "cannot update primary key column `{}` of table `{}`",
+                        column.name(),
+                        table.name()
+                    )
+                }
+
+                // if the column is being updated, we bind the expression in the assignment
+                self.bind_expr(scope, &assignment.value)?
+            } else {
+                // otherwise, we bind the column to itself (effectively an identity projection)
+                self.bind_expr(scope, &ast::Expr::Identifier(ast::Ident::new(column.name())))?
+            };
+
+            projections.push(expr);
+        }
+
+        Ok(projections.into_boxed_slice())
     }
 
     fn lower_columns(&self, columns: &[ast::ColumnDef]) -> Result<Vec<CreateColumnInfo>> {

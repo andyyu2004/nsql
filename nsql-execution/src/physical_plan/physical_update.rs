@@ -88,23 +88,23 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSink<'env, 'txn, S, ReadWriteEx
         &self,
         ctx: &'txn ExecutionContext<'env, S, ReadWriteExecutionMode>,
     ) -> ExecutionResult<()> {
-        let _tx = ctx.tx()?;
-        todo!();
-        // let table = self.table_ref.get(&ctx.catalog(), tx);
-        // let mut storage = table.storage(ctx.storage(), tx)?;
-        //
-        // let tuples = self.tuples.read();
-        // for tuple in &*tuples {
-        //     // FIXME we need to detect whether or not we actually updated something before adding it
-        //     // to the returning set
-        //     storage.update(tuple)?;
-        //
-        //     if let Some(return_expr) = &self.returning {
-        //         self.returning_tuples
-        //             .write()
-        //             .push(self.returning_evaluator.evaluate(tuple, return_expr));
-        //     }
-        // }
+        let tx = ctx.tx()?;
+        let catalog = ctx.catalog();
+        let table = ctx.catalog().get(tx, self.table_ref.table)?;
+        let mut storage = table.storage::<S, ReadWriteExecutionMode>(catalog, tx)?;
+
+        let tuples = self.tuples.read();
+        for tuple in &*tuples {
+            // FIXME we need to detect whether or not we actually updated something before adding it
+            // to the returning set
+            storage.update(tuple)?;
+
+            if let Some(return_expr) = &self.returning {
+                self.returning_tuples
+                    .write()
+                    .push(self.returning_evaluator.evaluate(tuple, return_expr));
+            }
+        }
 
         Ok(())
     }
@@ -122,15 +122,14 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSource<'env, 'txn, S, ReadWrite
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine> Explain<'_, S> for PhysicalUpdate<'env, 'txn, S> {
+impl<'env: 'txn, 'txn, S: StorageEngine> Explain<'env, S> for PhysicalUpdate<'env, 'txn, S> {
     fn explain(
         &self,
-        _catalog: Catalog<'_, S>,
-        _tx: &dyn Transaction<'_, S>,
-        _f: &mut fmt::Formatter<'_>,
+        catalog: Catalog<'env, S>,
+        tx: &dyn Transaction<'env, S>,
+        f: &mut fmt::Formatter<'_>,
     ) -> explain::Result {
-        todo!();
-        // write!(f, "update {}", self.table_ref.get(catalog, tx).name())?;
+        write!(f, "update {}", catalog.get(tx, self.table_ref.table)?.name())?;
         Ok(())
     }
 }
