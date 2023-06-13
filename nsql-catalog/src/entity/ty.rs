@@ -7,7 +7,9 @@ pub struct Type {
     pub(crate) name: Name,
 }
 
-impl Entity for Type {
+impl SystemEntity for Type {
+    type Parent = ();
+
     #[inline]
     fn oid(&self) -> Oid<Self> {
         self.oid
@@ -17,16 +19,10 @@ impl Entity for Type {
     fn name(&self) -> Name {
         Name::clone(&self.name)
     }
-
     #[inline]
     fn desc() -> &'static str {
         "type"
     }
-}
-
-impl SystemEntity for Type {
-    // should types be namespaced?
-    type Parent = ();
 
     fn parent_oid(&self) -> Option<Oid<Self::Parent>> {
         None

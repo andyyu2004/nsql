@@ -2,8 +2,7 @@ use nsql_core::Name;
 use nsql_storage::{Result, TableStorageInfo};
 use nsql_storage_engine::{ReadWriteExecutionMode, StorageEngine};
 
-use crate::system_table::{SystemEntity, SystemTableView};
-use crate::{Column, ColumnIndex, Entity, Namespace, Oid, Table, Type};
+use crate::{Column, ColumnIndex, Namespace, Oid, SystemEntity, SystemTableView, Table, Type};
 
 pub(crate) fn bootstrap<'env, S: StorageEngine>(
     storage: &'env S,
@@ -189,7 +188,9 @@ fn bootstrap_nsql_types() -> impl Iterator<Item = Type> {
     .into_iter()
 }
 
-impl Entity for () {
+impl SystemEntity for () {
+    type Parent = ();
+
     fn name(&self) -> Name {
         unreachable!()
     }
@@ -201,11 +202,6 @@ impl Entity for () {
     fn desc() -> &'static str {
         "catalog"
     }
-}
-
-impl SystemEntity for () {
-    type Parent = ();
-
     fn storage_info() -> TableStorageInfo {
         todo!()
     }

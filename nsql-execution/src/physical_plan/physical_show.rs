@@ -1,4 +1,4 @@
-use nsql_catalog::{Namespace};
+use nsql_catalog::Namespace;
 use nsql_storage::value::Value;
 use nsql_storage_engine::{FallibleIterator, TransactionConversionHack};
 

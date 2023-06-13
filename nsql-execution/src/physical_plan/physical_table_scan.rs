@@ -1,5 +1,5 @@
 use itertools::Itertools;
-use nsql_catalog::{ColumnIndex, Entity, Table};
+use nsql_catalog::{ColumnIndex, SystemEntity, Table};
 use nsql_core::Oid;
 use nsql_storage::tuple::TupleIndex;
 use nsql_storage_engine::FallibleIterator;

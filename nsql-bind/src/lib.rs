@@ -11,8 +11,7 @@ use ir::expr::EvalNotConst;
 use ir::{Decimal, Path, TransactionMode};
 use itertools::Itertools;
 use nsql_catalog::{
-    Catalog, CreateColumnInfo, CreateNamespaceInfo, Entity, Namespace, SystemEntity, Table,
-    DEFAULT_SCHEMA,
+    Catalog, CreateColumnInfo, CreateNamespaceInfo, Namespace, SystemEntity, Table, DEFAULT_SCHEMA,
 };
 use nsql_core::{LogicalType, Name, Oid};
 use nsql_parse::ast::{self, HiveDistributionStyle};

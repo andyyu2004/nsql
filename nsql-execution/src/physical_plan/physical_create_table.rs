@@ -1,4 +1,4 @@
-use nsql_catalog::{Column, ColumnIndex, Entity, Table, Type};
+use nsql_catalog::{Column, ColumnIndex, SystemEntity, Table, Type};
 use nsql_storage_engine::fallible_iterator;
 
 use super::*;

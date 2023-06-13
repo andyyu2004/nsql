@@ -79,7 +79,9 @@ pub struct CreateColumnInfo {
     pub is_primary_key: bool,
 }
 
-impl Entity for Column {
+impl SystemEntity for Column {
+    type Parent = Table;
+
     #[inline]
     fn oid(&self) -> Oid<Self> {
         self.oid
@@ -89,72 +91,10 @@ impl Entity for Column {
     fn name(&self) -> Name {
         Name::clone(&self.name)
     }
-
     #[inline]
     fn desc() -> &'static str {
         "column"
     }
-}
-
-// impl CatalogEntity for Column {
-//     type Container = Table<S>;
-//
-//     type CreateInfo = CreateColumnInfo;
-//
-//     fn catalog_set(table: &Self::Container) -> Catalog<'_, S>,Set<S, Self> {
-//         &table.columns
-//     }
-//
-//     fn create(
-//         _tx: &S::WriteTransaction<'_>,
-//         container: &Self::Container,
-//         oid: Oid<Self>,
-//         info: Self::CreateInfo,
-//     ) -> Self {
-//         Self {
-//             oid,
-//             table_oid: container.oid(),
-//             name: info.name,
-//             index: ColumnIndex::new(info.index),
-//             ty: info.ty,
-//             is_primary_key: info.is_primary_key,
-//         }
-//     }
-// }
-
-// #[derive(Debug)]
-// pub struct ColumnRef {
-//     pub table: Oid<Table>,
-//     pub column: Oid<Column>,
-// }
-//
-// impl<S> Clone for ColumnRef {
-//     #[inline]
-//     fn clone(&self) -> Self {
-//         *self
-//     }
-// }
-//
-// impl<S> Copy for ColumnRef<S> {}
-
-// impl<S: StorageEngine> EntityRef<S> for ColumnRef<S> {
-//     type Entity = Column<S>;
-//
-//     type Container = Table<S>;
-//
-//     #[inline]
-//     fn container(self, catalog: Catalog<'_, S>, tx: &dyn Transaction<'_, S>) -> Arc<Self::Container> {
-//         self.table.get(catalog, tx)
-//     }
-//
-//     #[inline]
-//     fn entity_oid(self) -> Oid<Self::Entity> {
-//         self.column
-//     }
-// }
-
-impl SystemEntity for Column {
-    type Parent = Table;
 
     #[inline]
     fn parent_oid(&self) -> Option<Oid<Self::Parent>> {

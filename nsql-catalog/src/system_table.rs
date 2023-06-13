@@ -1,22 +1,13 @@
-use std::fmt;
 use std::marker::PhantomData;
 use std::sync::Arc;
 
 use fix_hidden_lifetime_bug::fix_hidden_lifetime_bug;
 use nsql_core::Oid;
-use nsql_storage::tuple::{FromTuple, IntoTuple};
-use nsql_storage::{TableStorage, TableStorageInfo};
+use nsql_storage::tuple::IntoTuple;
+use nsql_storage::TableStorage;
 use nsql_storage_engine::{ExecutionMode, FallibleIterator, ReadWriteExecutionMode, StorageEngine};
 
-use crate::{Entity, Result};
-
-pub trait SystemEntity: Entity + FromTuple + IntoTuple + Eq + fmt::Debug {
-    type Parent: SystemEntity;
-
-    fn parent_oid(&self) -> Option<Oid<Self::Parent>>;
-
-    fn storage_info() -> TableStorageInfo;
-}
+use crate::{Result, SystemEntity};
 
 #[repr(transparent)]
 pub struct SystemTableView<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T> {

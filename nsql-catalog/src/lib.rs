@@ -5,11 +5,14 @@ mod entity;
 pub mod schema;
 mod system_table;
 
+use std::fmt;
 use std::sync::atomic::AtomicU64;
 
 pub use anyhow::Error;
 use nsql_core::{Name, Oid};
+use nsql_storage::tuple::{FromTuple, IntoTuple};
 use nsql_storage::value::Value;
+use nsql_storage::TableStorageInfo;
 use nsql_storage_engine::{
     ReadWriteExecutionMode, ReadonlyExecutionMode, StorageEngine, Transaction,
 };
@@ -18,10 +21,23 @@ pub use self::entity::column::{Column, ColumnIndex, CreateColumnInfo};
 pub use self::entity::namespace::{CreateNamespaceInfo, Namespace};
 pub use self::entity::table::{CreateTableInfo, Table};
 pub use self::entity::ty::Type;
-pub use self::system_table::SystemEntity;
 use self::system_table::SystemTableView;
 
 pub type Result<T, E = Error> = std::result::Result<T, E>;
+
+pub trait SystemEntity: FromTuple + IntoTuple + Eq + fmt::Debug {
+    type Parent: SystemEntity;
+
+    fn oid(&self) -> Oid<Self>;
+
+    fn name(&self) -> Name;
+
+    fn desc() -> &'static str;
+
+    fn parent_oid(&self) -> Option<Oid<Self::Parent>>;
+
+    fn storage_info() -> TableStorageInfo;
+}
 
 pub struct Catalog<'env, S> {
     storage: &'env S,
@@ -125,14 +141,4 @@ impl<'env, S: StorageEngine> Catalog<'env, S> {
     pub(crate) fn storage(&self) -> &'env S {
         self.storage
     }
-}
-
-// impl<S: StorageEngine> Container<S> for Catalog {}
-
-pub trait Entity {
-    fn oid(&self) -> Oid<Self>;
-
-    fn name(&self) -> Name;
-
-    fn desc() -> &'static str;
 }

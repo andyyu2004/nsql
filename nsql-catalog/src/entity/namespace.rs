@@ -20,7 +20,9 @@ impl Namespace {
     }
 }
 
-impl Entity for Namespace {
+impl SystemEntity for Namespace {
+    type Parent = ();
+
     #[inline]
     fn oid(&self) -> Oid<Self> {
         self.oid
@@ -35,10 +37,6 @@ impl Entity for Namespace {
     fn desc() -> &'static str {
         "namespace"
     }
-}
-
-impl SystemEntity for Namespace {
-    type Parent = ();
 
     fn storage_info() -> TableStorageInfo {
         TableStorageInfo::new(

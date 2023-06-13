@@ -7,7 +7,7 @@ use nsql_storage_engine::{
 };
 
 use super::*;
-use crate::{bootstrap, Catalog, Column, Entity, Name, Namespace, Oid, SystemEntity};
+use crate::{bootstrap, Catalog, Column, Name, Namespace, Oid, SystemEntity};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Table {
@@ -87,7 +87,9 @@ impl fmt::Debug for CreateTableInfo {
     }
 }
 
-impl Entity for Table {
+impl SystemEntity for Table {
+    type Parent = Namespace;
+
     #[inline]
     fn oid(&self) -> Oid<Self> {
         self.oid
@@ -102,10 +104,6 @@ impl Entity for Table {
     fn desc() -> &'static str {
         "table"
     }
-}
-
-impl SystemEntity for Table {
-    type Parent = Namespace;
 
     #[inline]
     fn parent_oid(&self) -> Option<Oid<Self::Parent>> {
