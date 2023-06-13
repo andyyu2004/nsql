@@ -1,0 +1,12 @@
+query T rowsort
+SELECT * EXCLUDE (oid) FROM nsql_catalog.nsql_namespace
+----
+main
+nsql_catalog
+
+query T rowsort
+SELECT name FROM nsql_catalog.nsql_namespace
+----
+main
+nsql_catalog
+

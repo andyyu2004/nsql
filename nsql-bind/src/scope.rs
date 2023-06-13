@@ -135,11 +135,19 @@ impl<S: StorageEngine> Scope<S> {
     }
 
     /// Returns an iterator over the columns in the scope exposed as `Expr`s
-    pub fn column_refs(&self) -> impl Iterator<Item = ir::Expr> + '_ {
-        self.bound_columns.iter().enumerate().map(|(i, (path, ty))| ir::Expr {
-            ty: ty.clone(),
-            kind: ir::ExprKind::ColumnRef { path: path.clone(), index: ir::TupleIndex::new(i) },
-        })
+    pub fn column_refs<'a>(
+        &'a self,
+        exclude: &'a [ir::TupleIndex],
+    ) -> impl Iterator<Item = ir::Expr> + 'a {
+        self.bound_columns
+            .iter()
+            .enumerate()
+            .map(|(i, x)| (ir::TupleIndex::new(i), x))
+            .filter(|(idx, _)| !exclude.contains(idx))
+            .map(move |(index, (path, ty))| ir::Expr {
+                ty: ty.clone(),
+                kind: ir::ExprKind::ColumnRef { path: path.clone(), index },
+            })
     }
 
     pub fn alias(&self, alias: TableAlias) -> Result<Self> {

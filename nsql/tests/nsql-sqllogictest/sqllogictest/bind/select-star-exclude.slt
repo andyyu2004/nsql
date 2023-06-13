@@ -1,0 +1,11 @@
+query II
+SELECT * EXCLUDE (letter) FROM (VALUES (1, 'one'), (2, 'two'), (3, 'three')) AS t (num, letter)
+----
+1
+2
+3
+
+query error
+SELECT * EXCLUDE (num, letter) FROM (VALUES (1, 'one'), (2, 'two'), (3, 'three')) AS t (num, letter)
+----
+selection list is empty after excluding columns

@@ -636,12 +636,25 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                 opt_rename,
                 opt_replace,
             }) => {
-                not_implemented!(opt_exclude.is_some());
                 not_implemented!(opt_except.is_some());
                 not_implemented!(opt_rename.is_some());
                 not_implemented!(opt_replace.is_some());
 
-                return Ok(scope.column_refs().collect());
+                let excludes = opt_exclude.as_ref().map_or(&[][..], |exclude| match exclude {
+                    ast::ExcludeSelectItem::Single(name) => std::slice::from_ref(name),
+                    ast::ExcludeSelectItem::Multiple(names) => &names[..],
+                });
+
+                let excludes = excludes
+                    .iter()
+                    .map(|ident| self.bind_ident(scope, ident).map(|(_ty, index)| index))
+                    .collect::<Result<Vec<_>, _>>()?;
+
+                let exprs = scope.column_refs(&excludes).collect::<Vec<_>>();
+                if exprs.is_empty() {
+                    bail!("selection list is empty after excluding columns")
+                }
+                return Ok(exprs);
             }
         };
 
@@ -695,12 +708,19 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
         Ok(predicate)
     }
 
+    fn bind_ident(
+        &self,
+        scope: &Scope<S>,
+        ident: &ast::Ident,
+    ) -> Result<(LogicalType, ir::TupleIndex)> {
+        scope.lookup_column(&Path::Unqualified(ident.value.clone().into()))
+    }
+
     fn bind_expr(&self, scope: &Scope<S>, expr: &ast::Expr) -> Result<ir::Expr> {
         let (ty, kind) = match expr {
             ast::Expr::Value(literal) => self.bind_value_expr(literal),
             ast::Expr::Identifier(ident) => {
-                let (ty, index) =
-                    scope.lookup_column(&Path::Unqualified(ident.value.clone().into()))?;
+                let (ty, index) = self.bind_ident(scope, ident)?;
                 (ty, ir::ExprKind::ColumnRef { path: Path::unqualified(&ident.value), index })
             }
             ast::Expr::CompoundIdentifier(ident) => {
