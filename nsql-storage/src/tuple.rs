@@ -175,12 +175,6 @@ impl FromTuple for () {
     }
 }
 
-impl FromTuple for ! {
-    fn from_tuple(_tuple: Tuple) -> Result<Self, FromTupleError> {
-        panic!()
-    }
-}
-
 pub trait IntoTuple {
     fn into_tuple(self) -> Tuple;
 }
@@ -203,11 +197,5 @@ impl IntoTuple for () {
     #[inline]
     fn into_tuple(self) -> Tuple {
         Tuple::empty()
-    }
-}
-
-impl IntoTuple for ! {
-    fn into_tuple(self) -> Tuple {
-        self
     }
 }

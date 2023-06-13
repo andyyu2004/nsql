@@ -1,10 +1,5 @@
-use nsql_core::LogicalType;
-use nsql_storage::tuple::{FromTuple, FromTupleError, IntoTuple, Tuple};
-use nsql_storage::value::{CastError, FromValue, Value};
-use nsql_storage::{ColumnStorageInfo, TableStorageInfo};
-
-use crate::bootstrap::{self, Type};
-use crate::{Entity, Name, Oid, SystemEntity, Table};
+use super::*;
+use crate::{bootstrap, Type};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Column {
@@ -162,16 +157,6 @@ impl SystemEntity for Column {
     type Parent = Table;
 
     #[inline]
-    fn oid(&self) -> Oid<Self> {
-        self.oid
-    }
-
-    #[inline]
-    fn name(&self) -> &str {
-        &self.name
-    }
-
-    #[inline]
     fn parent_oid(&self) -> Option<Oid<Self::Parent>> {
         Some(self.table)
     }
@@ -188,10 +173,6 @@ impl SystemEntity for Column {
                 ColumnStorageInfo::new(LogicalType::Bool, false),
             ],
         )
-    }
-
-    fn desc() -> &'static str {
-        "column"
     }
 }
 

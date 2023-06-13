@@ -11,7 +11,8 @@ use ir::expr::EvalNotConst;
 use ir::{Decimal, Path, TransactionMode};
 use itertools::Itertools;
 use nsql_catalog::{
-    Catalog, CreateColumnInfo, CreateNamespaceInfo, Namespace, SystemEntity, Table, DEFAULT_SCHEMA,
+    Catalog, CreateColumnInfo, CreateNamespaceInfo, Entity, Namespace, SystemEntity, Table,
+    DEFAULT_SCHEMA,
 };
 use nsql_core::{LogicalType, Name, Oid};
 use nsql_parse::ast::{self, HiveDistributionStyle};
@@ -315,7 +316,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                 not_implemented!("compound assignment")
             }
 
-            if !columns.iter().any(|column| column.name() == assignment.id[0].value) {
+            if !columns.iter().any(|column| column.name().as_str() == assignment.id[0].value) {
                 bail!(
                     "referenced update column `{}` does not exist in table `{}`",
                     assignment.id[0].value,
@@ -327,7 +328,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
         let mut projections = Vec::with_capacity(columns.len());
         for column in columns {
             let expr = if let Some(assignment) =
-                assignments.iter().find(|assn| assn.id[0].value == column.name())
+                assignments.iter().find(|assn| assn.id[0].value == column.name().as_str())
             {
                 // we don't allow updating primary keys
                 if column.is_primary_key() {

@@ -1,18 +1,13 @@
-mod column;
-
 use std::fmt;
 
 use anyhow::Result;
-use nsql_core::LogicalType;
-use nsql_storage::tuple::{FromTuple, FromTupleError, IntoTuple, Tuple};
-use nsql_storage::value::Value;
-use nsql_storage::{ColumnStorageInfo, TableStorage, TableStorageInfo};
+use nsql_storage::TableStorage;
 use nsql_storage_engine::{
     ExecutionMode, FallibleIterator, ReadWriteExecutionMode, StorageEngine, Transaction,
 };
 
-pub use self::column::{Column, ColumnIndex, CreateColumnInfo};
-use crate::{bootstrap, Catalog, Entity, Name, Namespace, Oid, SystemEntity};
+use super::*;
+use crate::{bootstrap, Catalog, Column, Entity, Name, Namespace, Oid, SystemEntity};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Table {
@@ -113,16 +108,6 @@ impl SystemEntity for Table {
     type Parent = Namespace;
 
     #[inline]
-    fn oid(&self) -> Oid<Self> {
-        self.oid
-    }
-
-    #[inline]
-    fn name(&self) -> &str {
-        &self.name
-    }
-
-    #[inline]
     fn parent_oid(&self) -> Option<Oid<Self::Parent>> {
         Some(self.namespace)
     }
@@ -136,10 +121,6 @@ impl SystemEntity for Table {
                 ColumnStorageInfo::new(LogicalType::Text, false),
             ],
         )
-    }
-
-    fn desc() -> &'static str {
-        "table"
     }
 }
 

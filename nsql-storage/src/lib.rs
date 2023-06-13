@@ -1,5 +1,4 @@
 #![deny(rust_2018_idioms)]
-#![feature(never_type)]
 
 mod table_storage;
 pub mod tuple;

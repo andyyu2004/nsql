@@ -1,11 +1,9 @@
-use nsql_core::LogicalType;
-use nsql_storage::tuple::{FromTuple, FromTupleError, IntoTuple, Tuple};
-use nsql_storage::value::Value;
-use nsql_storage::{ColumnStorageInfo, Result, TableStorageInfo};
+use nsql_core::Name;
+use nsql_storage::{Result, TableStorageInfo};
 use nsql_storage_engine::{ReadWriteExecutionMode, StorageEngine};
 
 use crate::system_table::{SystemEntity, SystemTableView};
-use crate::{Column, ColumnIndex, Namespace, Oid, Table};
+use crate::{Column, ColumnIndex, Entity, Namespace, Oid, Table, Type};
 
 pub(crate) fn bootstrap<'env, S: StorageEngine>(
     storage: &'env S,
@@ -14,27 +12,19 @@ pub(crate) fn bootstrap<'env, S: StorageEngine>(
     tracing::debug!("bootstrapping namespaces");
     let mut namespace_table =
         SystemTableView::<S, ReadWriteExecutionMode, Namespace>::new(storage, txn)?;
-    for namespace in bootstrap_nsql_namespaces() {
-        namespace_table.insert(namespace)?;
-    }
+    bootstrap_nsql_namespaces().try_for_each(|namespace| namespace_table.insert(namespace))?;
 
     tracing::debug!("bootstrapping tables");
     let mut table_table = SystemTableView::<S, ReadWriteExecutionMode, Table>::new(storage, txn)?;
-    for table in bootstrap_nsql_tables() {
-        table_table.insert(table)?;
-    }
+    bootstrap_nsql_tables().try_for_each(|table| table_table.insert(table))?;
 
     tracing::debug!("bootstrapping columns");
     let mut column_table = SystemTableView::<S, ReadWriteExecutionMode, Column>::new(storage, txn)?;
-    for column in bootstrap_nsql_column() {
-        column_table.insert(column)?;
-    }
+    bootstrap_nsql_column().try_for_each(|column| column_table.insert(column))?;
 
     tracing::debug!("bootstrapping types");
     let mut ty_table = SystemTableView::<S, ReadWriteExecutionMode, Type>::new(storage, txn)?;
-    for ty in bootstrap_nsql_types() {
-        ty_table.insert(ty)?;
-    }
+    bootstrap_nsql_types().try_for_each(|ty| ty_table.insert(ty))?;
 
     Ok(())
 }
@@ -53,14 +43,15 @@ pub(super) mod oid {
     pub(crate) const TY_TEXT: Oid<Type> = Oid::new(103);
 }
 
-fn bootstrap_nsql_namespaces() -> Vec<Namespace> {
+fn bootstrap_nsql_namespaces() -> impl Iterator<Item = Namespace> {
     vec![
         Namespace { oid: Namespace::MAIN, name: "main".into() },
         Namespace { oid: Namespace::CATALOG, name: "nsql_catalog".into() },
     ]
+    .into_iter()
 }
 
-fn bootstrap_nsql_tables() -> Vec<Table> {
+fn bootstrap_nsql_tables() -> impl Iterator<Item = Table> {
     vec![
         Table {
             oid: oid::TABLE_NAMESPACE,
@@ -75,9 +66,10 @@ fn bootstrap_nsql_tables() -> Vec<Table> {
         },
         Table { oid: oid::TABLE_TYPE, name: "nsql_type".into(), namespace: Namespace::CATALOG },
     ]
+    .into_iter()
 }
 
-fn bootstrap_nsql_column() -> Vec<Column> {
+fn bootstrap_nsql_column() -> impl Iterator<Item = Column> {
     vec![
         Column {
             oid: Oid::new(0),
@@ -184,91 +176,30 @@ fn bootstrap_nsql_column() -> Vec<Column> {
             is_primary_key: false,
         },
     ]
+    .into_iter()
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Type {
-    oid: Oid<Type>,
-    name: String,
-}
-
-impl SystemEntity for Type {
-    // should types be namespaced?
-    type Parent = ();
-
-    #[inline]
-    fn oid(&self) -> Oid<Self> {
-        self.oid
-    }
-
-    #[inline]
-    fn name(&self) -> &str {
-        &self.name
-    }
-
-    fn parent_oid(&self) -> Option<Oid<Self::Parent>> {
-        None
-    }
-
-    fn storage_info() -> TableStorageInfo {
-        TableStorageInfo::new(
-            oid::TABLE_TYPE.untyped(),
-            vec![
-                ColumnStorageInfo::new(LogicalType::Oid, true),
-                ColumnStorageInfo::new(LogicalType::Text, false),
-            ],
-        )
-    }
-
-    fn desc() -> &'static str {
-        "type"
-    }
-}
-
-impl FromTuple for Type {
-    fn from_tuple(mut tuple: Tuple) -> Result<Self, FromTupleError> {
-        if tuple.len() != 2 {
-            return Err(FromTupleError::ColumnCountMismatch { expected: 2, actual: tuple.len() });
-        }
-
-        Ok(Type { oid: tuple[0].take().cast_non_null()?, name: tuple[1].take().cast_non_null()? })
-    }
-}
-
-impl IntoTuple for Type {
-    fn into_tuple(self) -> Tuple {
-        Tuple::from([Value::Oid(self.oid.untyped()), Value::Text(self.name)])
-    }
-}
-
-fn bootstrap_nsql_types() -> Vec<Type> {
+fn bootstrap_nsql_types() -> impl Iterator<Item = Type> {
     vec![
         Type { oid: oid::TY_OID, name: "oid".into() },
         Type { oid: oid::TY_BOOL, name: "bool".into() },
         Type { oid: oid::TY_INT, name: "int".into() },
         Type { oid: oid::TY_TEXT, name: "text".into() },
     ]
+    .into_iter()
 }
 
-impl Type {
-    pub fn oid_to_logical_type(oid: Oid<Self>) -> LogicalType {
-        match oid {
-            oid::TY_OID => LogicalType::Oid,
-            oid::TY_BOOL => LogicalType::Bool,
-            oid::TY_INT => LogicalType::Int,
-            oid::TY_TEXT => LogicalType::Text,
-            _ => panic!(),
-        }
+impl Entity for () {
+    fn name(&self) -> Name {
+        unreachable!()
     }
 
-    pub fn logical_type_to_oid(logical_type: &LogicalType) -> Oid<Self> {
-        match logical_type {
-            LogicalType::Oid => oid::TY_OID,
-            LogicalType::Bool => oid::TY_BOOL,
-            LogicalType::Int => oid::TY_INT,
-            LogicalType::Text => oid::TY_TEXT,
-            _ => todo!(),
-        }
+    fn oid(&self) -> Oid<Self> {
+        unreachable!()
+    }
+
+    fn desc() -> &'static str {
+        "catalog"
     }
 }
 
@@ -279,19 +210,7 @@ impl SystemEntity for () {
         todo!()
     }
 
-    fn name(&self) -> &str {
-        unreachable!()
-    }
-
-    fn oid(&self) -> Oid<Self> {
-        unreachable!()
-    }
-
     fn parent_oid(&self) -> Option<Oid<Self::Parent>> {
         unreachable!()
-    }
-
-    fn desc() -> &'static str {
-        "catalog"
     }
 }

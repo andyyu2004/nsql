@@ -8,21 +8,14 @@ use nsql_storage::tuple::{FromTuple, IntoTuple};
 use nsql_storage::{TableStorage, TableStorageInfo};
 use nsql_storage_engine::{ExecutionMode, FallibleIterator, ReadWriteExecutionMode, StorageEngine};
 
-use crate::Result;
+use crate::{Entity, Result};
 
-// FIXME this should subtrait `Entity`
-pub trait SystemEntity: FromTuple + IntoTuple + Eq + fmt::Debug {
+pub trait SystemEntity: Entity + FromTuple + IntoTuple + Eq + fmt::Debug {
     type Parent: SystemEntity;
-
-    fn oid(&self) -> Oid<Self>;
-
-    fn name(&self) -> &str;
 
     fn parent_oid(&self) -> Option<Oid<Self::Parent>>;
 
     fn storage_info() -> TableStorageInfo;
-
-    fn desc() -> &'static str;
 }
 
 #[repr(transparent)]
@@ -52,7 +45,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: SystemEnt
 
     #[inline]
     pub fn find(&self, parent: Option<Oid<T::Parent>>, name: &str) -> Result<Option<T>> {
-        self.scan()?.find(|entry| Ok(entry.parent_oid() == parent && entry.name() == name))
+        self.scan()?.find(|entry| Ok(entry.parent_oid() == parent && entry.name().as_str() == name))
     }
 
     #[inline]
