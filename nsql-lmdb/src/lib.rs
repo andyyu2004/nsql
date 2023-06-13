@@ -90,6 +90,8 @@ impl StorageEngine for LmdbStorageEngine {
         Ok(ReadWriteTx(inner))
     }
 
+    // FIXME probably should now move these methods onto the txN
+
     #[inline]
     fn open_tree<'env, 'txn>(
         &self,
@@ -117,6 +119,12 @@ impl StorageEngine for LmdbStorageEngine {
     {
         let db = self.env.create_database(&txn.0, Some(name))?;
         Ok(LmdbWriteTree { db, txn })
+    }
+
+    #[inline]
+    fn drop_tree(&self, txn: &Self::WriteTransaction<'_>, name: &str) -> Result<(), Self::Error> {
+        self.open_write_tree(txn, name)?.db.drop(&txn.0)?;
+        Ok(())
     }
 }
 
@@ -210,7 +218,7 @@ impl<'env, 'txn> WriteTree<'env, 'txn, LmdbStorageEngine> for LmdbWriteTree<'env
     }
 
     #[inline]
-    fn delete(&mut self, key: &[u8]) -> Result<bool, <LmdbStorageEngine as StorageEngine>::Error> {
+    fn delete(&mut self, key: &[u8]) -> Result<bool, heed::Error> {
         self.db.delete(&self.txn.0, key)
     }
 }
@@ -220,12 +228,22 @@ impl<'env> Transaction<'env, LmdbStorageEngine> for ReadonlyTx<'env> {
     fn as_read_or_write_ref(&self) -> ReadOrWriteTransactionRef<'env, '_, LmdbStorageEngine> {
         ReadOrWriteTransactionRef::Read(self)
     }
+
+    #[inline]
+    fn as_dyn(&self) -> &dyn Transaction<'env, LmdbStorageEngine> {
+        self
+    }
 }
 
 impl<'env> Transaction<'env, LmdbStorageEngine> for ReadWriteTx<'env> {
     #[inline]
     fn as_read_or_write_ref(&self) -> ReadOrWriteTransactionRef<'env, '_, LmdbStorageEngine> {
         ReadOrWriteTransactionRef::Write(self)
+    }
+
+    #[inline]
+    fn as_dyn(&self) -> &dyn Transaction<'env, LmdbStorageEngine> {
+        self
     }
 }
 

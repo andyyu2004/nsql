@@ -18,7 +18,7 @@ use std::fmt;
 use std::sync::Arc;
 
 use anyhow::Result;
-use nsql_catalog::{Catalog, EntityRef};
+use nsql_catalog::Catalog;
 use nsql_plan::Plan;
 use nsql_storage_engine::{StorageEngine, Transaction};
 
@@ -44,8 +44,8 @@ use crate::{
     Tuple, TupleStream,
 };
 
-pub struct PhysicalPlanner<S> {
-    catalog: Arc<Catalog<S>>,
+pub struct PhysicalPlanner<'env, S> {
+    catalog: Catalog<'env, S>,
 }
 
 /// Opaque physical plan that is ready to be executed
@@ -57,8 +57,8 @@ impl<'env, 'txn, S, M> PhysicalPlan<'env, 'txn, S, M> {
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalPlanner<S> {
-    pub fn new(catalog: Arc<Catalog<S>>) -> Self {
+impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalPlanner<'env, S> {
+    pub fn new(catalog: Catalog<'env, S>) -> Self {
         Self { catalog }
     }
 
@@ -66,8 +66,8 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalPlanner<S> {
     pub fn plan(
         &self,
         tx: &dyn Transaction<'env, S>,
-        plan: Box<Plan<S>>,
-    ) -> Result<PhysicalPlan<'env, 'txn, S, ReadonlyExecutionMode<S>>> {
+        plan: Box<Plan>,
+    ) -> Result<PhysicalPlan<'env, 'txn, S, ReadonlyExecutionMode>> {
         self.plan_node(tx, plan).map(PhysicalPlan)
     }
 
@@ -75,27 +75,27 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalPlanner<S> {
     pub fn plan_write(
         &self,
         tx: &dyn Transaction<'env, S>,
-        plan: Box<Plan<S>>,
-    ) -> Result<PhysicalPlan<'env, 'txn, S, ReadWriteExecutionMode<S>>> {
+        plan: Box<Plan>,
+    ) -> Result<PhysicalPlan<'env, 'txn, S, ReadWriteExecutionMode>> {
         self.plan_write_node(tx, plan).map(PhysicalPlan)
     }
 
     fn plan_write_node(
         &self,
         tx: &dyn Transaction<'env, S>,
-        plan: Box<Plan<S>>,
-    ) -> Result<Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode<S>>>> {
+        plan: Box<Plan>,
+    ) -> Result<Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode>>> {
         let plan = match *plan {
-            Plan::Update { table_ref, source, returning } => {
+            Plan::Update { table, source, returning } => {
                 let source = self.plan_write_node(tx, source)?;
-                PhysicalUpdate::plan(table_ref, source, returning)
+                PhysicalUpdate::plan(table, source, returning)
             }
-            Plan::Insert { table_ref, projection, source, returning } => {
+            Plan::Insert { table, projection, source, returning } => {
                 let mut source = self.plan_write_node(tx, source)?;
                 if !projection.is_empty() {
                     source = PhysicalProjection::plan(source, projection);
                 };
-                PhysicalInsert::plan(table_ref, source, returning)
+                PhysicalInsert::plan(table, source, returning)
             }
             Plan::CreateTable(info) => PhysicalCreateTable::plan(info),
             Plan::CreateNamespace(info) => PhysicalCreateNamespace::plan(info),
@@ -114,13 +114,12 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalPlanner<S> {
     ) -> Result<Arc<dyn PhysicalNode<'env, 'txn, S, M>>> {
         let stringified = match kind {
             ir::ExplainMode::Physical => {
-                explain::display(&self.catalog, tx, &explain::explain(Arc::clone(&plan)))
-                    .to_string()
+                explain::display(self.catalog, tx, &explain::explain(Arc::clone(&plan))).to_string()
             }
             ir::ExplainMode::Pipeline => {
                 let sink = Arc::new(OutputSink::default());
                 let pipeline = crate::build_pipelines(sink, PhysicalPlan(Arc::clone(&plan)));
-                explain::display(&self.catalog, tx, &explain::explain_pipeline(&pipeline))
+                explain::display(self.catalog, tx, &explain::explain_pipeline(&pipeline))
                     .to_string()
             }
         };
@@ -132,7 +131,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalPlanner<S> {
     fn plan_node<M: ExecutionMode<'env, S>>(
         &self,
         tx: &dyn Transaction<'env, S>,
-        plan: Box<Plan<S>>,
+        plan: Box<Plan>,
     ) -> Result<Arc<dyn PhysicalNode<'env, 'txn, S, M>>> {
         self.fold_plan(tx, plan, Self::plan_node)
     }
@@ -141,17 +140,17 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalPlanner<S> {
     fn fold_plan<M: ExecutionMode<'env, S>>(
         &self,
         tx: &dyn Transaction<'env, S>,
-        plan: Box<Plan<S>>,
+        plan: Box<Plan>,
         f: impl FnOnce(
             &Self,
             &dyn Transaction<'env, S>,
-            Box<Plan<S>>,
+            Box<Plan>,
         ) -> Result<Arc<dyn PhysicalNode<'env, 'txn, S, M>>>,
     ) -> Result<Arc<dyn PhysicalNode<'env, 'txn, S, M>>> {
         let plan = match *plan {
             Plan::Transaction(kind) => PhysicalTransaction::plan(kind),
-            Plan::Scan { table_ref, projection } => PhysicalTableScan::plan(table_ref, projection),
-            Plan::Show(show) => PhysicalShow::plan(show),
+            Plan::Scan { table, projection } => PhysicalTableScan::plan(table, projection),
+            Plan::Show(object_type) => PhysicalShow::plan(object_type),
             Plan::Explain(kind, plan) => {
                 return self.explain_plan(tx, kind, f(self, tx, plan)?);
             }

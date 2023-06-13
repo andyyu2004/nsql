@@ -1,5 +1,5 @@
-use nsql_catalog::{EntityRef, TableRef};
-use nsql_storage::{TableStorage, TableStorageInfo};
+use nsql_catalog::Table;
+use nsql_core::Oid;
 use nsql_storage_engine::fallible_iterator;
 use parking_lot::RwLock;
 
@@ -7,8 +7,8 @@ use super::*;
 use crate::ReadWriteExecutionMode;
 
 pub(crate) struct PhysicalUpdate<'env, 'txn, S> {
-    children: [Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode<S>>>; 1],
-    table_ref: TableRef<S>,
+    children: [Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode>>; 1],
+    table: Oid<Table>,
     tuples: RwLock<Vec<Tuple>>,
     returning: Option<Box<[ir::Expr]>>,
     returning_tuples: RwLock<Vec<Tuple>>,
@@ -17,14 +17,14 @@ pub(crate) struct PhysicalUpdate<'env, 'txn, S> {
 
 impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalUpdate<'env, 'txn, S> {
     pub fn plan(
-        table_ref: TableRef<S>,
+        table: Oid<Table>,
         // This is the source of the updates.
         // The schema should be that of the table being updated + the `tid` in the rightmost column
-        source: Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode<S>>>,
+        source: Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode>>,
         returning: Option<Box<[ir::Expr]>>,
-    ) -> Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode<S>>> {
+    ) -> Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode>> {
         Arc::new(Self {
-            table_ref,
+            table,
             returning,
             tuples: Default::default(),
             children: [source],
@@ -34,11 +34,11 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalUpdate<'env, 'txn, S> {
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode<S>>
+impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode>
     for PhysicalUpdate<'env, 'txn, S>
 {
     #[inline]
-    fn children(&self) -> &[Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode<S>>>] {
+    fn children(&self) -> &[Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode>>] {
         &self.children
     }
 
@@ -46,8 +46,8 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalNode<'env, 'txn, S, ReadWriteEx
     fn as_source(
         self: Arc<Self>,
     ) -> Result<
-        Arc<dyn PhysicalSource<'env, 'txn, S, ReadWriteExecutionMode<S>>>,
-        Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode<S>>>,
+        Arc<dyn PhysicalSource<'env, 'txn, S, ReadWriteExecutionMode>>,
+        Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode>>,
     > {
         Ok(self)
     }
@@ -56,8 +56,8 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalNode<'env, 'txn, S, ReadWriteEx
     fn as_sink(
         self: Arc<Self>,
     ) -> Result<
-        Arc<dyn PhysicalSink<'env, 'txn, S, ReadWriteExecutionMode<S>>>,
-        Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode<S>>>,
+        Arc<dyn PhysicalSink<'env, 'txn, S, ReadWriteExecutionMode>>,
+        Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode>>,
     > {
         Ok(self)
     }
@@ -66,19 +66,19 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalNode<'env, 'txn, S, ReadWriteEx
     fn as_operator(
         self: Arc<Self>,
     ) -> Result<
-        Arc<dyn PhysicalOperator<'env, 'txn, S, ReadWriteExecutionMode<S>>>,
-        Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode<S>>>,
+        Arc<dyn PhysicalOperator<'env, 'txn, S, ReadWriteExecutionMode>>,
+        Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode>>,
     > {
         Err(self)
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSink<'env, 'txn, S, ReadWriteExecutionMode<S>>
+impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSink<'env, 'txn, S, ReadWriteExecutionMode>
     for PhysicalUpdate<'env, 'txn, S>
 {
     fn sink(
         &self,
-        _ctx: &'txn ExecutionContext<'env, S, ReadWriteExecutionMode<S>>,
+        _ctx: &'txn ExecutionContext<'env, S, ReadWriteExecutionMode>,
         tuple: Tuple,
     ) -> ExecutionResult<()> {
         self.tuples.write().push(tuple);
@@ -87,15 +87,12 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSink<'env, 'txn, S, ReadWriteEx
 
     fn finalize(
         &self,
-        ctx: &'txn ExecutionContext<'env, S, ReadWriteExecutionMode<S>>,
+        ctx: &'txn ExecutionContext<'env, S, ReadWriteExecutionMode>,
     ) -> ExecutionResult<()> {
         let tx = ctx.tx()?;
-        let table = self.table_ref.get(&ctx.catalog(), tx);
-        let mut storage = TableStorage::open(
-            ctx.storage(),
-            tx,
-            TableStorageInfo::new(self.table_ref, table.columns(tx)),
-        )?;
+        let catalog = ctx.catalog();
+        let table = ctx.catalog().get(tx, self.table)?;
+        let mut storage = table.storage::<S, ReadWriteExecutionMode>(catalog, tx)?;
 
         let tuples = self.tuples.read();
         for tuple in &*tuples {
@@ -114,26 +111,26 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSink<'env, 'txn, S, ReadWriteEx
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSource<'env, 'txn, S, ReadWriteExecutionMode<S>>
+impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSource<'env, 'txn, S, ReadWriteExecutionMode>
     for PhysicalUpdate<'env, 'txn, S>
 {
     fn source(
         self: Arc<Self>,
-        _ctx: &'txn ExecutionContext<'env, S, ReadWriteExecutionMode<S>>,
-    ) -> ExecutionResult<TupleStream<'txn, S>> {
+        _ctx: &'txn ExecutionContext<'env, S, ReadWriteExecutionMode>,
+    ) -> ExecutionResult<TupleStream<'txn>> {
         let returning = std::mem::take(&mut *self.returning_tuples.write());
         Ok(Box::new(fallible_iterator::convert(returning.into_iter().map(Ok))))
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine> Explain<S> for PhysicalUpdate<'env, 'txn, S> {
+impl<'env: 'txn, 'txn, S: StorageEngine> Explain<'env, S> for PhysicalUpdate<'env, 'txn, S> {
     fn explain(
         &self,
-        catalog: &Catalog<S>,
-        tx: &dyn Transaction<'_, S>,
+        catalog: Catalog<'env, S>,
+        tx: &dyn Transaction<'env, S>,
         f: &mut fmt::Formatter<'_>,
     ) -> explain::Result {
-        write!(f, "update {}", self.table_ref.get(catalog, tx).name())?;
+        write!(f, "update {}", catalog.get(tx, self.table)?.name())?;
         Ok(())
     }
 }

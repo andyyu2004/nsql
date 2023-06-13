@@ -51,7 +51,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
     fn source(
         self: Arc<Self>,
         ctx: &'txn ExecutionContext<'env, S, M>,
-    ) -> ExecutionResult<TupleStream<'txn, S>> {
+    ) -> ExecutionResult<TupleStream<'txn>> {
         let tx = ctx.tcx();
         match self.kind {
             ir::TransactionStmtKind::Begin(_) => {
@@ -81,10 +81,10 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
     }
 }
 
-impl<S: StorageEngine> Explain<S> for PhysicalTransaction {
+impl<S: StorageEngine> Explain<'_, S> for PhysicalTransaction {
     fn explain(
         &self,
-        _catalog: &Catalog<S>,
+        _catalog: Catalog<'_, S>,
         _tx: &dyn Transaction<'_, S>,
         f: &mut fmt::Formatter<'_>,
     ) -> explain::Result {

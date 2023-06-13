@@ -7,11 +7,11 @@ pub(crate) struct Executor<'env, 'txn, S, M> {
     _marker: std::marker::PhantomData<(S, M)>,
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine> Executor<'env, 'txn, S, ReadWriteExecutionMode<S>> {
+impl<'env: 'txn, 'txn, S: StorageEngine> Executor<'env, 'txn, S, ReadWriteExecutionMode> {
     fn execute(
         self: Arc<Self>,
-        ctx: &'txn ExecutionContext<'env, S, ReadWriteExecutionMode<S>>,
-        root: Idx<MetaPipeline<'env, 'txn, S, ReadWriteExecutionMode<S>>>,
+        ctx: &'txn ExecutionContext<'env, S, ReadWriteExecutionMode>,
+        root: Idx<MetaPipeline<'env, 'txn, S, ReadWriteExecutionMode>>,
     ) -> ExecutionResult<()> {
         let root = &self.arena[root];
         for &child in &root.children {
@@ -27,8 +27,8 @@ impl<'env: 'txn, 'txn, S: StorageEngine> Executor<'env, 'txn, S, ReadWriteExecut
 
     fn execute_pipeline(
         self: Arc<Self>,
-        ctx: &'txn ExecutionContext<'env, S, ReadWriteExecutionMode<S>>,
-        pipeline: Idx<Pipeline<'env, 'txn, S, ReadWriteExecutionMode<S>>>,
+        ctx: &'txn ExecutionContext<'env, S, ReadWriteExecutionMode>,
+        pipeline: Idx<Pipeline<'env, 'txn, S, ReadWriteExecutionMode>>,
     ) -> ExecutionResult<()> {
         let pipeline: &Pipeline<'env, 'txn, S, _> = &self.arena[pipeline];
         let mut stream = Arc::clone(&pipeline.source).source(ctx)?;
@@ -51,11 +51,11 @@ impl<'env: 'txn, 'txn, S: StorageEngine> Executor<'env, 'txn, S, ReadWriteExecut
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine> Executor<'env, 'txn, S, ReadonlyExecutionMode<S>> {
+impl<'env: 'txn, 'txn, S: StorageEngine> Executor<'env, 'txn, S, ReadonlyExecutionMode> {
     fn execute(
         self: Arc<Self>,
-        ctx: &'txn ExecutionContext<'env, S, ReadonlyExecutionMode<S>>,
-        root: Idx<MetaPipeline<'env, 'txn, S, ReadonlyExecutionMode<S>>>,
+        ctx: &'txn ExecutionContext<'env, S, ReadonlyExecutionMode>,
+        root: Idx<MetaPipeline<'env, 'txn, S, ReadonlyExecutionMode>>,
     ) -> ExecutionResult<()> {
         let root = &self.arena[root];
         for &child in &root.children {
@@ -71,8 +71,8 @@ impl<'env: 'txn, 'txn, S: StorageEngine> Executor<'env, 'txn, S, ReadonlyExecuti
 
     fn execute_pipeline(
         self: Arc<Self>,
-        ctx: &'txn ExecutionContext<'env, S, ReadonlyExecutionMode<S>>,
-        pipeline: Idx<Pipeline<'env, 'txn, S, ReadonlyExecutionMode<S>>>,
+        ctx: &'txn ExecutionContext<'env, S, ReadonlyExecutionMode>,
+        pipeline: Idx<Pipeline<'env, 'txn, S, ReadonlyExecutionMode>>,
     ) -> ExecutionResult<()> {
         let pipeline = &self.arena[pipeline];
         let mut stream = Arc::clone(&pipeline.source).source(ctx)?;
@@ -94,8 +94,8 @@ impl<'env: 'txn, 'txn, S: StorageEngine> Executor<'env, 'txn, S, ReadonlyExecuti
 }
 
 fn execute_root_pipeline<'env, 'txn, S: StorageEngine>(
-    ctx: &'txn ExecutionContext<'env, S, ReadonlyExecutionMode<S>>,
-    pipeline: RootPipeline<'env, 'txn, S, ReadonlyExecutionMode<S>>,
+    ctx: &'txn ExecutionContext<'env, S, ReadonlyExecutionMode>,
+    pipeline: RootPipeline<'env, 'txn, S, ReadonlyExecutionMode>,
 ) -> ExecutionResult<()> {
     let root = pipeline.arena.root();
     let executor = Arc::new(Executor { arena: pipeline.arena, _marker: std::marker::PhantomData });
@@ -103,8 +103,8 @@ fn execute_root_pipeline<'env, 'txn, S: StorageEngine>(
 }
 
 fn execute_root_pipeline_write<'env, 'txn, S: StorageEngine>(
-    ctx: &'txn ExecutionContext<'env, S, ReadWriteExecutionMode<S>>,
-    pipeline: RootPipeline<'env, 'txn, S, ReadWriteExecutionMode<S>>,
+    ctx: &'txn ExecutionContext<'env, S, ReadWriteExecutionMode>,
+    pipeline: RootPipeline<'env, 'txn, S, ReadWriteExecutionMode>,
 ) -> ExecutionResult<()> {
     let root = pipeline.arena.root();
     let executor = Arc::new(Executor { arena: pipeline.arena, _marker: std::marker::PhantomData });
@@ -112,12 +112,12 @@ fn execute_root_pipeline_write<'env, 'txn, S: StorageEngine>(
 }
 
 pub fn execute<'env: 'txn, 'txn, S: StorageEngine>(
-    ctx: &'txn ExecutionContext<'env, S, ReadonlyExecutionMode<S>>,
-    plan: PhysicalPlan<'env, 'txn, S, ReadonlyExecutionMode<S>>,
+    ctx: &'txn ExecutionContext<'env, S, ReadonlyExecutionMode>,
+    plan: PhysicalPlan<'env, 'txn, S, ReadonlyExecutionMode>,
 ) -> ExecutionResult<Vec<Tuple>> {
     let sink = Arc::new(OutputSink::default());
     let root_pipeline = build_pipelines(
-        Arc::clone(&sink) as Arc<dyn PhysicalSink<'env, 'txn, S, ReadonlyExecutionMode<S>> + 'txn>,
+        Arc::clone(&sink) as Arc<dyn PhysicalSink<'env, 'txn, S, ReadonlyExecutionMode> + 'txn>,
         plan,
     );
 
@@ -127,13 +127,13 @@ pub fn execute<'env: 'txn, 'txn, S: StorageEngine>(
 }
 
 pub fn execute_write<'env: 'txn, 'txn, S: StorageEngine>(
-    ctx: &'txn ExecutionContext<'env, S, ReadWriteExecutionMode<S>>,
-    plan: PhysicalPlan<'env, 'txn, S, ReadWriteExecutionMode<S>>,
+    ctx: &'txn ExecutionContext<'env, S, ReadWriteExecutionMode>,
+    plan: PhysicalPlan<'env, 'txn, S, ReadWriteExecutionMode>,
 ) -> ExecutionResult<Vec<Tuple>> {
     let sink = Arc::new(OutputSink::default());
 
     let root_pipeline = build_pipelines(
-        Arc::clone(&sink) as Arc<dyn PhysicalSink<'env, 'txn, S, ReadWriteExecutionMode<S>> + 'txn>,
+        Arc::clone(&sink) as Arc<dyn PhysicalSink<'env, 'txn, S, ReadWriteExecutionMode> + 'txn>,
         plan,
     );
 
@@ -186,7 +186,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
     fn source(
         self: Arc<Self>,
         _ctx: &'txn ExecutionContext<'env, S, M>,
-    ) -> ExecutionResult<TupleStream<'txn, S>> {
+    ) -> ExecutionResult<TupleStream<'txn>> {
         todo!()
     }
 }
@@ -200,13 +200,14 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSink
     }
 }
 
-impl<S: StorageEngine> Explain<S> for OutputSink {
+impl<S: StorageEngine> Explain<'_, S> for OutputSink {
     fn explain(
         &self,
-        _catalog: &Catalog<S>,
+        _catalog: Catalog<'_, S>,
         _tx: &dyn Transaction<'_, S>,
         f: &mut fmt::Formatter<'_>,
     ) -> explain::Result {
-        write!(f, "output")
+        write!(f, "output")?;
+        Ok(())
     }
 }

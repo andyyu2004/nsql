@@ -8,13 +8,13 @@ use std::path::Path;
 use std::sync::Arc;
 
 use nsql_storage_engine::{fallible_iterator, Range, ReadOrWriteTransactionRef};
-use redb::{AccessGuard, ReadableTable};
+use redb::{AccessGuard, ReadableTable, TableHandle};
 
 type Result<T, E = redb::Error> = std::result::Result<T, E>;
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct RedbStorageEngine {
-    db: Arc<redb::Database>,
+    db: redb::Database,
 }
 
 #[derive(Clone)]
@@ -48,7 +48,7 @@ impl nsql_storage_engine::StorageEngine for RedbStorageEngine {
     where
         Self: Sized,
     {
-        Ok(redb::Database::create(path).map(Arc::new).map(|db| Self { db })?)
+        Ok(redb::Database::create(path).map(|db| Self { db })?)
     }
 
     #[inline]
@@ -56,7 +56,7 @@ impl nsql_storage_engine::StorageEngine for RedbStorageEngine {
     where
         Self: Sized,
     {
-        Ok(redb::Database::open(path).map(Arc::new).map(|db| Self { db })?)
+        Ok(redb::Database::open(path).map(|db| Self { db })?)
     }
 
     #[inline]
@@ -112,6 +112,16 @@ impl nsql_storage_engine::StorageEngine for RedbStorageEngine {
             Err(redb::TableError::TableDoesNotExist(_)) => unreachable!(),
             Err(e) => Err(e)?,
         }
+    }
+
+    fn drop_tree(&self, txn: &Self::WriteTransaction<'_>, name: &str) -> Result<(), Self::Error> {
+        let ok = txn.0.delete_table(redb::TableDefinition::<(), ()>::new(name))?;
+        if !ok {
+            let tables =
+                txn.0.list_tables()?.map(|handle| handle.name().to_string()).collect::<Vec<_>>();
+            panic!("attempted to drop non-existent table `{name}`, available tables {tables:?}");
+        }
+        Ok(())
     }
 }
 
@@ -192,12 +202,22 @@ impl<'env> nsql_storage_engine::Transaction<'env, RedbStorageEngine> for ReadTra
     fn as_read_or_write_ref(&self) -> ReadOrWriteTransactionRef<'env, '_, RedbStorageEngine> {
         ReadOrWriteTransactionRef::Read(self)
     }
+
+    #[inline]
+    fn as_dyn(&self) -> &dyn nsql_storage_engine::Transaction<'env, RedbStorageEngine> {
+        self
+    }
 }
 
 impl<'env> nsql_storage_engine::Transaction<'env, RedbStorageEngine> for Transaction<'env> {
     #[inline]
     fn as_read_or_write_ref(&self) -> ReadOrWriteTransactionRef<'env, '_, RedbStorageEngine> {
         ReadOrWriteTransactionRef::Write(self)
+    }
+
+    #[inline]
+    fn as_dyn(&self) -> &dyn nsql_storage_engine::Transaction<'env, RedbStorageEngine> {
+        self
     }
 }
 

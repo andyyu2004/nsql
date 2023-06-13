@@ -1,0 +1,28 @@
+query T rowsort
+SELECT * EXCLUDE (oid) FROM nsql_catalog.nsql_namespace
+----
+main
+nsql_catalog
+
+# this one is a bit messy, so we don't check it's output
+# it is almost certaintly correct if the other queries don't fail
+statement ok
+SELECT * FROM nsql_catalog.nsql_attribute
+
+
+query T rowsort
+SELECT * EXCLUDE (oid, namespace) FROM nsql_catalog.nsql_table
+----
+nsql_attribute
+nsql_namespace
+nsql_table
+nsql_type
+
+
+query T rowsort
+SELECT * EXCLUDE oid FROM nsql_catalog.nsql_type
+----
+bool
+int
+oid
+text

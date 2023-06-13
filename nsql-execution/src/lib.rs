@@ -19,7 +19,7 @@ use nsql_catalog::Catalog;
 use nsql_storage::tuple::Tuple;
 use nsql_storage_engine::{
     ExecutionMode, FallibleIterator, ReadWriteExecutionMode, ReadonlyExecutionMode, StorageEngine,
-    Transaction,
+    Transaction, TransactionConversionHack,
 };
 use nsql_util::atomic::AtomicEnum;
 pub use physical_plan::PhysicalPlanner;
@@ -46,7 +46,7 @@ fn build_pipelines<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>
 
 #[allow(clippy::type_complexity)]
 trait PhysicalNode<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>:
-    Send + Sync + Explain<S> + 'txn
+    Send + Sync + Explain<'env, S> + 'txn
 {
     fn children(&self) -> &[Arc<dyn PhysicalNode<'env, 'txn, S, M>>];
 
@@ -124,8 +124,7 @@ trait PhysicalOperator<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env
     ) -> ExecutionResult<OperatorState<T>>;
 }
 
-type TupleStream<'txn, S> =
-    Box<dyn FallibleIterator<Item = Tuple, Error = <S as StorageEngine>::Error> + 'txn>;
+type TupleStream<'txn> = Box<dyn FallibleIterator<Item = Tuple, Error = anyhow::Error> + 'txn>;
 
 trait PhysicalSource<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T = Tuple>:
     PhysicalNode<'env, 'txn, S, M>
@@ -134,7 +133,7 @@ trait PhysicalSource<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, 
     fn source(
         self: Arc<Self>,
         ctx: &'txn ExecutionContext<'env, S, M>,
-    ) -> ExecutionResult<TupleStream<'txn, S>>;
+    ) -> ExecutionResult<TupleStream<'txn>>;
 }
 
 trait PhysicalSink<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>:
@@ -206,7 +205,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> TransactionC
 
 pub struct ExecutionContext<'env, S: StorageEngine, M: ExecutionMode<'env, S>> {
     storage: &'env S,
-    catalog: Arc<Catalog<S>>,
+    catalog: Catalog<'env, S>,
     tcx: TransactionContext<'env, S, M>,
 }
 
@@ -222,15 +221,15 @@ impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> ExecutionContext<'env, S
     #[inline]
     pub fn new(
         storage: &'env S,
-        catalog: Arc<Catalog<S>>,
+        catalog: Catalog<'env, S>,
         tcx: TransactionContext<'env, S, M>,
     ) -> Self {
         Self { storage, catalog, tcx }
     }
 
     #[inline]
-    pub fn storage(&self) -> S {
-        self.storage.clone()
+    pub fn storage(&self) -> &S {
+        self.storage
     }
 
     #[inline]
@@ -239,18 +238,13 @@ impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> ExecutionContext<'env, S
     }
 
     #[inline]
-    pub fn tx(&self) -> Result<&M::Transaction, S::Error> {
-        Ok(&self.tcx.tx)
+    pub fn tx(&self) -> Result<M::TransactionRef<'_>, S::Error> {
+        Ok(TransactionConversionHack::as_tx_ref(&self.tcx.tx))
     }
 
     #[inline]
-    pub fn tx_mut(&mut self) -> &mut TransactionContext<'env, S, M> {
-        &mut self.tcx
-    }
-
-    #[inline]
-    pub fn catalog(&self) -> Arc<Catalog<S>> {
-        Arc::clone(&self.catalog)
+    pub fn catalog(&self) -> Catalog<'env, S> {
+        self.catalog
     }
 }
 

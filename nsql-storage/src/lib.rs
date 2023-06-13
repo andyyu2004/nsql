@@ -6,7 +6,7 @@ pub mod value;
 
 use anyhow::Error;
 use nsql_storage_engine::{StorageEngine, Transaction};
-pub use table_storage::{TableStorage, TableStorageInfo};
+pub use table_storage::{ColumnStorageInfo, TableStorage, TableStorageInfo};
 
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 

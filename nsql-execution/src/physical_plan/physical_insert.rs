@@ -1,5 +1,5 @@
-use nsql_catalog::{EntityRef, TableRef};
-use nsql_storage::{TableStorage, TableStorageInfo};
+use nsql_catalog::Table;
+use nsql_core::Oid;
 use nsql_storage_engine::fallible_iterator;
 use parking_lot::RwLock;
 
@@ -7,8 +7,8 @@ use super::*;
 use crate::ReadWriteExecutionMode;
 
 pub(crate) struct PhysicalInsert<'env, 'txn, S> {
-    children: [Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode<S>>>; 1],
-    table_ref: TableRef<S>,
+    children: [Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode>>; 1],
+    table: Oid<Table>,
     returning: Option<Box<[ir::Expr]>>,
     returning_tuples: RwLock<Vec<Tuple>>,
     returning_evaluator: Evaluator,
@@ -16,12 +16,12 @@ pub(crate) struct PhysicalInsert<'env, 'txn, S> {
 
 impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalInsert<'env, 'txn, S> {
     pub fn plan(
-        table_ref: TableRef<S>,
-        source: Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode<S>>>,
+        table: Oid<Table>,
+        source: Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode>>,
         returning: Option<Box<[ir::Expr]>>,
-    ) -> Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode<S>>> {
+    ) -> Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode>> {
         Arc::new(Self {
-            table_ref,
+            table,
             returning,
             children: [source],
             returning_tuples: Default::default(),
@@ -30,18 +30,18 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalInsert<'env, 'txn, S> {
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode<S>>
+impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode>
     for PhysicalInsert<'env, 'txn, S>
 {
-    fn children(&self) -> &[Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode<S>>>] {
+    fn children(&self) -> &[Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode>>] {
         &self.children
     }
 
     fn as_source(
         self: Arc<Self>,
     ) -> Result<
-        Arc<dyn PhysicalSource<'env, 'txn, S, ReadWriteExecutionMode<S>>>,
-        Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode<S>>>,
+        Arc<dyn PhysicalSource<'env, 'txn, S, ReadWriteExecutionMode>>,
+        Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode>>,
     > {
         Ok(self)
     }
@@ -49,8 +49,8 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalNode<'env, 'txn, S, ReadWriteEx
     fn as_sink(
         self: Arc<Self>,
     ) -> Result<
-        Arc<dyn PhysicalSink<'env, 'txn, S, ReadWriteExecutionMode<S>>>,
-        Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode<S>>>,
+        Arc<dyn PhysicalSink<'env, 'txn, S, ReadWriteExecutionMode>>,
+        Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode>>,
     > {
         Ok(self)
     }
@@ -58,31 +58,26 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalNode<'env, 'txn, S, ReadWriteEx
     fn as_operator(
         self: Arc<Self>,
     ) -> Result<
-        Arc<dyn PhysicalOperator<'env, 'txn, S, ReadWriteExecutionMode<S>>>,
-        Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode<S>>>,
+        Arc<dyn PhysicalOperator<'env, 'txn, S, ReadWriteExecutionMode>>,
+        Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode>>,
     > {
         Err(self)
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSink<'env, 'txn, S, ReadWriteExecutionMode<S>>
+impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSink<'env, 'txn, S, ReadWriteExecutionMode>
     for PhysicalInsert<'env, 'txn, S>
 {
     fn sink(
         &self,
-        ctx: &'txn ExecutionContext<'env, S, ReadWriteExecutionMode<S>>,
+        ctx: &'txn ExecutionContext<'env, S, ReadWriteExecutionMode>,
         tuple: Tuple,
     ) -> ExecutionResult<()> {
         let catalog = ctx.catalog();
         let tx = ctx.tx()?;
-        let table = self.table_ref.get(&catalog, tx);
+        let table = catalog.get(tx, self.table)?;
 
-        let mut storage = TableStorage::open(
-            ctx.storage(),
-            tx,
-            TableStorageInfo::new(self.table_ref, table.columns(tx)),
-        )?;
-
+        let mut storage = table.storage::<S, ReadWriteExecutionMode>(catalog, tx)?;
         storage.insert(&tuple)?;
 
         if let Some(return_expr) = &self.returning {
@@ -95,26 +90,26 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSink<'env, 'txn, S, ReadWriteEx
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSource<'env, 'txn, S, ReadWriteExecutionMode<S>>
+impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSource<'env, 'txn, S, ReadWriteExecutionMode>
     for PhysicalInsert<'env, 'txn, S>
 {
     fn source(
         self: Arc<Self>,
-        _ctx: &'txn ExecutionContext<'env, S, ReadWriteExecutionMode<S>>,
-    ) -> ExecutionResult<TupleStream<'txn, S>> {
+        _ctx: &'txn ExecutionContext<'env, S, ReadWriteExecutionMode>,
+    ) -> ExecutionResult<TupleStream<'txn>> {
         let returning = std::mem::take(&mut *self.returning_tuples.write());
         Ok(Box::new(fallible_iterator::convert(returning.into_iter().map(Ok))))
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine> Explain<S> for PhysicalInsert<'env, 'txn, S> {
+impl<'env: 'txn, 'txn, S: StorageEngine> Explain<'env, S> for PhysicalInsert<'env, 'txn, S> {
     fn explain(
         &self,
-        catalog: &Catalog<S>,
-        tx: &dyn Transaction<'_, S>,
+        catalog: Catalog<'env, S>,
+        tx: &dyn Transaction<'env, S>,
         f: &mut fmt::Formatter<'_>,
     ) -> explain::Result {
-        write!(f, "insert into {}", self.table_ref.get(catalog, tx).name())?;
+        write!(f, "insert into {}", catalog.get(tx, self.table)?.name())?;
         Ok(())
     }
 }

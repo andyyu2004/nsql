@@ -1,33 +1,32 @@
-use nsql_catalog::{Column, Container, CreateTableInfo, Namespace, Table, TableRef};
-use nsql_storage::{TableStorage, TableStorageInfo};
+use nsql_catalog::{Column, ColumnIndex, Entity, Table, Type};
 use nsql_storage_engine::fallible_iterator;
 
 use super::*;
 use crate::{ReadWriteExecutionMode, TupleStream};
 
-pub struct PhysicalCreateTable<S> {
-    info: ir::CreateTableInfo<S>,
+pub struct PhysicalCreateTable {
+    info: ir::CreateTableInfo,
 }
 
-impl<S> fmt::Debug for PhysicalCreateTable<S> {
+impl fmt::Debug for PhysicalCreateTable {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("PhysicalCreateTable").field("info", &self.info).finish()
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalCreateTable<S> {
-    pub(crate) fn plan(
-        info: ir::CreateTableInfo<S>,
-    ) -> Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode<S>>> {
+impl<'env: 'txn, 'txn> PhysicalCreateTable {
+    pub(crate) fn plan<S: StorageEngine>(
+        info: ir::CreateTableInfo,
+    ) -> Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode>> {
         Arc::new(Self { info })
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode<S>>
-    for PhysicalCreateTable<S>
+impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode>
+    for PhysicalCreateTable
 {
     #[inline]
-    fn children(&self) -> &[Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode<S>>>] {
+    fn children(&self) -> &[Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode>>] {
         &[]
     }
 
@@ -35,8 +34,8 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalNode<'env, 'txn, S, ReadWriteEx
     fn as_source(
         self: Arc<Self>,
     ) -> Result<
-        Arc<dyn PhysicalSource<'env, 'txn, S, ReadWriteExecutionMode<S>>>,
-        Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode<S>>>,
+        Arc<dyn PhysicalSource<'env, 'txn, S, ReadWriteExecutionMode>>,
+        Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode>>,
     > {
         Ok(self)
     }
@@ -45,8 +44,8 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalNode<'env, 'txn, S, ReadWriteEx
     fn as_sink(
         self: Arc<Self>,
     ) -> Result<
-        Arc<dyn PhysicalSink<'env, 'txn, S, ReadWriteExecutionMode<S>>>,
-        Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode<S>>>,
+        Arc<dyn PhysicalSink<'env, 'txn, S, ReadWriteExecutionMode>>,
+        Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode>>,
     > {
         Err(self)
     }
@@ -55,53 +54,57 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalNode<'env, 'txn, S, ReadWriteEx
     fn as_operator(
         self: Arc<Self>,
     ) -> Result<
-        Arc<dyn PhysicalOperator<'env, 'txn, S, ReadWriteExecutionMode<S>>>,
-        Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode<S>>>,
+        Arc<dyn PhysicalOperator<'env, 'txn, S, ReadWriteExecutionMode>>,
+        Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode>>,
     > {
         Err(self)
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSource<'env, 'txn, S, ReadWriteExecutionMode<S>>
-    for PhysicalCreateTable<S>
+impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSource<'env, 'txn, S, ReadWriteExecutionMode>
+    for PhysicalCreateTable
 {
     fn source(
         self: Arc<Self>,
-        ctx: &'txn ExecutionContext<'env, S, ReadWriteExecutionMode<S>>,
-    ) -> ExecutionResult<TupleStream<'txn, S>> {
+        ctx: &'txn ExecutionContext<'env, S, ReadWriteExecutionMode>,
+    ) -> ExecutionResult<TupleStream<'txn>> {
+        tracing::debug!(name = %self.info.name, "physical create table");
+        assert!(!self.info.columns.is_empty());
+
         let catalog = ctx.catalog();
+
         let tx = ctx.tx()?;
-        let namespace: Arc<Namespace<S>> = catalog
-            .get::<Namespace<S>>(tx, self.info.namespace)
-            .expect("schema not found during execution");
 
-        let info = CreateTableInfo { name: self.info.name.clone() };
+        let table = Table::new(self.info.namespace, self.info.name.clone());
 
-        let table_oid = namespace.create::<Table<S>>(tx, info)?;
-        let table: Arc<Table<S>> =
-            namespace.get::<Table<S>>(tx, table_oid).expect("table not found during execution");
+        catalog.system_table_write(tx)?.insert(table.clone())?;
 
+        let mut columns = catalog.system_table_write(tx)?;
         for info in &self.info.columns {
-            table.create::<Column>(tx, info.clone())?;
+            columns.insert(Column::new(
+                table.oid(),
+                info.name.clone(),
+                ColumnIndex::new(info.index),
+                Type::logical_type_to_oid(&info.ty),
+                info.is_primary_key,
+            ))?;
         }
 
-        TableStorage::initialize(
-            ctx.storage(),
-            tx,
-            TableStorageInfo::new(
-                TableRef { namespace: self.info.namespace, table: table_oid },
-                table.columns(tx),
-            ),
-        )?;
+        // must drop the columns before the next line otherwise the next line will fail as it will
+        // try to open the `columns` table again
+        drop(columns);
+
+        // this must be called after creating the columns
+        table.get_or_create_storage(catalog, tx)?;
 
         Ok(Box::new(fallible_iterator::empty()))
     }
 }
 
-impl<S: StorageEngine> Explain<S> for PhysicalCreateTable<S> {
+impl<S: StorageEngine> Explain<'_, S> for PhysicalCreateTable {
     fn explain(
         &self,
-        _catalog: &Catalog<S>,
+        _catalog: Catalog<'_, S>,
         _tx: &dyn Transaction<'_, S>,
         f: &mut fmt::Formatter<'_>,
     ) -> explain::Result {

@@ -1,16 +1,11 @@
+use std::error::Error;
 use std::fmt;
-use std::ops::Index;
-use std::sync::Arc;
+use std::ops::{Index, IndexMut};
 
-use nsql_catalog::schema::Schema;
 use rkyv::with::RefAsBox;
 use rkyv::Archived;
 
-use crate::value::Value;
-
-pub struct TupleDeserializationContext {
-    pub schema: Arc<Schema>,
-}
+use crate::value::{CastError, Value};
 
 #[derive(Debug, Clone, PartialEq, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
 #[repr(transparent)]
@@ -79,6 +74,13 @@ impl From<Vec<Value>> for Tuple {
     }
 }
 
+impl<const N: usize> From<[Value; N]> for Tuple {
+    #[inline]
+    fn from(values: [Value; N]) -> Self {
+        Self::new(values.into())
+    }
+}
+
 impl From<Box<[Value]>> for Tuple {
     #[inline]
     fn from(values: Box<[Value]>) -> Self {
@@ -102,6 +104,22 @@ impl Index<TupleIndex> for Tuple {
     }
 }
 
+impl Index<usize> for Tuple {
+    type Output = Value;
+
+    #[inline]
+    fn index(&self, index: usize) -> &Self::Output {
+        &self.0[index]
+    }
+}
+
+impl IndexMut<usize> for Tuple {
+    #[inline]
+    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
+        &mut self.0[index]
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Copy)]
 pub struct TupleIndex(usize);
 
@@ -115,5 +133,69 @@ impl TupleIndex {
     #[inline]
     pub fn as_usize(&self) -> usize {
         self.0
+    }
+}
+
+#[derive(Debug)]
+pub enum FromTupleError {
+    ColumnCountMismatch { expected: usize, actual: usize },
+    InvalidCast(Box<dyn Error + Send + Sync>),
+}
+
+impl fmt::Display for FromTupleError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::ColumnCountMismatch { expected, actual } => {
+                write!(f, "expected {} columns, got {}", expected, actual)
+            }
+            Self::InvalidCast(err) => write!(f, "invalid cast: {}", err),
+        }
+    }
+}
+
+impl Error for FromTupleError {}
+
+impl<T: 'static> From<CastError<T>> for FromTupleError {
+    fn from(err: CastError<T>) -> Self {
+        Self::InvalidCast(Box::new(err))
+    }
+}
+
+pub trait FromTuple: Sized {
+    fn from_tuple(tuple: Tuple) -> Result<Self, FromTupleError>;
+}
+
+impl FromTuple for () {
+    fn from_tuple(tuple: Tuple) -> Result<Self, FromTupleError> {
+        if tuple.is_empty() {
+            Ok(())
+        } else {
+            Err(FromTupleError::ColumnCountMismatch { expected: 0, actual: tuple.len() })
+        }
+    }
+}
+
+pub trait IntoTuple {
+    fn into_tuple(self) -> Tuple;
+}
+
+impl IntoTuple for Value {
+    #[inline]
+    fn into_tuple(self) -> Tuple {
+        Tuple::new(Box::new([self]))
+    }
+}
+
+impl IntoTuple for Tuple {
+    #[inline]
+    fn into_tuple(self) -> Tuple {
+        self
+    }
+}
+
+impl IntoTuple for () {
+    #[inline]
+    fn into_tuple(self) -> Tuple {
+        Tuple::empty()
     }
 }

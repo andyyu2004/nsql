@@ -1,37 +1,79 @@
-mod column;
-
 use std::fmt;
-use std::sync::Arc;
 
-// use nsql_storage::TableStorage;
-use nsql_storage_engine::{StorageEngine, Transaction};
+use anyhow::Result;
+use nsql_storage::TableStorage;
+use nsql_storage_engine::{
+    ExecutionMode, FallibleIterator, ReadWriteExecutionMode, StorageEngine, Transaction,
+};
 
-pub use self::column::{Column, ColumnIndex, ColumnRef, CreateColumnInfo};
-use crate::private::CatalogEntity;
-use crate::set::CatalogSet;
-use crate::{Catalog, Container, Entity, EntityRef, Name, Namespace, Oid};
+use super::*;
+use crate::{bootstrap, Catalog, Column, Entity, Name, Namespace, Oid, SystemEntity};
 
-pub struct Table<S> {
-    oid: Oid<Self>,
-    name: Name,
-    columns: CatalogSet<S, Column>,
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Table {
+    pub(crate) oid: Oid<Self>,
+    pub(crate) namespace: Oid<Namespace>,
+    pub(crate) name: Name,
 }
 
-impl<S: StorageEngine> Table<S> {
+impl Table {
+    pub fn new(namespace: Oid<Namespace>, name: Name) -> Self {
+        Self { oid: crate::hack_new_oid_tmp(), namespace, name }
+    }
+
     #[inline]
     pub fn name(&self) -> &Name {
         &self.name
     }
 
-    #[inline]
-    pub fn columns(&self, tx: &dyn Transaction<'_, S>) -> Vec<Arc<Column>> {
-        self.all::<Column>(tx)
+    pub fn storage<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
+        &self,
+        catalog: Catalog<'env, S>,
+        tx: M::TransactionRef<'txn>,
+    ) -> Result<TableStorage<'env, 'txn, S, M>> {
+        Ok(TableStorage::open(catalog.storage, tx, self.table_storage_info(catalog, &tx)?)?)
     }
-}
 
-impl<S> fmt::Debug for Table<S> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Table").field("name", &self.name).finish_non_exhaustive()
+    pub fn get_or_create_storage<'env, 'txn, S: StorageEngine>(
+        &self,
+        catalog: Catalog<'env, S>,
+        tx: &'txn S::WriteTransaction<'env>,
+    ) -> Result<TableStorage<'env, 'txn, S, ReadWriteExecutionMode>> {
+        let storage = catalog.storage();
+        Ok(TableStorage::create(storage, tx, self.table_storage_info(catalog, tx)?)?)
+    }
+
+    fn table_storage_info<'env, S: StorageEngine>(
+        &self,
+        catalog: Catalog<'env, S>,
+        tx: &dyn Transaction<'env, S>,
+    ) -> Result<TableStorageInfo> {
+        Ok(TableStorageInfo::new(
+            self.oid.untyped(),
+            self.columns(catalog, tx)?.iter().map(|c| c.into()).collect(),
+        ))
+    }
+
+    pub fn columns<'env, S: StorageEngine>(
+        &self,
+        catalog: Catalog<'env, S>,
+        tx: &dyn Transaction<'env, S>,
+    ) -> Result<Vec<Column>> {
+        let mut columns = catalog
+            .columns(tx)?
+            .scan()?
+            .filter(|col| Ok(col.table == self.oid))
+            .collect::<Vec<_>>()?;
+        assert!(!columns.is_empty(), "no columns found for table `{}` {}`", self.oid, self.name);
+
+        columns.sort_by_key(|col| col.index());
+
+        Ok(columns)
+    }
+
+    #[inline]
+    pub fn namespace(&self) -> Oid<Namespace> {
+        self.namespace
     }
 }
 
@@ -45,7 +87,7 @@ impl fmt::Debug for CreateTableInfo {
     }
 }
 
-impl<S: StorageEngine> Entity for Table<S> {
+impl Entity for Table {
     #[inline]
     fn oid(&self) -> Oid<Self> {
         self.oid
@@ -62,63 +104,46 @@ impl<S: StorageEngine> Entity for Table<S> {
     }
 }
 
-impl<S: StorageEngine> CatalogEntity<S> for Table<S> {
-    type Container = Namespace<S>;
-
-    type CreateInfo = CreateTableInfo;
-
-    fn catalog_set(container: &Self::Container) -> &CatalogSet<S, Self> {
-        &container.tables
-    }
-
-    fn create(_tx: &S::WriteTransaction<'_>, oid: Oid<Self>, info: Self::CreateInfo) -> Self {
-        Self { oid, name: info.name, columns: Default::default() }
-    }
-}
-
-impl<S: StorageEngine> Container<S> for Table<S> {}
-
-pub struct TableRef<S> {
-    pub namespace: Oid<Namespace<S>>,
-    pub table: Oid<Table<S>>,
-}
-
-impl<S> fmt::Debug for TableRef<S> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("TableRef")
-            .field("namespace", &self.namespace)
-            .field("table", &self.table)
-            .finish()
-    }
-}
-
-impl<S> fmt::Display for TableRef<S> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}.{}", self.namespace, self.table)
-    }
-}
-
-impl<S> Clone for TableRef<S> {
-    #[inline]
-    fn clone(&self) -> Self {
-        *self
-    }
-}
-
-impl<S> Copy for TableRef<S> {}
-
-impl<S: StorageEngine> EntityRef<S> for TableRef<S> {
-    type Entity = Table<S>;
-
-    type Container = Namespace<S>;
+impl SystemEntity for Table {
+    type Parent = Namespace;
 
     #[inline]
-    fn container(self, catalog: &Catalog<S>, tx: &dyn Transaction<'_, S>) -> Arc<Self::Container> {
-        catalog.get(tx, self.namespace).expect("namespace should exist for `tx`")
+    fn parent_oid(&self) -> Option<Oid<Self::Parent>> {
+        Some(self.namespace)
     }
 
-    #[inline]
-    fn entity_oid(self) -> Oid<Self::Entity> {
-        self.table
+    fn storage_info() -> TableStorageInfo {
+        TableStorageInfo::new(
+            bootstrap::oid::TABLE_TABLE.untyped(),
+            vec![
+                ColumnStorageInfo::new(LogicalType::Oid, true),
+                ColumnStorageInfo::new(LogicalType::Oid, false),
+                ColumnStorageInfo::new(LogicalType::Text, false),
+            ],
+        )
+    }
+}
+
+impl IntoTuple for Table {
+    fn into_tuple(self) -> Tuple {
+        Tuple::from([
+            Value::Oid(self.oid.untyped()),
+            Value::Oid(self.namespace.untyped()),
+            Value::Text(self.name.to_string()),
+        ])
+    }
+}
+
+impl FromTuple for Table {
+    fn from_tuple(mut tuple: Tuple) -> Result<Self, FromTupleError> {
+        if tuple.len() != 3 {
+            return Err(FromTupleError::ColumnCountMismatch { expected: 3, actual: tuple.len() });
+        }
+
+        Ok(Self {
+            oid: tuple[0].take().cast_non_null()?,
+            namespace: tuple[1].take().cast_non_null()?,
+            name: tuple[2].take().cast_non_null()?,
+        })
     }
 }

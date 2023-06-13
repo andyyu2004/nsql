@@ -2,18 +2,22 @@ use std::error::Error;
 use std::fmt;
 use std::marker::PhantomData;
 
-use nsql_catalog::schema::LogicalType;
+use nsql_core::{LogicalType, Name, Oid, UntypedOid};
 use rust_decimal::prelude::ToPrimitive;
 pub use rust_decimal::Decimal;
 
 pub struct CastError<T> {
     value: Value,
-    phantom: PhantomData<T>,
+    phantom: PhantomData<fn() -> T>,
 }
 
 impl<T> CastError<T> {
     pub fn new(value: Value) -> Self {
         Self { value, phantom: PhantomData }
+    }
+
+    pub fn cast<U>(self) -> CastError<U> {
+        CastError::new(self.value)
     }
 }
 
@@ -43,7 +47,8 @@ impl<T> Error for CastError<T> {}
 #[archive_attr(derive(Debug))]
 pub enum Value {
     Null,
-    Int(i32),
+    Int32(i32),
+    Oid(UntypedOid),
     Bool(bool),
     Decimal(Decimal),
     Text(String),
@@ -69,12 +74,17 @@ impl<'a, S: rkyv::ser::Serializer> rkyv::Serialize<S> for &'a Value {
 
 impl Value {
     #[inline]
-    pub fn cast<T: Cast>(self, default: T) -> Result<T, CastError<T>> {
+    pub fn take(&mut self) -> Self {
+        std::mem::replace(self, Value::Null)
+    }
+
+    #[inline]
+    pub fn cast<T: FromValue>(self) -> Result<Option<T>, CastError<T>> {
         if self.is_null() {
-            return Ok(default);
+            return Ok(None);
         }
 
-        self.cast_non_null()
+        self.cast_non_null().map(Some)
     }
 
     #[inline]
@@ -83,19 +93,23 @@ impl Value {
     }
 
     #[inline]
-    pub fn cast_non_null<T: Cast>(self) -> Result<T, CastError<T>> {
-        assert!(!self.is_null());
-        T::cast(self)
+    pub fn cast_non_null<T: FromValue>(self) -> Result<T, CastError<T>> {
+        if self.is_null() {
+            return Err(CastError::new(self));
+        }
+
+        T::from_value(self)
     }
 
     #[inline]
     pub fn ty(&self) -> LogicalType {
         match self {
             Value::Null => LogicalType::Null,
-            Value::Int(_) => LogicalType::Int,
+            Value::Int32(_) => LogicalType::Int,
             Value::Bool(_) => LogicalType::Bool,
             Value::Decimal(_) => LogicalType::Decimal,
             Value::Text(_) => LogicalType::Text,
+            Value::Oid(_) => LogicalType::Oid,
         }
     }
 }
@@ -108,35 +122,40 @@ impl fmt::Display for Value {
             Value::Bool(b) => write!(f, "{b}"),
             Value::Decimal(d) => write!(f, "{d}"),
             Value::Text(s) => write!(f, "{s}"),
-            Value::Int(i) => write!(f, "{i}"),
+            Value::Int32(i) => write!(f, "{i}"),
+            Value::Oid(oid) => write!(f, "{oid}"),
         }
     }
 }
 
 // FIXME missing lots of implementations
-pub trait Cast: private::Sealed + Sized {
+pub trait FromValue: Sized {
     /// Cast a nsql `value` to a rust value.
-    #[doc(hidden)]
-    fn cast(value: Value) -> Result<Self, CastError<Self>>;
+    fn from_value(value: Value) -> Result<Self, CastError<Self>>;
 }
 
-impl private::Sealed for u64 {}
-
-impl Cast for u64 {
-    fn cast(value: Value) -> Result<Self, CastError<Self>> {
+impl FromValue for u64 {
+    fn from_value(value: Value) -> Result<Self, CastError<Self>> {
         match value {
             Value::Bool(b) => Ok(b as u64),
-            Value::Int(i) => Ok(i as u64),
+            Value::Int32(i) => Ok(i as u64),
             Value::Decimal(d) => d.to_u64().ok_or_else(|| CastError::new(value)),
             _ => Err(CastError { value, phantom: PhantomData }),
         }
     }
 }
 
-impl private::Sealed for bool {}
+impl<T> FromValue for Oid<T> {
+    fn from_value(value: Value) -> Result<Self, CastError<Self>> {
+        match value {
+            Value::Oid(oid) => Ok(oid.cast()),
+            _ => Err(CastError { value, phantom: PhantomData }),
+        }
+    }
+}
 
-impl Cast for bool {
-    fn cast(value: Value) -> Result<Self, CastError<Self>> {
+impl FromValue for bool {
+    fn from_value(value: Value) -> Result<Self, CastError<Self>> {
         match value {
             Value::Bool(b) => Ok(b),
             _ => Err(CastError { value, phantom: PhantomData }),
@@ -144,6 +163,42 @@ impl Cast for bool {
     }
 }
 
-mod private {
-    pub trait Sealed {}
+impl FromValue for i8 {
+    fn from_value(value: Value) -> Result<Self, CastError<Self>> {
+        match value {
+            Value::Int32(i) => Ok(i as i8),
+            _ => Err(CastError { value, phantom: PhantomData }),
+        }
+    }
+}
+
+impl FromValue for u8 {
+    fn from_value(value: Value) -> Result<Self, CastError<Self>> {
+        match value {
+            Value::Int32(i) => Ok(i as u8),
+            _ => Err(CastError { value, phantom: PhantomData }),
+        }
+    }
+}
+
+impl FromValue for String {
+    fn from_value(value: Value) -> Result<Self, CastError<Self>> {
+        match value {
+            Value::Text(s) => Ok(s),
+            _ => Err(CastError { value, phantom: PhantomData }),
+        }
+    }
+}
+
+impl FromValue for Name {
+    fn from_value(value: Value) -> Result<Self, CastError<Self>> {
+        match value {
+            Value::Text(s) => Ok(s.into()),
+            _ => Err(CastError { value, phantom: PhantomData }),
+        }
+    }
+}
+
+pub trait ToValue {
+    fn to_value(self) -> Value;
 }

@@ -4,21 +4,21 @@
 pub mod expr;
 use std::fmt;
 
-use nsql_catalog::{CreateColumnInfo, Namespace, Oid, TableRef};
-use nsql_core::Name;
+use nsql_catalog::{CreateColumnInfo, CreateNamespaceInfo, Namespace, Table};
+use nsql_core::{Name, Oid};
 pub use nsql_storage::tuple::TupleIndex;
 pub use nsql_storage::value::{Decimal, Value};
 
 pub use self::expr::*;
 
 #[derive(Clone)]
-pub struct CreateTableInfo<S> {
+pub struct CreateTableInfo {
     pub name: Name,
-    pub namespace: Oid<Namespace<S>>,
+    pub namespace: Oid<Namespace>,
     pub columns: Vec<CreateColumnInfo>,
 }
 
-impl<S> fmt::Debug for CreateTableInfo<S> {
+impl fmt::Debug for CreateTableInfo {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("CreateTableInfo")
             .field("name", &self.name)
@@ -26,12 +26,6 @@ impl<S> fmt::Debug for CreateTableInfo<S> {
             .field("columns", &self.columns)
             .finish()
     }
-}
-
-#[derive(Debug, Clone)]
-pub struct CreateNamespaceInfo {
-    pub name: Name,
-    pub if_not_exists: bool,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -69,12 +63,12 @@ impl fmt::Display for ObjectType {
     }
 }
 
-#[derive(Clone)]
-pub enum EntityRef<S> {
-    Table(TableRef<S>),
+#[derive(Clone, Copy)]
+pub enum EntityRef {
+    Table(Oid<Table>),
 }
 
-impl<S> fmt::Debug for EntityRef<S> {
+impl fmt::Debug for EntityRef {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Table(table) => write!(f, "{table:?}"),
@@ -83,28 +77,28 @@ impl<S> fmt::Debug for EntityRef<S> {
 }
 
 #[derive(Debug, Clone)]
-pub enum Stmt<S> {
+pub enum Stmt {
     Show(ObjectType),
-    Drop(Vec<EntityRef<S>>),
+    Drop(Vec<EntityRef>),
     Transaction(TransactionStmtKind),
     CreateNamespace(CreateNamespaceInfo),
-    CreateTable(CreateTableInfo<S>),
-    Query(Box<QueryPlan<S>>),
-    Explain(ExplainMode, Box<Stmt<S>>),
+    CreateTable(CreateTableInfo),
+    Query(Box<QueryPlan>),
+    Explain(ExplainMode, Box<Stmt>),
     Insert {
-        table_ref: TableRef<S>,
+        table: Oid<Table>,
         projection: Box<[Expr]>,
-        source: Box<QueryPlan<S>>,
+        source: Box<QueryPlan>,
         returning: Option<Box<[Expr]>>,
     },
     Update {
-        table_ref: TableRef<S>,
-        source: Box<QueryPlan<S>>,
+        table: Oid<Table>,
+        source: Box<QueryPlan>,
         returning: Option<Box<[Expr]>>,
     },
 }
 
-impl<S> Stmt<S> {
+impl Stmt {
     pub fn required_transaction_mode(&self) -> TransactionMode {
         match self {
             Stmt::Drop(_)

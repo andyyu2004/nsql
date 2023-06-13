@@ -34,6 +34,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode
 {
     fn children(&self) -> &[Arc<dyn PhysicalNode<'env, 'txn, S, M>>] {
         // no children as we don't actually need to run anything (unless we're doing an analyse which is not implemented)
+        let _ = self.children;
         &[]
     }
 
@@ -65,18 +66,18 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
     fn source(
         self: Arc<Self>,
         _ctx: &'txn ExecutionContext<'env, S, M>,
-    ) -> ExecutionResult<TupleStream<'txn, S>> {
+    ) -> ExecutionResult<TupleStream<'txn>> {
         let plan = self.stringified_plan.take().expect("should not be called again");
         Ok(Box::new(fallible_iterator::once(Tuple::from(vec![Value::Text(plan)]))))
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Explain<S>
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Explain<'_, S>
     for PhysicalExplain<'env, 'txn, S, M>
 {
     fn explain(
         &self,
-        _catalog: &Catalog<S>,
+        _catalog: Catalog<'_, S>,
         _tx: &dyn Transaction<'_, S>,
         _f: &mut fmt::Formatter<'_>,
     ) -> explain::Result {

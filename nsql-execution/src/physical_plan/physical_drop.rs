@@ -1,39 +1,38 @@
-use nsql_catalog::EntityRef;
 use nsql_storage_engine::fallible_iterator;
 
 use super::*;
 use crate::{ReadWriteExecutionMode, TupleStream};
 
-pub struct PhysicalDrop<S> {
-    refs: Vec<ir::EntityRef<S>>,
+pub struct PhysicalDrop {
+    refs: Vec<ir::EntityRef>,
 }
 
-impl<S> fmt::Debug for PhysicalDrop<S> {
+impl fmt::Debug for PhysicalDrop {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("PhysicalDrop").field("refs", &self.refs).finish()
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalDrop<S> {
-    pub(crate) fn plan(
-        refs: Vec<ir::EntityRef<S>>,
-    ) -> Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode<S>>> {
+impl<'env: 'txn, 'txn> PhysicalDrop {
+    pub(crate) fn plan<S: StorageEngine>(
+        refs: Vec<ir::EntityRef>,
+    ) -> Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode>> {
         Arc::new(Self { refs })
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode<S>>
-    for PhysicalDrop<S>
+impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode>
+    for PhysicalDrop
 {
-    fn children(&self) -> &[Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode<S>>>] {
+    fn children(&self) -> &[Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode>>] {
         &[]
     }
 
     fn as_source(
         self: Arc<Self>,
     ) -> Result<
-        Arc<dyn PhysicalSource<'env, 'txn, S, ReadWriteExecutionMode<S>>>,
-        Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode<S>>>,
+        Arc<dyn PhysicalSource<'env, 'txn, S, ReadWriteExecutionMode>>,
+        Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode>>,
     > {
         Ok(self)
     }
@@ -41,8 +40,8 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalNode<'env, 'txn, S, ReadWriteEx
     fn as_sink(
         self: Arc<Self>,
     ) -> Result<
-        Arc<dyn PhysicalSink<'env, 'txn, S, ReadWriteExecutionMode<S>>>,
-        Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode<S>>>,
+        Arc<dyn PhysicalSink<'env, 'txn, S, ReadWriteExecutionMode>>,
+        Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode>>,
     > {
         Err(self)
     }
@@ -50,25 +49,30 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalNode<'env, 'txn, S, ReadWriteEx
     fn as_operator(
         self: Arc<Self>,
     ) -> Result<
-        Arc<dyn PhysicalOperator<'env, 'txn, S, ReadWriteExecutionMode<S>>>,
-        Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode<S>>>,
+        Arc<dyn PhysicalOperator<'env, 'txn, S, ReadWriteExecutionMode>>,
+        Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode>>,
     > {
         Err(self)
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSource<'env, 'txn, S, ReadWriteExecutionMode<S>>
-    for PhysicalDrop<S>
+impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSource<'env, 'txn, S, ReadWriteExecutionMode>
+    for PhysicalDrop
 {
     fn source(
         self: Arc<Self>,
-        ctx: &'txn ExecutionContext<'env, S, ReadWriteExecutionMode<S>>,
-    ) -> ExecutionResult<TupleStream<'txn, S>> {
+        ctx: &'txn ExecutionContext<'env, S, ReadWriteExecutionMode>,
+    ) -> ExecutionResult<TupleStream<'txn>> {
+        tracing::debug!("executing physical drop");
+
         let catalog = ctx.catalog();
         let tx = ctx.tx()?;
-        for entity_ref in &self.refs {
+        for &entity_ref in &self.refs {
+            tracing::debug!(entity = ?entity_ref, "dropping");
             match entity_ref {
-                ir::EntityRef::Table(table_ref) => table_ref.delete(&catalog, tx)?,
+                ir::EntityRef::Table(table) => {
+                    catalog.drop_table(tx, table)?;
+                }
             }
         }
 
@@ -76,22 +80,22 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSource<'env, 'txn, S, ReadWrite
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine> Explain<S> for PhysicalDrop<S> {
+impl<'env: 'txn, 'txn, S: StorageEngine> Explain<'env, S> for PhysicalDrop {
     fn explain(
         &self,
-        catalog: &Catalog<S>,
-        tx: &dyn Transaction<'_, S>,
+        catalog: Catalog<'env, S>,
+        tx: &dyn Transaction<'env, S>,
         f: &mut fmt::Formatter<'_>,
     ) -> explain::Result {
         write!(f, "drop ")?;
-        for (i, entity_ref) in self.refs.iter().enumerate() {
+        for (i, &entity_ref) in self.refs.iter().enumerate() {
             if i > 0 {
                 write!(f, ", ")?;
             }
 
             match entity_ref {
-                ir::EntityRef::Table(table_ref) => {
-                    write!(f, "table {}", table_ref.get(catalog, tx).name())?
+                ir::EntityRef::Table(table) => {
+                    write!(f, "table {}", catalog.get(tx, table)?.name())?
                 }
             }
         }

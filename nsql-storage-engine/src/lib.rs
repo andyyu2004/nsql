@@ -13,7 +13,7 @@ use std::path::Path;
 pub use fallible_iterator;
 pub use fallible_iterator::FallibleIterator;
 
-pub trait StorageEngine: Clone + Send + Sync + Sized + fmt::Debug + 'static {
+pub trait StorageEngine: Send + Sync + Sized + fmt::Debug + 'static {
     type Error: Send + Sync + Error + 'static;
 
     type Bytes<'txn>: Deref<Target = [u8]>;
@@ -64,6 +64,8 @@ pub trait StorageEngine: Clone + Send + Sync + Sized + fmt::Debug + 'static {
     ) -> Result<Self::WriteTree<'env, 'txn>, Self::Error>
     where
         'env: 'txn;
+
+    fn drop_tree(&self, txn: &Self::WriteTransaction<'_>, name: &str) -> Result<(), Self::Error>;
 }
 
 pub type Range<'a, S> = Box<
@@ -98,6 +100,35 @@ pub trait WriteTree<'env, 'txn, S: StorageEngine>: ReadTree<'env, 'txn, S> {
 
 pub trait Transaction<'env, S: StorageEngine> {
     fn as_read_or_write_ref(&self) -> ReadOrWriteTransactionRef<'env, '_, S>;
+
+    fn as_dyn(&self) -> &dyn Transaction<'env, S>;
+}
+
+impl<'a, 'env, S: StorageEngine> Transaction<'env, S> for &'a dyn Transaction<'env, S> {
+    #[inline]
+    fn as_read_or_write_ref(&self) -> ReadOrWriteTransactionRef<'env, '_, S> {
+        (*self).as_read_or_write_ref()
+    }
+
+    #[inline]
+    fn as_dyn(&self) -> &dyn Transaction<'env, S> {
+        *self
+    }
+}
+
+impl<'a, 'env, Tx, S: StorageEngine> Transaction<'env, S> for &'a Tx
+where
+    Tx: Transaction<'env, S>,
+{
+    #[inline]
+    fn as_read_or_write_ref(&self) -> ReadOrWriteTransactionRef<'env, '_, S> {
+        (*self).as_read_or_write_ref()
+    }
+
+    #[inline]
+    fn as_dyn(&self) -> &dyn Transaction<'env, S> {
+        *self
+    }
 }
 
 pub trait WriteTransaction<'env, S: StorageEngine>: Transaction<'env, S> {
@@ -119,6 +150,11 @@ impl<'env, S: StorageEngine> Transaction<'env, S> for ReadOrWriteTransaction<'en
             ReadOrWriteTransaction::Write(tx) => ReadOrWriteTransactionRef::Write(tx),
         }
     }
+
+    #[inline]
+    fn as_dyn(&self) -> &dyn Transaction<'env, S> {
+        self
+    }
 }
 
 pub enum ReadOrWriteTransactionRef<'env, 'txn, S: StorageEngine> {
@@ -138,8 +174,14 @@ impl<'env: 'txn, 'txn, S: StorageEngine> Copy for ReadOrWriteTransactionRef<'env
 impl<'env: 'txn, 'txn, S: StorageEngine> Transaction<'env, S>
     for ReadOrWriteTransactionRef<'env, 'txn, S>
 {
+    #[inline]
     fn as_read_or_write_ref(&self) -> ReadOrWriteTransactionRef<'env, '_, S> {
         *self
+    }
+
+    #[inline]
+    fn as_dyn(&self) -> &dyn Transaction<'env, S> {
+        self
     }
 }
 
@@ -186,8 +228,52 @@ impl<'env: 'txn, 'txn, S: StorageEngine> ReadTree<'env, 'txn, S>
     }
 }
 
+// helper trait to help with conversion
+// there is probably a way to do this without this trait
+#[doc(hidden)]
+pub trait TransactionConversionHack<'env, 'txn, Tx, S> {
+    fn as_tx_ref(tx: &'txn Tx) -> Self;
+
+    fn dyn_ref(self) -> &'txn dyn Transaction<'env, S>;
+}
+
+impl<'env, 'txn, S: StorageEngine> TransactionConversionHack<'env, 'txn, S::Transaction<'env>, S>
+    for &'txn dyn Transaction<'env, S>
+{
+    #[inline]
+    fn as_tx_ref(tx: &'txn S::Transaction<'env>) -> Self {
+        tx
+    }
+
+    #[inline]
+    fn dyn_ref(self) -> &'txn dyn Transaction<'env, S> {
+        self
+    }
+}
+
+impl<'env, 'txn, T: Transaction<'env, S>, S: StorageEngine>
+    TransactionConversionHack<'env, 'txn, T, S> for &'txn T
+{
+    #[inline]
+    fn as_tx_ref(tx: &'txn T) -> Self {
+        tx
+    }
+
+    #[inline]
+    fn dyn_ref(self) -> &'txn dyn Transaction<'env, S> {
+        self
+    }
+}
+
 pub trait ExecutionMode<'env, S: StorageEngine>: private::Sealed + Clone + Copy + 'static {
     type Transaction: Transaction<'env, S>;
+
+    type TransactionRef<'txn>: Transaction<'env, S>
+        + 'txn
+        + Copy
+        + TransactionConversionHack<'env, 'txn, Self::Transaction, S>
+    where
+        'env: 'txn;
 
     type Tree<'txn>: ReadTree<'env, 'txn, S>
     where
@@ -197,7 +283,7 @@ pub trait ExecutionMode<'env, S: StorageEngine>: private::Sealed + Clone + Copy 
 
     fn open_tree<'txn>(
         storage: &S,
-        txn: &'txn Self::Transaction,
+        txn: Self::TransactionRef<'txn>,
         name: &str,
     ) -> Result<Self::Tree<'txn>, S::Error>;
 }
@@ -206,21 +292,15 @@ mod private {
     pub trait Sealed {}
 }
 
-pub struct ReadonlyExecutionMode<S>(std::marker::PhantomData<S>);
+#[derive(Clone, Copy, Debug)]
+pub enum ReadonlyExecutionMode {}
 
-impl<S> Clone for ReadonlyExecutionMode<S> {
-    #[inline]
-    fn clone(&self) -> Self {
-        Self(self.0)
-    }
-}
+impl private::Sealed for ReadonlyExecutionMode {}
 
-impl<S> private::Sealed for ReadonlyExecutionMode<S> {}
-
-impl<S> Copy for ReadonlyExecutionMode<S> {}
-
-impl<'env, S: StorageEngine> ExecutionMode<'env, S> for ReadonlyExecutionMode<S> {
+impl<'env, S: StorageEngine> ExecutionMode<'env, S> for ReadonlyExecutionMode {
     type Transaction = S::Transaction<'env>;
+
+    type TransactionRef<'txn> = &'txn dyn Transaction<'env, S> where 'env: 'txn;
 
     type Tree<'txn> = S::ReadTree<'env, 'txn> where 'env: 'txn;
 
@@ -230,7 +310,7 @@ impl<'env, S: StorageEngine> ExecutionMode<'env, S> for ReadonlyExecutionMode<S>
 
     fn open_tree<'txn>(
         storage: &S,
-        txn: &'txn Self::Transaction,
+        txn: Self::TransactionRef<'txn>,
         name: &str,
     ) -> Result<Self::Tree<'txn>, S::Error> {
         // FIXME don't unwrap
@@ -238,21 +318,15 @@ impl<'env, S: StorageEngine> ExecutionMode<'env, S> for ReadonlyExecutionMode<S>
     }
 }
 
-pub struct ReadWriteExecutionMode<S>(std::marker::PhantomData<S>);
+#[derive(Clone, Copy)]
+pub struct ReadWriteExecutionMode;
 
-impl<S> Clone for ReadWriteExecutionMode<S> {
-    #[inline]
-    fn clone(&self) -> Self {
-        Self(self.0)
-    }
-}
+impl private::Sealed for ReadWriteExecutionMode {}
 
-impl<S> Copy for ReadWriteExecutionMode<S> {}
-
-impl<S> private::Sealed for ReadWriteExecutionMode<S> {}
-
-impl<'env, S: StorageEngine> ExecutionMode<'env, S> for ReadWriteExecutionMode<S> {
+impl<'env, S: StorageEngine> ExecutionMode<'env, S> for ReadWriteExecutionMode {
     type Transaction = S::WriteTransaction<'env>;
+
+    type TransactionRef<'txn> = &'txn S::WriteTransaction<'env> where 'env: 'txn;
 
     type Tree<'txn> = S::WriteTree<'env, 'txn>
     where
@@ -264,10 +338,9 @@ impl<'env, S: StorageEngine> ExecutionMode<'env, S> for ReadWriteExecutionMode<S
 
     fn open_tree<'txn>(
         storage: &S,
-        txn: &'txn Self::Transaction,
+        txn: Self::TransactionRef<'txn>,
         name: &str,
     ) -> Result<Self::Tree<'txn>, <S as StorageEngine>::Error> {
-        // FIXME don't unwrap
         storage.open_write_tree(txn, name)
     }
 }

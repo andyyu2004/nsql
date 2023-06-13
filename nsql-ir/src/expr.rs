@@ -4,37 +4,37 @@ use std::fmt;
 use std::ops::Deref;
 
 pub use eval::EvalNotConst;
-use nsql_catalog::schema::LogicalType;
-use nsql_catalog::{ColumnIndex, TableRef};
+use nsql_catalog::{ColumnIndex, Table};
+use nsql_core::{LogicalType, Oid};
 use nsql_storage::tuple::TupleIndex;
 use nsql_storage::value::Value;
 
 use crate::Path;
 
 #[derive(Debug, Clone)]
-pub enum QueryPlan<S> {
-    TableRef { table_ref: TableRef<S>, projection: Option<Box<[ColumnIndex]>> },
-    Projection { source: Box<QueryPlan<S>>, projection: Box<[Expr]> },
-    Filter { source: Box<QueryPlan<S>>, predicate: Expr },
+pub enum QueryPlan {
+    TableScan { table: Oid<Table>, projection: Option<Box<[ColumnIndex]>> },
+    Projection { source: Box<QueryPlan>, projection: Box<[Expr]> },
+    Filter { source: Box<QueryPlan>, predicate: Expr },
     Values(Values),
-    Limit(Box<QueryPlan<S>>, u64),
+    Limit(Box<QueryPlan>, u64),
     Empty,
 }
 
-impl<S> QueryPlan<S> {
+impl QueryPlan {
     #[inline]
-    pub fn limit(self: Box<Self>, limit: u64) -> Box<QueryPlan<S>> {
+    pub fn limit(self: Box<Self>, limit: u64) -> Box<QueryPlan> {
         Box::new(QueryPlan::Limit(self, limit))
     }
 
     #[inline]
-    pub fn filter(self: Box<Self>, predicate: Expr) -> Box<QueryPlan<S>> {
+    pub fn filter(self: Box<Self>, predicate: Expr) -> Box<QueryPlan> {
         assert!(matches!(predicate.ty, LogicalType::Bool | LogicalType::Null));
         Box::new(QueryPlan::Filter { source: self, predicate })
     }
 
     #[inline]
-    pub fn project(self: Box<Self>, projection: impl Into<Box<[Expr]>>) -> Box<QueryPlan<S>> {
+    pub fn project(self: Box<Self>, projection: impl Into<Box<[Expr]>>) -> Box<QueryPlan> {
         Box::new(QueryPlan::Projection { source: self, projection: projection.into() })
     }
 }

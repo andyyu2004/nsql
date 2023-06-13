@@ -3,7 +3,7 @@ use std::error::Error;
 use std::path::Path;
 
 use nsql::{Connection, ConnectionState, Nsql};
-use nsql_catalog::schema::LogicalType;
+use nsql_core::LogicalType;
 use nsql_lmdb::LmdbStorageEngine;
 use nsql_redb::RedbStorageEngine;
 use nsql_storage_engine::StorageEngine;
@@ -57,7 +57,7 @@ impl ColumnType for TypeWrapper {
             LogicalType::Decimal => 'D',
             LogicalType::Text => 'T',
             LogicalType::Null => todo!(),
-            LogicalType::Tid => todo!(),
+            LogicalType::Oid => todo!(),
         }
     }
 }

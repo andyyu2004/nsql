@@ -8,7 +8,6 @@ rust_decimal = { version = "1.28.1", default-features = false, features = [
     "rkyv",
 ] }
 nsql-arena = { path = "../nsql-arena" }
-nsql-catalog = { path = "../nsql-catalog" }
 nsql-core = { path = "../nsql-core" }
 nsql-rkyv = { path = "../nsql-rkyv" }
 nsql-util = { path = "../nsql-util" }

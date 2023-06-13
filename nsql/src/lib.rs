@@ -6,8 +6,8 @@ use std::sync::Arc;
 pub use anyhow::Error;
 use arc_swap::ArcSwapOption;
 use nsql_bind::Binder;
-pub use nsql_catalog::schema::LogicalType;
 use nsql_catalog::Catalog;
+pub use nsql_core::LogicalType;
 use nsql_execution::{ExecutionContext, PhysicalPlanner, TransactionContext, TransactionState};
 use nsql_opt::optimize;
 use nsql_plan::Planner;
@@ -18,9 +18,14 @@ use nsql_storage_engine::{ReadOrWriteTransaction, StorageEngine, WriteTransactio
 
 pub type Result<T, E = anyhow::Error> = std::result::Result<T, E>;
 
-#[derive(Clone)]
 pub struct Nsql<S> {
     shared: Arc<Shared<S>>,
+}
+
+impl<S> Clone for Nsql<S> {
+    fn clone(&self) -> Self {
+        Self { shared: self.shared.clone() }
+    }
 }
 
 pub struct MaterializedQueryOutput {
@@ -32,19 +37,15 @@ impl<S: StorageEngine> Nsql<S> {
     pub fn create(path: impl AsRef<Path>) -> Result<Self> {
         let storage = S::create(path)?;
         let tx = storage.begin_write()?;
-        let catalog = Arc::new(Catalog::<S>::create(&tx)?);
+        Catalog::create(&storage, &tx)?;
         tx.commit()?;
 
-        Ok(Self::new(Shared { storage: Storage::new(storage), catalog }))
+        Ok(Self::new(Shared { storage: Storage::new(storage) }))
     }
 
     pub fn open(path: impl AsRef<Path>) -> Result<Self> {
         let storage = S::open(path)?;
-        let tx = storage.begin_write()?;
-        let catalog = Arc::new(Catalog::<S>::create(&tx)?);
-        tx.commit()?;
-
-        Ok(Self::new(Shared { storage: Storage::new(storage), catalog }))
+        Ok(Self::new(Shared { storage: Storage::new(storage) }))
     }
 
     #[inline]
@@ -60,7 +61,6 @@ impl<S: StorageEngine> Nsql<S> {
 
 struct Shared<S> {
     storage: Storage<S>,
-    catalog: Arc<Catalog<S>>,
 }
 
 pub struct Connection<S: StorageEngine> {
@@ -116,10 +116,10 @@ impl<S: StorageEngine> Shared<S> {
         }
 
         let storage = self.storage.storage();
-        let catalog = Arc::clone(&self.catalog);
+        let catalog = Catalog::open(storage);
         let stmt = &statements[0];
 
-        let binder = Binder::new(Arc::clone(&catalog));
+        let binder = Binder::new(catalog);
         let (auto_commit, tx) = match tx {
             Some(tx) => (false, tx),
             None => (
@@ -142,7 +142,7 @@ impl<S: StorageEngine> Shared<S> {
 
         let plan = optimize(plan);
 
-        let planner = PhysicalPlanner::new(Arc::clone(&catalog));
+        let planner = PhysicalPlanner::new(catalog);
 
         let (tx, tuples) = match tx {
             ReadOrWriteTransaction::Read(tx) => {
@@ -170,7 +170,16 @@ impl<S: StorageEngine> Shared<S> {
                     catalog,
                     TransactionContext::new(tx, auto_commit),
                 );
-                let tuples = nsql_execution::execute_write(&ctx, physical_plan)?;
+                let tuples = match nsql_execution::execute_write(&ctx, physical_plan) {
+                    Ok(tuples) => tuples,
+                    Err(err) => {
+                        tracing::info!(error = %err, "aborting write transaction due to error during execution");
+                        let (_, _, tx) = ctx.take_txn();
+                        tx.abort()?;
+                        return Err(err);
+                    }
+                };
+
                 let (auto_commit, state, tx) = ctx.take_txn();
                 match state {
                     TransactionState::Active if auto_commit => {
