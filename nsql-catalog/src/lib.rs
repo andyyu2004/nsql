@@ -123,7 +123,7 @@ impl<'env, S: StorageEngine> Catalog<'env, S> {
     }
 }
 
-pub const DEFAULT_SCHEMA: &str = "main";
+pub const MAIN_SCHEMA: &str = "main";
 
 impl<'env, S: StorageEngine> Catalog<'env, S> {
     pub fn open(storage: &'env S) -> Self {

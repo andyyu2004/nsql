@@ -1,5 +1,5 @@
 use super::*;
-use crate::{bootstrap, Type};
+use crate::Type;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Column {
@@ -103,7 +103,7 @@ impl SystemEntity for Column {
 
     fn storage_info() -> TableStorageInfo {
         TableStorageInfo::new(
-            bootstrap::oid::TABLE_ATTRIBUTE.untyped(),
+            Table::ATTRIBUTE.untyped(),
             vec![
                 ColumnStorageInfo::new(LogicalType::Oid, true),
                 ColumnStorageInfo::new(LogicalType::Oid, false),

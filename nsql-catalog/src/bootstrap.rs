@@ -30,18 +30,24 @@ pub(crate) fn bootstrap<'env, S: StorageEngine>(
     Ok(())
 }
 
-pub(super) mod oid {
-    use super::*;
+impl Table {
+    pub(crate) const NAMESPACE: Oid<Self> = Oid::new(100);
+    pub(crate) const TABLE: Oid<Self> = Oid::new(101);
+    pub(crate) const ATTRIBUTE: Oid<Self> = Oid::new(102);
+    pub(crate) const TYPE: Oid<Self> = Oid::new(103);
+}
 
-    pub(crate) const TABLE_NAMESPACE: Oid<Table> = Oid::new(100);
-    pub(crate) const TABLE_TABLE: Oid<Table> = Oid::new(101);
-    pub(crate) const TABLE_ATTRIBUTE: Oid<Table> = Oid::new(102);
-    pub(crate) const TABLE_TYPE: Oid<Table> = Oid::new(103);
+impl Namespace {
+    pub const MAIN: Oid<Self> = Oid::new(101);
 
-    pub(crate) const TY_OID: Oid<Type> = Oid::new(100);
-    pub(crate) const TY_BOOL: Oid<Type> = Oid::new(101);
-    pub(crate) const TY_INT: Oid<Type> = Oid::new(102);
-    pub(crate) const TY_TEXT: Oid<Type> = Oid::new(103);
+    pub(crate) const CATALOG: Oid<Self> = Oid::new(100);
+}
+
+impl Type {
+    pub(crate) const OID: Oid<Self> = Oid::new(100);
+    pub(crate) const BOOL: Oid<Self> = Oid::new(101);
+    pub(crate) const INT: Oid<Self> = Oid::new(102);
+    pub(crate) const TEXT: Oid<Self> = Oid::new(103);
 }
 
 fn bootstrap_nsql_namespaces() -> impl Iterator<Item = Namespace> {
@@ -55,17 +61,17 @@ fn bootstrap_nsql_namespaces() -> impl Iterator<Item = Namespace> {
 fn bootstrap_nsql_tables() -> impl Iterator<Item = Table> {
     vec![
         Table {
-            oid: oid::TABLE_NAMESPACE,
+            oid: Table::NAMESPACE,
             name: "nsql_namespace".into(),
             namespace: Namespace::CATALOG,
         },
-        Table { oid: oid::TABLE_TABLE, name: "nsql_table".into(), namespace: Namespace::CATALOG },
+        Table { oid: Table::TABLE, name: "nsql_table".into(), namespace: Namespace::CATALOG },
         Table {
-            oid: oid::TABLE_ATTRIBUTE,
+            oid: Table::ATTRIBUTE,
             name: "nsql_attribute".into(),
             namespace: Namespace::CATALOG,
         },
-        Table { oid: oid::TABLE_TYPE, name: "nsql_type".into(), namespace: Namespace::CATALOG },
+        Table { oid: Table::TYPE, name: "nsql_type".into(), namespace: Namespace::CATALOG },
     ]
     .into_iter()
 }
@@ -75,105 +81,105 @@ fn bootstrap_nsql_column() -> impl Iterator<Item = Column> {
         Column {
             oid: Oid::new(0),
             name: "oid".into(),
-            table: oid::TABLE_NAMESPACE,
+            table: Table::NAMESPACE,
             index: ColumnIndex::new(0),
-            ty: oid::TY_OID,
+            ty: Type::OID,
             is_primary_key: true,
         },
         Column {
             oid: Oid::new(1),
             name: "name".into(),
-            table: oid::TABLE_NAMESPACE,
+            table: Table::NAMESPACE,
             index: ColumnIndex::new(1),
-            ty: oid::TY_TEXT,
+            ty: Type::TEXT,
             is_primary_key: false,
         },
         Column {
             oid: Oid::new(2),
             name: "oid".into(),
-            table: oid::TABLE_TABLE,
+            table: Table::TABLE,
             index: ColumnIndex::new(0),
-            ty: oid::TY_OID,
+            ty: Type::OID,
             is_primary_key: true,
         },
         Column {
             oid: Oid::new(3),
             name: "namespace".into(),
-            table: oid::TABLE_TABLE,
+            table: Table::TABLE,
             index: ColumnIndex::new(1),
-            ty: oid::TY_OID,
+            ty: Type::OID,
             is_primary_key: false,
         },
         Column {
             oid: Oid::new(4),
             name: "name".into(),
-            table: oid::TABLE_TABLE,
+            table: Table::TABLE,
             index: ColumnIndex::new(2),
-            ty: oid::TY_TEXT,
+            ty: Type::TEXT,
             is_primary_key: false,
         },
         Column {
             oid: Oid::new(5),
             name: "oid".into(),
-            table: oid::TABLE_ATTRIBUTE,
+            table: Table::ATTRIBUTE,
             index: ColumnIndex::new(0),
-            ty: oid::TY_OID,
+            ty: Type::OID,
             is_primary_key: true,
         },
         Column {
             oid: Oid::new(6),
             name: "table".into(),
-            table: oid::TABLE_ATTRIBUTE,
+            table: Table::ATTRIBUTE,
             index: ColumnIndex::new(1),
-            ty: oid::TY_OID,
+            ty: Type::OID,
             is_primary_key: false,
         },
         Column {
             oid: Oid::new(7),
             name: "name".into(),
-            table: oid::TABLE_ATTRIBUTE,
+            table: Table::ATTRIBUTE,
             index: ColumnIndex::new(2),
-            ty: oid::TY_TEXT,
+            ty: Type::TEXT,
             is_primary_key: false,
         },
         Column {
             oid: Oid::new(8),
             name: "index".into(),
-            table: oid::TABLE_ATTRIBUTE,
+            table: Table::ATTRIBUTE,
             index: ColumnIndex::new(3),
-            ty: oid::TY_INT,
+            ty: Type::INT,
             is_primary_key: false,
         },
         Column {
             oid: Oid::new(9),
             name: "ty".into(),
-            table: oid::TABLE_ATTRIBUTE,
+            table: Table::ATTRIBUTE,
             index: ColumnIndex::new(4),
-            ty: oid::TY_OID,
+            ty: Type::OID,
             is_primary_key: false,
         },
         Column {
             oid: Oid::new(10),
             name: "is_primary_key".into(),
-            table: oid::TABLE_ATTRIBUTE,
+            table: Table::ATTRIBUTE,
             index: ColumnIndex::new(5),
-            ty: oid::TY_BOOL,
+            ty: Type::BOOL,
             is_primary_key: false,
         },
         Column {
             oid: Oid::new(11),
             name: "oid".into(),
-            table: oid::TABLE_TYPE,
+            table: Table::TYPE,
             index: ColumnIndex::new(0),
-            ty: oid::TY_OID,
+            ty: Type::OID,
             is_primary_key: true,
         },
         Column {
             oid: Oid::new(12),
             name: "name".into(),
-            table: oid::TABLE_TYPE,
+            table: Table::TYPE,
             index: ColumnIndex::new(1),
-            ty: oid::TY_TEXT,
+            ty: Type::TEXT,
             is_primary_key: false,
         },
     ]
@@ -182,10 +188,10 @@ fn bootstrap_nsql_column() -> impl Iterator<Item = Column> {
 
 fn bootstrap_nsql_types() -> impl Iterator<Item = Type> {
     vec![
-        Type { oid: oid::TY_OID, name: "oid".into() },
-        Type { oid: oid::TY_BOOL, name: "bool".into() },
-        Type { oid: oid::TY_INT, name: "int".into() },
-        Type { oid: oid::TY_TEXT, name: "text".into() },
+        Type { oid: Type::OID, name: "oid".into() },
+        Type { oid: Type::BOOL, name: "bool".into() },
+        Type { oid: Type::INT, name: "int".into() },
+        Type { oid: Type::TEXT, name: "text".into() },
     ]
     .into_iter()
 }

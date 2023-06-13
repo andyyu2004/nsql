@@ -11,7 +11,7 @@ use ir::expr::EvalNotConst;
 use ir::{Decimal, Path, TransactionMode};
 use itertools::Itertools;
 use nsql_catalog::{
-    Catalog, CreateColumnInfo, CreateNamespaceInfo, Namespace, SystemEntity, Table, DEFAULT_SCHEMA,
+    Catalog, CreateColumnInfo, CreateNamespaceInfo, Namespace, SystemEntity, Table, MAIN_SCHEMA,
 };
 use nsql_core::{LogicalType, Name, Oid};
 use nsql_parse::ast::{self, HiveDistributionStyle};
@@ -399,7 +399,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
             Path::Unqualified(name) => self.bind_namespace(
                 tx,
                 &Path::Qualified {
-                    prefix: Box::new(Path::Unqualified(DEFAULT_SCHEMA.into())),
+                    prefix: Box::new(Path::Unqualified(MAIN_SCHEMA.into())),
                     name: name.clone(),
                 },
             ),
@@ -415,7 +415,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
             Path::Unqualified(name) => self.bind_namespaced_entity(
                 tx,
                 &Path::Qualified {
-                    prefix: Box::new(Path::Unqualified(DEFAULT_SCHEMA.into())),
+                    prefix: Box::new(Path::Unqualified(MAIN_SCHEMA.into())),
                     name: name.clone(),
                 },
             ),

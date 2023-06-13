@@ -1,5 +1,4 @@
 use super::*;
-use crate::bootstrap::oid;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Type {
@@ -30,7 +29,7 @@ impl SystemEntity for Type {
 
     fn storage_info() -> TableStorageInfo {
         TableStorageInfo::new(
-            oid::TABLE_TYPE.untyped(),
+            Table::TYPE.untyped(),
             vec![
                 ColumnStorageInfo::new(LogicalType::Oid, true),
                 ColumnStorageInfo::new(LogicalType::Text, false),
@@ -58,20 +57,20 @@ impl IntoTuple for Type {
 impl Type {
     pub fn oid_to_logical_type(oid: Oid<Self>) -> LogicalType {
         match oid {
-            oid::TY_OID => LogicalType::Oid,
-            oid::TY_BOOL => LogicalType::Bool,
-            oid::TY_INT => LogicalType::Int,
-            oid::TY_TEXT => LogicalType::Text,
+            Type::OID => LogicalType::Oid,
+            Type::BOOL => LogicalType::Bool,
+            Type::INT => LogicalType::Int,
+            Type::TEXT => LogicalType::Text,
             _ => panic!(),
         }
     }
 
     pub fn logical_type_to_oid(logical_type: &LogicalType) -> Oid<Self> {
         match logical_type {
-            LogicalType::Oid => oid::TY_OID,
-            LogicalType::Bool => oid::TY_BOOL,
-            LogicalType::Int => oid::TY_INT,
-            LogicalType::Text => oid::TY_TEXT,
+            LogicalType::Oid => Type::OID,
+            LogicalType::Bool => Type::BOOL,
+            LogicalType::Int => Type::INT,
+            LogicalType::Text => Type::TEXT,
             _ => todo!(),
         }
     }

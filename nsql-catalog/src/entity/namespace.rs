@@ -1,16 +1,9 @@
 use super::*;
-use crate::bootstrap;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Namespace {
     pub(crate) oid: Oid<Namespace>,
     pub(crate) name: Name,
-}
-
-impl Namespace {
-    pub const MAIN: Oid<Self> = Oid::new(101);
-
-    pub(crate) const CATALOG: Oid<Self> = Oid::new(100);
 }
 
 impl Namespace {
@@ -40,7 +33,7 @@ impl SystemEntity for Namespace {
 
     fn storage_info() -> TableStorageInfo {
         TableStorageInfo::new(
-            bootstrap::oid::TABLE_NAMESPACE.untyped(),
+            Table::NAMESPACE.untyped(),
             vec![
                 ColumnStorageInfo::new(LogicalType::Oid, true),
                 ColumnStorageInfo::new(LogicalType::Text, false),

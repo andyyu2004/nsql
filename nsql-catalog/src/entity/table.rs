@@ -7,7 +7,7 @@ use nsql_storage_engine::{
 };
 
 use super::*;
-use crate::{bootstrap, Catalog, Column, Name, Namespace, Oid, SystemEntity};
+use crate::{Catalog, Column, Name, Namespace, Oid, SystemEntity};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Table {
@@ -112,7 +112,7 @@ impl SystemEntity for Table {
 
     fn storage_info() -> TableStorageInfo {
         TableStorageInfo::new(
-            bootstrap::oid::TABLE_TABLE.untyped(),
+            Table::TABLE.untyped(),
             vec![
                 ColumnStorageInfo::new(LogicalType::Oid, true),
                 ColumnStorageInfo::new(LogicalType::Oid, false),
