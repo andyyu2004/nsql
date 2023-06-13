@@ -10,6 +10,7 @@ use nsql_storage_engine::{ExecutionMode, FallibleIterator, ReadWriteExecutionMod
 
 use crate::Result;
 
+// FIXME this should subtrait `Entity`
 pub trait SystemEntity: FromTuple + IntoTuple + Eq + fmt::Debug {
     type Parent: SystemEntity;
 

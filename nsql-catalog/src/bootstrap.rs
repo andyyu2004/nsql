@@ -105,14 +105,22 @@ fn bootstrap_nsql_column() -> Vec<Column> {
         },
         Column {
             oid: Oid::new(3),
-            name: "name".into(),
+            name: "namespace".into(),
             table: oid::TABLE_TABLE,
             index: ColumnIndex::new(1),
-            ty: oid::TY_TEXT,
+            ty: oid::TY_OID,
             is_primary_key: false,
         },
         Column {
             oid: Oid::new(4),
+            name: "name".into(),
+            table: oid::TABLE_TABLE,
+            index: ColumnIndex::new(2),
+            ty: oid::TY_TEXT,
+            is_primary_key: false,
+        },
+        Column {
+            oid: Oid::new(5),
             name: "oid".into(),
             table: oid::TABLE_ATTRIBUTE,
             index: ColumnIndex::new(0),
@@ -120,7 +128,7 @@ fn bootstrap_nsql_column() -> Vec<Column> {
             is_primary_key: true,
         },
         Column {
-            oid: Oid::new(5),
+            oid: Oid::new(6),
             name: "table".into(),
             table: oid::TABLE_ATTRIBUTE,
             index: ColumnIndex::new(1),
@@ -128,7 +136,7 @@ fn bootstrap_nsql_column() -> Vec<Column> {
             is_primary_key: false,
         },
         Column {
-            oid: Oid::new(6),
+            oid: Oid::new(7),
             name: "name".into(),
             table: oid::TABLE_ATTRIBUTE,
             index: ColumnIndex::new(2),
@@ -136,7 +144,7 @@ fn bootstrap_nsql_column() -> Vec<Column> {
             is_primary_key: false,
         },
         Column {
-            oid: Oid::new(7),
+            oid: Oid::new(8),
             name: "index".into(),
             table: oid::TABLE_ATTRIBUTE,
             index: ColumnIndex::new(3),
@@ -144,7 +152,7 @@ fn bootstrap_nsql_column() -> Vec<Column> {
             is_primary_key: false,
         },
         Column {
-            oid: Oid::new(8),
+            oid: Oid::new(9),
             name: "ty".into(),
             table: oid::TABLE_ATTRIBUTE,
             index: ColumnIndex::new(4),
@@ -152,7 +160,7 @@ fn bootstrap_nsql_column() -> Vec<Column> {
             is_primary_key: false,
         },
         Column {
-            oid: Oid::new(9),
+            oid: Oid::new(10),
             name: "is_primary_key".into(),
             table: oid::TABLE_ATTRIBUTE,
             index: ColumnIndex::new(5),
@@ -160,12 +168,20 @@ fn bootstrap_nsql_column() -> Vec<Column> {
             is_primary_key: false,
         },
         Column {
-            oid: Oid::new(10),
+            oid: Oid::new(11),
             name: "oid".into(),
             table: oid::TABLE_TYPE,
             index: ColumnIndex::new(0),
             ty: oid::TY_OID,
             is_primary_key: true,
+        },
+        Column {
+            oid: Oid::new(12),
+            name: "name".into(),
+            table: oid::TABLE_TYPE,
+            index: ColumnIndex::new(1),
+            ty: oid::TY_TEXT,
+            is_primary_key: false,
         },
     ]
 }
