@@ -4,7 +4,7 @@
 pub mod expr;
 use std::fmt;
 
-use nsql_catalog::{CreateColumnInfo, CreateNamespaceInfo, Namespace, TableRef};
+use nsql_catalog::{CreateColumnInfo, CreateNamespaceInfo, Namespace, Table};
 use nsql_core::{Name, Oid};
 pub use nsql_storage::tuple::TupleIndex;
 pub use nsql_storage::value::{Decimal, Value};
@@ -63,9 +63,9 @@ impl fmt::Display for ObjectType {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 pub enum EntityRef {
-    Table(TableRef),
+    Table(Oid<Table>),
 }
 
 impl fmt::Debug for EntityRef {
@@ -86,13 +86,13 @@ pub enum Stmt {
     Query(Box<QueryPlan>),
     Explain(ExplainMode, Box<Stmt>),
     Insert {
-        table_ref: TableRef,
+        table: Oid<Table>,
         projection: Box<[Expr]>,
         source: Box<QueryPlan>,
         returning: Option<Box<[Expr]>>,
     },
     Update {
-        table_ref: TableRef,
+        table: Oid<Table>,
         source: Box<QueryPlan>,
         returning: Option<Box<[Expr]>>,
     },

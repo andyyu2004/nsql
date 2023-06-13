@@ -86,16 +86,16 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalPlanner<'env, S> {
         plan: Box<Plan>,
     ) -> Result<Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode>>> {
         let plan = match *plan {
-            Plan::Update { table_ref, source, returning } => {
+            Plan::Update { table, source, returning } => {
                 let source = self.plan_write_node(tx, source)?;
-                PhysicalUpdate::plan(table_ref, source, returning)
+                PhysicalUpdate::plan(table, source, returning)
             }
-            Plan::Insert { table_ref, projection, source, returning } => {
+            Plan::Insert { table, projection, source, returning } => {
                 let mut source = self.plan_write_node(tx, source)?;
                 if !projection.is_empty() {
                     source = PhysicalProjection::plan(source, projection);
                 };
-                PhysicalInsert::plan(table_ref, source, returning)
+                PhysicalInsert::plan(table, source, returning)
             }
             Plan::CreateTable(info) => PhysicalCreateTable::plan(info),
             Plan::CreateNamespace(info) => PhysicalCreateNamespace::plan(info),
@@ -149,7 +149,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalPlanner<'env, S> {
     ) -> Result<Arc<dyn PhysicalNode<'env, 'txn, S, M>>> {
         let plan = match *plan {
             Plan::Transaction(kind) => PhysicalTransaction::plan(kind),
-            Plan::Scan { table_ref, projection } => PhysicalTableScan::plan(table_ref, projection),
+            Plan::Scan { table, projection } => PhysicalTableScan::plan(table, projection),
             Plan::Show(object_type) => PhysicalShow::plan(object_type),
             Plan::Explain(kind, plan) => {
                 return self.explain_plan(tx, kind, f(self, tx, plan)?);

@@ -1,22 +1,20 @@
-use std::sync::OnceLock;
-
 use itertools::Itertools;
-use nsql_catalog::{ColumnIndex, Entity, Table, TableRef};
+use nsql_catalog::{ColumnIndex, Entity, Table};
+use nsql_core::Oid;
 use nsql_storage::tuple::TupleIndex;
 use nsql_storage_engine::FallibleIterator;
 
 use super::*;
 
 pub struct PhysicalTableScan {
-    table_ref: TableRef,
-    table: OnceLock<Arc<Table>>,
+    table: Oid<Table>,
     projection: Option<Box<[ColumnIndex]>>,
 }
 
 impl fmt::Debug for PhysicalTableScan {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("PhysicalTableScan")
-            .field("table_ref", &self.table_ref)
+            .field("table", &self.table)
             .field("projection", &self.projection)
             .finish()
     }
@@ -24,10 +22,10 @@ impl fmt::Debug for PhysicalTableScan {
 
 impl<'env: 'txn, 'txn> PhysicalTableScan {
     pub(crate) fn plan<S: StorageEngine, M: ExecutionMode<'env, S>>(
-        table_ref: TableRef,
+        table: Oid<Table>,
         projection: Option<Box<[ColumnIndex]>>,
     ) -> Arc<dyn PhysicalNode<'env, 'txn, S, M>> {
-        Arc::new(Self { table_ref, projection, table: Default::default() })
+        Arc::new(Self { table, projection })
     }
 }
 
@@ -41,7 +39,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
     ) -> ExecutionResult<TupleStream<'txn>> {
         let tx = ctx.tx()?;
         let catalog = ctx.catalog();
-        let table = catalog.get(&tx, self.table_ref.table)?;
+        let table = catalog.get(&tx, self.table)?;
         let storage = Arc::new(table.storage::<S, M>(catalog, tx)?);
 
         let projection = self
@@ -91,7 +89,7 @@ impl<'env, S: StorageEngine> Explain<'env, S> for PhysicalTableScan {
         f: &mut fmt::Formatter<'_>,
     ) -> explain::Result {
         // In this context, we know the projection indices correspond to the column indices of the source table
-        let table = catalog.get(tx, self.table_ref.table)?;
+        let table = catalog.get(tx, self.table)?;
         let columns = table.columns(catalog, tx)?;
 
         let column_names = match &self.projection {

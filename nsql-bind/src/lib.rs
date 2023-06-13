@@ -11,8 +11,7 @@ use ir::expr::EvalNotConst;
 use ir::{Decimal, Path, TransactionMode};
 use itertools::Itertools;
 use nsql_catalog::{
-    Catalog, CreateColumnInfo, CreateNamespaceInfo, Namespace, SystemEntity, Table, TableRef,
-    DEFAULT_SCHEMA,
+    Catalog, CreateColumnInfo, CreateNamespaceInfo, Namespace, SystemEntity, Table, DEFAULT_SCHEMA,
 };
 use nsql_core::{LogicalType, Name, Oid};
 use nsql_parse::ast::{self, HiveDistributionStyle};
@@ -159,7 +158,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                 not_implemented!(on.is_some());
 
                 // We bind the columns of the table first, so that we can use them in the following projection
-                let (scope, table_ref) = self.bind_table(tx, scope, table_name, None)?;
+                let (scope, table) = self.bind_table(tx, scope, table_name, None)?;
 
                 // We model the insertion columns list as a projection over the source
                 let projection = columns
@@ -179,7 +178,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                             .collect::<Result<_>>()
                     })
                     .transpose()?;
-                ir::Stmt::Insert { table_ref, projection, source, returning }
+                ir::Stmt::Insert { table, projection, source, returning }
             }
             ast::Statement::Query(query) => {
                 let (_scope, query) = self.bind_query(tx, scope, query)?;
@@ -229,9 +228,8 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                     .iter()
                     .map(|name| match object_type {
                         ast::ObjectType::Table => {
-                            let (namespace, table) =
-                                self.bind_namespaced_entity::<Table>(tx, name)?;
-                            Ok(ir::EntityRef::Table(TableRef { namespace, table }))
+                            let table = self.bind_namespaced_entity::<Table>(tx, name)?;
+                            Ok(ir::EntityRef::Table(table))
                         }
                         ast::ObjectType::View => todo!(),
                         ast::ObjectType::Index => todo!(),
@@ -249,7 +247,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                 not_implemented!(!table.joins.is_empty());
                 not_implemented!(from.is_some());
 
-                let (scope, table_ref) = match &table.relation {
+                let (scope, table) = match &table.relation {
                     ast::TableFactor::Table { name, alias, args, with_hints } => {
                         not_implemented!(alias.is_some());
                         not_implemented!(args.is_some());
@@ -259,7 +257,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                     _ => not_implemented!("update with non-table relation"),
                 };
 
-                let mut source = Box::new(ir::QueryPlan::TableRef { table_ref, projection: None });
+                let mut source = Box::new(ir::QueryPlan::TableScan { table, projection: None });
                 if let Some(predicate) = selection
                     .as_ref()
                     .map(|selection| self.bind_predicate(&scope, selection))
@@ -268,7 +266,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                     source = source.filter(predicate);
                 }
 
-                let assignments = self.bind_assignments(tx, &scope, table_ref, assignments)?;
+                let assignments = self.bind_assignments(tx, &scope, table, assignments)?;
                 source = source.project(assignments);
 
                 let returning = returning
@@ -282,7 +280,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                     })
                     .transpose()?;
 
-                ir::Stmt::Update { table_ref, source, returning }
+                ir::Stmt::Update { table, source, returning }
             }
             ast::Statement::Explain { describe_alias: _, analyze, verbose, statement, format } => {
                 not_implemented!(*analyze);
@@ -305,10 +303,10 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
         &self,
         tx: &dyn Transaction<'env, S>,
         scope: &Scope<S>,
-        table_ref: TableRef,
+        table: Oid<Table>,
         assignments: &[ast::Assignment],
     ) -> Result<Box<[ir::Expr]>> {
-        let table = self.catalog.get(tx, table_ref.table)?;
+        let table = self.catalog.get(tx, table)?;
         let columns = table.columns(self.catalog, tx)?;
 
         for assignment in assignments {
@@ -412,7 +410,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
         &self,
         tx: &dyn Transaction<'env, S>,
         path: &Path,
-    ) -> Result<(Oid<Namespace>, Oid<T>)> {
+    ) -> Result<Oid<T>> {
         match path {
             Path::Unqualified(name) => self.bind_namespaced_entity(
                 tx,
@@ -436,7 +434,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                         .find(Some(namespace.oid()), name.as_str())?
                         .ok_or_else(|| unbound!(T, path))?;
 
-                    Ok((namespace.oid(), entity.oid()))
+                    Ok(entity.oid())
                 }
             },
         }
@@ -580,8 +578,8 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                 not_implemented!(args.is_some());
                 not_implemented!(!with_hints.is_empty());
 
-                let (scope, table_ref) = self.bind_table(tx, scope, name, alias.as_ref())?;
-                (scope, Box::new(ir::QueryPlan::TableRef { table_ref, projection: None }))
+                let (scope, table) = self.bind_table(tx, scope, name, alias.as_ref())?;
+                (scope, Box::new(ir::QueryPlan::TableScan { table, projection: None }))
             }
             ast::TableFactor::Derived { lateral, subquery, alias } => {
                 not_implemented!(*lateral);
@@ -608,13 +606,12 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
         scope: &Scope<S>,
         table_name: &ast::ObjectName,
         alias: Option<&ast::TableAlias>,
-    ) -> Result<(Scope<S>, TableRef)> {
+    ) -> Result<(Scope<S>, Oid<Table>)> {
         let alias = alias.map(|alias| self.lower_table_alias(alias));
         let table_name = self.lower_path(&table_name.0)?;
-        let (namespace, table) = self.bind_namespaced_entity::<Table>(tx, &table_name)?;
-        let table_ref = TableRef { namespace, table };
+        let table = self.bind_namespaced_entity::<Table>(tx, &table_name)?;
 
-        Ok((scope.bind_table(self, tx, table_name, table_ref, alias.as_ref())?, table_ref))
+        Ok((scope.bind_table(self, tx, table_name, table, alias.as_ref())?, table))
     }
 
     fn lower_table_alias(&self, alias: &ast::TableAlias) -> TableAlias {

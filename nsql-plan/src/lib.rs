@@ -1,6 +1,5 @@
-//! fixme this crate seems a bit useless
-
-use nsql_catalog::{ColumnIndex, CreateNamespaceInfo, TableRef};
+use nsql_catalog::{ColumnIndex, CreateNamespaceInfo, Table};
+use nsql_core::Oid;
 
 #[derive(Debug)]
 pub enum Plan {
@@ -12,7 +11,7 @@ pub enum Plan {
     Show(ir::ObjectType),
     Explain(ir::ExplainMode, Box<Plan>),
     Update {
-        table_ref: TableRef,
+        table: Oid<Table>,
         source: Box<Plan>,
         returning: Option<Box<[ir::Expr]>>,
     },
@@ -25,7 +24,7 @@ pub enum Plan {
         projection: Box<[ir::Expr]>,
     },
     Insert {
-        table_ref: TableRef,
+        table: Oid<Table>,
         projection: Box<[ir::Expr]>,
         source: Box<Plan>,
         returning: Option<Box<[ir::Expr]>>,
@@ -34,7 +33,7 @@ pub enum Plan {
         values: ir::Values,
     },
     Scan {
-        table_ref: TableRef,
+        table: Oid<Table>,
         projection: Option<Box<[ColumnIndex]>>,
     },
     Limit {
@@ -52,15 +51,15 @@ impl Planner {
             ir::Stmt::Transaction(kind) => Plan::Transaction(kind),
             ir::Stmt::CreateTable(info) => Plan::CreateTable(info),
             ir::Stmt::CreateNamespace(info) => Plan::CreateNamespace(info),
-            ir::Stmt::Insert { table_ref, projection, source, returning } => {
+            ir::Stmt::Insert { table, projection, source, returning } => {
                 let source = self.plan_query(source);
-                Plan::Insert { table_ref, projection, source, returning }
+                Plan::Insert { table, projection, source, returning }
             }
             ir::Stmt::Query(query) => return self.plan_query(query),
             ir::Stmt::Show(show) => Plan::Show(show),
             ir::Stmt::Drop(refs) => Plan::Drop(refs),
-            ir::Stmt::Update { table_ref, source, returning } => {
-                Plan::Update { table_ref, source: self.plan_query(source), returning }
+            ir::Stmt::Update { table, source, returning } => {
+                Plan::Update { table, source: self.plan_query(source), returning }
             }
             ir::Stmt::Explain(kind, stmt) => Plan::Explain(kind, self.plan(*stmt)),
         };
@@ -80,9 +79,7 @@ impl Planner {
                 let source = self.plan_query(source);
                 Plan::Projection { source, projection }
             }
-            ir::QueryPlan::TableRef { table_ref, projection } => {
-                Plan::Scan { table_ref, projection }
-            }
+            ir::QueryPlan::TableScan { table, projection } => Plan::Scan { table, projection },
             ir::QueryPlan::Empty => Plan::Empty,
             ir::QueryPlan::Limit(source, limit) => {
                 let source = self.plan_query(source);

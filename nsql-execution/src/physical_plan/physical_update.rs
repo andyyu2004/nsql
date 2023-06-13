@@ -1,4 +1,5 @@
-use nsql_catalog::TableRef;
+use nsql_catalog::Table;
+use nsql_core::Oid;
 use nsql_storage_engine::fallible_iterator;
 use parking_lot::RwLock;
 
@@ -7,7 +8,7 @@ use crate::ReadWriteExecutionMode;
 
 pub(crate) struct PhysicalUpdate<'env, 'txn, S> {
     children: [Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode>>; 1],
-    table_ref: TableRef,
+    table: Oid<Table>,
     tuples: RwLock<Vec<Tuple>>,
     returning: Option<Box<[ir::Expr]>>,
     returning_tuples: RwLock<Vec<Tuple>>,
@@ -16,14 +17,14 @@ pub(crate) struct PhysicalUpdate<'env, 'txn, S> {
 
 impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalUpdate<'env, 'txn, S> {
     pub fn plan(
-        table_ref: TableRef,
+        table: Oid<Table>,
         // This is the source of the updates.
         // The schema should be that of the table being updated + the `tid` in the rightmost column
         source: Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode>>,
         returning: Option<Box<[ir::Expr]>>,
     ) -> Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode>> {
         Arc::new(Self {
-            table_ref,
+            table,
             returning,
             tuples: Default::default(),
             children: [source],
@@ -90,7 +91,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSink<'env, 'txn, S, ReadWriteEx
     ) -> ExecutionResult<()> {
         let tx = ctx.tx()?;
         let catalog = ctx.catalog();
-        let table = ctx.catalog().get(tx, self.table_ref.table)?;
+        let table = ctx.catalog().get(tx, self.table)?;
         let mut storage = table.storage::<S, ReadWriteExecutionMode>(catalog, tx)?;
 
         let tuples = self.tuples.read();
@@ -129,7 +130,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> Explain<'env, S> for PhysicalUpdate<'en
         tx: &dyn Transaction<'env, S>,
         f: &mut fmt::Formatter<'_>,
     ) -> explain::Result {
-        write!(f, "update {}", catalog.get(tx, self.table_ref.table)?.name())?;
+        write!(f, "update {}", catalog.get(tx, self.table)?.name())?;
         Ok(())
     }
 }

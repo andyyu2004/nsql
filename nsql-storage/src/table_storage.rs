@@ -5,7 +5,7 @@ use anyhow::bail;
 use fix_hidden_lifetime_bug::fix_hidden_lifetime_bug;
 use next_gen::generator_fn::GeneratorFn;
 use nsql_core::{LogicalType, Name, Oid};
-// use nsql_catalog::{Column, TableRef};
+// use nsql_catalog::{Column, Oid<Table>};
 use nsql_storage_engine::{
     fallible_iterator, ExecutionMode, FallibleIterator, ReadTree, ReadWriteExecutionMode,
     StorageEngine, WriteTree,

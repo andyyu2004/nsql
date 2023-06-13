@@ -67,11 +67,11 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSource<'env, 'txn, S, ReadWrite
 
         let catalog = ctx.catalog();
         let tx = ctx.tx()?;
-        for entity_ref in &self.refs {
+        for &entity_ref in &self.refs {
             tracing::debug!(entity = ?entity_ref, "dropping");
             match entity_ref {
-                ir::EntityRef::Table(table_ref) => {
-                    catalog.drop_table(tx, table_ref.table)?;
+                ir::EntityRef::Table(table) => {
+                    catalog.drop_table(tx, table)?;
                 }
             }
         }
@@ -88,14 +88,14 @@ impl<'env: 'txn, 'txn, S: StorageEngine> Explain<'env, S> for PhysicalDrop {
         f: &mut fmt::Formatter<'_>,
     ) -> explain::Result {
         write!(f, "drop ")?;
-        for (i, entity_ref) in self.refs.iter().enumerate() {
+        for (i, &entity_ref) in self.refs.iter().enumerate() {
             if i > 0 {
                 write!(f, ", ")?;
             }
 
             match entity_ref {
-                ir::EntityRef::Table(table_ref) => {
-                    write!(f, "table {}", catalog.get(tx, table_ref.table)?.name())?
+                ir::EntityRef::Table(table) => {
+                    write!(f, "table {}", catalog.get(tx, table)?.name())?
                 }
             }
         }

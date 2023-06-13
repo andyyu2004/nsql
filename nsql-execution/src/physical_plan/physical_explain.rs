@@ -34,6 +34,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode
 {
     fn children(&self) -> &[Arc<dyn PhysicalNode<'env, 'txn, S, M>>] {
         // no children as we don't actually need to run anything (unless we're doing an analyse which is not implemented)
+        let _ = self.children;
         &[]
     }
 

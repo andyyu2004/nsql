@@ -1,8 +1,8 @@
 use std::marker::PhantomData;
 
 use anyhow::bail;
-use nsql_catalog::{Column, Entity, TableRef};
-use nsql_core::{LogicalType, Name};
+use nsql_catalog::{Column, Entity, Table};
+use nsql_core::{LogicalType, Name, Oid};
 use nsql_storage_engine::{StorageEngine, Transaction};
 
 use super::unbound;
@@ -34,19 +34,19 @@ impl<S> Default for Scope<S> {
 
 impl<S: StorageEngine> Scope<S> {
     /// Insert a table and its columns to the scope
-    #[tracing::instrument(skip(self, tx, binder, table_ref))]
+    #[tracing::instrument(skip(self, tx, binder))]
     pub fn bind_table<'env>(
         &self,
         binder: &Binder<'env, S>,
         tx: &dyn Transaction<'env, S>,
         table_path: Path,
-        table_ref: TableRef,
+        table: Oid<Table>,
         alias: Option<&TableAlias>,
     ) -> Result<Scope<S>> {
         tracing::debug!("binding table");
         let mut bound_columns = self.bound_columns.clone();
 
-        let table = binder.catalog.get(tx, table_ref.table)?;
+        let table = binder.catalog.get(tx, table)?;
         let table_columns = table.columns(binder.catalog, tx)?;
 
         if let Some(alias) = alias {

@@ -4,8 +4,8 @@ use std::fmt;
 use std::ops::Deref;
 
 pub use eval::EvalNotConst;
-use nsql_catalog::{ColumnIndex, TableRef};
-use nsql_core::LogicalType;
+use nsql_catalog::{ColumnIndex, Table};
+use nsql_core::{LogicalType, Oid};
 use nsql_storage::tuple::TupleIndex;
 use nsql_storage::value::Value;
 
@@ -13,7 +13,7 @@ use crate::Path;
 
 #[derive(Debug, Clone)]
 pub enum QueryPlan {
-    TableRef { table_ref: TableRef, projection: Option<Box<[ColumnIndex]>> },
+    TableScan { table: Oid<Table>, projection: Option<Box<[ColumnIndex]>> },
     Projection { source: Box<QueryPlan>, projection: Box<[Expr]> },
     Filter { source: Box<QueryPlan>, predicate: Expr },
     Values(Values),

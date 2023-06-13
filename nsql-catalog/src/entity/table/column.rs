@@ -129,7 +129,7 @@ impl Entity for Column {
 
 // #[derive(Debug)]
 // pub struct ColumnRef {
-//     pub table_ref: TableRef,
+//     pub table: Oid<Table>,
 //     pub column: Oid<Column>,
 // }
 //
@@ -149,7 +149,7 @@ impl Entity for Column {
 //
 //     #[inline]
 //     fn container(self, catalog: Catalog<'_, S>, tx: &dyn Transaction<'_, S>) -> Arc<Self::Container> {
-//         self.table_ref.get(catalog, tx)
+//         self.table.get(catalog, tx)
 //     }
 //
 //     #[inline]

@@ -1,4 +1,5 @@
-use nsql_catalog::TableRef;
+use nsql_catalog::Table;
+use nsql_core::Oid;
 use nsql_storage_engine::fallible_iterator;
 use parking_lot::RwLock;
 
@@ -7,7 +8,7 @@ use crate::ReadWriteExecutionMode;
 
 pub(crate) struct PhysicalInsert<'env, 'txn, S> {
     children: [Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode>>; 1],
-    table_ref: TableRef,
+    table: Oid<Table>,
     returning: Option<Box<[ir::Expr]>>,
     returning_tuples: RwLock<Vec<Tuple>>,
     returning_evaluator: Evaluator,
@@ -15,12 +16,12 @@ pub(crate) struct PhysicalInsert<'env, 'txn, S> {
 
 impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalInsert<'env, 'txn, S> {
     pub fn plan(
-        table_ref: TableRef,
+        table: Oid<Table>,
         source: Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode>>,
         returning: Option<Box<[ir::Expr]>>,
     ) -> Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode>> {
         Arc::new(Self {
-            table_ref,
+            table,
             returning,
             children: [source],
             returning_tuples: Default::default(),
@@ -74,7 +75,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSink<'env, 'txn, S, ReadWriteEx
     ) -> ExecutionResult<()> {
         let catalog = ctx.catalog();
         let tx = ctx.tx()?;
-        let table = catalog.get(tx, self.table_ref.table)?;
+        let table = catalog.get(tx, self.table)?;
 
         let mut storage = table.storage::<S, ReadWriteExecutionMode>(catalog, tx)?;
         storage.insert(&tuple)?;
@@ -108,7 +109,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> Explain<'env, S> for PhysicalInsert<'en
         tx: &dyn Transaction<'env, S>,
         f: &mut fmt::Formatter<'_>,
     ) -> explain::Result {
-        write!(f, "insert into {}", catalog.get(tx, self.table_ref.table)?.name())?;
+        write!(f, "insert into {}", catalog.get(tx, self.table)?.name())?;
         Ok(())
     }
 }

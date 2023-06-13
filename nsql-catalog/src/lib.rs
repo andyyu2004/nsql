@@ -17,9 +17,7 @@ use nsql_storage_engine::{
 
 pub use self::bootstrap::Type;
 pub use self::entity::namespace::{CreateNamespaceInfo, Namespace};
-pub use self::entity::table::{
-    Column, ColumnIndex, CreateColumnInfo, CreateTableInfo, Table, TableRef,
-};
+pub use self::entity::table::{Column, ColumnIndex, CreateColumnInfo, CreateTableInfo, Table};
 pub use self::system_table::SystemEntity;
 use self::system_table::SystemTableView;
 
