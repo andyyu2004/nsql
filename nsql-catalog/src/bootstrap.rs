@@ -2,7 +2,9 @@ use nsql_core::Name;
 use nsql_storage::{Result, TableStorageInfo};
 use nsql_storage_engine::{ReadWriteExecutionMode, StorageEngine};
 
-use crate::{Column, ColumnIndex, Namespace, Oid, SystemEntity, SystemTableView, Table, Type};
+use crate::{
+    Column, ColumnIndex, Namespace, Oid, SystemEntity, SystemTableView, Table, Type, MAIN_SCHEMA,
+};
 
 pub(crate) fn bootstrap<'env, S: StorageEngine>(
     storage: &'env S,
@@ -44,7 +46,7 @@ pub(super) mod oid {
 
 fn bootstrap_nsql_namespaces() -> impl Iterator<Item = Namespace> {
     vec![
-        Namespace { oid: Namespace::MAIN, name: "main".into() },
+        Namespace { oid: Namespace::MAIN, name: MAIN_SCHEMA.into() },
         Namespace { oid: Namespace::CATALOG, name: "nsql_catalog".into() },
     ]
     .into_iter()
