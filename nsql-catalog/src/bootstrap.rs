@@ -39,29 +39,6 @@ pub(crate) fn bootstrap<'env, S: StorageEngine>(
     Ok(())
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct CatalogPath<T: SystemEntity> {
-    oid: Oid<T>,
-    parent_oid: Option<Oid<T::Parent>>,
-}
-
-impl<T: SystemEntity> CatalogPath<T> {
-    #[inline]
-    pub fn new(oid: Oid<T>, parent_oid: Option<Oid<T::Parent>>) -> Self {
-        Self { oid, parent_oid }
-    }
-
-    #[inline]
-    pub fn oid(&self) -> Oid<T> {
-        self.oid
-    }
-
-    #[inline]
-    pub fn parent_oid(&self) -> Option<Oid<<T as SystemEntity>::Parent>> {
-        self.parent_oid
-    }
-}
-
 pub(super) mod oid {
     use super::*;
 

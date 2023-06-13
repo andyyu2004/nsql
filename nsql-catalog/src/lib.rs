@@ -4,7 +4,6 @@
 mod bootstrap;
 mod entity;
 pub mod schema;
-mod set;
 mod system_table;
 
 use std::sync::atomic::AtomicU64;
@@ -16,7 +15,7 @@ use nsql_storage_engine::{
     ReadWriteExecutionMode, ReadonlyExecutionMode, StorageEngine, Transaction,
 };
 
-pub use self::bootstrap::{CatalogPath, Type};
+pub use self::bootstrap::Type;
 pub use self::entity::namespace::{CreateNamespaceInfo, Namespace};
 pub use self::entity::table::{
     Column, ColumnIndex, CreateColumnInfo, CreateTableInfo, Table, TableRef,

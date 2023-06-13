@@ -17,8 +17,7 @@ use nsql_storage::tuple::{FromTuple, FromTupleError, IntoTuple, Tuple};
 use nsql_storage::value::Value;
 use nsql_storage::{ColumnStorageInfo, TableStorageInfo};
 
-use crate::bootstrap::{self, CatalogPath};
-use crate::SystemEntity;
+use crate::{bootstrap, SystemEntity};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Namespace {
@@ -65,11 +64,6 @@ impl SystemEntity for Namespace {
     #[inline]
     fn parent_oid(&self) -> Option<Oid<Self::Parent>> {
         None
-    }
-
-    #[inline]
-    fn path(&self) -> CatalogPath<Self> {
-        CatalogPath::new(self.oid(), self.parent_oid())
     }
 
     fn desc() -> &'static str {

@@ -8,7 +8,6 @@ use nsql_storage::tuple::{FromTuple, IntoTuple};
 use nsql_storage::{TableStorage, TableStorageInfo};
 use nsql_storage_engine::{ExecutionMode, FallibleIterator, ReadWriteExecutionMode, StorageEngine};
 
-use crate::bootstrap::CatalogPath;
 use crate::Result;
 
 pub trait SystemEntity: FromTuple + IntoTuple + Eq + fmt::Debug {
@@ -23,11 +22,6 @@ pub trait SystemEntity: FromTuple + IntoTuple + Eq + fmt::Debug {
     fn storage_info() -> TableStorageInfo;
 
     fn desc() -> &'static str;
-
-    #[inline]
-    fn path(&self) -> CatalogPath<Self> {
-        CatalogPath::new(self.oid(), self.parent_oid())
-    }
 }
 
 #[repr(transparent)]
