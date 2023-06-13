@@ -12,7 +12,7 @@ use nsql_storage_engine::{
 };
 use rkyv::AlignedVec;
 
-use crate::tuple::{Tuple, TupleIndex};
+use crate::tuple::{IntoTuple, Tuple, TupleIndex};
 use crate::value::Value;
 
 pub struct TableStorage<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> {
@@ -39,6 +39,12 @@ impl<'env: 'txn, 'txn, S: StorageEngine> TableStorage<'env, 'txn, S, ReadWriteEx
         self.tree.put(&k, &v)?;
 
         Ok(())
+    }
+
+    pub fn delete(&mut self, key: impl IntoTuple) -> Result<bool, S::Error> {
+        let k = key.into_tuple();
+        let k = nsql_rkyv::to_bytes(&k);
+        self.tree.delete(&k)
     }
 
     #[inline]
@@ -243,7 +249,7 @@ impl TableStorageInfo {
             "expected at least one primary key column (this should be checked in the binder)"
         );
 
-        Self { columns, table_name: format!("t{}", oid).into() }
+        Self { columns, table_name: format!("{oid}").into() }
     }
 }
 

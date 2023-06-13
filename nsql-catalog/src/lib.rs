@@ -11,6 +11,7 @@ use std::sync::atomic::AtomicU64;
 
 pub use anyhow::Error;
 use nsql_core::{Name, Oid};
+use nsql_storage::value::Value;
 use nsql_storage_engine::{
     ReadWriteExecutionMode, ReadonlyExecutionMode, StorageEngine, Transaction,
 };
@@ -94,7 +95,17 @@ impl<'env, S: StorageEngine> Catalog<'env, S> {
     }
 
     pub fn drop_table(&self, tx: &S::WriteTransaction<'env>, oid: Oid<Table>) -> Result<()> {
+        // FIXME assert we can't drop system tables, maybe reserve a range for bootstrap oids or something
+
+        // delete entry in `nsql_catalog.nsql_table`
+        assert!(
+            self.system_table_write::<Table>(tx)?.delete(Value::Oid(oid.untyped()))?,
+            "attempted to drop non-existent table, this should fail earlier"
+        );
+
+        // drop physical table in storage engine
         self.storage.drop_tree(tx, &oid.to_string())?;
+
         Ok(())
     }
 }

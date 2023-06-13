@@ -8,7 +8,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use nsql_storage_engine::{fallible_iterator, Range, ReadOrWriteTransactionRef};
-use redb::{AccessGuard, ReadableTable};
+use redb::{AccessGuard, ReadableTable, TableHandle};
 
 type Result<T, E = redb::Error> = std::result::Result<T, E>;
 
@@ -115,10 +115,12 @@ impl nsql_storage_engine::StorageEngine for RedbStorageEngine {
     }
 
     fn drop_tree(&self, txn: &Self::WriteTransaction<'_>, name: &str) -> Result<(), Self::Error> {
-        assert!(
-            txn.0.delete_table(redb::TableDefinition::<(), ()>::new(name))?,
-            "didn't drop anything"
-        );
+        let ok = txn.0.delete_table(redb::TableDefinition::<(), ()>::new(name))?;
+        if !ok {
+            let tables =
+                txn.0.list_tables()?.map(|handle| handle.name().to_string()).collect::<Vec<_>>();
+            panic!("attempted to drop non-existent table `{name}`, available tables {tables:?}");
+        }
         Ok(())
     }
 }

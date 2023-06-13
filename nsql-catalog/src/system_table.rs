@@ -87,4 +87,9 @@ impl<'env: 'txn, 'txn, S: StorageEngine, T: SystemEntity>
     pub fn insert(&mut self, value: T) -> Result<()> {
         self.storage.insert(&value.into_tuple())
     }
+
+    #[inline]
+    pub fn delete(&mut self, key: impl IntoTuple) -> Result<bool> {
+        Ok(self.storage.delete(key)?)
+    }
 }

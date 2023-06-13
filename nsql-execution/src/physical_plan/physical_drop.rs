@@ -70,7 +70,9 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSource<'env, 'txn, S, ReadWrite
         for entity_ref in &self.refs {
             tracing::debug!(entity = ?entity_ref, "dropping");
             match entity_ref {
-                ir::EntityRef::Table(table_ref) => catalog.drop_table(tx, table_ref.table)?,
+                ir::EntityRef::Table(table_ref) => {
+                    catalog.drop_table(tx, table_ref.table)?;
+                }
             }
         }
 

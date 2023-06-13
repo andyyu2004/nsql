@@ -185,6 +185,13 @@ pub trait IntoTuple {
     fn into_tuple(self) -> Tuple;
 }
 
+impl IntoTuple for Value {
+    #[inline]
+    fn into_tuple(self) -> Tuple {
+        Tuple::new(Box::new([self]))
+    }
+}
+
 impl IntoTuple for Tuple {
     #[inline]
     fn into_tuple(self) -> Tuple {
