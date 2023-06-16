@@ -41,12 +41,11 @@ impl SystemEntity for Type {
 }
 
 impl FromTuple for Type {
-    fn from_tuple(mut tuple: Tuple) -> Result<Self, FromTupleError> {
-        if tuple.len() != 2 {
-            return Err(FromTupleError::ColumnCountMismatch { expected: 2, actual: tuple.len() });
-        }
-
-        Ok(Type { oid: tuple[0].take().cast_non_null()?, name: tuple[1].take().cast_non_null()? })
+    fn from_values(mut values: impl Iterator<Item = Value>) -> Result<Self, FromTupleError> {
+        Ok(Self {
+            oid: values.next().ok_or(FromTupleError::NotEnoughValues)?.cast_non_null()?,
+            name: values.next().ok_or(FromTupleError::NotEnoughValues)?.cast_non_null()?,
+        })
     }
 }
 

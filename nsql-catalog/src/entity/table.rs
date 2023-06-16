@@ -22,8 +22,9 @@ impl Table {
     }
 
     #[inline]
-    pub fn name(&self) -> &Name {
-        &self.name
+    // duplicating the trait method here as it's more convenient to call for external crates
+    pub fn name(&self) -> Name {
+        Name::clone(&self.name)
     }
 
     pub fn storage<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
@@ -135,15 +136,11 @@ impl IntoTuple for Table {
 }
 
 impl FromTuple for Table {
-    fn from_tuple(mut tuple: Tuple) -> Result<Self, FromTupleError> {
-        if tuple.len() != 3 {
-            return Err(FromTupleError::ColumnCountMismatch { expected: 3, actual: tuple.len() });
-        }
-
+    fn from_values(mut values: impl Iterator<Item = Value>) -> Result<Self, FromTupleError> {
         Ok(Self {
-            oid: tuple[0].take().cast_non_null()?,
-            namespace: tuple[1].take().cast_non_null()?,
-            name: tuple[2].take().cast_non_null()?,
+            oid: values.next().ok_or(FromTupleError::NotEnoughValues)?.cast_non_null()?,
+            namespace: values.next().ok_or(FromTupleError::NotEnoughValues)?.cast_non_null()?,
+            name: values.next().ok_or(FromTupleError::NotEnoughValues)?.cast_non_null()?,
         })
     }
 }

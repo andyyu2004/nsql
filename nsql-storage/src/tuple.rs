@@ -41,6 +41,12 @@ impl Tuple {
         self.0.iter()
     }
 
+    #[inline]
+    pub fn into_values(self) -> Box<[Value]> {
+        self.0
+    }
+
+    #[inline]
     pub fn project_archived(values: &[&Archived<Value>], projection: &[TupleIndex]) -> Tuple {
         projection.iter().map(|&idx| nsql_rkyv::deserialize(values[idx.0])).collect()
     }
@@ -138,16 +144,16 @@ impl TupleIndex {
 
 #[derive(Debug)]
 pub enum FromTupleError {
-    ColumnCountMismatch { expected: usize, actual: usize },
+    TooManyValues,
+    NotEnoughValues,
     InvalidCast(Box<dyn Error + Send + Sync>),
 }
 
 impl fmt::Display for FromTupleError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::ColumnCountMismatch { expected, actual } => {
-                write!(f, "expected {} columns, got {}", expected, actual)
-            }
+            Self::TooManyValues => write!(f, "too many values"),
+            Self::NotEnoughValues => write!(f, "not enough values"),
             Self::InvalidCast(err) => write!(f, "invalid cast: {}", err),
         }
     }
@@ -162,16 +168,17 @@ impl<T: 'static> From<CastError<T>> for FromTupleError {
 }
 
 pub trait FromTuple: Sized {
-    fn from_tuple(tuple: Tuple) -> Result<Self, FromTupleError>;
+    fn from_values(values: impl Iterator<Item = Value>) -> Result<Self, FromTupleError>;
+
+    #[inline]
+    fn from_tuple(tuple: Tuple) -> Result<Self, FromTupleError> {
+        Self::from_values(Vec::from(tuple.into_values()).into_iter())
+    }
 }
 
 impl FromTuple for () {
-    fn from_tuple(tuple: Tuple) -> Result<Self, FromTupleError> {
-        if tuple.is_empty() {
-            Ok(())
-        } else {
-            Err(FromTupleError::ColumnCountMismatch { expected: 0, actual: tuple.len() })
-        }
+    fn from_values(_: impl Iterator<Item = Value>) -> Result<Self, FromTupleError> {
+        Ok(())
     }
 }
 

@@ -119,18 +119,18 @@ impl SystemEntity for Column {
 }
 
 impl FromTuple for Column {
-    fn from_tuple(mut tuple: Tuple) -> Result<Self, FromTupleError> {
-        if tuple.len() != 6 {
-            return Err(FromTupleError::ColumnCountMismatch { expected: 6, actual: tuple.len() });
-        }
-
+    fn from_values(values: impl Iterator<Item = Value>) -> Result<Self, FromTupleError> {
+        let mut values = values;
         Ok(Self {
-            oid: tuple[0].take().cast_non_null()?,
-            table: tuple[1].take().cast_non_null()?,
-            ty: tuple[2].take().cast_non_null()?,
-            name: tuple[3].take().cast_non_null()?,
-            index: tuple[4].take().cast_non_null()?,
-            is_primary_key: tuple[5].take().cast_non_null()?,
+            oid: values.next().ok_or(FromTupleError::NotEnoughValues)?.cast_non_null()?,
+            table: values.next().ok_or(FromTupleError::NotEnoughValues)?.cast_non_null()?,
+            ty: values.next().ok_or(FromTupleError::NotEnoughValues)?.cast_non_null()?,
+            name: values.next().ok_or(FromTupleError::NotEnoughValues)?.cast_non_null()?,
+            index: values.next().ok_or(FromTupleError::NotEnoughValues)?.cast_non_null()?,
+            is_primary_key: values
+                .next()
+                .ok_or(FromTupleError::NotEnoughValues)?
+                .cast_non_null()?,
         })
     }
 }

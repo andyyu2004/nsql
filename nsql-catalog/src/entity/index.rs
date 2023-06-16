@@ -1,22 +1,24 @@
 use super::*;
+use crate::Namespace;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Index {
-    pub(crate) table: Oid<Table>,
-    pub(crate) name: Name,
+    pub(crate) table: Table,
     pub(crate) kind: IndexKind,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum IndexKind {
-    // PrimaryKey,
+    PrimaryKey,
     // Unique,
     // NonUnique,
 }
 
 impl FromTuple for Index {
-    fn from_tuple(_tuple: Tuple) -> Result<Self, FromTupleError> {
-        todo!()
+    fn from_values(mut values: impl Iterator<Item = Value>) -> Result<Self, FromTupleError> {
+        let table = Table::from_values(&mut values)?;
+        let kind = IndexKind::PrimaryKey;
+        Ok(Self { table, kind })
     }
 }
 
@@ -27,18 +29,18 @@ impl IntoTuple for Index {
 }
 
 impl SystemEntity for Index {
-    type Parent = ();
+    type Parent = Namespace;
 
     type Id = <Table as SystemEntity>::Id;
 
     #[inline]
     fn id(&self) -> Self::Id {
-        self.table
+        self.table.id()
     }
 
     #[inline]
     fn name(&self) -> Name {
-        Name::clone(&self.name)
+        self.table.name()
     }
 
     #[inline]
@@ -48,7 +50,7 @@ impl SystemEntity for Index {
 
     #[inline]
     fn parent_oid(&self) -> Option<Oid<Self::Parent>> {
-        None
+        self.table.parent_oid()
     }
 
     #[inline]
