@@ -6,6 +6,7 @@ pub mod schema;
 mod system_table;
 
 use std::fmt;
+use std::hash::Hash;
 use std::sync::atomic::AtomicU64;
 
 pub use anyhow::Error;
@@ -28,7 +29,9 @@ pub type Result<T, E = Error> = std::result::Result<T, E>;
 pub trait SystemEntity: FromTuple + IntoTuple + Eq + fmt::Debug {
     type Parent: SystemEntity;
 
-    fn oid(&self) -> Oid<Self>;
+    type Id: Eq + Hash;
+
+    fn id(&self) -> Self::Id;
 
     fn name(&self) -> Name;
 
@@ -58,13 +61,22 @@ fn hack_new_oid_tmp<T>() -> Oid<T> {
 impl<'env, S> Copy for Catalog<'env, S> {}
 
 impl<'env, S: StorageEngine> Catalog<'env, S> {
+    #[inline]
     pub fn get<'txn, T: SystemEntity>(
         &self,
         tx: &'txn dyn Transaction<'env, S>,
-        oid: Oid<T>,
+        oid: T::Id,
     ) -> Result<T> {
-        let table = SystemTableView::<S, ReadonlyExecutionMode, T>::new(self.storage, tx)?;
-        table.get(oid)
+        SystemTableView::<S, ReadonlyExecutionMode, T>::new(self.storage, tx)?.get(oid)
+    }
+
+    #[inline]
+    pub fn table<'txn>(
+        &self,
+        tx: &'txn dyn Transaction<'env, S>,
+        oid: Oid<Table>,
+    ) -> Result<Table> {
+        self.get(tx, oid)
     }
 
     #[inline]

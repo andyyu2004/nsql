@@ -82,7 +82,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSource<'env, 'txn, S, ReadWrite
         let mut columns = catalog.system_table_write(tx)?;
         for info in &self.info.columns {
             columns.insert(Column::new(
-                table.oid(),
+                table.id(),
                 info.name.clone(),
                 ColumnIndex::new(info.index),
                 Type::logical_type_to_oid(&info.ty),

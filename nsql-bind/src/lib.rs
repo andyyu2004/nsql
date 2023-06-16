@@ -306,7 +306,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
         table: Oid<Table>,
         assignments: &[ast::Assignment],
     ) -> Result<Box<[ir::Expr]>> {
-        let table = self.catalog.get(tx, table)?;
+        let table = self.catalog.get::<Table>(tx, table)?;
         let columns = table.columns(self.catalog, tx)?;
 
         for assignment in assignments {
@@ -393,7 +393,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                         .namespaces(tx)?
                         .find(None, name.as_str())?
                         .ok_or_else(|| unbound!(Namespace, path))?;
-                    Ok(ns.oid())
+                    Ok(ns.id())
                 }
             },
             Path::Unqualified(name) => self.bind_namespace(
@@ -410,9 +410,9 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
         &self,
         tx: &dyn Transaction<'env, S>,
         path: &Path,
-    ) -> Result<Oid<T>> {
+    ) -> Result<T::Id> {
         match path {
-            Path::Unqualified(name) => self.bind_namespaced_entity(
+            Path::Unqualified(name) => self.bind_namespaced_entity::<T>(
                 tx,
                 &Path::Qualified {
                     prefix: Box::new(Path::Unqualified(MAIN_SCHEMA.into())),
@@ -431,10 +431,10 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                     let entity = self
                         .catalog
                         .system_table::<T>(tx)?
-                        .find(Some(namespace.oid()), name.as_str())?
+                        .find(Some(namespace.id()), name.as_str())?
                         .ok_or_else(|| unbound!(T, path))?;
 
-                    Ok(entity.oid())
+                    Ok(entity.id())
                 }
             },
         }

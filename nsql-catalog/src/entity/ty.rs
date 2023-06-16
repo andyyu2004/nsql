@@ -9,15 +9,17 @@ pub struct Type {
 impl SystemEntity for Type {
     type Parent = ();
 
+    type Id = Oid<Self>;
+
     #[inline]
-    fn oid(&self) -> Oid<Self> {
+    fn id(&self) -> Oid<Self> {
         self.oid
     }
-
     #[inline]
     fn name(&self) -> Name {
         Name::clone(&self.name)
     }
+
     #[inline]
     fn desc() -> &'static str {
         "type"

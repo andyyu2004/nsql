@@ -46,7 +46,7 @@ impl<S: StorageEngine> Scope<S> {
         tracing::debug!("binding table");
         let mut bound_columns = self.bound_columns.clone();
 
-        let table = binder.catalog.get(tx, table)?;
+        let table = binder.catalog.table(tx, table)?;
         let table_columns = table.columns(binder.catalog, tx)?;
 
         if let Some(alias) = alias {

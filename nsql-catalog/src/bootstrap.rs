@@ -199,13 +199,13 @@ fn bootstrap_nsql_types() -> impl Iterator<Item = Type> {
 impl SystemEntity for () {
     type Parent = ();
 
+    type Id = ();
+
     fn name(&self) -> Name {
         unreachable!()
     }
 
-    fn oid(&self) -> Oid<Self> {
-        unreachable!()
-    }
+    fn id(&self) -> Self::Id {}
 
     fn desc() -> &'static str {
         "catalog"

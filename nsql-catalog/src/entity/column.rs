@@ -82,9 +82,11 @@ pub struct CreateColumnInfo {
 impl SystemEntity for Column {
     type Parent = Table;
 
+    type Id = (Oid<Self::Parent>, ColumnIndex);
+
     #[inline]
-    fn oid(&self) -> Oid<Self> {
-        self.oid
+    fn id(&self) -> Self::Id {
+        (self.table, self.index)
     }
 
     #[inline]

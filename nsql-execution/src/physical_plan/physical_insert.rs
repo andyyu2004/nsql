@@ -75,7 +75,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSink<'env, 'txn, S, ReadWriteEx
     ) -> ExecutionResult<()> {
         let catalog = ctx.catalog();
         let tx = ctx.tx()?;
-        let table = catalog.get(tx, self.table)?;
+        let table = catalog.table(tx, self.table)?;
 
         let mut storage = table.storage::<S, ReadWriteExecutionMode>(catalog, tx)?;
         storage.insert(&tuple)?;
@@ -109,7 +109,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> Explain<'env, S> for PhysicalInsert<'en
         tx: &dyn Transaction<'env, S>,
         f: &mut fmt::Formatter<'_>,
     ) -> explain::Result {
-        write!(f, "insert into {}", catalog.get(tx, self.table)?.name())?;
+        write!(f, "insert into {}", catalog.table(tx, self.table)?.name())?;
         Ok(())
     }
 }

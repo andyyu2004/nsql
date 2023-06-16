@@ -16,8 +16,10 @@ impl Namespace {
 impl SystemEntity for Namespace {
     type Parent = ();
 
+    type Id = Oid<Self>;
+
     #[inline]
-    fn oid(&self) -> Oid<Self> {
+    fn id(&self) -> Oid<Self> {
         self.oid
     }
 

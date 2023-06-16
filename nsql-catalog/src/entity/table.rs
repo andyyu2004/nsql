@@ -90,8 +90,10 @@ impl fmt::Debug for CreateTableInfo {
 impl SystemEntity for Table {
     type Parent = Namespace;
 
+    type Id = Oid<Self>;
+
     #[inline]
-    fn oid(&self) -> Oid<Self> {
+    fn id(&self) -> Oid<Self> {
         self.oid
     }
 
