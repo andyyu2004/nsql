@@ -88,7 +88,6 @@ fn bootstrap_nsql_indexes() -> impl Iterator<Item = Index> {
 fn bootstrap_nsql_column() -> impl Iterator<Item = Column> {
     vec![
         Column {
-            oid: Oid::new(0),
             name: "oid".into(),
             table: Table::NAMESPACE,
             index: ColumnIndex::new(0),
@@ -96,7 +95,6 @@ fn bootstrap_nsql_column() -> impl Iterator<Item = Column> {
             is_primary_key: true,
         },
         Column {
-            oid: Oid::new(1),
             name: "name".into(),
             table: Table::NAMESPACE,
             index: ColumnIndex::new(1),
@@ -104,7 +102,6 @@ fn bootstrap_nsql_column() -> impl Iterator<Item = Column> {
             is_primary_key: false,
         },
         Column {
-            oid: Oid::new(2),
             name: "oid".into(),
             table: Table::TABLE,
             index: ColumnIndex::new(0),
@@ -112,7 +109,6 @@ fn bootstrap_nsql_column() -> impl Iterator<Item = Column> {
             is_primary_key: true,
         },
         Column {
-            oid: Oid::new(3),
             name: "namespace".into(),
             table: Table::TABLE,
             index: ColumnIndex::new(1),
@@ -120,7 +116,6 @@ fn bootstrap_nsql_column() -> impl Iterator<Item = Column> {
             is_primary_key: false,
         },
         Column {
-            oid: Oid::new(4),
             name: "name".into(),
             table: Table::TABLE,
             index: ColumnIndex::new(2),
@@ -128,23 +123,20 @@ fn bootstrap_nsql_column() -> impl Iterator<Item = Column> {
             is_primary_key: false,
         },
         Column {
-            oid: Oid::new(5),
-            name: "oid".into(),
-            table: Table::ATTRIBUTE,
-            index: ColumnIndex::new(0),
-            ty: Type::OID,
-            is_primary_key: true,
-        },
-        Column {
-            oid: Oid::new(6),
             name: "table".into(),
             table: Table::ATTRIBUTE,
             index: ColumnIndex::new(1),
             ty: Type::OID,
-            is_primary_key: false,
+            is_primary_key: true,
         },
         Column {
-            oid: Oid::new(7),
+            name: "index".into(),
+            table: Table::ATTRIBUTE,
+            index: ColumnIndex::new(3),
+            ty: Type::INT,
+            is_primary_key: true,
+        },
+        Column {
             name: "name".into(),
             table: Table::ATTRIBUTE,
             index: ColumnIndex::new(2),
@@ -152,15 +144,6 @@ fn bootstrap_nsql_column() -> impl Iterator<Item = Column> {
             is_primary_key: false,
         },
         Column {
-            oid: Oid::new(8),
-            name: "index".into(),
-            table: Table::ATTRIBUTE,
-            index: ColumnIndex::new(3),
-            ty: Type::INT,
-            is_primary_key: false,
-        },
-        Column {
-            oid: Oid::new(9),
             name: "ty".into(),
             table: Table::ATTRIBUTE,
             index: ColumnIndex::new(4),
@@ -168,7 +151,6 @@ fn bootstrap_nsql_column() -> impl Iterator<Item = Column> {
             is_primary_key: false,
         },
         Column {
-            oid: Oid::new(10),
             name: "is_primary_key".into(),
             table: Table::ATTRIBUTE,
             index: ColumnIndex::new(5),
@@ -176,7 +158,6 @@ fn bootstrap_nsql_column() -> impl Iterator<Item = Column> {
             is_primary_key: false,
         },
         Column {
-            oid: Oid::new(11),
             name: "oid".into(),
             table: Table::TYPE,
             index: ColumnIndex::new(0),
@@ -184,7 +165,6 @@ fn bootstrap_nsql_column() -> impl Iterator<Item = Column> {
             is_primary_key: true,
         },
         Column {
-            oid: Oid::new(12),
             name: "name".into(),
             table: Table::TYPE,
             index: ColumnIndex::new(1),

@@ -3,11 +3,10 @@ use crate::Type;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Column {
-    pub(crate) oid: Oid<Self>,
     pub(crate) table: Oid<Table>,
-    pub(crate) name: Name,
     pub(crate) index: ColumnIndex,
     pub(crate) ty: Oid<Type>,
+    pub(crate) name: Name,
     pub(crate) is_primary_key: bool,
 }
 
@@ -25,7 +24,7 @@ impl Column {
         ty: Oid<Type>,
         is_primary_key: bool,
     ) -> Self {
-        Self { oid: crate::hack_new_oid_tmp(), table, name, index, ty, is_primary_key }
+        Self { table, name, index, ty, is_primary_key }
     }
 
     #[inline]
@@ -116,10 +115,9 @@ impl SystemEntity for Column {
             Table::ATTRIBUTE.untyped(),
             vec![
                 ColumnStorageInfo::new(LogicalType::Oid, true),
-                ColumnStorageInfo::new(LogicalType::Oid, false),
+                ColumnStorageInfo::new(LogicalType::Int, true),
                 ColumnStorageInfo::new(LogicalType::Oid, false),
                 ColumnStorageInfo::new(LogicalType::Text, false),
-                ColumnStorageInfo::new(LogicalType::Int, false),
                 ColumnStorageInfo::new(LogicalType::Bool, false),
             ],
         )
@@ -130,11 +128,10 @@ impl FromTuple for Column {
     fn from_values(values: impl Iterator<Item = Value>) -> Result<Self, FromTupleError> {
         let mut values = values;
         Ok(Self {
-            oid: values.next().ok_or(FromTupleError::NotEnoughValues)?.cast_non_null()?,
             table: values.next().ok_or(FromTupleError::NotEnoughValues)?.cast_non_null()?,
+            index: values.next().ok_or(FromTupleError::NotEnoughValues)?.cast_non_null()?,
             ty: values.next().ok_or(FromTupleError::NotEnoughValues)?.cast_non_null()?,
             name: values.next().ok_or(FromTupleError::NotEnoughValues)?.cast_non_null()?,
-            index: values.next().ok_or(FromTupleError::NotEnoughValues)?.cast_non_null()?,
             is_primary_key: values
                 .next()
                 .ok_or(FromTupleError::NotEnoughValues)?
@@ -146,11 +143,10 @@ impl FromTuple for Column {
 impl IntoTuple for Column {
     fn into_tuple(self) -> Tuple {
         Tuple::from([
-            Value::Oid(self.oid.untyped()),
             Value::Oid(self.table.untyped()),
+            Value::Int32(self.index.index as i32),
             Value::Oid(self.ty.untyped()),
             Value::Text(self.name.into()),
-            Value::Int32(self.index.index as i32),
             Value::Bool(self.is_primary_key),
         ])
     }
