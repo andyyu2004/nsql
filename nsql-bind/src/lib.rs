@@ -315,26 +315,29 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                 not_implemented!("compound assignment")
             }
 
-            if !columns.iter().any(|column| column.name().as_str() == assignment.id[0].value) {
+            if !columns.iter().any(|column| {
+                column.name(self.catalog, tx).unwrap().as_str() == assignment.id[0].value
+            }) {
                 bail!(
                     "referenced update column `{}` does not exist in table `{}`",
                     assignment.id[0].value,
-                    table.name(),
+                    table.name(self.catalog, tx)?,
                 )
             }
         }
 
         let mut projections = Vec::with_capacity(columns.len());
         for column in columns {
-            let expr = if let Some(assignment) =
-                assignments.iter().find(|assn| assn.id[0].value == column.name().as_str())
+            let expr = if let Some(assignment) = assignments
+                .iter()
+                .find(|assn| assn.id[0].value == column.name(self.catalog, tx).unwrap().as_str())
             {
                 // we don't allow updating primary keys
                 if column.is_primary_key() {
                     bail!(
                         "cannot update primary key column `{}` of table `{}`",
-                        column.name(),
-                        table.name()
+                        column.name(self.catalog, tx)?,
+                        table.name(self.catalog, tx)?,
                     )
                 }
 
@@ -342,7 +345,10 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                 self.bind_expr(scope, &assignment.value)?
             } else {
                 // otherwise, we bind the column to itself (effectively an identity projection)
-                self.bind_expr(scope, &ast::Expr::Identifier(ast::Ident::new(column.name())))?
+                self.bind_expr(
+                    scope,
+                    &ast::Expr::Identifier(ast::Ident::new(column.name(self.catalog, tx)?)),
+                )?
             };
 
             projections.push(expr);
@@ -391,7 +397,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                     let ns = self
                         .catalog
                         .namespaces(tx)?
-                        .find(None, name.as_str())?
+                        .find(self.catalog, tx, None, name.as_str())?
                         .ok_or_else(|| unbound!(Namespace, path))?;
                     Ok(ns.id())
                 }
@@ -425,13 +431,13 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                     let namespace = self
                         .catalog
                         .namespaces(tx)?
-                        .find(None, schema.as_str())?
+                        .find(self.catalog, tx, None, schema.as_str())?
                         .ok_or_else(|| unbound!(Namespace, path))?;
 
                     let entity = self
                         .catalog
                         .system_table::<T>(tx)?
-                        .find(Some(namespace.id()), name.as_str())?
+                        .find(self.catalog, tx, Some(namespace.id()), name.as_str())?
                         .ok_or_else(|| unbound!(T, path))?;
 
                     Ok(entity.id())

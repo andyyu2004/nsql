@@ -24,8 +24,12 @@ impl SystemEntity for Namespace {
     }
 
     #[inline]
-    fn name(&self) -> Name {
-        Name::clone(&self.name)
+    fn name<'env, S: StorageEngine>(
+        &self,
+        _catalog: Catalog<'env, S>,
+        _tx: &dyn Transaction<'env, S>,
+    ) -> Result<Name> {
+        Ok(Name::clone(&self.name))
     }
 
     #[inline]
@@ -44,8 +48,12 @@ impl SystemEntity for Namespace {
     }
 
     #[inline]
-    fn parent_oid(&self) -> Option<Oid<Self::Parent>> {
-        None
+    fn parent_oid<'env, S: StorageEngine>(
+        &self,
+        _catalog: Catalog<'env, S>,
+        _tx: &dyn Transaction<'env, S>,
+    ) -> Result<Option<Oid<Self::Parent>>> {
+        Ok(None)
     }
 }
 

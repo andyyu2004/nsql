@@ -3,7 +3,7 @@ use crate::Namespace;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Index {
-    pub(crate) table: Table,
+    pub(crate) table: Oid<Table>,
     pub(crate) kind: IndexKind,
 }
 
@@ -15,10 +15,10 @@ pub enum IndexKind {
 }
 
 impl FromTuple for Index {
-    fn from_values(mut values: impl Iterator<Item = Value>) -> Result<Self, FromTupleError> {
-        let table = Table::from_values(&mut values)?;
-        let kind = IndexKind::PrimaryKey;
-        Ok(Self { table, kind })
+    fn from_values(_values: impl Iterator<Item = Value>) -> Result<Self, FromTupleError> {
+        todo!()
+        // let kind = IndexKind::PrimaryKey;
+        // Ok(Self { table, kind })
     }
 }
 
@@ -35,12 +35,7 @@ impl SystemEntity for Index {
 
     #[inline]
     fn id(&self) -> Self::Id {
-        self.table.id()
-    }
-
-    #[inline]
-    fn name(&self) -> Name {
-        self.table.name()
+        self.table
     }
 
     #[inline]
@@ -49,8 +44,21 @@ impl SystemEntity for Index {
     }
 
     #[inline]
-    fn parent_oid(&self) -> Option<Oid<Self::Parent>> {
-        self.table.parent_oid()
+    fn name<'env, S: StorageEngine>(
+        &self,
+        catalog: Catalog<'env, S>,
+        tx: &dyn Transaction<'env, S>,
+    ) -> Result<Name> {
+        catalog.get::<Table>(tx, self.table)?.name(catalog, tx)
+    }
+
+    #[inline]
+    fn parent_oid<'env, S: StorageEngine>(
+        &self,
+        catalog: Catalog<'env, S>,
+        tx: &dyn Transaction<'env, S>,
+    ) -> Result<Option<Oid<Self::Parent>>> {
+        catalog.get::<Table>(tx, self.table)?.parent_oid(catalog, tx)
     }
 
     #[inline]

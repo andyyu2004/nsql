@@ -1,9 +1,10 @@
 use nsql_core::Name;
 use nsql_storage::{Result, TableStorageInfo};
-use nsql_storage_engine::{ReadWriteExecutionMode, StorageEngine};
+use nsql_storage_engine::{ReadWriteExecutionMode, StorageEngine, Transaction};
 
 use crate::{
-    Column, ColumnIndex, Namespace, Oid, SystemEntity, SystemTableView, Table, Type, MAIN_SCHEMA,
+    Catalog, Column, ColumnIndex, Index, IndexKind, Namespace, Oid, SystemEntity, SystemTableView,
+    Table, Type, MAIN_SCHEMA,
 };
 
 pub(crate) fn bootstrap<'env, S: StorageEngine>(
@@ -26,6 +27,10 @@ pub(crate) fn bootstrap<'env, S: StorageEngine>(
     tracing::debug!("bootstrapping types");
     let mut ty_table = SystemTableView::<S, ReadWriteExecutionMode, Type>::new(storage, txn)?;
     bootstrap_nsql_types().try_for_each(|ty| ty_table.insert(ty))?;
+
+    tracing::debug!("bootstrapping indexes");
+    let mut index_table = SystemTableView::<S, ReadWriteExecutionMode, Index>::new(storage, txn)?;
+    bootstrap_nsql_indexes().try_for_each(|index| index_table.insert(index))?;
 
     Ok(())
 }
@@ -74,6 +79,10 @@ fn bootstrap_nsql_tables() -> impl Iterator<Item = Table> {
         Table { oid: Table::TYPE, name: "nsql_type".into(), namespace: Namespace::CATALOG },
     ]
     .into_iter()
+}
+
+fn bootstrap_nsql_indexes() -> impl Iterator<Item = Index> {
+    vec![Index { table: Table::NAMESPACE, kind: IndexKind::PrimaryKey }].into_iter()
 }
 
 fn bootstrap_nsql_column() -> impl Iterator<Item = Column> {
@@ -201,7 +210,11 @@ impl SystemEntity for () {
 
     type Id = ();
 
-    fn name(&self) -> Name {
+    fn name<'env, S: StorageEngine>(
+        &self,
+        _catalog: Catalog<'env, S>,
+        _tx: &dyn Transaction<'env, S>,
+    ) -> Result<Name> {
         unreachable!()
     }
 
@@ -210,11 +223,16 @@ impl SystemEntity for () {
     fn desc() -> &'static str {
         "catalog"
     }
+
     fn storage_info() -> TableStorageInfo {
         todo!()
     }
 
-    fn parent_oid(&self) -> Option<Oid<Self::Parent>> {
+    fn parent_oid<'env, S: StorageEngine>(
+        &self,
+        _catalog: Catalog<'env, S>,
+        _tx: &dyn Transaction<'env, S>,
+    ) -> Result<Option<Oid<Self::Parent>>> {
         unreachable!()
     }
 }

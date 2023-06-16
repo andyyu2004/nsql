@@ -5,9 +5,11 @@ use fix_hidden_lifetime_bug::fix_hidden_lifetime_bug;
 use nsql_core::Oid;
 use nsql_storage::tuple::IntoTuple;
 use nsql_storage::TableStorage;
-use nsql_storage_engine::{ExecutionMode, FallibleIterator, ReadWriteExecutionMode, StorageEngine};
+use nsql_storage_engine::{
+    ExecutionMode, FallibleIterator, ReadWriteExecutionMode, StorageEngine, Transaction,
+};
 
-use crate::{Result, SystemEntity};
+use crate::{Catalog, Result, SystemEntity};
 
 #[repr(transparent)]
 pub struct SystemTableView<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T> {
@@ -35,8 +37,17 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: SystemEnt
     }
 
     #[inline]
-    pub fn find(&self, parent: Option<Oid<T::Parent>>, name: &str) -> Result<Option<T>> {
-        self.scan()?.find(|entry| Ok(entry.parent_oid() == parent && entry.name().as_str() == name))
+    pub fn find(
+        &self,
+        catalog: Catalog<'env, S>,
+        tx: &dyn Transaction<'env, S>,
+        parent: Option<Oid<T::Parent>>,
+        name: &str,
+    ) -> Result<Option<T>> {
+        self.scan()?.find(|entry| {
+            Ok(entry.parent_oid(catalog, tx)? == parent
+                && entry.name(catalog, tx)?.as_str() == name)
+        })
     }
 
     #[inline]

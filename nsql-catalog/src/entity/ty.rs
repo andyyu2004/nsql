@@ -16,8 +16,12 @@ impl SystemEntity for Type {
         self.oid
     }
     #[inline]
-    fn name(&self) -> Name {
-        Name::clone(&self.name)
+    fn name<'env, S: StorageEngine>(
+        &self,
+        _catalog: Catalog<'env, S>,
+        _tx: &dyn Transaction<'env, S>,
+    ) -> Result<Name> {
+        Ok(Name::clone(&self.name))
     }
 
     #[inline]
@@ -25,8 +29,12 @@ impl SystemEntity for Type {
         "type"
     }
 
-    fn parent_oid(&self) -> Option<Oid<Self::Parent>> {
-        None
+    fn parent_oid<'env, S: StorageEngine>(
+        &self,
+        _catalog: Catalog<'env, S>,
+        _tx: &dyn Transaction<'env, S>,
+    ) -> Result<Option<Oid<Self::Parent>>> {
+        Ok(None)
     }
 
     fn storage_info() -> TableStorageInfo {

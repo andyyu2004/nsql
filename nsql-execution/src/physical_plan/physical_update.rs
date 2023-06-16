@@ -130,7 +130,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> Explain<'env, S> for PhysicalUpdate<'en
         tx: &dyn Transaction<'env, S>,
         f: &mut fmt::Formatter<'_>,
     ) -> explain::Result {
-        write!(f, "update {}", catalog.table(tx, self.table)?.name())?;
+        write!(f, "update {}", catalog.table(tx, self.table)?.name(catalog, tx)?)?;
         Ok(())
     }
 }

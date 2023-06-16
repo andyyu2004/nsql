@@ -19,6 +19,7 @@ use nsql_storage_engine::{
 };
 
 pub use self::entity::column::{Column, ColumnIndex, CreateColumnInfo};
+pub use self::entity::index::{Index, IndexKind};
 pub use self::entity::namespace::{CreateNamespaceInfo, Namespace};
 pub use self::entity::table::{CreateTableInfo, Table};
 pub use self::entity::ty::Type;
@@ -33,11 +34,19 @@ pub trait SystemEntity: FromTuple + IntoTuple + Eq + fmt::Debug {
 
     fn id(&self) -> Self::Id;
 
-    fn name(&self) -> Name;
+    fn name<'env, S: StorageEngine>(
+        &self,
+        catalog: Catalog<'env, S>,
+        tx: &dyn Transaction<'env, S>,
+    ) -> Result<Name, Error>;
 
     fn desc() -> &'static str;
 
-    fn parent_oid(&self) -> Option<Oid<Self::Parent>>;
+    fn parent_oid<'env, S: StorageEngine>(
+        &self,
+        catalog: Catalog<'env, S>,
+        tx: &dyn Transaction<'env, S>,
+    ) -> Result<Option<Oid<Self::Parent>>>;
 
     fn storage_info() -> TableStorageInfo;
 }

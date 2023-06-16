@@ -23,8 +23,12 @@ impl Table {
 
     #[inline]
     // duplicating the trait method here as it's more convenient to call for external crates
-    pub fn name(&self) -> Name {
-        Name::clone(&self.name)
+    pub fn name<'env, S: StorageEngine>(
+        &self,
+        _catalog: Catalog<'env, S>,
+        _tx: &dyn Transaction<'env, S>,
+    ) -> Result<Name> {
+        Ok(Name::clone(&self.name))
     }
 
     pub fn storage<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
@@ -99,8 +103,12 @@ impl SystemEntity for Table {
     }
 
     #[inline]
-    fn name(&self) -> Name {
-        Name::clone(&self.name)
+    fn name<'env, S: StorageEngine>(
+        &self,
+        _catalog: Catalog<'env, S>,
+        _tx: &dyn Transaction<'env, S>,
+    ) -> Result<Name> {
+        Ok(Name::clone(&self.name))
     }
 
     #[inline]
@@ -109,8 +117,12 @@ impl SystemEntity for Table {
     }
 
     #[inline]
-    fn parent_oid(&self) -> Option<Oid<Self::Parent>> {
-        Some(self.namespace)
+    fn parent_oid<'env, S: StorageEngine>(
+        &self,
+        _catalog: Catalog<'env, S>,
+        _tx: &dyn Transaction<'env, S>,
+    ) -> Result<Option<Oid<Self::Parent>>> {
+        Ok(Some(self.namespace))
     }
 
     fn storage_info() -> TableStorageInfo {
