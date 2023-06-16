@@ -1,6 +1,6 @@
 use nsql_core::Name;
 use nsql_storage::{Result, TableStorageInfo};
-use nsql_storage_engine::{ReadWriteExecutionMode, StorageEngine, Transaction};
+use nsql_storage_engine::{FallibleIterator, ReadWriteExecutionMode, StorageEngine, Transaction};
 
 use crate::{
     Catalog, Column, ColumnIndex, Index, IndexKind, Namespace, Oid, SystemEntity, SystemTableView,
@@ -40,6 +40,9 @@ impl Table {
     pub(crate) const TABLE: Oid<Self> = Oid::new(101);
     pub(crate) const ATTRIBUTE: Oid<Self> = Oid::new(102);
     pub(crate) const TYPE: Oid<Self> = Oid::new(103);
+    pub(crate) const INDEX: Oid<Self> = Oid::new(104);
+
+    pub(crate) const NAMESPACE_NAME_UNIQUE_INDEX: Oid<Self> = Oid::new(105);
 }
 
 impl Namespace {
@@ -77,16 +80,27 @@ fn bootstrap_nsql_tables() -> impl Iterator<Item = Table> {
             namespace: Namespace::CATALOG,
         },
         Table { oid: Table::TYPE, name: "nsql_type".into(), namespace: Namespace::CATALOG },
+        Table {
+            oid: Table::NAMESPACE_NAME_UNIQUE_INDEX,
+            name: "nsql_namespace_name_key".into(),
+            namespace: Namespace::CATALOG,
+        },
     ]
     .into_iter()
 }
 
 fn bootstrap_nsql_indexes() -> impl Iterator<Item = Index> {
-    vec![Index { table: Table::NAMESPACE, kind: IndexKind::PrimaryKey }].into_iter()
+    vec![Index {
+        table: Table::NAMESPACE_NAME_UNIQUE_INDEX,
+        kind: IndexKind::Unique,
+        target: Table::NAMESPACE,
+    }]
+    .into_iter()
 }
 
 fn bootstrap_nsql_column() -> impl Iterator<Item = Column> {
     vec![
+        // nsql_namespace
         Column {
             name: "oid".into(),
             table: Table::NAMESPACE,
@@ -101,6 +115,7 @@ fn bootstrap_nsql_column() -> impl Iterator<Item = Column> {
             ty: Type::TEXT,
             is_primary_key: false,
         },
+        // nsql_table
         Column {
             name: "oid".into(),
             table: Table::TABLE,
@@ -122,41 +137,43 @@ fn bootstrap_nsql_column() -> impl Iterator<Item = Column> {
             ty: Type::TEXT,
             is_primary_key: false,
         },
+        // nsql_column
         Column {
             name: "table".into(),
             table: Table::ATTRIBUTE,
-            index: ColumnIndex::new(1),
+            index: ColumnIndex::new(0),
             ty: Type::OID,
             is_primary_key: true,
         },
         Column {
             name: "index".into(),
             table: Table::ATTRIBUTE,
-            index: ColumnIndex::new(3),
+            index: ColumnIndex::new(1),
             ty: Type::INT,
             is_primary_key: true,
         },
         Column {
-            name: "name".into(),
+            name: "ty".into(),
             table: Table::ATTRIBUTE,
             index: ColumnIndex::new(2),
-            ty: Type::TEXT,
+            ty: Type::OID,
             is_primary_key: false,
         },
         Column {
-            name: "ty".into(),
+            name: "name".into(),
             table: Table::ATTRIBUTE,
-            index: ColumnIndex::new(4),
-            ty: Type::OID,
+            index: ColumnIndex::new(3),
+            ty: Type::TEXT,
             is_primary_key: false,
         },
         Column {
             name: "is_primary_key".into(),
             table: Table::ATTRIBUTE,
-            index: ColumnIndex::new(5),
+            index: ColumnIndex::new(4),
             ty: Type::BOOL,
             is_primary_key: false,
         },
+        // nsql_type
         Column {
             name: "oid".into(),
             table: Table::TYPE,
@@ -170,6 +187,14 @@ fn bootstrap_nsql_column() -> impl Iterator<Item = Column> {
             index: ColumnIndex::new(1),
             ty: Type::TEXT,
             is_primary_key: false,
+        },
+        // nsql_namespace_pkey
+        Column {
+            table: Table::NAMESPACE_NAME_UNIQUE_INDEX,
+            index: ColumnIndex::new(0),
+            ty: Type::TEXT,
+            name: "name".into(),
+            is_primary_key: true,
         },
     ]
     .into_iter()
@@ -204,7 +229,7 @@ impl SystemEntity for () {
         "catalog"
     }
 
-    fn storage_info() -> TableStorageInfo {
+    fn table_storage_info() -> TableStorageInfo {
         todo!()
     }
 

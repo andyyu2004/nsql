@@ -48,7 +48,7 @@ pub trait SystemEntity: FromTuple + IntoTuple + Eq + fmt::Debug {
         tx: &dyn Transaction<'env, S>,
     ) -> Result<Option<Oid<Self::Parent>>>;
 
-    fn storage_info() -> TableStorageInfo;
+    fn table_storage_info() -> TableStorageInfo;
 }
 
 pub struct Catalog<'env, S> {

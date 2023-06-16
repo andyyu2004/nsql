@@ -1,13 +1,13 @@
 use std::fmt;
 
 use anyhow::Result;
-use nsql_storage::TableStorage;
+use nsql_storage::{IndexStorageInfo, TableStorage, TableStorageInfo};
 use nsql_storage_engine::{
     ExecutionMode, FallibleIterator, ReadWriteExecutionMode, StorageEngine, Transaction,
 };
 
 use super::*;
-use crate::{Catalog, Column, Name, Namespace, Oid, SystemEntity};
+use crate::{Catalog, Column, Index, Name, Namespace, Oid, SystemEntity};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Table {
@@ -36,7 +36,12 @@ impl Table {
         catalog: Catalog<'env, S>,
         tx: M::TransactionRef<'txn>,
     ) -> Result<TableStorage<'env, 'txn, S, M>> {
-        Ok(TableStorage::open(catalog.storage, tx, self.table_storage_info(catalog, &tx)?)?)
+        Ok(TableStorage::open(
+            catalog.storage,
+            tx,
+            self.table_storage_info(catalog, &tx)?,
+            self.index_storage_infos(catalog, &tx)?,
+        )?)
     }
 
     pub fn get_or_create_storage<'env, 'txn, S: StorageEngine>(
@@ -45,7 +50,12 @@ impl Table {
         tx: &'txn S::WriteTransaction<'env>,
     ) -> Result<TableStorage<'env, 'txn, S, ReadWriteExecutionMode>> {
         let storage = catalog.storage();
-        Ok(TableStorage::create(storage, tx, self.table_storage_info(catalog, tx)?)?)
+        Ok(TableStorage::create(
+            storage,
+            tx,
+            self.table_storage_info(catalog, tx)?,
+            self.index_storage_infos(catalog, tx)?,
+        )?)
     }
 
     fn table_storage_info<'env, S: StorageEngine>(
@@ -79,6 +89,30 @@ impl Table {
     #[inline]
     pub fn namespace(&self) -> Oid<Namespace> {
         self.namespace
+    }
+
+    /// Returns all indexes on this table.
+    fn indexes<'env, S: StorageEngine>(
+        &self,
+        catalog: Catalog<'env, S>,
+        tx: &dyn Transaction<'env, S>,
+    ) -> Result<Vec<Index>> {
+        catalog
+            .system_table::<Index>(tx)?
+            .scan()?
+            .filter(|index| Ok(index.target == self.oid))
+            .collect()
+    }
+
+    fn index_storage_infos<'env, S: StorageEngine>(
+        &self,
+        catalog: Catalog<'env, S>,
+        tx: &dyn Transaction<'env, S>,
+    ) -> Result<Vec<IndexStorageInfo>> {
+        self.indexes(catalog, tx)?
+            .into_iter()
+            .map(|index| index.storage_info(catalog, tx))
+            .collect()
     }
 }
 
@@ -125,7 +159,8 @@ impl SystemEntity for Table {
         Ok(Some(self.namespace))
     }
 
-    fn storage_info() -> TableStorageInfo {
+    #[inline]
+    fn table_storage_info() -> TableStorageInfo {
         TableStorageInfo::new(
             Table::TABLE.untyped(),
             vec![

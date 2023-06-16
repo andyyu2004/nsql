@@ -21,7 +21,9 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: SystemEnt
     SystemTableView<'env, 'txn, S, M, T>
 {
     pub fn new(storage: &'env S, tx: M::TransactionRef<'txn>) -> Result<Self, S::Error> {
-        let storage = TableStorage::<'env, 'txn, S, M>::open(storage, tx, T::storage_info())?;
+        // todo indexes
+        let storage =
+            TableStorage::<'env, 'txn, S, M>::open(storage, tx, T::table_storage_info(), todo!())?;
 
         Ok(Self { storage, phantom: PhantomData })
     }

@@ -110,7 +110,7 @@ impl SystemEntity for Column {
         Ok(Some(self.table))
     }
 
-    fn storage_info() -> TableStorageInfo {
+    fn table_storage_info() -> TableStorageInfo {
         TableStorageInfo::new(
             Table::ATTRIBUTE.untyped(),
             vec![
@@ -141,6 +141,7 @@ impl FromTuple for Column {
 }
 
 impl IntoTuple for Column {
+    #[inline]
     fn into_tuple(self) -> Tuple {
         Tuple::from([
             Value::Oid(self.table.untyped()),

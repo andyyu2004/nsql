@@ -12,24 +12,28 @@ use nsql_storage_engine::{
 };
 use rkyv::AlignedVec;
 
+use crate::index::{IndexStorage, IndexStorageInfo};
 use crate::tuple::{IntoTuple, Tuple, TupleIndex};
 use crate::value::Value;
 
+#[allow(explicit_outlives_requirements)]
 pub struct TableStorage<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> {
     tree: M::Tree<'txn>,
     info: TableStorageInfo,
+    indexes: Box<[IndexStorage<'env, 'txn, S, M>]>,
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine> TableStorage<'env, 'txn, S, ReadWriteExecutionMode> {
+impl<'env, 'txn, S: StorageEngine> TableStorage<'env, 'txn, S, ReadWriteExecutionMode> {
     #[inline]
     pub fn create(
         storage: &S,
         tx: &'txn S::WriteTransaction<'env>,
         info: TableStorageInfo,
+        indexes: Vec<IndexStorageInfo>,
     ) -> Result<Self, S::Error> {
         // create the tree
-        storage.open_write_tree(tx, &info.table_name)?;
-        Self::open(storage, tx, info)
+        storage.open_write_tree(tx, &info.name)?;
+        Self::open(storage, tx, info, indexes)
     }
 
     #[inline]
@@ -61,14 +65,15 @@ impl<'env: 'txn, 'txn, S: StorageEngine> TableStorage<'env, 'txn, S, ReadWriteEx
         Ok(())
     }
 
-    /// Aplit tuple into primary key and non-primary key
+    /// Split tuple into primary key and non-primary key components
     fn split_tuple(&self, tuple: &Tuple) -> (AlignedVec, AlignedVec) {
         assert_eq!(
             tuple.len(),
             self.info.columns.len(),
-            "tuple length did not match the expected number of columns, expected {}, got {}",
+            "tuple length did not match the expected number of columns, expected {}, got {} (table {})",
             self.info.columns.len(),
-            tuple.len()
+            tuple.len(),
+            self.info.name
         );
 
         let mut pk_tuple = vec![];
@@ -105,9 +110,14 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> TableStorage
         storage: &S,
         tx: M::TransactionRef<'txn>,
         info: TableStorageInfo,
+        indexes: Vec<IndexStorageInfo>,
     ) -> Result<Self, S::Error> {
-        let tree = M::open_tree(storage, tx, &info.table_name)?;
-        Ok(Self { info, tree })
+        let tree = M::open_tree(storage, tx, &info.name)?;
+        let indexes = indexes
+            .into_iter()
+            .map(|info| IndexStorage::open(storage, tx, info))
+            .collect::<Result<_, _>>()?;
+        Ok(Self { info, tree, indexes })
     }
 
     #[inline]
@@ -232,7 +242,7 @@ fn range_gen_arc<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
 
 #[derive(Debug, Clone)]
 pub struct TableStorageInfo {
-    table_name: Name,
+    name: Name,
     columns: Vec<ColumnStorageInfo>,
 }
 
@@ -249,7 +259,12 @@ impl TableStorageInfo {
             "expected at least one primary key column (this should be checked in the binder)"
         );
 
-        Self { columns, table_name: format!("{oid}").into() }
+        Self { columns, name: format!("{oid}").into() }
+    }
+
+    #[inline]
+    pub fn name(&self) -> &Name {
+        &self.name
     }
 }
 

@@ -1,10 +1,12 @@
 #![deny(rust_2018_idioms)]
 
+mod index;
 mod table_storage;
 pub mod tuple;
 pub mod value;
 
 use anyhow::Error;
+pub use index::IndexStorageInfo;
 use nsql_storage_engine::{StorageEngine, Transaction};
 pub use table_storage::{ColumnStorageInfo, TableStorage, TableStorageInfo};
 

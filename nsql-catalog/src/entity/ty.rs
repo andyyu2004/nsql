@@ -37,7 +37,7 @@ impl SystemEntity for Type {
         Ok(None)
     }
 
-    fn storage_info() -> TableStorageInfo {
+    fn table_storage_info() -> TableStorageInfo {
         TableStorageInfo::new(
             Table::TYPE.untyped(),
             vec![
