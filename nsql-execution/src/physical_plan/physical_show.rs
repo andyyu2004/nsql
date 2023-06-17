@@ -61,7 +61,9 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
             ir::ObjectType::Table => Arc::new(catalog.tables(tx.dyn_ref())?)
                 .scan_arc()?
                 .filter(|table| Ok(table.namespace() == Namespace::MAIN))
-                .map(|table| Ok(Tuple::from(vec![Value::Text(table.name().to_string())]))),
+                .map(move |table| {
+                    Ok(Tuple::from(vec![Value::Text(table.name(catalog, tx)?.to_string())]))
+                }),
         };
 
         Ok(Box::new(iter))

@@ -91,7 +91,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSink<'env, 'txn, S, ReadWriteEx
     ) -> ExecutionResult<()> {
         let tx = ctx.tx()?;
         let catalog = ctx.catalog();
-        let table = ctx.catalog().get(tx, self.table)?;
+        let table = ctx.catalog().table(tx, self.table)?;
         let mut storage = table.storage::<S, ReadWriteExecutionMode>(catalog, tx)?;
 
         let tuples = self.tuples.read();
@@ -130,7 +130,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> Explain<'env, S> for PhysicalUpdate<'en
         tx: &dyn Transaction<'env, S>,
         f: &mut fmt::Formatter<'_>,
     ) -> explain::Result {
-        write!(f, "update {}", catalog.get(tx, self.table)?.name())?;
+        write!(f, "update {}", catalog.table(tx, self.table)?.name(catalog, tx)?)?;
         Ok(())
     }
 }

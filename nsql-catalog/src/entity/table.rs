@@ -1,13 +1,13 @@
 use std::fmt;
 
 use anyhow::Result;
-use nsql_storage::TableStorage;
+use nsql_storage::{IndexStorageInfo, TableStorage, TableStorageInfo};
 use nsql_storage_engine::{
     ExecutionMode, FallibleIterator, ReadWriteExecutionMode, StorageEngine, Transaction,
 };
 
 use super::*;
-use crate::{Catalog, Column, Name, Namespace, Oid, SystemEntity};
+use crate::{Catalog, Column, Index, Name, Namespace, Oid, SystemEntity};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Table {
@@ -22,8 +22,13 @@ impl Table {
     }
 
     #[inline]
-    pub fn name(&self) -> &Name {
-        &self.name
+    // duplicating the trait method here as it's more convenient to call for external crates
+    pub fn name<'env, S: StorageEngine>(
+        &self,
+        _catalog: Catalog<'env, S>,
+        _tx: &dyn Transaction<'env, S>,
+    ) -> Result<Name> {
+        Ok(Name::clone(&self.name))
     }
 
     pub fn storage<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
@@ -31,7 +36,12 @@ impl Table {
         catalog: Catalog<'env, S>,
         tx: M::TransactionRef<'txn>,
     ) -> Result<TableStorage<'env, 'txn, S, M>> {
-        Ok(TableStorage::open(catalog.storage, tx, self.table_storage_info(catalog, &tx)?)?)
+        Ok(TableStorage::open(
+            catalog.storage,
+            tx,
+            self.table_storage_info(catalog, &tx)?,
+            self.index_storage_infos(catalog, &tx)?,
+        )?)
     }
 
     pub fn get_or_create_storage<'env, 'txn, S: StorageEngine>(
@@ -40,10 +50,15 @@ impl Table {
         tx: &'txn S::WriteTransaction<'env>,
     ) -> Result<TableStorage<'env, 'txn, S, ReadWriteExecutionMode>> {
         let storage = catalog.storage();
-        Ok(TableStorage::create(storage, tx, self.table_storage_info(catalog, tx)?)?)
+        Ok(TableStorage::create(
+            storage,
+            tx,
+            self.table_storage_info(catalog, tx)?,
+            self.index_storage_infos(catalog, tx)?,
+        )?)
     }
 
-    fn table_storage_info<'env, S: StorageEngine>(
+    pub(crate) fn table_storage_info<'env, S: StorageEngine>(
         &self,
         catalog: Catalog<'env, S>,
         tx: &dyn Transaction<'env, S>,
@@ -75,6 +90,40 @@ impl Table {
     pub fn namespace(&self) -> Oid<Namespace> {
         self.namespace
     }
+
+    /// Returns all indexes on this table.
+    fn indexes<'env, S: StorageEngine>(
+        &self,
+        catalog: Catalog<'env, S>,
+        tx: &dyn Transaction<'env, S>,
+    ) -> Result<Vec<Index>> {
+        catalog
+            .system_table::<Index>(tx)?
+            .scan()?
+            .filter(|index| Ok(index.target == self.oid))
+            .collect()
+    }
+
+    fn index_storage_infos<'env, S: StorageEngine>(
+        &self,
+        catalog: Catalog<'env, S>,
+        tx: &dyn Transaction<'env, S>,
+    ) -> Result<Vec<IndexStorageInfo>> {
+        self.indexes(catalog, tx)?
+            .into_iter()
+            .map(|index| index.storage_info(catalog, tx))
+            .collect()
+    }
+
+    pub(crate) fn create_storage_for_bootstrap<'env, S: StorageEngine>(
+        &self,
+        storage: &'env S,
+        tx: &S::WriteTransaction<'env>,
+        oid: Oid<Table>,
+    ) -> Result<(), S::Error> {
+        storage.open_write_tree(tx, &TableStorageInfo::derive_name(oid.untyped()))?;
+        Ok(())
+    }
 }
 
 pub struct CreateTableInfo {
@@ -90,14 +139,20 @@ impl fmt::Debug for CreateTableInfo {
 impl SystemEntity for Table {
     type Parent = Namespace;
 
+    type Key = Oid<Self>;
+
     #[inline]
-    fn oid(&self) -> Oid<Self> {
+    fn key(&self) -> Oid<Self> {
         self.oid
     }
 
     #[inline]
-    fn name(&self) -> Name {
-        Name::clone(&self.name)
+    fn name<'env, S: StorageEngine>(
+        &self,
+        _catalog: Catalog<'env, S>,
+        _tx: &dyn Transaction<'env, S>,
+    ) -> Result<Name> {
+        Ok(Name::clone(&self.name))
     }
 
     #[inline]
@@ -106,11 +161,16 @@ impl SystemEntity for Table {
     }
 
     #[inline]
-    fn parent_oid(&self) -> Option<Oid<Self::Parent>> {
-        Some(self.namespace)
+    fn parent_oid<'env, S: StorageEngine>(
+        &self,
+        _catalog: Catalog<'env, S>,
+        _tx: &dyn Transaction<'env, S>,
+    ) -> Result<Option<Oid<Self::Parent>>> {
+        Ok(Some(self.namespace))
     }
 
-    fn storage_info() -> TableStorageInfo {
+    #[inline]
+    fn bootstrap_table_storage_info() -> TableStorageInfo {
         TableStorageInfo::new(
             Table::TABLE.untyped(),
             vec![
@@ -119,6 +179,11 @@ impl SystemEntity for Table {
                 ColumnStorageInfo::new(LogicalType::Text, false),
             ],
         )
+    }
+
+    #[inline]
+    fn table() -> Oid<Table> {
+        Table::TABLE
     }
 }
 
@@ -133,15 +198,11 @@ impl IntoTuple for Table {
 }
 
 impl FromTuple for Table {
-    fn from_tuple(mut tuple: Tuple) -> Result<Self, FromTupleError> {
-        if tuple.len() != 3 {
-            return Err(FromTupleError::ColumnCountMismatch { expected: 3, actual: tuple.len() });
-        }
-
+    fn from_values(mut values: impl Iterator<Item = Value>) -> Result<Self, FromTupleError> {
         Ok(Self {
-            oid: tuple[0].take().cast_non_null()?,
-            namespace: tuple[1].take().cast_non_null()?,
-            name: tuple[2].take().cast_non_null()?,
+            oid: values.next().ok_or(FromTupleError::NotEnoughValues)?.cast_non_null()?,
+            namespace: values.next().ok_or(FromTupleError::NotEnoughValues)?.cast_non_null()?,
+            name: values.next().ok_or(FromTupleError::NotEnoughValues)?.cast_non_null()?,
         })
     }
 }

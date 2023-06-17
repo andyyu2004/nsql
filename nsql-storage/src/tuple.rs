@@ -3,9 +3,9 @@ use std::fmt;
 use std::ops::{Index, IndexMut};
 
 use rkyv::with::RefAsBox;
-use rkyv::Archived;
+use rkyv::{Archive, Archived, Deserialize, Serialize};
 
-use crate::value::{CastError, Value};
+use crate::value::{CastError, FromValue, Value};
 
 #[derive(Debug, Clone, PartialEq, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
 #[repr(transparent)]
@@ -41,6 +41,12 @@ impl Tuple {
         self.0.iter()
     }
 
+    #[inline]
+    pub fn into_values(self) -> Box<[Value]> {
+        self.0
+    }
+
+    #[inline]
     pub fn project_archived(values: &[&Archived<Value>], projection: &[TupleIndex]) -> Tuple {
         projection.iter().map(|&idx| nsql_rkyv::deserialize(values[idx.0])).collect()
     }
@@ -120,7 +126,7 @@ impl IndexMut<usize> for Tuple {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Copy)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy, Archive, Serialize, Deserialize)]
 pub struct TupleIndex(usize);
 
 impl TupleIndex {
@@ -138,16 +144,16 @@ impl TupleIndex {
 
 #[derive(Debug)]
 pub enum FromTupleError {
-    ColumnCountMismatch { expected: usize, actual: usize },
+    TooManyValues,
+    NotEnoughValues,
     InvalidCast(Box<dyn Error + Send + Sync>),
 }
 
 impl fmt::Display for FromTupleError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::ColumnCountMismatch { expected, actual } => {
-                write!(f, "expected {} columns, got {}", expected, actual)
-            }
+            Self::TooManyValues => write!(f, "too many values"),
+            Self::NotEnoughValues => write!(f, "not enough values"),
             Self::InvalidCast(err) => write!(f, "invalid cast: {}", err),
         }
     }
@@ -162,16 +168,35 @@ impl<T: 'static> From<CastError<T>> for FromTupleError {
 }
 
 pub trait FromTuple: Sized {
-    fn from_tuple(tuple: Tuple) -> Result<Self, FromTupleError>;
+    fn from_values(values: impl Iterator<Item = Value>) -> Result<Self, FromTupleError>;
+
+    #[inline]
+    fn from_tuple(tuple: Tuple) -> Result<Self, FromTupleError> {
+        Self::from_values(Vec::from(tuple.into_values()).into_iter())
+    }
 }
 
 impl FromTuple for () {
-    fn from_tuple(tuple: Tuple) -> Result<Self, FromTupleError> {
-        if tuple.is_empty() {
-            Ok(())
-        } else {
-            Err(FromTupleError::ColumnCountMismatch { expected: 0, actual: tuple.len() })
-        }
+    fn from_values(_: impl Iterator<Item = Value>) -> Result<Self, FromTupleError> {
+        Ok(())
+    }
+}
+
+impl<T, U> FromTuple for (T, U)
+where
+    T: FromValue + 'static,
+    U: FromValue + 'static,
+{
+    fn from_values(mut values: impl Iterator<Item = Value>) -> Result<Self, FromTupleError> {
+        let first = values.next().ok_or(FromTupleError::NotEnoughValues)?;
+        let second = values.next().ok_or(FromTupleError::NotEnoughValues)?;
+        Ok((T::from_value(first)?, U::from_value(second)?))
+    }
+}
+
+impl<T: FromValue + 'static> FromTuple for T {
+    fn from_values(mut values: impl Iterator<Item = Value>) -> Result<Self, FromTupleError> {
+        Ok(T::from_value(values.next().ok_or(FromTupleError::NotEnoughValues)?)?)
     }
 }
 

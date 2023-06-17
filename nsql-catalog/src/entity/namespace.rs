@@ -16,14 +16,20 @@ impl Namespace {
 impl SystemEntity for Namespace {
     type Parent = ();
 
+    type Key = Oid<Self>;
+
     #[inline]
-    fn oid(&self) -> Oid<Self> {
+    fn key(&self) -> Oid<Self> {
         self.oid
     }
 
     #[inline]
-    fn name(&self) -> Name {
-        Name::clone(&self.name)
+    fn name<'env, S: StorageEngine>(
+        &self,
+        _catalog: Catalog<'env, S>,
+        _tx: &dyn Transaction<'env, S>,
+    ) -> Result<Name> {
+        Ok(Name::clone(&self.name))
     }
 
     #[inline]
@@ -31,7 +37,7 @@ impl SystemEntity for Namespace {
         "namespace"
     }
 
-    fn storage_info() -> TableStorageInfo {
+    fn bootstrap_table_storage_info() -> TableStorageInfo {
         TableStorageInfo::new(
             Table::NAMESPACE.untyped(),
             vec![
@@ -42,18 +48,26 @@ impl SystemEntity for Namespace {
     }
 
     #[inline]
-    fn parent_oid(&self) -> Option<Oid<Self::Parent>> {
-        None
+    fn parent_oid<'env, S: StorageEngine>(
+        &self,
+        _catalog: Catalog<'env, S>,
+        _tx: &dyn Transaction<'env, S>,
+    ) -> Result<Option<Oid<Self::Parent>>> {
+        Ok(None)
+    }
+
+    #[inline]
+    fn table() -> Oid<Table> {
+        Table::NAMESPACE
     }
 }
 
 impl FromTuple for Namespace {
-    fn from_tuple(mut tuple: Tuple) -> Result<Self, FromTupleError> {
-        if tuple.len() != 2 {
-            return Err(FromTupleError::ColumnCountMismatch { expected: 2, actual: tuple.len() });
-        }
-
-        Ok(Self { oid: tuple[0].take().cast_non_null()?, name: tuple[1].take().cast_non_null()? })
+    fn from_values(mut values: impl Iterator<Item = Value>) -> Result<Self, FromTupleError> {
+        Ok(Self {
+            oid: values.next().ok_or(FromTupleError::NotEnoughValues)?.cast_non_null()?,
+            name: values.next().ok_or(FromTupleError::NotEnoughValues)?.cast_non_null()?,
+        })
     }
 }
 

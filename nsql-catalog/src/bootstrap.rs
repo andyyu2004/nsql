@@ -1,9 +1,10 @@
 use nsql_core::Name;
-use nsql_storage::{Result, TableStorageInfo};
-use nsql_storage_engine::{ReadWriteExecutionMode, StorageEngine};
+use nsql_storage::{expr_project, Result, TableStorageInfo};
+use nsql_storage_engine::{ReadWriteExecutionMode, StorageEngine, Transaction};
 
 use crate::{
-    Column, ColumnIndex, Namespace, Oid, SystemEntity, SystemTableView, Table, Type, MAIN_SCHEMA,
+    Catalog, Column, ColumnIndex, Index, IndexKind, Namespace, Oid, SystemEntity, SystemTableView,
+    Table, Type, MAIN_SCHEMA,
 };
 
 pub(crate) fn bootstrap<'env, S: StorageEngine>(
@@ -12,20 +13,35 @@ pub(crate) fn bootstrap<'env, S: StorageEngine>(
 ) -> Result<()> {
     tracing::debug!("bootstrapping namespaces");
     let mut namespace_table =
-        SystemTableView::<S, ReadWriteExecutionMode, Namespace>::new(storage, txn)?;
+        SystemTableView::<S, ReadWriteExecutionMode, Namespace>::new_bootstrap(storage, txn)?;
     bootstrap_nsql_namespaces().try_for_each(|namespace| namespace_table.insert(namespace))?;
+    drop(namespace_table);
 
     tracing::debug!("bootstrapping tables");
-    let mut table_table = SystemTableView::<S, ReadWriteExecutionMode, Table>::new(storage, txn)?;
-    bootstrap_nsql_tables().try_for_each(|table| table_table.insert(table))?;
+    let mut table_table =
+        SystemTableView::<S, ReadWriteExecutionMode, Table>::new_bootstrap(storage, txn)?;
+    bootstrap_nsql_tables().try_for_each(|table| {
+        if table.oid != Table::TABLE {
+            // can't do this as this table is currently open
+            table.create_storage_for_bootstrap(storage, txn, table.key())?;
+        }
+        table_table.insert(table)
+    })?;
 
     tracing::debug!("bootstrapping columns");
-    let mut column_table = SystemTableView::<S, ReadWriteExecutionMode, Column>::new(storage, txn)?;
+    let mut column_table =
+        SystemTableView::<S, ReadWriteExecutionMode, Column>::new_bootstrap(storage, txn)?;
     bootstrap_nsql_column().try_for_each(|column| column_table.insert(column))?;
 
     tracing::debug!("bootstrapping types");
-    let mut ty_table = SystemTableView::<S, ReadWriteExecutionMode, Type>::new(storage, txn)?;
+    let mut ty_table =
+        SystemTableView::<S, ReadWriteExecutionMode, Type>::new_bootstrap(storage, txn)?;
     bootstrap_nsql_types().try_for_each(|ty| ty_table.insert(ty))?;
+
+    tracing::debug!("bootstrapping indexes");
+    let mut index_table =
+        SystemTableView::<S, ReadWriteExecutionMode, Index>::new_bootstrap(storage, txn)?;
+    bootstrap_nsql_indexes().try_for_each(|index| index_table.insert(index))?;
 
     Ok(())
 }
@@ -35,6 +51,11 @@ impl Table {
     pub(crate) const TABLE: Oid<Self> = Oid::new(101);
     pub(crate) const ATTRIBUTE: Oid<Self> = Oid::new(102);
     pub(crate) const TYPE: Oid<Self> = Oid::new(103);
+    pub(crate) const INDEX: Oid<Self> = Oid::new(104);
+
+    pub(crate) const NAMESPACE_NAME_UNIQUE_INDEX: Oid<Self> = Oid::new(105);
+    pub(crate) const TABLE_NAME_UNIQUE_INDEX: Oid<Self> = Oid::new(106);
+    pub(crate) const ATTRIBUTE_NAME_UNIQUE_INDEX: Oid<Self> = Oid::new(107);
 }
 
 impl Namespace {
@@ -51,7 +72,7 @@ impl Type {
 }
 
 fn bootstrap_nsql_namespaces() -> impl Iterator<Item = Namespace> {
-    vec![
+    [
         Namespace { oid: Namespace::MAIN, name: MAIN_SCHEMA.into() },
         Namespace { oid: Namespace::CATALOG, name: "nsql_catalog".into() },
     ]
@@ -59,7 +80,7 @@ fn bootstrap_nsql_namespaces() -> impl Iterator<Item = Namespace> {
 }
 
 fn bootstrap_nsql_tables() -> impl Iterator<Item = Table> {
-    vec![
+    [
         Table {
             oid: Table::NAMESPACE,
             name: "nsql_namespace".into(),
@@ -72,14 +93,53 @@ fn bootstrap_nsql_tables() -> impl Iterator<Item = Table> {
             namespace: Namespace::CATALOG,
         },
         Table { oid: Table::TYPE, name: "nsql_type".into(), namespace: Namespace::CATALOG },
+        Table {
+            oid: Table::NAMESPACE_NAME_UNIQUE_INDEX,
+            name: "nsql_namespace_name_index".into(),
+            namespace: Namespace::CATALOG,
+        },
+        Table {
+            oid: Table::TABLE_NAME_UNIQUE_INDEX,
+            name: "nsql_table_namespace_name_index".into(),
+            namespace: Namespace::CATALOG,
+        },
+        Table {
+            oid: Table::ATTRIBUTE_NAME_UNIQUE_INDEX,
+            name: "nsql_attribute_table_name_index".into(),
+            namespace: Namespace::CATALOG,
+        },
+    ]
+    .into_iter()
+}
+
+fn bootstrap_nsql_indexes() -> impl Iterator<Item = Index> {
+    [
+        Index {
+            table: Table::NAMESPACE_NAME_UNIQUE_INDEX,
+            kind: IndexKind::Unique,
+            target: Table::NAMESPACE,
+            index_expr: expr_project![1],
+        },
+        Index {
+            table: Table::TABLE_NAME_UNIQUE_INDEX,
+            kind: IndexKind::Unique,
+            target: Table::TABLE,
+            index_expr: expr_project![1, 2],
+        },
+        Index {
+            table: Table::ATTRIBUTE_NAME_UNIQUE_INDEX,
+            kind: IndexKind::Unique,
+            target: Table::ATTRIBUTE,
+            index_expr: expr_project![0, 3],
+        },
     ]
     .into_iter()
 }
 
 fn bootstrap_nsql_column() -> impl Iterator<Item = Column> {
-    vec![
+    [
+        // nsql_namespace
         Column {
-            oid: Oid::new(0),
             name: "oid".into(),
             table: Table::NAMESPACE,
             index: ColumnIndex::new(0),
@@ -87,15 +147,14 @@ fn bootstrap_nsql_column() -> impl Iterator<Item = Column> {
             is_primary_key: true,
         },
         Column {
-            oid: Oid::new(1),
             name: "name".into(),
             table: Table::NAMESPACE,
             index: ColumnIndex::new(1),
             ty: Type::TEXT,
             is_primary_key: false,
         },
+        // nsql_table
         Column {
-            oid: Oid::new(2),
             name: "oid".into(),
             table: Table::TABLE,
             index: ColumnIndex::new(0),
@@ -103,7 +162,6 @@ fn bootstrap_nsql_column() -> impl Iterator<Item = Column> {
             is_primary_key: true,
         },
         Column {
-            oid: Oid::new(3),
             name: "namespace".into(),
             table: Table::TABLE,
             index: ColumnIndex::new(1),
@@ -111,63 +169,50 @@ fn bootstrap_nsql_column() -> impl Iterator<Item = Column> {
             is_primary_key: false,
         },
         Column {
-            oid: Oid::new(4),
             name: "name".into(),
             table: Table::TABLE,
             index: ColumnIndex::new(2),
             ty: Type::TEXT,
             is_primary_key: false,
         },
+        // nsql_attribute
         Column {
-            oid: Oid::new(5),
-            name: "oid".into(),
+            name: "table".into(),
             table: Table::ATTRIBUTE,
             index: ColumnIndex::new(0),
             ty: Type::OID,
             is_primary_key: true,
         },
         Column {
-            oid: Oid::new(6),
-            name: "table".into(),
+            name: "index".into(),
             table: Table::ATTRIBUTE,
             index: ColumnIndex::new(1),
+            ty: Type::INT,
+            is_primary_key: true,
+        },
+        Column {
+            name: "ty".into(),
+            table: Table::ATTRIBUTE,
+            index: ColumnIndex::new(2),
             ty: Type::OID,
             is_primary_key: false,
         },
         Column {
-            oid: Oid::new(7),
             name: "name".into(),
             table: Table::ATTRIBUTE,
-            index: ColumnIndex::new(2),
+            index: ColumnIndex::new(3),
             ty: Type::TEXT,
             is_primary_key: false,
         },
         Column {
-            oid: Oid::new(8),
-            name: "index".into(),
-            table: Table::ATTRIBUTE,
-            index: ColumnIndex::new(3),
-            ty: Type::INT,
-            is_primary_key: false,
-        },
-        Column {
-            oid: Oid::new(9),
-            name: "ty".into(),
-            table: Table::ATTRIBUTE,
-            index: ColumnIndex::new(4),
-            ty: Type::OID,
-            is_primary_key: false,
-        },
-        Column {
-            oid: Oid::new(10),
             name: "is_primary_key".into(),
             table: Table::ATTRIBUTE,
-            index: ColumnIndex::new(5),
+            index: ColumnIndex::new(4),
             ty: Type::BOOL,
             is_primary_key: false,
         },
+        // nsql_type
         Column {
-            oid: Oid::new(11),
             name: "oid".into(),
             table: Table::TYPE,
             index: ColumnIndex::new(0),
@@ -175,19 +220,56 @@ fn bootstrap_nsql_column() -> impl Iterator<Item = Column> {
             is_primary_key: true,
         },
         Column {
-            oid: Oid::new(12),
             name: "name".into(),
             table: Table::TYPE,
             index: ColumnIndex::new(1),
             ty: Type::TEXT,
             is_primary_key: false,
+        },
+        // nsql_namespace_name_index
+        Column {
+            table: Table::NAMESPACE_NAME_UNIQUE_INDEX,
+            index: ColumnIndex::new(0),
+            ty: Type::TEXT,
+            name: "name".into(),
+            is_primary_key: true,
+        },
+        // nsql_table_namespace_name_index
+        Column {
+            table: Table::TABLE_NAME_UNIQUE_INDEX,
+            index: ColumnIndex::new(0),
+            ty: Type::OID,
+            name: "namespace".into(),
+            is_primary_key: true,
+        },
+        Column {
+            table: Table::TABLE_NAME_UNIQUE_INDEX,
+            index: ColumnIndex::new(1),
+            ty: Type::TEXT,
+            name: "name".into(),
+            is_primary_key: true,
+        },
+        // nsql_attribute_table_name_index
+        Column {
+            table: Table::ATTRIBUTE_NAME_UNIQUE_INDEX,
+            index: ColumnIndex::new(0),
+            ty: Type::OID,
+            name: "table".into(),
+            is_primary_key: true,
+        },
+        Column {
+            table: Table::ATTRIBUTE_NAME_UNIQUE_INDEX,
+            index: ColumnIndex::new(1),
+            ty: Type::TEXT,
+            name: "name".into(),
+            is_primary_key: true,
         },
     ]
     .into_iter()
 }
 
 fn bootstrap_nsql_types() -> impl Iterator<Item = Type> {
-    vec![
+    [
         Type { oid: Type::OID, name: "oid".into() },
         Type { oid: Type::BOOL, name: "bool".into() },
         Type { oid: Type::INT, name: "int".into() },
@@ -199,22 +281,35 @@ fn bootstrap_nsql_types() -> impl Iterator<Item = Type> {
 impl SystemEntity for () {
     type Parent = ();
 
-    fn name(&self) -> Name {
+    type Key = ();
+
+    fn name<'env, S: StorageEngine>(
+        &self,
+        _catalog: Catalog<'env, S>,
+        _tx: &dyn Transaction<'env, S>,
+    ) -> Result<Name> {
         unreachable!()
     }
 
-    fn oid(&self) -> Oid<Self> {
-        unreachable!()
-    }
+    fn key(&self) -> Self::Key {}
 
     fn desc() -> &'static str {
         "catalog"
     }
-    fn storage_info() -> TableStorageInfo {
+
+    fn bootstrap_table_storage_info() -> TableStorageInfo {
         todo!()
     }
 
-    fn parent_oid(&self) -> Option<Oid<Self::Parent>> {
+    fn parent_oid<'env, S: StorageEngine>(
+        &self,
+        _catalog: Catalog<'env, S>,
+        _tx: &dyn Transaction<'env, S>,
+    ) -> Result<Option<Oid<Self::Parent>>> {
         unreachable!()
+    }
+
+    fn table() -> Oid<Table> {
+        todo!()
     }
 }

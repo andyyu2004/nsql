@@ -3,11 +3,10 @@ use crate::Type;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Column {
-    pub(crate) oid: Oid<Self>,
     pub(crate) table: Oid<Table>,
-    pub(crate) name: Name,
     pub(crate) index: ColumnIndex,
     pub(crate) ty: Oid<Type>,
+    pub(crate) name: Name,
     pub(crate) is_primary_key: bool,
 }
 
@@ -25,7 +24,7 @@ impl Column {
         ty: Oid<Type>,
         is_primary_key: bool,
     ) -> Self {
-        Self { oid: crate::hack_new_oid_tmp(), table, name, index, ty, is_primary_key }
+        Self { table, name, index, ty, is_primary_key }
     }
 
     #[inline]
@@ -82,65 +81,79 @@ pub struct CreateColumnInfo {
 impl SystemEntity for Column {
     type Parent = Table;
 
+    type Key = (Oid<Self::Parent>, ColumnIndex);
+
     #[inline]
-    fn oid(&self) -> Oid<Self> {
-        self.oid
+    fn key(&self) -> Self::Key {
+        (self.table, self.index)
     }
 
     #[inline]
-    fn name(&self) -> Name {
-        Name::clone(&self.name)
+    fn name<'env, S: StorageEngine>(
+        &self,
+        _catalog: Catalog<'env, S>,
+        _tx: &dyn Transaction<'env, S>,
+    ) -> Result<Name> {
+        Ok(Name::clone(&self.name))
     }
+
     #[inline]
     fn desc() -> &'static str {
         "column"
     }
 
     #[inline]
-    fn parent_oid(&self) -> Option<Oid<Self::Parent>> {
-        Some(self.table)
+    fn parent_oid<'env, S: StorageEngine>(
+        &self,
+        _catalog: Catalog<'env, S>,
+        _tx: &dyn Transaction<'env, S>,
+    ) -> Result<Option<Oid<Self::Parent>>> {
+        Ok(Some(self.table))
     }
 
-    fn storage_info() -> TableStorageInfo {
+    fn bootstrap_table_storage_info() -> TableStorageInfo {
         TableStorageInfo::new(
             Table::ATTRIBUTE.untyped(),
             vec![
                 ColumnStorageInfo::new(LogicalType::Oid, true),
-                ColumnStorageInfo::new(LogicalType::Oid, false),
+                ColumnStorageInfo::new(LogicalType::Int, true),
                 ColumnStorageInfo::new(LogicalType::Oid, false),
                 ColumnStorageInfo::new(LogicalType::Text, false),
-                ColumnStorageInfo::new(LogicalType::Int, false),
                 ColumnStorageInfo::new(LogicalType::Bool, false),
             ],
         )
     }
+
+    #[inline]
+    fn table() -> Oid<Table> {
+        Table::ATTRIBUTE
+    }
 }
 
 impl FromTuple for Column {
-    fn from_tuple(mut tuple: Tuple) -> Result<Self, FromTupleError> {
-        if tuple.len() != 6 {
-            return Err(FromTupleError::ColumnCountMismatch { expected: 6, actual: tuple.len() });
-        }
-
+    fn from_values(values: impl Iterator<Item = Value>) -> Result<Self, FromTupleError> {
+        let mut values = values;
         Ok(Self {
-            oid: tuple[0].take().cast_non_null()?,
-            table: tuple[1].take().cast_non_null()?,
-            ty: tuple[2].take().cast_non_null()?,
-            name: tuple[3].take().cast_non_null()?,
-            index: tuple[4].take().cast_non_null()?,
-            is_primary_key: tuple[5].take().cast_non_null()?,
+            table: values.next().ok_or(FromTupleError::NotEnoughValues)?.cast_non_null()?,
+            index: values.next().ok_or(FromTupleError::NotEnoughValues)?.cast_non_null()?,
+            ty: values.next().ok_or(FromTupleError::NotEnoughValues)?.cast_non_null()?,
+            name: values.next().ok_or(FromTupleError::NotEnoughValues)?.cast_non_null()?,
+            is_primary_key: values
+                .next()
+                .ok_or(FromTupleError::NotEnoughValues)?
+                .cast_non_null()?,
         })
     }
 }
 
 impl IntoTuple for Column {
+    #[inline]
     fn into_tuple(self) -> Tuple {
         Tuple::from([
-            Value::Oid(self.oid.untyped()),
             Value::Oid(self.table.untyped()),
+            Value::Int32(self.index.index as i32),
             Value::Oid(self.ty.untyped()),
             Value::Text(self.name.into()),
-            Value::Int32(self.index.index as i32),
             Value::Bool(self.is_primary_key),
         ])
     }

@@ -313,8 +313,9 @@ impl<'env, S: StorageEngine> ExecutionMode<'env, S> for ReadonlyExecutionMode {
         txn: Self::TransactionRef<'txn>,
         name: &str,
     ) -> Result<Self::Tree<'txn>, S::Error> {
-        // FIXME don't unwrap
-        storage.open_tree(txn, name).map(Option::unwrap)
+        Ok(storage
+            .open_tree(txn, name)?
+            .unwrap_or_else(|| panic!("tree {:?} does not exist ", name)))
     }
 }
 

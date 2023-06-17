@@ -46,7 +46,7 @@ impl<S: StorageEngine> Scope<S> {
         tracing::debug!("binding table");
         let mut bound_columns = self.bound_columns.clone();
 
-        let table = binder.catalog.get(tx, table)?;
+        let table = binder.catalog.table(tx, table)?;
         let table_columns = table.columns(binder.catalog, tx)?;
 
         if let Some(alias) = alias {
@@ -69,7 +69,7 @@ impl<S: StorageEngine> Scope<S> {
         for (i, column) in table_columns.into_iter().enumerate() {
             let name = match alias {
                 Some(alias) if !alias.columns.is_empty() => alias.columns[i].clone(),
-                _ => column.name(),
+                _ => column.name(binder.catalog, tx)?,
             };
 
             if bound_columns.iter().any(|(p, _)| p.name() == name) {

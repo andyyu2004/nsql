@@ -3,11 +3,13 @@ use std::sync::Arc;
 
 use fix_hidden_lifetime_bug::fix_hidden_lifetime_bug;
 use nsql_core::Oid;
-use nsql_storage::tuple::IntoTuple;
-use nsql_storage::TableStorage;
-use nsql_storage_engine::{ExecutionMode, FallibleIterator, ReadWriteExecutionMode, StorageEngine};
+use nsql_storage::tuple::{FromTuple, IntoTuple};
+use nsql_storage::{PrimaryKeyConflict, TableStorage};
+use nsql_storage_engine::{
+    ExecutionMode, FallibleIterator, ReadWriteExecutionMode, StorageEngine, Transaction,
+};
 
-use crate::{Result, SystemEntity};
+use crate::{Catalog, Result, SystemEntity, Table};
 
 #[repr(transparent)]
 pub struct SystemTableView<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T> {
@@ -18,8 +20,25 @@ pub struct SystemTableView<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, 
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: SystemEntity>
     SystemTableView<'env, 'txn, S, M, T>
 {
-    pub fn new(storage: &'env S, tx: M::TransactionRef<'txn>) -> Result<Self, S::Error> {
-        let storage = TableStorage::<'env, 'txn, S, M>::open(storage, tx, T::storage_info())?;
+    pub fn new(catalog: Catalog<'env, S>, tx: M::TransactionRef<'txn>) -> Result<Self> {
+        // we need to view the tables in bootstrap mode to avoid a cycle
+        let table =
+            SystemTableView::<S, M, Table>::new_bootstrap(catalog.storage(), tx)?.get(T::table())?;
+        Ok(Self { storage: table.storage(catalog, tx)?, phantom: PhantomData })
+    }
+
+    pub(crate) fn new_bootstrap(
+        storage: &'env S,
+        tx: M::TransactionRef<'txn>,
+    ) -> Result<Self, S::Error> {
+        // todo indexes
+        let storage = TableStorage::<'env, 'txn, S, M>::open(
+            storage,
+            tx,
+            T::bootstrap_table_storage_info(),
+            // no access to table indexes during bootstrap
+            vec![],
+        )?;
 
         Ok(Self { storage, phantom: PhantomData })
     }
@@ -30,13 +49,22 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: SystemEnt
     SystemTableView<'env, 'txn, S, M, T>
 {
     #[inline]
-    pub fn get(&self, oid: Oid<T>) -> Result<T> {
-        Ok(self.scan()?.find(|entry| Ok(entry.oid() == oid))?.expect("got invalid oid"))
+    pub fn get(&self, key: T::Key) -> Result<T> {
+        Ok(self.scan()?.find(|entry| Ok(entry.key() == key))?.expect("got invalid oid"))
     }
 
     #[inline]
-    pub fn find(&self, parent: Option<Oid<T::Parent>>, name: &str) -> Result<Option<T>> {
-        self.scan()?.find(|entry| Ok(entry.parent_oid() == parent && entry.name().as_str() == name))
+    pub fn find(
+        &self,
+        catalog: Catalog<'env, S>,
+        tx: &dyn Transaction<'env, S>,
+        parent: Option<Oid<T::Parent>>,
+        name: &str,
+    ) -> Result<Option<T>> {
+        self.scan()?.find(|entry| {
+            Ok(entry.parent_oid(catalog, tx)? == parent
+                && entry.name(catalog, tx)?.as_str() == name)
+        })
     }
 
     #[inline]
@@ -64,7 +92,15 @@ impl<'env: 'txn, 'txn, S: StorageEngine, T: SystemEntity>
 {
     #[inline]
     pub fn insert(&mut self, value: T) -> Result<()> {
-        self.storage.insert(&value.into_tuple())
+        self.storage.insert(&value.into_tuple())?.map_err(|PrimaryKeyConflict { key }| {
+            let typed_key =
+                T::Key::from_tuple(key).expect("this shouldn't fail as we know the expected shape");
+            anyhow::anyhow!(
+                "primary key conflict for {}: {:?} already exists",
+                T::desc(),
+                typed_key
+            )
+        })
     }
 
     #[inline]

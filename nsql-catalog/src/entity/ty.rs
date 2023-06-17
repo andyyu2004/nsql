@@ -9,25 +9,35 @@ pub struct Type {
 impl SystemEntity for Type {
     type Parent = ();
 
-    #[inline]
-    fn oid(&self) -> Oid<Self> {
-        self.oid
-    }
+    type Key = Oid<Self>;
 
     #[inline]
-    fn name(&self) -> Name {
-        Name::clone(&self.name)
+    fn key(&self) -> Oid<Self> {
+        self.oid
     }
+    #[inline]
+    fn name<'env, S: StorageEngine>(
+        &self,
+        _catalog: Catalog<'env, S>,
+        _tx: &dyn Transaction<'env, S>,
+    ) -> Result<Name> {
+        Ok(Name::clone(&self.name))
+    }
+
     #[inline]
     fn desc() -> &'static str {
         "type"
     }
 
-    fn parent_oid(&self) -> Option<Oid<Self::Parent>> {
-        None
+    fn parent_oid<'env, S: StorageEngine>(
+        &self,
+        _catalog: Catalog<'env, S>,
+        _tx: &dyn Transaction<'env, S>,
+    ) -> Result<Option<Oid<Self::Parent>>> {
+        Ok(None)
     }
 
-    fn storage_info() -> TableStorageInfo {
+    fn bootstrap_table_storage_info() -> TableStorageInfo {
         TableStorageInfo::new(
             Table::TYPE.untyped(),
             vec![
@@ -36,15 +46,19 @@ impl SystemEntity for Type {
             ],
         )
     }
+
+    #[inline]
+    fn table() -> Oid<Table> {
+        Table::TYPE
+    }
 }
 
 impl FromTuple for Type {
-    fn from_tuple(mut tuple: Tuple) -> Result<Self, FromTupleError> {
-        if tuple.len() != 2 {
-            return Err(FromTupleError::ColumnCountMismatch { expected: 2, actual: tuple.len() });
-        }
-
-        Ok(Type { oid: tuple[0].take().cast_non_null()?, name: tuple[1].take().cast_non_null()? })
+    fn from_values(mut values: impl Iterator<Item = Value>) -> Result<Self, FromTupleError> {
+        Ok(Self {
+            oid: values.next().ok_or(FromTupleError::NotEnoughValues)?.cast_non_null()?,
+            name: values.next().ok_or(FromTupleError::NotEnoughValues)?.cast_non_null()?,
+        })
     }
 }
 
@@ -56,12 +70,17 @@ impl IntoTuple for Type {
 
 impl Type {
     pub fn oid_to_logical_type(oid: Oid<Self>) -> LogicalType {
-        match oid {
-            Type::OID => LogicalType::Oid,
-            Type::BOOL => LogicalType::Bool,
-            Type::INT => LogicalType::Int,
-            Type::TEXT => LogicalType::Text,
-            _ => panic!(),
+        // can't use match because of structuraleq sadness
+        if oid == Type::OID {
+            LogicalType::Oid
+        } else if oid == Type::BOOL {
+            LogicalType::Bool
+        } else if oid == Type::INT {
+            LogicalType::Int
+        } else if oid == Type::TEXT {
+            LogicalType::Text
+        } else {
+            panic!()
         }
     }
 

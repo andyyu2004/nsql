@@ -39,7 +39,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
     ) -> ExecutionResult<TupleStream<'txn>> {
         let tx = ctx.tx()?;
         let catalog = ctx.catalog();
-        let table = catalog.get(&tx, self.table)?;
+        let table = catalog.table(&tx, self.table)?;
         let storage = Arc::new(table.storage::<S, M>(catalog, tx)?);
 
         let projection = self
@@ -89,17 +89,23 @@ impl<'env, S: StorageEngine> Explain<'env, S> for PhysicalTableScan {
         f: &mut fmt::Formatter<'_>,
     ) -> explain::Result {
         // In this context, we know the projection indices correspond to the column indices of the source table
-        let table = catalog.get(tx, self.table)?;
+        let table = catalog.table(tx, self.table)?;
         let columns = table.columns(catalog, tx)?;
 
         let column_names = match &self.projection {
-            Some(projection) => {
-                projection.iter().map(|&idx| columns[idx.as_usize()].name()).collect::<Vec<_>>()
-            }
-            None => columns.iter().map(|col| col.name()).collect::<Vec<_>>(),
+            Some(projection) => projection
+                .iter()
+                .map(|&idx| columns[idx.as_usize()].name(catalog, tx).unwrap())
+                .collect::<Vec<_>>(),
+            None => columns.iter().map(|col| col.name(catalog, tx).unwrap()).collect::<Vec<_>>(),
         };
 
-        write!(f, "scan {} ({})", table.name(), column_names.iter().join(", "))?;
+        write!(
+            f,
+            "scan {} ({})",
+            table.name(catalog, tx).unwrap(),
+            column_names.iter().join(", ")
+        )?;
         Ok(())
     }
 }

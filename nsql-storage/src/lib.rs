@@ -1,12 +1,15 @@
 #![deny(rust_2018_idioms)]
 
+pub mod eval;
+mod index;
 mod table_storage;
 pub mod tuple;
 pub mod value;
 
 use anyhow::Error;
+pub use index::IndexStorageInfo;
 use nsql_storage_engine::{StorageEngine, Transaction};
-pub use table_storage::{ColumnStorageInfo, TableStorage, TableStorageInfo};
+pub use table_storage::{ColumnStorageInfo, PrimaryKeyConflict, TableStorage, TableStorageInfo};
 
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 

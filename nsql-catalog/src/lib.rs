@@ -6,6 +6,7 @@ pub mod schema;
 mod system_table;
 
 use std::fmt;
+use std::hash::Hash;
 use std::sync::atomic::AtomicU64;
 
 pub use anyhow::Error;
@@ -18,6 +19,7 @@ use nsql_storage_engine::{
 };
 
 pub use self::entity::column::{Column, ColumnIndex, CreateColumnInfo};
+pub use self::entity::index::{Index, IndexKind};
 pub use self::entity::namespace::{CreateNamespaceInfo, Namespace};
 pub use self::entity::table::{CreateTableInfo, Table};
 pub use self::entity::ty::Type;
@@ -28,15 +30,28 @@ pub type Result<T, E = Error> = std::result::Result<T, E>;
 pub trait SystemEntity: FromTuple + IntoTuple + Eq + fmt::Debug {
     type Parent: SystemEntity;
 
-    fn oid(&self) -> Oid<Self>;
+    type Key: FromTuple + Eq + Hash + fmt::Debug;
 
-    fn name(&self) -> Name;
+    fn key(&self) -> Self::Key;
+
+    fn name<'env, S: StorageEngine>(
+        &self,
+        catalog: Catalog<'env, S>,
+        tx: &dyn Transaction<'env, S>,
+    ) -> Result<Name, Error>;
 
     fn desc() -> &'static str;
 
-    fn parent_oid(&self) -> Option<Oid<Self::Parent>>;
+    fn parent_oid<'env, S: StorageEngine>(
+        &self,
+        catalog: Catalog<'env, S>,
+        tx: &dyn Transaction<'env, S>,
+    ) -> Result<Option<Oid<Self::Parent>>>;
 
-    fn storage_info() -> TableStorageInfo;
+    fn table() -> Oid<Table>;
+
+    /// Returns the storage info for the table that is used to build the table during catalog bootstrap.
+    fn bootstrap_table_storage_info() -> TableStorageInfo;
 }
 
 pub struct Catalog<'env, S> {
@@ -58,53 +73,61 @@ fn hack_new_oid_tmp<T>() -> Oid<T> {
 impl<'env, S> Copy for Catalog<'env, S> {}
 
 impl<'env, S: StorageEngine> Catalog<'env, S> {
+    #[inline]
     pub fn get<'txn, T: SystemEntity>(
-        &self,
+        self,
         tx: &'txn dyn Transaction<'env, S>,
-        oid: Oid<T>,
+        oid: T::Key,
     ) -> Result<T> {
-        let table = SystemTableView::<S, ReadonlyExecutionMode, T>::new(self.storage, tx)?;
-        table.get(oid)
+        // must open in bootstrap to avoid cycles for now
+        SystemTableView::<S, ReadonlyExecutionMode, T>::new_bootstrap(self.storage(), tx)?.get(oid)
+    }
+
+    #[inline]
+    pub fn table<'txn>(self, tx: &'txn dyn Transaction<'env, S>, oid: Oid<Table>) -> Result<Table> {
+        self.get(tx, oid)
     }
 
     #[inline]
     pub fn namespaces<'txn>(
-        &self,
+        self,
         tx: &'txn dyn Transaction<'env, S>,
-    ) -> Result<SystemTableView<'env, 'txn, S, ReadonlyExecutionMode, Namespace>, S::Error> {
+    ) -> Result<SystemTableView<'env, 'txn, S, ReadonlyExecutionMode, Namespace>> {
         self.system_table(tx)
     }
 
     #[inline]
     pub fn tables<'txn>(
-        &self,
+        self,
         tx: &'txn dyn Transaction<'env, S>,
-    ) -> Result<SystemTableView<'env, 'txn, S, ReadonlyExecutionMode, Table>, S::Error> {
+    ) -> Result<SystemTableView<'env, 'txn, S, ReadonlyExecutionMode, Table>> {
         self.system_table(tx)
     }
 
     #[inline]
     pub fn columns<'txn>(
-        &self,
+        self,
         tx: &'txn dyn Transaction<'env, S>,
-    ) -> Result<SystemTableView<'env, 'txn, S, ReadonlyExecutionMode, Column>, S::Error> {
+    ) -> Result<SystemTableView<'env, 'txn, S, ReadonlyExecutionMode, Column>> {
         self.system_table(tx)
     }
 
     #[inline]
     pub fn system_table<'txn, T: SystemEntity>(
-        &self,
+        self,
         tx: &'txn dyn Transaction<'env, S>,
-    ) -> Result<SystemTableView<'env, 'txn, S, ReadonlyExecutionMode, T>, S::Error> {
-        SystemTableView::new(self.storage, tx)
+    ) -> Result<SystemTableView<'env, 'txn, S, ReadonlyExecutionMode, T>> {
+        // When opening in read-only mode, we still open the table in bootstrap mode to avoid loading cyclic dependencies.
+        // We currently only use indexes to check uniqueness not for lookups, so this isn't an issue yet.
+        Ok(SystemTableView::new_bootstrap(self.storage(), tx)?)
     }
 
     #[inline]
     pub fn system_table_write<'txn, T: SystemEntity>(
-        &self,
+        self,
         tx: &'txn S::WriteTransaction<'env>,
-    ) -> Result<SystemTableView<'env, 'txn, S, ReadWriteExecutionMode, T>, S::Error> {
-        SystemTableView::new(self.storage, tx)
+    ) -> Result<SystemTableView<'env, 'txn, S, ReadWriteExecutionMode, T>> {
+        SystemTableView::new(self, tx)
     }
 
     pub fn drop_table(&self, tx: &S::WriteTransaction<'env>, oid: Oid<Table>) -> Result<()> {
