@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
 use ::next_gen::prelude::*;
-use anyhow::bail;
 use fix_hidden_lifetime_bug::fix_hidden_lifetime_bug;
 use next_gen::generator_fn::GeneratorFn;
 use nsql_core::{LogicalType, Name, Oid};
@@ -21,6 +20,11 @@ pub struct TableStorage<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'en
     tree: M::Tree<'txn>,
     info: TableStorageInfo,
     indexes: Box<[IndexStorage<'env, 'txn, S, M>]>,
+}
+
+#[derive(Debug)]
+pub struct PrimaryKeyConflict {
+    pub key: Tuple,
 }
 
 impl<'env, 'txn, S: StorageEngine> TableStorage<'env, 'txn, S, ReadWriteExecutionMode> {
@@ -52,21 +56,23 @@ impl<'env, 'txn, S: StorageEngine> TableStorage<'env, 'txn, S, ReadWriteExecutio
     }
 
     #[inline]
-    pub fn insert(&mut self, tuple: &Tuple) -> Result<(), anyhow::Error> {
+    pub fn insert(
+        &mut self,
+        tuple: &Tuple,
+    ) -> Result<Result<(), PrimaryKeyConflict>, anyhow::Error> {
         for index in self.indexes.iter_mut() {
             index.insert(tuple)?;
         }
 
         let (k, v) = self.split_tuple(tuple);
         if self.tree.exists(&k)? {
-            // FIXME better error message
-            let key = unsafe { rkyv::archived_root::<Vec<Value>>(&k) };
-            bail!("duplicate key value violates primary key constraint: {:?}", key)
+            let key = unsafe { nsql_rkyv::deserialize_raw::<Vec<Value>>(&k) }.into();
+            return Ok(Err(PrimaryKeyConflict { key }));
         }
 
         self.tree.put(&k, &v)?;
 
-        Ok(())
+        Ok(Ok(()))
     }
 
     /// Split tuple into primary key and non-primary key components

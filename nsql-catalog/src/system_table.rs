@@ -3,8 +3,8 @@ use std::sync::Arc;
 
 use fix_hidden_lifetime_bug::fix_hidden_lifetime_bug;
 use nsql_core::Oid;
-use nsql_storage::tuple::IntoTuple;
-use nsql_storage::TableStorage;
+use nsql_storage::tuple::{FromTuple, IntoTuple};
+use nsql_storage::{PrimaryKeyConflict, TableStorage};
 use nsql_storage_engine::{
     ExecutionMode, FallibleIterator, ReadWriteExecutionMode, StorageEngine, Transaction,
 };
@@ -49,8 +49,8 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: SystemEnt
     SystemTableView<'env, 'txn, S, M, T>
 {
     #[inline]
-    pub fn get(&self, id: T::Id) -> Result<T> {
-        Ok(self.scan()?.find(|entry| Ok(entry.id() == id))?.expect("got invalid oid"))
+    pub fn get(&self, key: T::Key) -> Result<T> {
+        Ok(self.scan()?.find(|entry| Ok(entry.key() == key))?.expect("got invalid oid"))
     }
 
     #[inline]
@@ -92,7 +92,15 @@ impl<'env: 'txn, 'txn, S: StorageEngine, T: SystemEntity>
 {
     #[inline]
     pub fn insert(&mut self, value: T) -> Result<()> {
-        self.storage.insert(&value.into_tuple())
+        self.storage.insert(&value.into_tuple())?.map_err(|PrimaryKeyConflict { key }| {
+            let typed_key =
+                T::Key::from_tuple(key).expect("this shouldn't fail as we know the expected shape");
+            anyhow::anyhow!(
+                "primary key conflict for {}: {:?} already exists",
+                T::desc(),
+                typed_key
+            )
+        })
     }
 
     #[inline]

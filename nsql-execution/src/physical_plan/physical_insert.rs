@@ -1,5 +1,6 @@
 use nsql_catalog::Table;
 use nsql_core::Oid;
+use nsql_storage::PrimaryKeyConflict;
 use nsql_storage_engine::fallible_iterator;
 use parking_lot::RwLock;
 
@@ -78,7 +79,9 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSink<'env, 'txn, S, ReadWriteEx
         let table = catalog.table(tx, self.table)?;
 
         let mut storage = table.storage::<S, ReadWriteExecutionMode>(catalog, tx)?;
-        storage.insert(&tuple)?;
+        storage.insert(&tuple)?.map_err(|PrimaryKeyConflict { key }| {
+            anyhow::anyhow!("duplicate key `{key}` violates unique constraint")
+        })?;
 
         if let Some(return_expr) = &self.returning {
             self.returning_tuples

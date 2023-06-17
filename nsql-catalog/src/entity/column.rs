@@ -81,10 +81,10 @@ pub struct CreateColumnInfo {
 impl SystemEntity for Column {
     type Parent = Table;
 
-    type Id = (Oid<Self::Parent>, ColumnIndex);
+    type Key = (Oid<Self::Parent>, ColumnIndex);
 
     #[inline]
-    fn id(&self) -> Self::Id {
+    fn key(&self) -> Self::Key {
         (self.table, self.index)
     }
 
@@ -96,6 +96,7 @@ impl SystemEntity for Column {
     ) -> Result<Name> {
         Ok(Name::clone(&self.name))
     }
+
     #[inline]
     fn desc() -> &'static str {
         "column"

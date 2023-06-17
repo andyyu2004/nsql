@@ -5,7 +5,7 @@ use std::ops::{Index, IndexMut};
 use rkyv::with::RefAsBox;
 use rkyv::{Archive, Archived, Deserialize, Serialize};
 
-use crate::value::{CastError, Value};
+use crate::value::{CastError, FromValue, Value};
 
 #[derive(Debug, Clone, PartialEq, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
 #[repr(transparent)]
@@ -179,6 +179,24 @@ pub trait FromTuple: Sized {
 impl FromTuple for () {
     fn from_values(_: impl Iterator<Item = Value>) -> Result<Self, FromTupleError> {
         Ok(())
+    }
+}
+
+impl<T, U> FromTuple for (T, U)
+where
+    T: FromValue + 'static,
+    U: FromValue + 'static,
+{
+    fn from_values(mut values: impl Iterator<Item = Value>) -> Result<Self, FromTupleError> {
+        let first = values.next().ok_or(FromTupleError::NotEnoughValues)?;
+        let second = values.next().ok_or(FromTupleError::NotEnoughValues)?;
+        Ok((T::from_value(first)?, U::from_value(second)?))
+    }
+}
+
+impl<T: FromValue + 'static> FromTuple for T {
+    fn from_values(mut values: impl Iterator<Item = Value>) -> Result<Self, FromTupleError> {
+        Ok(T::from_value(values.next().ok_or(FromTupleError::NotEnoughValues)?)?)
     }
 }
 

@@ -30,9 +30,9 @@ pub type Result<T, E = Error> = std::result::Result<T, E>;
 pub trait SystemEntity: FromTuple + IntoTuple + Eq + fmt::Debug {
     type Parent: SystemEntity;
 
-    type Id: Eq + Hash;
+    type Key: FromTuple + Eq + Hash + fmt::Debug;
 
-    fn id(&self) -> Self::Id;
+    fn key(&self) -> Self::Key;
 
     fn name<'env, S: StorageEngine>(
         &self,
@@ -77,9 +77,10 @@ impl<'env, S: StorageEngine> Catalog<'env, S> {
     pub fn get<'txn, T: SystemEntity>(
         self,
         tx: &'txn dyn Transaction<'env, S>,
-        oid: T::Id,
+        oid: T::Key,
     ) -> Result<T> {
-        SystemTableView::<S, ReadonlyExecutionMode, T>::new(self, tx)?.get(oid)
+        // must open in bootstrap to avoid cycles for now
+        SystemTableView::<S, ReadonlyExecutionMode, T>::new_bootstrap(self.storage(), tx)?.get(oid)
     }
 
     #[inline]

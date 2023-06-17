@@ -75,10 +75,10 @@ impl IntoTuple for Index {
 impl SystemEntity for Index {
     type Parent = Namespace;
 
-    type Id = <Table as SystemEntity>::Id;
+    type Key = <Table as SystemEntity>::Key;
 
     #[inline]
-    fn id(&self) -> Self::Id {
+    fn key(&self) -> Self::Key {
         self.table
     }
 

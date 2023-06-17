@@ -399,7 +399,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                         .namespaces(tx)?
                         .find(self.catalog, tx, None, name.as_str())?
                         .ok_or_else(|| unbound!(Namespace, path))?;
-                    Ok(ns.id())
+                    Ok(ns.key())
                 }
             },
             Path::Unqualified(name) => self.bind_namespace(
@@ -416,7 +416,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
         &self,
         tx: &dyn Transaction<'env, S>,
         path: &Path,
-    ) -> Result<T::Id> {
+    ) -> Result<T::Key> {
         match path {
             Path::Unqualified(name) => self.bind_namespaced_entity::<T>(
                 tx,
@@ -437,10 +437,10 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                     let entity = self
                         .catalog
                         .system_table::<T>(tx)?
-                        .find(self.catalog, tx, Some(namespace.id()), name.as_str())?
+                        .find(self.catalog, tx, Some(namespace.key()), name.as_str())?
                         .ok_or_else(|| unbound!(T, path))?;
 
-                    Ok(entity.id())
+                    Ok(entity.key())
                 }
             },
         }

@@ -47,6 +47,7 @@ impl Table {
     pub(crate) const INDEX: Oid<Self> = Oid::new(104);
 
     pub(crate) const NAMESPACE_NAME_UNIQUE_INDEX: Oid<Self> = Oid::new(105);
+    pub(crate) const TABLE_NAME_UNIQUE_INDEX: Oid<Self> = Oid::new(106);
 }
 
 impl Namespace {
@@ -86,7 +87,12 @@ fn bootstrap_nsql_tables() -> impl Iterator<Item = Table> {
         Table { oid: Table::TYPE, name: "nsql_type".into(), namespace: Namespace::CATALOG },
         Table {
             oid: Table::NAMESPACE_NAME_UNIQUE_INDEX,
-            name: "nsql_namespace_name_key".into(),
+            name: "nsql_namespace_name_index".into(),
+            namespace: Namespace::CATALOG,
+        },
+        Table {
+            oid: Table::TABLE_NAME_UNIQUE_INDEX,
+            name: "nsql_table_namespace_name_index".into(),
             namespace: Namespace::CATALOG,
         },
     ]
@@ -94,19 +100,25 @@ fn bootstrap_nsql_tables() -> impl Iterator<Item = Table> {
 }
 
 fn bootstrap_nsql_indexes() -> impl Iterator<Item = Index> {
-    [Index {
-        table: Table::NAMESPACE_NAME_UNIQUE_INDEX,
-        kind: IndexKind::Unique,
-        target: Table::NAMESPACE,
-        // we want to index on the name column at index 1
-        index_expr: expr_project![1],
-    }]
+    [
+        Index {
+            table: Table::NAMESPACE_NAME_UNIQUE_INDEX,
+            kind: IndexKind::Unique,
+            target: Table::NAMESPACE,
+            index_expr: expr_project![1],
+        },
+        Index {
+            table: Table::TABLE_NAME_UNIQUE_INDEX,
+            kind: IndexKind::Unique,
+            target: Table::TABLE,
+            index_expr: expr_project![1, 2],
+        },
+    ]
     .into_iter()
 }
 
 fn bootstrap_nsql_column() -> impl Iterator<Item = Column> {
     [
-     
         // nsql_namespace
         Column {
             name: "oid".into(),
@@ -195,10 +207,25 @@ fn bootstrap_nsql_column() -> impl Iterator<Item = Column> {
             ty: Type::TEXT,
             is_primary_key: false,
         },
-        // nsql_namespace_pkey
+        // nsql_namespace_name_index
         Column {
             table: Table::NAMESPACE_NAME_UNIQUE_INDEX,
             index: ColumnIndex::new(0),
+            ty: Type::TEXT,
+            name: "name".into(),
+            is_primary_key: true,
+        },
+        // nsql_table_namespace_name_index
+        Column {
+            table: Table::TABLE_NAME_UNIQUE_INDEX,
+            index: ColumnIndex::new(0),
+            ty: Type::OID,
+            name: "namespace".into(),
+            is_primary_key: true,
+        },
+        Column {
+            table: Table::TABLE_NAME_UNIQUE_INDEX,
+            index: ColumnIndex::new(1),
             ty: Type::TEXT,
             name: "name".into(),
             is_primary_key: true,
@@ -220,7 +247,7 @@ fn bootstrap_nsql_types() -> impl Iterator<Item = Type> {
 impl SystemEntity for () {
     type Parent = ();
 
-    type Id = ();
+    type Key = ();
 
     fn name<'env, S: StorageEngine>(
         &self,
@@ -230,7 +257,7 @@ impl SystemEntity for () {
         unreachable!()
     }
 
-    fn id(&self) -> Self::Id {}
+    fn key(&self) -> Self::Key {}
 
     fn desc() -> &'static str {
         "catalog"
