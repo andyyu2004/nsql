@@ -93,7 +93,7 @@ impl SystemEntity for Index {
         catalog: Catalog<'env, S>,
         tx: &dyn Transaction<'env, S>,
     ) -> Result<Name> {
-        catalog.get::<Table>(tx, self.table)?.name(catalog, tx)
+        Ok(catalog.get::<Table>(tx, self.table)?.name())
     }
 
     #[inline]

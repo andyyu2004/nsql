@@ -315,29 +315,26 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                 not_implemented!("compound assignment")
             }
 
-            if !columns.iter().any(|column| {
-                column.name(self.catalog, tx).unwrap().as_str() == assignment.id[0].value
-            }) {
+            if !columns.iter().any(|column| column.name().as_str() == assignment.id[0].value) {
                 bail!(
                     "referenced update column `{}` does not exist in table `{}`",
                     assignment.id[0].value,
-                    table.name(self.catalog, tx)?,
+                    table.name(),
                 )
             }
         }
 
         let mut projections = Vec::with_capacity(columns.len());
         for column in columns {
-            let expr = if let Some(assignment) = assignments
-                .iter()
-                .find(|assn| assn.id[0].value == column.name(self.catalog, tx).unwrap().as_str())
+            let expr = if let Some(assignment) =
+                assignments.iter().find(|assn| assn.id[0].value == column.name().as_str())
             {
                 // we don't allow updating primary keys
                 if column.is_primary_key() {
                     bail!(
                         "cannot update primary key column `{}` of table `{}`",
-                        column.name(self.catalog, tx)?,
-                        table.name(self.catalog, tx)?,
+                        column.name(),
+                        table.name(),
                     )
                 }
 
@@ -345,10 +342,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                 self.bind_expr(scope, &assignment.value)?
             } else {
                 // otherwise, we bind the column to itself (effectively an identity projection)
-                self.bind_expr(
-                    scope,
-                    &ast::Expr::Identifier(ast::Ident::new(column.name(self.catalog, tx)?)),
-                )?
+                self.bind_expr(scope, &ast::Expr::Identifier(ast::Ident::new(column.name())))?
             };
 
             projections.push(expr);

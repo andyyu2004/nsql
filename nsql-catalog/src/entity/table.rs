@@ -22,13 +22,8 @@ impl Table {
     }
 
     #[inline]
-    // duplicating the trait method here as it's more convenient to call for external crates
-    pub fn name<'env, S: StorageEngine>(
-        &self,
-        _catalog: Catalog<'env, S>,
-        _tx: &dyn Transaction<'env, S>,
-    ) -> Result<Name> {
-        Ok(Name::clone(&self.name))
+    pub fn name(&self) -> Name {
+        Name::clone(&self.name)
     }
 
     pub fn storage<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(

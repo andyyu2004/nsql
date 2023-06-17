@@ -1,5 +1,5 @@
 use itertools::Itertools;
-use nsql_catalog::{ColumnIndex, SystemEntity, Table};
+use nsql_catalog::{ColumnIndex, Table};
 use nsql_core::Oid;
 use nsql_storage::tuple::TupleIndex;
 use nsql_storage_engine::FallibleIterator;
@@ -93,19 +93,13 @@ impl<'env, S: StorageEngine> Explain<'env, S> for PhysicalTableScan {
         let columns = table.columns(catalog, tx)?;
 
         let column_names = match &self.projection {
-            Some(projection) => projection
-                .iter()
-                .map(|&idx| columns[idx.as_usize()].name(catalog, tx).unwrap())
-                .collect::<Vec<_>>(),
-            None => columns.iter().map(|col| col.name(catalog, tx).unwrap()).collect::<Vec<_>>(),
+            Some(projection) => {
+                projection.iter().map(|&idx| columns[idx.as_usize()].name()).collect::<Vec<_>>()
+            }
+            None => columns.iter().map(|col| col.name()).collect::<Vec<_>>(),
         };
 
-        write!(
-            f,
-            "scan {} ({})",
-            table.name(catalog, tx).unwrap(),
-            column_names.iter().join(", ")
-        )?;
+        write!(f, "scan {} ({})", table.name(), column_names.iter().join(", "))?;
         Ok(())
     }
 }

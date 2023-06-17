@@ -33,6 +33,11 @@ impl Column {
     }
 
     #[inline]
+    pub fn name(&self) -> Name {
+        Name::clone(&self.name)
+    }
+
+    #[inline]
     pub fn logical_type(&self) -> LogicalType {
         Type::oid_to_logical_type(self.ty)
     }

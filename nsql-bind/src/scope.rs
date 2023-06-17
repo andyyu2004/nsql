@@ -69,7 +69,7 @@ impl<S: StorageEngine> Scope<S> {
         for (i, column) in table_columns.into_iter().enumerate() {
             let name = match alias {
                 Some(alias) if !alias.columns.is_empty() => alias.columns[i].clone(),
-                _ => column.name(binder.catalog, tx)?,
+                _ => column.name(),
             };
 
             if bound_columns.iter().any(|(p, _)| p.name() == name) {

@@ -95,7 +95,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> Explain<'env, S> for PhysicalDrop {
 
             match entity_ref {
                 ir::EntityRef::Table(table) => {
-                    write!(f, "table {}", catalog.table(tx, table)?.name(catalog, tx)?)?
+                    write!(f, "table {}", catalog.table(tx, table)?.name())?
                 }
             }
         }

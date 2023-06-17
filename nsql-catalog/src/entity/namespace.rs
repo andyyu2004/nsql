@@ -11,6 +11,11 @@ impl Namespace {
     pub fn new(name: Name) -> Self {
         Self { oid: crate::hack_new_oid_tmp(), name }
     }
+
+    #[inline]
+    pub fn name(&self) -> Name {
+        Name::clone(&self.name)
+    }
 }
 
 impl SystemEntity for Namespace {
