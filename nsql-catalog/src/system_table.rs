@@ -9,7 +9,7 @@ use nsql_storage_engine::{
     ExecutionMode, FallibleIterator, ReadWriteExecutionMode, StorageEngine, Transaction,
 };
 
-use crate::{Catalog, Result, SystemEntity};
+use crate::{Catalog, Result, SystemEntity, Table};
 
 #[repr(transparent)]
 pub struct SystemTableView<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T> {
@@ -20,10 +20,23 @@ pub struct SystemTableView<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, 
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: SystemEntity>
     SystemTableView<'env, 'txn, S, M, T>
 {
-    pub fn new(storage: &'env S, tx: M::TransactionRef<'txn>) -> Result<Self, S::Error> {
+    pub fn new(catalog: Catalog<'env, S>, tx: M::TransactionRef<'txn>) -> Result<Self> {
+        let table = catalog.get::<Table>(&tx, T::table())?;
+        Ok(Self { storage: table.storage(catalog, tx)?, phantom: PhantomData })
+    }
+
+    pub(crate) fn new_bootstrap(
+        storage: &'env S,
+        tx: M::TransactionRef<'txn>,
+    ) -> Result<Self, S::Error> {
         // todo indexes
-        let storage =
-            TableStorage::<'env, 'txn, S, M>::open(storage, tx, T::table_storage_info(), todo!())?;
+        let storage = TableStorage::<'env, 'txn, S, M>::open(
+            storage,
+            tx,
+            T::bootstrap_table_storage_info(),
+            // no access to table indexes during bootstrap
+            vec![],
+        )?;
 
         Ok(Self { storage, phantom: PhantomData })
     }

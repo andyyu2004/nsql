@@ -37,7 +37,7 @@ impl SystemEntity for Type {
         Ok(None)
     }
 
-    fn table_storage_info() -> TableStorageInfo {
+    fn bootstrap_table_storage_info() -> TableStorageInfo {
         TableStorageInfo::new(
             Table::TYPE.untyped(),
             vec![
@@ -45,6 +45,11 @@ impl SystemEntity for Type {
                 ColumnStorageInfo::new(LogicalType::Text, false),
             ],
         )
+    }
+
+    #[inline]
+    fn table() -> Oid<Table> {
+        Table::TYPE
     }
 }
 

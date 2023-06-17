@@ -1,6 +1,6 @@
 use nsql_core::Name;
 use nsql_storage::{Result, TableStorageInfo};
-use nsql_storage_engine::{FallibleIterator, ReadWriteExecutionMode, StorageEngine, Transaction};
+use nsql_storage_engine::{ReadWriteExecutionMode, StorageEngine, Transaction};
 
 use crate::{
     Catalog, Column, ColumnIndex, Index, IndexKind, Namespace, Oid, SystemEntity, SystemTableView,
@@ -13,23 +13,27 @@ pub(crate) fn bootstrap<'env, S: StorageEngine>(
 ) -> Result<()> {
     tracing::debug!("bootstrapping namespaces");
     let mut namespace_table =
-        SystemTableView::<S, ReadWriteExecutionMode, Namespace>::new(storage, txn)?;
+        SystemTableView::<S, ReadWriteExecutionMode, Namespace>::new_bootstrap(storage, txn)?;
     bootstrap_nsql_namespaces().try_for_each(|namespace| namespace_table.insert(namespace))?;
 
     tracing::debug!("bootstrapping tables");
-    let mut table_table = SystemTableView::<S, ReadWriteExecutionMode, Table>::new(storage, txn)?;
+    let mut table_table =
+        SystemTableView::<S, ReadWriteExecutionMode, Table>::new_bootstrap(storage, txn)?;
     bootstrap_nsql_tables().try_for_each(|table| table_table.insert(table))?;
 
     tracing::debug!("bootstrapping columns");
-    let mut column_table = SystemTableView::<S, ReadWriteExecutionMode, Column>::new(storage, txn)?;
+    let mut column_table =
+        SystemTableView::<S, ReadWriteExecutionMode, Column>::new_bootstrap(storage, txn)?;
     bootstrap_nsql_column().try_for_each(|column| column_table.insert(column))?;
 
     tracing::debug!("bootstrapping types");
-    let mut ty_table = SystemTableView::<S, ReadWriteExecutionMode, Type>::new(storage, txn)?;
+    let mut ty_table =
+        SystemTableView::<S, ReadWriteExecutionMode, Type>::new_bootstrap(storage, txn)?;
     bootstrap_nsql_types().try_for_each(|ty| ty_table.insert(ty))?;
 
     tracing::debug!("bootstrapping indexes");
-    let mut index_table = SystemTableView::<S, ReadWriteExecutionMode, Index>::new(storage, txn)?;
+    let mut index_table =
+        SystemTableView::<S, ReadWriteExecutionMode, Index>::new_bootstrap(storage, txn)?;
     bootstrap_nsql_indexes().try_for_each(|index| index_table.insert(index))?;
 
     Ok(())
@@ -229,7 +233,7 @@ impl SystemEntity for () {
         "catalog"
     }
 
-    fn table_storage_info() -> TableStorageInfo {
+    fn bootstrap_table_storage_info() -> TableStorageInfo {
         todo!()
     }
 
@@ -239,5 +243,9 @@ impl SystemEntity for () {
         _tx: &dyn Transaction<'env, S>,
     ) -> Result<Option<Oid<Self::Parent>>> {
         unreachable!()
+    }
+
+    fn table() -> Oid<Table> {
+        todo!()
     }
 }

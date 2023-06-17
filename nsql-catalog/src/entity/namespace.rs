@@ -37,7 +37,7 @@ impl SystemEntity for Namespace {
         "namespace"
     }
 
-    fn table_storage_info() -> TableStorageInfo {
+    fn bootstrap_table_storage_info() -> TableStorageInfo {
         TableStorageInfo::new(
             Table::NAMESPACE.untyped(),
             vec![
@@ -54,6 +54,11 @@ impl SystemEntity for Namespace {
         _tx: &dyn Transaction<'env, S>,
     ) -> Result<Option<Oid<Self::Parent>>> {
         Ok(None)
+    }
+
+    #[inline]
+    fn table() -> Oid<Table> {
+        Table::NAMESPACE
     }
 }
 

@@ -48,7 +48,10 @@ pub trait SystemEntity: FromTuple + IntoTuple + Eq + fmt::Debug {
         tx: &dyn Transaction<'env, S>,
     ) -> Result<Option<Oid<Self::Parent>>>;
 
-    fn table_storage_info() -> TableStorageInfo;
+    fn table() -> Oid<Table>;
+
+    /// Returns the storage info for the table that is used to build the table during catalog bootstrap.
+    fn bootstrap_table_storage_info() -> TableStorageInfo;
 }
 
 pub struct Catalog<'env, S> {
@@ -72,60 +75,56 @@ impl<'env, S> Copy for Catalog<'env, S> {}
 impl<'env, S: StorageEngine> Catalog<'env, S> {
     #[inline]
     pub fn get<'txn, T: SystemEntity>(
-        &self,
+        self,
         tx: &'txn dyn Transaction<'env, S>,
         oid: T::Id,
     ) -> Result<T> {
-        SystemTableView::<S, ReadonlyExecutionMode, T>::new(self.storage, tx)?.get(oid)
+        SystemTableView::<S, ReadonlyExecutionMode, T>::new(self, tx)?.get(oid)
     }
 
     #[inline]
-    pub fn table<'txn>(
-        &self,
-        tx: &'txn dyn Transaction<'env, S>,
-        oid: Oid<Table>,
-    ) -> Result<Table> {
+    pub fn table<'txn>(self, tx: &'txn dyn Transaction<'env, S>, oid: Oid<Table>) -> Result<Table> {
         self.get(tx, oid)
     }
 
     #[inline]
     pub fn namespaces<'txn>(
-        &self,
+        self,
         tx: &'txn dyn Transaction<'env, S>,
-    ) -> Result<SystemTableView<'env, 'txn, S, ReadonlyExecutionMode, Namespace>, S::Error> {
+    ) -> Result<SystemTableView<'env, 'txn, S, ReadonlyExecutionMode, Namespace>> {
         self.system_table(tx)
     }
 
     #[inline]
     pub fn tables<'txn>(
-        &self,
+        self,
         tx: &'txn dyn Transaction<'env, S>,
-    ) -> Result<SystemTableView<'env, 'txn, S, ReadonlyExecutionMode, Table>, S::Error> {
+    ) -> Result<SystemTableView<'env, 'txn, S, ReadonlyExecutionMode, Table>> {
         self.system_table(tx)
     }
 
     #[inline]
     pub fn columns<'txn>(
-        &self,
+        self,
         tx: &'txn dyn Transaction<'env, S>,
-    ) -> Result<SystemTableView<'env, 'txn, S, ReadonlyExecutionMode, Column>, S::Error> {
+    ) -> Result<SystemTableView<'env, 'txn, S, ReadonlyExecutionMode, Column>> {
         self.system_table(tx)
     }
 
     #[inline]
     pub fn system_table<'txn, T: SystemEntity>(
-        &self,
+        self,
         tx: &'txn dyn Transaction<'env, S>,
-    ) -> Result<SystemTableView<'env, 'txn, S, ReadonlyExecutionMode, T>, S::Error> {
-        SystemTableView::new(self.storage, tx)
+    ) -> Result<SystemTableView<'env, 'txn, S, ReadonlyExecutionMode, T>> {
+        SystemTableView::new(self, tx)
     }
 
     #[inline]
     pub fn system_table_write<'txn, T: SystemEntity>(
-        &self,
+        self,
         tx: &'txn S::WriteTransaction<'env>,
-    ) -> Result<SystemTableView<'env, 'txn, S, ReadWriteExecutionMode, T>, S::Error> {
-        SystemTableView::new(self.storage, tx)
+    ) -> Result<SystemTableView<'env, 'txn, S, ReadWriteExecutionMode, T>> {
+        SystemTableView::new(self, tx)
     }
 
     pub fn drop_table(&self, tx: &S::WriteTransaction<'env>, oid: Oid<Table>) -> Result<()> {

@@ -160,7 +160,7 @@ impl SystemEntity for Table {
     }
 
     #[inline]
-    fn table_storage_info() -> TableStorageInfo {
+    fn bootstrap_table_storage_info() -> TableStorageInfo {
         TableStorageInfo::new(
             Table::TABLE.untyped(),
             vec![
@@ -169,6 +169,11 @@ impl SystemEntity for Table {
                 ColumnStorageInfo::new(LogicalType::Text, false),
             ],
         )
+    }
+
+    #[inline]
+    fn table() -> Oid<Table> {
+        Table::TABLE
     }
 }
 

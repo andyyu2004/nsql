@@ -92,7 +92,7 @@ impl SystemEntity for Index {
     }
 
     #[inline]
-    fn table_storage_info() -> TableStorageInfo {
+    fn bootstrap_table_storage_info() -> TableStorageInfo {
         TableStorageInfo::new(
             Table::INDEX.untyped(),
             vec![
@@ -101,5 +101,10 @@ impl SystemEntity for Index {
                 ColumnStorageInfo::new(LogicalType::Int, false),
             ],
         )
+    }
+
+    #[inline]
+    fn table() -> Oid<Table> {
+        Table::INDEX
     }
 }
