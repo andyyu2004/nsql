@@ -54,6 +54,42 @@ pub trait SystemEntity: FromTuple + IntoTuple + Eq + fmt::Debug {
     fn bootstrap_table_storage_info() -> TableStorageInfo;
 }
 
+impl SystemEntity for () {
+    type Parent = ();
+
+    type Key = ();
+
+    fn name<'env, S: StorageEngine>(
+        &self,
+        _catalog: Catalog<'env, S>,
+        _tx: &dyn Transaction<'env, S>,
+    ) -> Result<Name> {
+        unreachable!()
+    }
+
+    fn key(&self) -> Self::Key {}
+
+    fn desc() -> &'static str {
+        "catalog"
+    }
+
+    fn bootstrap_table_storage_info() -> TableStorageInfo {
+        todo!()
+    }
+
+    fn parent_oid<'env, S: StorageEngine>(
+        &self,
+        _catalog: Catalog<'env, S>,
+        _tx: &dyn Transaction<'env, S>,
+    ) -> Result<Option<Oid<Self::Parent>>> {
+        unreachable!()
+    }
+
+    fn table() -> Oid<Table> {
+        todo!()
+    }
+}
+
 pub struct Catalog<'env, S> {
     storage: &'env S,
 }
