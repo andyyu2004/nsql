@@ -1,5 +1,6 @@
 #![deny(rust_2018_idioms)]
 
+pub mod eval;
 mod index;
 mod table_storage;
 pub mod tuple;

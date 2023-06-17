@@ -1,5 +1,5 @@
 use nsql_core::Name;
-use nsql_storage::{Result, TableStorageInfo};
+use nsql_storage::{expr_project, Result, TableStorageInfo};
 use nsql_storage_engine::{ReadWriteExecutionMode, StorageEngine, Transaction};
 
 use crate::{
@@ -63,7 +63,7 @@ impl Type {
 }
 
 fn bootstrap_nsql_namespaces() -> impl Iterator<Item = Namespace> {
-    vec![
+    [
         Namespace { oid: Namespace::MAIN, name: MAIN_SCHEMA.into() },
         Namespace { oid: Namespace::CATALOG, name: "nsql_catalog".into() },
     ]
@@ -71,7 +71,7 @@ fn bootstrap_nsql_namespaces() -> impl Iterator<Item = Namespace> {
 }
 
 fn bootstrap_nsql_tables() -> impl Iterator<Item = Table> {
-    vec![
+    [
         Table {
             oid: Table::NAMESPACE,
             name: "nsql_namespace".into(),
@@ -94,16 +94,19 @@ fn bootstrap_nsql_tables() -> impl Iterator<Item = Table> {
 }
 
 fn bootstrap_nsql_indexes() -> impl Iterator<Item = Index> {
-    vec![Index {
+    [Index {
         table: Table::NAMESPACE_NAME_UNIQUE_INDEX,
         kind: IndexKind::Unique,
         target: Table::NAMESPACE,
+        // we want to index on the name column at index 1
+        index_expr: expr_project![1],
     }]
     .into_iter()
 }
 
 fn bootstrap_nsql_column() -> impl Iterator<Item = Column> {
-    vec![
+    [
+     
         // nsql_namespace
         Column {
             name: "oid".into(),
@@ -205,7 +208,7 @@ fn bootstrap_nsql_column() -> impl Iterator<Item = Column> {
 }
 
 fn bootstrap_nsql_types() -> impl Iterator<Item = Type> {
-    vec![
+    [
         Type { oid: Type::OID, name: "oid".into() },
         Type { oid: Type::BOOL, name: "bool".into() },
         Type { oid: Type::INT, name: "int".into() },

@@ -2,7 +2,6 @@
 
 mod oid;
 pub mod schema;
-pub mod value;
 
 use std::borrow::Borrow;
 use std::fmt;
@@ -76,6 +75,7 @@ pub enum LogicalType {
     Decimal,
     Text,
     Oid,
+    Bytea,
 }
 
 impl LogicalType {
@@ -87,6 +87,7 @@ impl LogicalType {
             LogicalType::Text => todo!(),
             LogicalType::Null => todo!(),
             LogicalType::Oid => todo!(),
+            LogicalType::Bytea => todo!(),
         }
     }
 }
@@ -99,7 +100,8 @@ impl fmt::Display for LogicalType {
             LogicalType::Decimal => write!(f, "decimal"),
             LogicalType::Text => write!(f, "text"),
             LogicalType::Null => write!(f, "null"),
-            LogicalType::Oid => write!(f, "tid"),
+            LogicalType::Oid => write!(f, "oid"),
+            LogicalType::Bytea => write!(f, "bytea"),
         }
     }
 }

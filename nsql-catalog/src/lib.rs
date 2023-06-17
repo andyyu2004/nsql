@@ -116,7 +116,9 @@ impl<'env, S: StorageEngine> Catalog<'env, S> {
         self,
         tx: &'txn dyn Transaction<'env, S>,
     ) -> Result<SystemTableView<'env, 'txn, S, ReadonlyExecutionMode, T>> {
-        SystemTableView::new(self, tx)
+        // When opening in read-only mode, we still open the table in bootstrap mode to avoid loading cyclic dependencies.
+        // We currently only use indexes to check uniqueness not for lookups, so this isn't an issue yet.
+        Ok(SystemTableView::new_bootstrap(self.storage(), tx)?)
     }
 
     #[inline]

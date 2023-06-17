@@ -3,7 +3,7 @@ use std::fmt;
 use std::ops::{Index, IndexMut};
 
 use rkyv::with::RefAsBox;
-use rkyv::Archived;
+use rkyv::{Archive, Archived, Deserialize, Serialize};
 
 use crate::value::{CastError, Value};
 
@@ -126,7 +126,7 @@ impl IndexMut<usize> for Tuple {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Copy)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy, Archive, Serialize, Deserialize)]
 pub struct TupleIndex(usize);
 
 impl TupleIndex {

@@ -58,7 +58,7 @@ impl Table {
         )?)
     }
 
-    fn table_storage_info<'env, S: StorageEngine>(
+    pub(crate) fn table_storage_info<'env, S: StorageEngine>(
         &self,
         catalog: Catalog<'env, S>,
         tx: &dyn Transaction<'env, S>,

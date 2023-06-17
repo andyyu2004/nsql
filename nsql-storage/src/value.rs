@@ -52,6 +52,7 @@ pub enum Value {
     Bool(bool),
     Decimal(Decimal),
     Text(String),
+    Bytea(Box<[u8]>),
 }
 
 impl<'a> rkyv::Archive for &'a Value {
@@ -65,7 +66,7 @@ impl<'a> rkyv::Archive for &'a Value {
     }
 }
 
-impl<'a, S: rkyv::ser::Serializer> rkyv::Serialize<S> for &'a Value {
+impl<'a, S: rkyv::ser::Serializer + rkyv::ser::ScratchSpace> rkyv::Serialize<S> for &'a Value {
     #[inline]
     fn serialize(&self, serializer: &mut S) -> Result<Self::Resolver, S::Error> {
         (**self).serialize(serializer)
@@ -110,6 +111,7 @@ impl Value {
             Value::Decimal(_) => LogicalType::Decimal,
             Value::Text(_) => LogicalType::Text,
             Value::Oid(_) => LogicalType::Oid,
+            Value::Bytea(_) => LogicalType::Bytea,
         }
     }
 }
@@ -124,6 +126,7 @@ impl fmt::Display for Value {
             Value::Text(s) => write!(f, "{s}"),
             Value::Int32(i) => write!(f, "{i}"),
             Value::Oid(oid) => write!(f, "{oid}"),
+            Value::Bytea(bytes) => write!(f, "{bytes:x?}"),
         }
     }
 }
@@ -190,6 +193,15 @@ impl FromValue for String {
     }
 }
 
+impl FromValue for Box<[u8]> {
+    fn from_value(value: Value) -> Result<Self, CastError<Self>> {
+        match value {
+            Value::Bytea(b) => Ok(b),
+            _ => Err(CastError { value, phantom: PhantomData }),
+        }
+    }
+}
+
 impl FromValue for Name {
     fn from_value(value: Value) -> Result<Self, CastError<Self>> {
         match value {
@@ -199,6 +211,6 @@ impl FromValue for Name {
     }
 }
 
-pub trait ToValue {
-    fn to_value(self) -> Value;
+pub trait IntoValue {
+    fn into_value(self) -> Value;
 }

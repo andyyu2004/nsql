@@ -21,7 +21,9 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: SystemEnt
     SystemTableView<'env, 'txn, S, M, T>
 {
     pub fn new(catalog: Catalog<'env, S>, tx: M::TransactionRef<'txn>) -> Result<Self> {
-        let table = catalog.get::<Table>(&tx, T::table())?;
+        // we need to view the tables in bootstrap mode to avoid a cycle
+        let table =
+            SystemTableView::<S, M, Table>::new_bootstrap(catalog.storage(), tx)?.get(T::table())?;
         Ok(Self { storage: table.storage(catalog, tx)?, phantom: PhantomData })
     }
 

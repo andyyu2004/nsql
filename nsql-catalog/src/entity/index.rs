@@ -1,3 +1,5 @@
+use nsql_storage::eval::TupleExpr;
+use nsql_storage::value::IntoValue;
 use nsql_storage::IndexStorageInfo;
 
 use super::*;
@@ -8,15 +10,25 @@ pub struct Index {
     pub(crate) table: Oid<Table>,
     pub(crate) target: Oid<Table>,
     pub(crate) kind: IndexKind,
+    /// The expression to index on.
+    /// This will usually be a projection of the target table's columns.
+    pub(crate) index_expr: TupleExpr,
 }
 
 impl Index {
+    #[inline]
     pub fn storage_info<'env, S: StorageEngine>(
         &self,
         catalog: Catalog<'env, S>,
         tx: &dyn Transaction<'env, S>,
     ) -> Result<IndexStorageInfo> {
-        todo!()
+        let table = catalog.get::<Table>(tx, self.table)?.table_storage_info(catalog, tx)?;
+        Ok(IndexStorageInfo::new(table, self.index_expr.clone()))
+    }
+
+    #[inline]
+    pub fn expr(&self) -> &TupleExpr {
+        &self.index_expr
     }
 }
 
@@ -24,36 +36,38 @@ impl Index {
 #[repr(u8)]
 pub enum IndexKind {
     Unique,
-    NonUnique,
+    __Last,
 }
 
 impl FromValue for IndexKind {
+    #[inline]
     fn from_value(value: Value) -> Result<Self, CastError<Self>> {
         let kind = value.cast_non_null::<u8>().map_err(CastError::cast)?;
-        match kind {
-            0 => Ok(Self::Unique),
-            1 => Ok(Self::NonUnique),
-            _ => panic!("invalid index kind: {}", kind),
-        }
+        assert!(kind < IndexKind::__Last as u8);
+        Ok(unsafe { std::mem::transmute(kind) })
     }
 }
 
 impl FromTuple for Index {
+    #[inline]
     fn from_values(mut values: impl Iterator<Item = Value>) -> Result<Self, FromTupleError> {
         Ok(Self {
             table: values.next().ok_or(FromTupleError::NotEnoughValues)?.cast_non_null()?,
             target: values.next().ok_or(FromTupleError::NotEnoughValues)?.cast_non_null()?,
             kind: values.next().ok_or(FromTupleError::NotEnoughValues)?.cast_non_null()?,
+            index_expr: values.next().ok_or(FromTupleError::NotEnoughValues)?.cast_non_null()?,
         })
     }
 }
 
 impl IntoTuple for Index {
+    #[inline]
     fn into_tuple(self) -> Tuple {
         Tuple::from([
             Value::Oid(self.table.untyped()),
             Value::Oid(self.target.untyped()),
             Value::Int32(self.kind as i32),
+            self.index_expr.into_value(),
         ])
     }
 }
@@ -99,6 +113,7 @@ impl SystemEntity for Index {
                 ColumnStorageInfo::new(LogicalType::Oid, true),
                 ColumnStorageInfo::new(LogicalType::Oid, false),
                 ColumnStorageInfo::new(LogicalType::Int, false),
+                ColumnStorageInfo::new(LogicalType::Bytea, false),
             ],
         )
     }

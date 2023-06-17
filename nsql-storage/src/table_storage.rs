@@ -53,6 +53,10 @@ impl<'env, 'txn, S: StorageEngine> TableStorage<'env, 'txn, S, ReadWriteExecutio
 
     #[inline]
     pub fn insert(&mut self, tuple: &Tuple) -> Result<(), anyhow::Error> {
+        for index in self.indexes.iter_mut() {
+            index.insert(tuple)?;
+        }
+
         let (k, v) = self.split_tuple(tuple);
         if self.tree.exists(&k)? {
             // FIXME better error message
