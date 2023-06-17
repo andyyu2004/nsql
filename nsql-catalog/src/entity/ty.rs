@@ -70,12 +70,17 @@ impl IntoTuple for Type {
 
 impl Type {
     pub fn oid_to_logical_type(oid: Oid<Self>) -> LogicalType {
-        match oid {
-            Type::OID => LogicalType::Oid,
-            Type::BOOL => LogicalType::Bool,
-            Type::INT => LogicalType::Int,
-            Type::TEXT => LogicalType::Text,
-            _ => panic!(),
+        // can't use match because of structuraleq sadness
+        if oid == Type::OID {
+            LogicalType::Oid
+        } else if oid == Type::BOOL {
+            LogicalType::Bool
+        } else if oid == Type::INT {
+            LogicalType::Int
+        } else if oid == Type::TEXT {
+            LogicalType::Text
+        } else {
+            panic!()
         }
     }
 

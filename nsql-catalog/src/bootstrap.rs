@@ -15,11 +15,18 @@ pub(crate) fn bootstrap<'env, S: StorageEngine>(
     let mut namespace_table =
         SystemTableView::<S, ReadWriteExecutionMode, Namespace>::new_bootstrap(storage, txn)?;
     bootstrap_nsql_namespaces().try_for_each(|namespace| namespace_table.insert(namespace))?;
+    drop(namespace_table);
 
     tracing::debug!("bootstrapping tables");
     let mut table_table =
         SystemTableView::<S, ReadWriteExecutionMode, Table>::new_bootstrap(storage, txn)?;
-    bootstrap_nsql_tables().try_for_each(|table| table_table.insert(table))?;
+    bootstrap_nsql_tables().try_for_each(|table| {
+        if table.oid != Table::TABLE {
+            // can't do this as this table is currently open
+            table.create_storage_for_bootstrap(storage, txn, table.key())?;
+        }
+        table_table.insert(table)
+    })?;
 
     tracing::debug!("bootstrapping columns");
     let mut column_table =

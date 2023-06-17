@@ -15,7 +15,9 @@ SELECT * EXCLUDE (oid, namespace) FROM nsql_catalog.nsql_table
 ----
 nsql_attribute
 nsql_namespace
+nsql_namespace_name_index
 nsql_table
+nsql_table_namespace_name_index
 nsql_type
 
 

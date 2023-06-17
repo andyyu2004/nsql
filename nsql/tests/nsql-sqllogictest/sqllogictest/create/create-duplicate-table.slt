@@ -3,5 +3,9 @@ CREATE TABLE foo(id int PRIMARY KEY);
 
 statement error
 CREATE TABLE foo(id int PRIMARY KEY);
-----
-table `foo` already exists
+
+statement ok
+CREATE SCHEMA bar;
+
+statement ok
+CREATE TABLE bar.foo(id int PRIMARY KEY);

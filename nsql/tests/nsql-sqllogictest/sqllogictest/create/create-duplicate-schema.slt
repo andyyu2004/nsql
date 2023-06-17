@@ -3,5 +3,3 @@ CREATE SCHEMA foo;
 
 statement error
 CREATE SCHEMA foo;
-----
-schema `foo` already exists

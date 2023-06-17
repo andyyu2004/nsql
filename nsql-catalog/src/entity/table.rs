@@ -114,6 +114,16 @@ impl Table {
             .map(|index| index.storage_info(catalog, tx))
             .collect()
     }
+
+    pub(crate) fn create_storage_for_bootstrap<'env, S: StorageEngine>(
+        &self,
+        storage: &'env S,
+        tx: &S::WriteTransaction<'env>,
+        oid: Oid<Table>,
+    ) -> Result<(), S::Error> {
+        storage.open_write_tree(tx, &TableStorageInfo::derive_name(oid.untyped()))?;
+        Ok(())
+    }
 }
 
 pub struct CreateTableInfo {

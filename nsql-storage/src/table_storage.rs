@@ -4,7 +4,6 @@ use ::next_gen::prelude::*;
 use fix_hidden_lifetime_bug::fix_hidden_lifetime_bug;
 use next_gen::generator_fn::GeneratorFn;
 use nsql_core::{LogicalType, Name, Oid};
-// use nsql_catalog::{Column, Oid<Table>};
 use nsql_storage_engine::{
     fallible_iterator, ExecutionMode, FallibleIterator, ReadTree, ReadWriteExecutionMode,
     StorageEngine, WriteTree,
@@ -257,6 +256,10 @@ pub struct TableStorageInfo {
 }
 
 impl TableStorageInfo {
+    pub fn derive_name(oid: Oid<()>) -> Name {
+        format!("{oid}").into()
+    }
+
     #[inline]
     pub fn new(oid: Oid<()>, columns: Vec<ColumnStorageInfo>) -> Self {
         assert!(
@@ -269,7 +272,7 @@ impl TableStorageInfo {
             "expected at least one primary key column (this should be checked in the binder)"
         );
 
-        Self { columns, name: format!("{oid}").into() }
+        Self { columns, name: Self::derive_name(oid) }
     }
 
     #[inline]
