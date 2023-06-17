@@ -55,6 +55,7 @@ impl Table {
 
     pub(crate) const NAMESPACE_NAME_UNIQUE_INDEX: Oid<Self> = Oid::new(105);
     pub(crate) const TABLE_NAME_UNIQUE_INDEX: Oid<Self> = Oid::new(106);
+    pub(crate) const ATTRIBUTE_NAME_UNIQUE_INDEX: Oid<Self> = Oid::new(107);
 }
 
 impl Namespace {
@@ -102,6 +103,11 @@ fn bootstrap_nsql_tables() -> impl Iterator<Item = Table> {
             name: "nsql_table_namespace_name_index".into(),
             namespace: Namespace::CATALOG,
         },
+        Table {
+            oid: Table::ATTRIBUTE_NAME_UNIQUE_INDEX,
+            name: "nsql_attribute_table_name_index".into(),
+            namespace: Namespace::CATALOG,
+        },
     ]
     .into_iter()
 }
@@ -119,6 +125,12 @@ fn bootstrap_nsql_indexes() -> impl Iterator<Item = Index> {
             kind: IndexKind::Unique,
             target: Table::TABLE,
             index_expr: expr_project![1, 2],
+        },
+        Index {
+            table: Table::ATTRIBUTE_NAME_UNIQUE_INDEX,
+            kind: IndexKind::Unique,
+            target: Table::ATTRIBUTE,
+            index_expr: expr_project![0, 3],
         },
     ]
     .into_iter()
@@ -163,7 +175,7 @@ fn bootstrap_nsql_column() -> impl Iterator<Item = Column> {
             ty: Type::TEXT,
             is_primary_key: false,
         },
-        // nsql_column
+        // nsql_attribute
         Column {
             name: "table".into(),
             table: Table::ATTRIBUTE,
@@ -232,6 +244,21 @@ fn bootstrap_nsql_column() -> impl Iterator<Item = Column> {
         },
         Column {
             table: Table::TABLE_NAME_UNIQUE_INDEX,
+            index: ColumnIndex::new(1),
+            ty: Type::TEXT,
+            name: "name".into(),
+            is_primary_key: true,
+        },
+        // nsql_attribute_table_name_index
+        Column {
+            table: Table::ATTRIBUTE_NAME_UNIQUE_INDEX,
+            index: ColumnIndex::new(0),
+            ty: Type::OID,
+            name: "table".into(),
+            is_primary_key: true,
+        },
+        Column {
+            table: Table::ATTRIBUTE_NAME_UNIQUE_INDEX,
             index: ColumnIndex::new(1),
             ty: Type::TEXT,
             name: "name".into(),
