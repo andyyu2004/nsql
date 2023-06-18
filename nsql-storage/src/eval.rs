@@ -9,7 +9,7 @@ use crate::value::{CastError, FromValue, IntoValue, Value};
 
 #[macro_export]
 macro_rules! expr_project {
-    ($($indices:literal),*) => {
+    ($($indices:expr),*) => {
         $crate::eval::TupleExpr::new([
             $($crate::eval::Expr::new([
                 $crate::eval::ExprOp::Project($crate::tuple::TupleIndex::new($indices))

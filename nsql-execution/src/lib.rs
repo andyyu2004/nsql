@@ -7,7 +7,6 @@ mod eval;
 mod executor;
 mod physical_plan;
 mod pipeline;
-mod vis;
 
 use std::fmt;
 use std::sync::atomic::{self, AtomicBool};

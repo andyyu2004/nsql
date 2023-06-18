@@ -20,12 +20,14 @@ nsql_namespace_name_index
 nsql_table
 nsql_table_namespace_name_index
 nsql_type
+nsql_type_name_index
 
 
 query T rowsort
 SELECT * EXCLUDE oid FROM nsql_catalog.nsql_type
 ----
 bool
+bytea
 int
 oid
 text
