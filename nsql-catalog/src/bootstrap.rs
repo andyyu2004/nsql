@@ -69,6 +69,7 @@ impl Type {
     pub(crate) const BOOL: Oid<Self> = Oid::new(101);
     pub(crate) const INT: Oid<Self> = Oid::new(102);
     pub(crate) const TEXT: Oid<Self> = Oid::new(103);
+    pub(crate) const BYTEA: Oid<Self> = Oid::new(104);
 }
 
 fn bootstrap_nsql_namespaces() -> impl Iterator<Item = Namespace> {
@@ -93,6 +94,7 @@ fn bootstrap_nsql_tables() -> impl Iterator<Item = Table> {
             namespace: Namespace::CATALOG,
         },
         Table { oid: Table::TYPE, name: "nsql_type".into(), namespace: Namespace::CATALOG },
+        Table { oid: Table::INDEX, name: "nsql_index".into(), namespace: Namespace::CATALOG },
         Table {
             oid: Table::NAMESPACE_NAME_UNIQUE_INDEX,
             name: "nsql_namespace_name_index".into(),
@@ -116,20 +118,20 @@ fn bootstrap_nsql_indexes() -> impl Iterator<Item = Index> {
     [
         Index {
             table: Table::NAMESPACE_NAME_UNIQUE_INDEX,
-            kind: IndexKind::Unique,
             target: Table::NAMESPACE,
+            kind: IndexKind::Unique,
             index_expr: expr_project![1],
         },
         Index {
             table: Table::TABLE_NAME_UNIQUE_INDEX,
-            kind: IndexKind::Unique,
             target: Table::TABLE,
+            kind: IndexKind::Unique,
             index_expr: expr_project![1, 2],
         },
         Index {
             table: Table::ATTRIBUTE_NAME_UNIQUE_INDEX,
-            kind: IndexKind::Unique,
             target: Table::ATTRIBUTE,
+            kind: IndexKind::Unique,
             index_expr: expr_project![0, 3],
         },
     ]
@@ -224,6 +226,35 @@ fn bootstrap_nsql_column() -> impl Iterator<Item = Column> {
             table: Table::TYPE,
             index: ColumnIndex::new(1),
             ty: Type::TEXT,
+            is_primary_key: false,
+        },
+        // nsql_index
+        Column {
+            name: "table".into(),
+            table: Table::INDEX,
+            index: ColumnIndex::new(0),
+            ty: Type::OID,
+            is_primary_key: true,
+        },
+        Column {
+            name: "target".into(),
+            table: Table::INDEX,
+            index: ColumnIndex::new(1),
+            ty: Type::OID,
+            is_primary_key: false,
+        },
+        Column {
+            name: "kind".into(),
+            table: Table::INDEX,
+            index: ColumnIndex::new(2),
+            ty: Type::INT,
+            is_primary_key: false,
+        },
+        Column {
+            name: "index_expr".into(),
+            table: Table::INDEX,
+            index: ColumnIndex::new(3),
+            ty: Type::BYTEA,
             is_primary_key: false,
         },
         // nsql_namespace_name_index

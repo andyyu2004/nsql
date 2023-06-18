@@ -79,6 +79,8 @@ impl Type {
             LogicalType::Int
         } else if oid == Type::TEXT {
             LogicalType::Text
+        } else if oid == Type::BYTEA {
+            LogicalType::Bytea
         } else {
             panic!()
         }
@@ -90,7 +92,9 @@ impl Type {
             LogicalType::Bool => Type::BOOL,
             LogicalType::Int => Type::INT,
             LogicalType::Text => Type::TEXT,
-            _ => todo!(),
+            LogicalType::Bytea => Type::BYTEA,
+            LogicalType::Null => todo!(),
+            LogicalType::Decimal => todo!(),
         }
     }
 }

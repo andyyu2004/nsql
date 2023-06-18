@@ -9,12 +9,12 @@ nsql_catalog
 statement ok
 SELECT * FROM nsql_catalog.nsql_attribute
 
-
 query T rowsort
 SELECT * EXCLUDE (oid, namespace) FROM nsql_catalog.nsql_table
 ----
 nsql_attribute
 nsql_attribute_table_name_index
+nsql_index
 nsql_namespace
 nsql_namespace_name_index
 nsql_table
@@ -29,3 +29,6 @@ bool
 int
 oid
 text
+
+statement ok
+SELECT * FROM nsql_catalog.nsql_index
