@@ -7,6 +7,7 @@ mod physical_explain;
 mod physical_filter;
 mod physical_insert;
 mod physical_limit;
+mod physical_order;
 mod physical_projection;
 mod physical_show;
 mod physical_table_scan;
@@ -31,6 +32,7 @@ use self::physical_explain::PhysicalExplain;
 use self::physical_filter::PhysicalFilter;
 use self::physical_insert::PhysicalInsert;
 use self::physical_limit::PhysicalLimit;
+use self::physical_order::PhysicalOrder;
 use self::physical_projection::PhysicalProjection;
 use self::physical_show::PhysicalShow;
 use self::physical_table_scan::PhysicalTableScan;
@@ -159,6 +161,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalPlanner<'env, S> {
                 PhysicalProjection::plan(f(self, tx, source)?, projection)
             }
             Plan::Limit { source, limit } => PhysicalLimit::plan(f(self, tx, source)?, limit),
+            Plan::Order { source, order } => PhysicalOrder::plan(f(self, tx, source)?, order),
             Plan::Filter { source, predicate } => {
                 PhysicalFilter::plan(f(self, tx, source)?, predicate)
             }

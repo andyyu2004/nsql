@@ -1,6 +1,6 @@
 use std::error::Error;
-use std::fmt;
 use std::marker::PhantomData;
+use std::{cmp, fmt};
 
 use nsql_core::{LogicalType, Name, Oid, UntypedOid};
 use rust_decimal::prelude::ToPrimitive;
@@ -53,6 +53,23 @@ pub enum Value {
     Decimal(Decimal),
     Text(String),
     Bytea(Box<[u8]>),
+}
+
+impl PartialOrd for Value {
+    fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
+        match (self, other) {
+            (Value::Null, Value::Null) => todo!(),
+            (Value::Null, _) => todo!(),
+            (_, Value::Null) => todo!(),
+            (Value::Int32(a), Value::Int32(b)) => a.partial_cmp(b),
+            (Value::Oid(a), Value::Oid(b)) => a.partial_cmp(b),
+            (Value::Bool(a), Value::Bool(b)) => a.partial_cmp(b),
+            (Value::Decimal(a), Value::Decimal(b)) => a.partial_cmp(b),
+            (Value::Text(a), Value::Text(b)) => a.partial_cmp(b),
+            (Value::Bytea(a), Value::Bytea(b)) => a.partial_cmp(b),
+            (a, b) => panic!("cannot compare values {:?} and {:?}", a, b),
+        }
+    }
 }
 
 impl<'a> rkyv::Archive for &'a Value {

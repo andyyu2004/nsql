@@ -11,7 +11,7 @@ pub use oid::{Oid, UntypedOid};
 use smol_str::SmolStr;
 
 /// Lowercase name of a catalog entry (for case insensitive lookup)
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, PartialEq, Eq, Hash)]
 pub struct Name {
     name: SmolStr,
 }
@@ -35,6 +35,12 @@ impl Name {
 impl From<Name> for String {
     fn from(value: Name) -> Self {
         value.name.into()
+    }
+}
+
+impl fmt::Debug for Name {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{self}")
     }
 }
 

@@ -89,6 +89,8 @@ impl<'env: 'txn, 'txn, S: StorageEngine> Executor<'env, 'txn, S, ReadonlyExecuti
             pipeline.sink.sink(ecx, tuple)?;
         }
 
+        pipeline.sink.finalize(ecx)?;
+
         Ok(())
     }
 }

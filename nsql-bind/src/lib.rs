@@ -460,12 +460,27 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
     ) -> Result<(Scope<S>, Box<ir::QueryPlan>)> {
         let ast::Query { with, body, order_by, limit, offset, fetch, locks } = query;
         not_implemented!(with.is_some());
-        not_implemented!(!order_by.is_empty());
         not_implemented!(offset.is_some());
         not_implemented!(fetch.is_some());
         not_implemented!(!locks.is_empty());
 
         let (scope, mut table_expr) = self.bind_table_expr(tx, scope, body)?;
+
+        if !order_by.is_empty() {
+            let order_by = order_by
+                .iter()
+                .map(|item| {
+                    let ast::OrderByExpr { expr, asc, nulls_first } = &item;
+                    let expr = self.bind_expr(&scope, expr)?;
+                    Ok(ir::OrderExpr {
+                        expr,
+                        asc: asc.unwrap_or(true),
+                        nulls_first: nulls_first.unwrap_or(true),
+                    })
+                })
+                .collect::<Result<Vec<_>>>()?;
+            table_expr = table_expr.order_by(order_by);
+        }
 
         if let Some(limit) = limit {
             // LIMIT is currently not allowed to reference any columns

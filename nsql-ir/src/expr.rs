@@ -18,13 +18,25 @@ pub enum QueryPlan {
     Filter { source: Box<QueryPlan>, predicate: Expr },
     Values(Values),
     Limit(Box<QueryPlan>, u64),
+    Order(Box<QueryPlan>, Box<[OrderExpr]>),
     Empty,
+}
+
+#[derive(Debug, Clone)]
+pub struct OrderExpr {
+    pub expr: Expr,
+    pub asc: bool,
+    pub nulls_first: bool,
 }
 
 impl QueryPlan {
     #[inline]
     pub fn limit(self: Box<Self>, limit: u64) -> Box<QueryPlan> {
         Box::new(QueryPlan::Limit(self, limit))
+    }
+
+    pub fn order_by(self: Box<Self>, order: impl Into<Box<[OrderExpr]>>) -> Box<QueryPlan> {
+        Box::new(QueryPlan::Order(self, order.into()))
     }
 
     #[inline]

@@ -128,9 +128,6 @@ pub enum ExplainMode {
     Pipeline,
 }
 
-#[derive(Debug, Clone)]
-pub enum Query {}
-
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub enum Path {
     Qualified { prefix: Box<Path>, name: Name },

@@ -79,10 +79,11 @@ impl<'env, 'txn, S: StorageEngine> TableStorage<'env, 'txn, S, ReadWriteExecutio
         assert_eq!(
             tuple.len(),
             self.info.columns.len(),
-            "tuple length did not match the expected number of columns, expected {}, got {} (table {})",
+            "tuple length did not match the expected number of columns, expected {}, got {} (info={:?}, tuple={})",
             self.info.columns.len(),
             tuple.len(),
-            self.info.name
+            self.info,
+            tuple,
         );
 
         let mut pk_tuple = vec![];

@@ -1,6 +1,7 @@
 use nsql_catalog::{ColumnIndex, CreateNamespaceInfo, Table};
 use nsql_core::Oid;
 
+// FIXME remove this layer
 #[derive(Debug)]
 pub enum Plan {
     Empty,
@@ -39,6 +40,10 @@ pub enum Plan {
     Limit {
         source: Box<Plan>,
         limit: u64,
+    },
+    Order {
+        source: Box<Plan>,
+        order: Box<[ir::OrderExpr]>,
     },
 }
 
@@ -84,6 +89,10 @@ impl Planner {
             ir::QueryPlan::Limit(source, limit) => {
                 let source = self.plan_query(source);
                 Plan::Limit { source, limit }
+            }
+            ir::QueryPlan::Order(source, order) => {
+                let source = self.plan_query(source);
+                Plan::Order { source, order }
             }
         };
 
