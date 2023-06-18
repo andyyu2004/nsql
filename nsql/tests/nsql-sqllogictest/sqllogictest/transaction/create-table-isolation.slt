@@ -1,24 +1,22 @@
-# FIXME need transactional catalog
-# 
-# statement ok
-# CREATE TABLE a (id int PRIMARY KEY)
-# 
-# statement ok con1
-# BEGIN
-# 
-# statement ok con1
-# CREATE TABLE b (id int PRIMARY KEY)
-# 
-# query T rowsort con1
-# SHOW TABLES
-# ----
-# a
-# b
-#
-# query T rowsort con2
-# SHOW TABLES
-# ----
-# a
-# 
-# statement ok con1
-# COMMIT
+statement ok
+CREATE TABLE a (id int PRIMARY KEY)
+
+statement ok con1
+BEGIN
+
+statement ok con1
+CREATE TABLE b (id int PRIMARY KEY)
+
+query T rowsort con1
+SHOW TABLES
+----
+a
+b
+
+query T rowsort con2
+SHOW TABLES
+----
+a
+
+statement ok con1
+COMMIT

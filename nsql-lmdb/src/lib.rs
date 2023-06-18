@@ -90,8 +90,6 @@ impl StorageEngine for LmdbStorageEngine {
         Ok(ReadWriteTx(inner))
     }
 
-    // FIXME probably should now move these methods onto the txN
-
     #[inline]
     fn open_tree<'env, 'txn>(
         &self,
