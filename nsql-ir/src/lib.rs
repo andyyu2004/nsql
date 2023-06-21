@@ -85,17 +85,8 @@ pub enum Stmt {
     CreateTable(CreateTableInfo),
     Query(Box<QueryPlan>),
     Explain(ExplainMode, Box<Stmt>),
-    Insert {
-        table: Oid<Table>,
-        projection: Box<[Expr]>,
-        source: Box<QueryPlan>,
-        returning: Option<Box<[Expr]>>,
-    },
-    Update {
-        table: Oid<Table>,
-        source: Box<QueryPlan>,
-        returning: Option<Box<[Expr]>>,
-    },
+    Insert { table: Oid<Table>, source: Box<QueryPlan>, returning: Option<Box<[Expr]>> },
+    Update { table: Oid<Table>, source: Box<QueryPlan>, returning: Option<Box<[Expr]>> },
 }
 
 impl Stmt {

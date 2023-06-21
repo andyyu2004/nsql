@@ -12,7 +12,8 @@ use ir::expr::EvalNotConst;
 use ir::{Decimal, Path, TransactionMode};
 use itertools::Itertools;
 use nsql_catalog::{
-    Catalog, CreateColumnInfo, CreateNamespaceInfo, Namespace, SystemEntity, Table, MAIN_SCHEMA,
+    Catalog, ColumnIndex, CreateColumnInfo, CreateNamespaceInfo, Namespace, SystemEntity, Table,
+    MAIN_SCHEMA,
 };
 use nsql_core::{LogicalType, Name, Oid};
 use nsql_parse::ast::{self, HiveDistributionStyle};
@@ -167,11 +168,10 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
 
                 // We bind the columns of the table first, so that we can use them in the following projection
                 let (scope, table) = self.bind_table(tx, scope, table_name, None)?;
+                let (scope, mut source) = self.bind_query(tx, &scope, source)?;
+
                 let table_columns =
                     self.catalog.get::<Table>(tx, table)?.columns(self.catalog, tx)?;
-
-                // FIXME need to check types
-
                 // We model the insertion columns list as a projection over the source
                 let mut projection = columns
                     .iter()
@@ -187,9 +187,11 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                         projection
                             .push(ir::Expr { ty, kind: ir::ExprKind::Value(ir::Value::Null) });
                     }
+
+                    assert_eq!(projection.len(), table_columns.len());
+                    source = source.project(projection);
                 }
 
-                let (scope, source) = self.bind_query(tx, &scope, source)?;
                 let returning = returning
                     .as_ref()
                     .map(|items| {
@@ -201,12 +203,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                     })
                     .transpose()?;
 
-                ir::Stmt::Insert {
-                    table,
-                    projection: projection.into_boxed_slice(),
-                    source,
-                    returning,
-                }
+                ir::Stmt::Insert { table, source, returning }
             }
             ast::Statement::Query(query) => {
                 let (_scope, query) = self.bind_query(tx, scope, query)?;
@@ -285,7 +282,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                     _ => not_implemented!("update with non-table relation"),
                 };
 
-                let mut source = Box::new(ir::QueryPlan::TableScan { table, projection: None });
+                let mut source = self.build_table_scan(tx, table, None)?;
                 if let Some(predicate) = selection
                     .as_ref()
                     .map(|selection| self.bind_predicate(&scope, selection))
@@ -325,6 +322,24 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
         };
 
         Ok(stmt)
+    }
+
+    fn build_table_scan(
+        &self,
+        tx: &dyn Transaction<'env, S>,
+        table: Oid<Table>,
+        projection: Option<Box<[ColumnIndex]>>,
+    ) -> Result<Box<ir::QueryPlan>> {
+        let columns = self.catalog.get::<Table>(tx, table)?.columns(self.catalog, tx)?;
+        let schema = columns.iter().map(|column| column.logical_type()).collect::<Vec<_>>();
+        let projected_schema = projection
+            .as_ref()
+            .map(|projection| {
+                projection.iter().map(|&index| schema[index.as_usize()].clone()).collect::<Vec<_>>()
+            })
+            .unwrap_or(schema);
+
+        Ok(Box::new(ir::QueryPlan::TableScan { table, projection, projected_schema }))
     }
 
     fn bind_assignments(
@@ -537,7 +552,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
             ast::SetExpr::SetOperation { .. } => todo!(),
             ast::SetExpr::Values(values) => {
                 let (scope, values) = self.bind_values(scope, values)?;
-                (scope, Box::new(ir::QueryPlan::Values(values)))
+                (scope, Box::new(ir::QueryPlan::values(values)))
             }
             ast::SetExpr::Insert(_) => todo!(),
             ast::SetExpr::Table(_) => todo!(),
@@ -624,7 +639,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                 not_implemented!(!with_hints.is_empty());
 
                 let (scope, table) = self.bind_table(tx, scope, name, alias.as_ref())?;
-                (scope, Box::new(ir::QueryPlan::TableScan { table, projection: None }))
+                (scope, self.build_table_scan(tx, table, None)?)
             }
             ast::TableFactor::Derived { lateral, subquery, alias } => {
                 not_implemented!(*lateral);
@@ -643,7 +658,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
 
                 let expr = self.bind_expr(scope, array_expr)?;
                 ensure!(
-                    matches!(expr.ty, LogicalType::Array(_) | LogicalType::Null),
+                    matches!(expr.ty, LogicalType::Array(_)),
                     "UNNEST expression must be an array"
                 );
 
@@ -653,7 +668,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                     scope = scope.alias(self.lower_table_alias(alias))?;
                 }
 
-                (scope, Box::new(ir::QueryPlan::Unnest { expr }))
+                (scope, Box::new(ir::QueryPlan::unnest(expr)))
             }
             ast::TableFactor::NestedJoin { .. } => todo!(),
             ast::TableFactor::Pivot { .. } => todo!(),

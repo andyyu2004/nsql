@@ -94,11 +94,8 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalPlanner<'env, S> {
                 let source = self.plan_write_node(tx, source)?;
                 PhysicalUpdate::plan(table, source, returning)
             }
-            Plan::Insert { table, projection, source, returning } => {
-                let mut source = self.plan_write_node(tx, source)?;
-                if !projection.is_empty() {
-                    source = PhysicalProjection::plan(source, projection);
-                };
+            Plan::Insert { table, source, returning } => {
+                let source = self.plan_write_node(tx, source)?;
                 PhysicalInsert::plan(table, source, returning)
             }
             Plan::CreateTable(info) => PhysicalCreateTable::plan(info),

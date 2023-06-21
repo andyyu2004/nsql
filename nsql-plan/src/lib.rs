@@ -11,43 +11,15 @@ pub enum Plan {
     Drop(Vec<ir::EntityRef>),
     Show(ir::ObjectType),
     Explain(ir::ExplainMode, Box<Plan>),
-    Unnest {
-        expr: ir::Expr,
-    },
-    Update {
-        table: Oid<Table>,
-        source: Box<Plan>,
-        returning: Option<Box<[ir::Expr]>>,
-    },
-    Filter {
-        source: Box<Plan>,
-        predicate: ir::Expr,
-    },
-    Projection {
-        source: Box<Plan>,
-        projection: Box<[ir::Expr]>,
-    },
-    Insert {
-        table: Oid<Table>,
-        projection: Box<[ir::Expr]>,
-        source: Box<Plan>,
-        returning: Option<Box<[ir::Expr]>>,
-    },
-    Values {
-        values: ir::Values,
-    },
-    Scan {
-        table: Oid<Table>,
-        projection: Option<Box<[ColumnIndex]>>,
-    },
-    Limit {
-        source: Box<Plan>,
-        limit: u64,
-    },
-    Order {
-        source: Box<Plan>,
-        order: Box<[ir::OrderExpr]>,
-    },
+    Unnest { expr: ir::Expr },
+    Update { table: Oid<Table>, source: Box<Plan>, returning: Option<Box<[ir::Expr]>> },
+    Filter { source: Box<Plan>, predicate: ir::Expr },
+    Projection { source: Box<Plan>, projection: Box<[ir::Expr]> },
+    Insert { table: Oid<Table>, source: Box<Plan>, returning: Option<Box<[ir::Expr]>> },
+    Values { values: ir::Values },
+    Scan { table: Oid<Table>, projection: Option<Box<[ColumnIndex]>> },
+    Limit { source: Box<Plan>, limit: u64 },
+    Order { source: Box<Plan>, order: Box<[ir::OrderExpr]> },
 }
 
 #[derive(Debug, Default)]
@@ -59,9 +31,9 @@ impl Planner {
             ir::Stmt::Transaction(kind) => Plan::Transaction(kind),
             ir::Stmt::CreateTable(info) => Plan::CreateTable(info),
             ir::Stmt::CreateNamespace(info) => Plan::CreateNamespace(info),
-            ir::Stmt::Insert { table, projection, source, returning } => {
+            ir::Stmt::Insert { table, source, returning } => {
                 let source = self.plan_query(source);
-                Plan::Insert { table, projection, source, returning }
+                Plan::Insert { table, source, returning }
             }
             ir::Stmt::Query(query) => return self.plan_query(query),
             ir::Stmt::Show(show) => Plan::Show(show),
@@ -78,16 +50,16 @@ impl Planner {
     #[allow(clippy::boxed_local)]
     fn plan_query(&self, plan: Box<ir::QueryPlan>) -> Box<Plan> {
         let plan = match *plan {
-            ir::QueryPlan::Values(values) => Plan::Values { values },
+            ir::QueryPlan::Values { values, .. } => Plan::Values { values },
             ir::QueryPlan::Filter { source, predicate } => {
                 let source = self.plan_query(source);
                 Plan::Filter { source, predicate }
             }
-            ir::QueryPlan::Projection { source, projection } => {
+            ir::QueryPlan::Projection { source, projection, .. } => {
                 let source = self.plan_query(source);
                 Plan::Projection { source, projection }
             }
-            ir::QueryPlan::TableScan { table, projection } => Plan::Scan { table, projection },
+            ir::QueryPlan::TableScan { table, projection, .. } => Plan::Scan { table, projection },
             ir::QueryPlan::Empty => Plan::Empty,
             ir::QueryPlan::Limit(source, limit) => {
                 let source = self.plan_query(source);
@@ -97,7 +69,7 @@ impl Planner {
                 let source = self.plan_query(source);
                 Plan::Order { source, order }
             }
-            ir::QueryPlan::Unnest { expr } => Plan::Unnest { expr },
+            ir::QueryPlan::Unnest { expr, .. } => Plan::Unnest { expr },
         };
 
         Box::new(plan)

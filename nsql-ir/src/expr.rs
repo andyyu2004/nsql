@@ -12,14 +12,33 @@ use nsql_storage::value::Value;
 
 use crate::Path;
 
+pub type QueryPlanSchema = Vec<LogicalType>;
+
 #[derive(Debug, Clone)]
 pub enum QueryPlan {
-    TableScan { table: Oid<Table>, projection: Option<Box<[ColumnIndex]>> },
-    Projection { source: Box<QueryPlan>, projection: Box<[Expr]> },
-    Filter { source: Box<QueryPlan>, predicate: Expr },
+    TableScan {
+        table: Oid<Table>,
+        projection: Option<Box<[ColumnIndex]>>,
+        projected_schema: QueryPlanSchema,
+    },
+    Projection {
+        source: Box<QueryPlan>,
+        projection: Box<[Expr]>,
+        projected_schema: QueryPlanSchema,
+    },
+    Filter {
+        source: Box<QueryPlan>,
+        predicate: Expr,
+    },
     // maybe this can be implemented as a standard table function in the future (change the sqlparser dialect to duckdb if so)
-    Unnest { expr: Expr },
-    Values(Values),
+    Unnest {
+        schema: QueryPlanSchema,
+        expr: Expr,
+    },
+    Values {
+        values: Values,
+        schema: QueryPlanSchema,
+    },
     Limit(Box<QueryPlan>, u64),
     Order(Box<QueryPlan>, Box<[OrderExpr]>),
     Empty,
@@ -33,6 +52,38 @@ pub struct OrderExpr {
 }
 
 impl QueryPlan {
+    pub fn schema(&self) -> &[LogicalType] {
+        match self {
+            QueryPlan::TableScan { projected_schema, .. }
+            | QueryPlan::Projection { projected_schema, .. } => projected_schema,
+            QueryPlan::Filter { source, .. } => source.schema(),
+            QueryPlan::Unnest { schema, .. } => schema,
+            QueryPlan::Values { .. } => todo!(),
+            QueryPlan::Limit(_, _) => todo!(),
+            QueryPlan::Order(_, _) => todo!(),
+            QueryPlan::Empty => &[],
+        }
+    }
+
+    pub fn values(values: Values) -> Self {
+        let schema = values
+            .iter()
+            .map(|row| row.iter().map(|expr| expr.ty.clone()).collect::<Vec<_>>())
+            .next()
+            .expect("values should be non-empty");
+        QueryPlan::Values { values, schema }
+    }
+
+    /// Construct an `unnest` plan. `expr` must have an array type
+    pub fn unnest(expr: Expr) -> Self {
+        match &expr.ty {
+            LogicalType::Array(element_type) => {
+                QueryPlan::Unnest { schema: vec![*element_type.clone()], expr }
+            }
+            _ => panic!("unnest expression must be an array"),
+        }
+    }
+
     #[inline]
     pub fn limit(self: Box<Self>, limit: u64) -> Box<QueryPlan> {
         Box::new(QueryPlan::Limit(self, limit))
@@ -50,7 +101,9 @@ impl QueryPlan {
 
     #[inline]
     pub fn project(self: Box<Self>, projection: impl Into<Box<[Expr]>>) -> Box<QueryPlan> {
-        Box::new(QueryPlan::Projection { source: self, projection: projection.into() })
+        let projection = projection.into();
+        let projected_schema = projection.iter().map(|expr| expr.ty.clone()).collect();
+        Box::new(QueryPlan::Projection { source: self, projection, projected_schema })
     }
 }
 

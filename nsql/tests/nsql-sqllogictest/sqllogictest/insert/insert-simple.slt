@@ -34,3 +34,8 @@ statement error
 INSERT INTO xs(x, x) VALUES (1, 2), (2, 3), (3, 4)
 ----
 duplicate column name in insert column list: `x`
+
+statement error
+INSERT INTO xs(x) VALUES ('bad')
+----
+duplicate column name in insert column list: `x`
