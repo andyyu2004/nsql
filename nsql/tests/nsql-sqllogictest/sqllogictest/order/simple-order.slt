@@ -1,0 +1,26 @@
+    statement ok
+CREATE TABLE t(x INT PRIMARY KEY, y INT);
+
+statement ok
+INSERT INTO t(x, y) VALUES (1, 2), (3, 4), (5, 6), (7, 3), (8, 3);
+
+query II
+SELECT * FROM t ORDER BY y, x
+----
+1 2
+7 3
+8 3
+3 4
+5 6
+
+query II
+SELECT * FROM t ORDER BY y, x DESC
+----
+1 2
+8 3
+7 3
+3 4
+5 6
+
+query error
+SELECT * FROM t ORDER BY z DESC
