@@ -24,3 +24,5 @@ SELECT * FROM t ORDER BY y, x DESC
 
 query error
 SELECT * FROM t ORDER BY z DESC
+----
+unbound column `z`

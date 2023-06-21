@@ -85,6 +85,14 @@ pub enum LogicalType {
     Array(Box<LogicalType>),
 }
 
+impl LogicalType {
+    // HACK to workaround null type equality for now
+    #[inline]
+    pub fn is_subtype_of(&self, supertype: &Self) -> bool {
+        if matches!(self, LogicalType::Null) { true } else { self == supertype }
+    }
+}
+
 impl fmt::Display for LogicalType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {

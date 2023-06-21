@@ -91,7 +91,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSink<'env, 'txn, S, ReadWriteEx
     ) -> ExecutionResult<()> {
         let tx = ecx.tx()?;
         let catalog = ecx.catalog();
-        let table = ecx.catalog().table(tx, self.table)?;
+        let table = catalog.table(tx, self.table)?;
         let mut storage = table.storage::<S, ReadWriteExecutionMode>(catalog, tx)?;
 
         let tuples = self.tuples.read();

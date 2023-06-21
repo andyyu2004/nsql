@@ -92,9 +92,8 @@ impl<'env, 'txn, S: StorageEngine> TableStorage<'env, 'txn, S, ReadWriteExecutio
         assert_eq!(tuple.len(), self.info.columns.len());
 
         for (value, col) in tuple.values().zip(&self.info.columns) {
-            assert_eq!(
-                value.ty(),
-                col.logical_type,
+            assert!(
+                value.ty().is_subtype_of(&col.logical_type),
                 "expected column type {:?}, got {:?}",
                 col.logical_type,
                 value.ty()

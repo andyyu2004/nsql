@@ -3,6 +3,7 @@
 
 mod scope;
 
+use std::collections::HashSet;
 use std::str::FromStr;
 
 pub use anyhow::Error;
@@ -157,15 +158,36 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                 not_implemented!(!after_columns.is_empty());
                 not_implemented!(on.is_some());
 
+                let mut unique_columns = HashSet::with_capacity(columns.len());
+                for column in columns {
+                    if !unique_columns.insert(column) {
+                        bail!("duplicate column name in insert column list: `{column}`")
+                    }
+                }
+
                 // We bind the columns of the table first, so that we can use them in the following projection
                 let (scope, table) = self.bind_table(tx, scope, table_name, None)?;
+                let table_columns =
+                    self.catalog.get::<Table>(tx, table)?.columns(self.catalog, tx)?;
+
+                // FIXME need to check types
 
                 // We model the insertion columns list as a projection over the source
-                let projection = columns
+                let mut projection = columns
                     .iter()
                     .map(|ident| ast::Expr::Identifier(ident.clone()))
                     .map(|expr| self.bind_expr(&scope, &expr))
-                    .collect::<Result<_>>()?;
+                    .collect::<Result<Vec<_>>>()?;
+
+                assert!(projection.len() <= table_columns.len());
+                if !projection.is_empty() {
+                    // pad any missing columns with a default value of null
+                    for column in table_columns.iter().skip(projection.len()) {
+                        let ty = column.logical_type().clone();
+                        projection
+                            .push(ir::Expr { ty, kind: ir::ExprKind::Value(ir::Value::Null) });
+                    }
+                }
 
                 let (scope, source) = self.bind_query(tx, &scope, source)?;
                 let returning = returning
@@ -178,7 +200,13 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                             .collect::<Result<_>>()
                     })
                     .transpose()?;
-                ir::Stmt::Insert { table, projection, source, returning }
+
+                ir::Stmt::Insert {
+                    table,
+                    projection: projection.into_boxed_slice(),
+                    source,
+                    returning,
+                }
             }
             ast::Statement::Query(query) => {
                 let (_scope, query) = self.bind_query(tx, scope, query)?;

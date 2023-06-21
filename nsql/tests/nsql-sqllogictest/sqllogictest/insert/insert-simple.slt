@@ -2,6 +2,9 @@ statement ok
 CREATE TABLE xs(x int PRIMARY KEY)
 
 statement ok
+CREATE TABLE ys(y int PRIMARY KEY, z int)
+
+statement ok
 INSERT INTO xs VALUES (1), (2), (3)
 
 query II rowsort
@@ -11,3 +14,23 @@ SELECT x FROM xs
 2
 3
 
+statement error
+INSERT INTO xs(y) VALUES (1), (2), (3)
+----
+unbound column `y`
+
+# should pad `z` with NULL
+statement ok
+INSERT INTO ys(y) VALUES (1), (2), (3)
+
+query II rowsort
+SELECT y, z FROM ys
+----
+1 NULL
+2 NULL
+3 NULL
+
+statement error
+INSERT INTO xs(x, x) VALUES (1, 2), (2, 3), (3, 4)
+----
+duplicate column name in insert column list: `x`

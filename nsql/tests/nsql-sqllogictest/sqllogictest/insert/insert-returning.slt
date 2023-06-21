@@ -1,15 +1,22 @@
 statement ok
 CREATE TABLE t(x int PRIMARY KEY, y int)
 
-query III rowsort
+query II rowsort
 INSERT INTO t VALUES (1, 2), (4, 5) RETURNING x, y
 ----
 1 2
 4 5
 
-query III rowsort
+query I rowsort
 INSERT INTO t VALUES (10, 20), (30, 40) RETURNING y
 ----
 20
 40
+
+
+query III rowsort
+INSERT INTO t(x) VALUES (100), (200) RETURNING y
+----
+NULL
+NULL
 
