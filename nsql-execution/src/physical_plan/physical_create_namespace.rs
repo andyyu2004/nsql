@@ -59,10 +59,10 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSource<'env, 'txn, S, ReadWrite
 {
     fn source(
         self: Arc<Self>,
-        ctx: &'txn ExecutionContext<'env, S, ReadWriteExecutionMode>,
+        ecx: &'txn ExecutionContext<'env, S, ReadWriteExecutionMode>,
     ) -> ExecutionResult<TupleStream<'txn>> {
-        let catalog = ctx.catalog();
-        let tx = ctx.tx()?;
+        let catalog = ecx.catalog();
+        let tx = ecx.tx()?;
         let mut namespaces = catalog.system_table_write::<Namespace>(tx)?;
         let info = self.info.clone();
 

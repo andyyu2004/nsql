@@ -51,11 +51,11 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
 {
     fn source(
         self: Arc<Self>,
-        ctx: &'txn ExecutionContext<'env, S, M>,
+        ecx: &'txn ExecutionContext<'env, S, M>,
     ) -> ExecutionResult<TupleStream<'txn>> {
-        let tx: M::TransactionRef<'txn> = ctx.tx()?;
+        let tx: M::TransactionRef<'txn> = ecx.tx()?;
         let tx: &'txn dyn Transaction<'env, S> = tx.dyn_ref();
-        let catalog = ctx.catalog();
+        let catalog = ecx.catalog();
 
         let iter = match self.object_type {
             ir::ObjectType::Table => Arc::new(catalog.tables(tx.dyn_ref())?)

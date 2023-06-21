@@ -10,16 +10,16 @@ pub(crate) struct Executor<'env, 'txn, S, M> {
 impl<'env: 'txn, 'txn, S: StorageEngine> Executor<'env, 'txn, S, ReadWriteExecutionMode> {
     fn execute(
         self: Arc<Self>,
-        ctx: &'txn ExecutionContext<'env, S, ReadWriteExecutionMode>,
+        ecx: &'txn ExecutionContext<'env, S, ReadWriteExecutionMode>,
         root: Idx<MetaPipeline<'env, 'txn, S, ReadWriteExecutionMode>>,
     ) -> ExecutionResult<()> {
         let root = &self.arena[root];
         for &child in &root.children {
-            Arc::clone(&self).execute(ctx, child)?;
+            Arc::clone(&self).execute(ecx, child)?;
         }
 
         for &pipeline in &root.pipelines {
-            Arc::clone(&self).execute_pipeline(ctx, pipeline)?;
+            Arc::clone(&self).execute_pipeline(ecx, pipeline)?;
         }
 
         Ok(())
@@ -27,14 +27,14 @@ impl<'env: 'txn, 'txn, S: StorageEngine> Executor<'env, 'txn, S, ReadWriteExecut
 
     fn execute_pipeline(
         self: Arc<Self>,
-        ctx: &'txn ExecutionContext<'env, S, ReadWriteExecutionMode>,
+        ecx: &'txn ExecutionContext<'env, S, ReadWriteExecutionMode>,
         pipeline: Idx<Pipeline<'env, 'txn, S, ReadWriteExecutionMode>>,
     ) -> ExecutionResult<()> {
         let pipeline: &Pipeline<'env, 'txn, S, _> = &self.arena[pipeline];
-        let mut stream = Arc::clone(&pipeline.source).source(ctx)?;
+        let mut stream = Arc::clone(&pipeline.source).source(ecx)?;
         'outer: while let Some(mut tuple) = stream.next()? {
             for op in &pipeline.operators {
-                tuple = match op.execute(ctx, tuple)? {
+                tuple = match op.execute(ecx, tuple)? {
                     OperatorState::Yield(tuple) => tuple,
                     OperatorState::Continue => continue 'outer,
                     // Once an operator completes, the entire pipeline is finished
@@ -42,10 +42,10 @@ impl<'env: 'txn, 'txn, S: StorageEngine> Executor<'env, 'txn, S, ReadWriteExecut
                 };
             }
 
-            pipeline.sink.sink(ctx, tuple)?;
+            pipeline.sink.sink(ecx, tuple)?;
         }
 
-        pipeline.sink.finalize(ctx)?;
+        pipeline.sink.finalize(ecx)?;
 
         Ok(())
     }
@@ -54,16 +54,16 @@ impl<'env: 'txn, 'txn, S: StorageEngine> Executor<'env, 'txn, S, ReadWriteExecut
 impl<'env: 'txn, 'txn, S: StorageEngine> Executor<'env, 'txn, S, ReadonlyExecutionMode> {
     fn execute(
         self: Arc<Self>,
-        ctx: &'txn ExecutionContext<'env, S, ReadonlyExecutionMode>,
+        ecx: &'txn ExecutionContext<'env, S, ReadonlyExecutionMode>,
         root: Idx<MetaPipeline<'env, 'txn, S, ReadonlyExecutionMode>>,
     ) -> ExecutionResult<()> {
         let root = &self.arena[root];
         for &child in &root.children {
-            Arc::clone(&self).execute(ctx, child)?;
+            Arc::clone(&self).execute(ecx, child)?;
         }
 
         for &pipeline in &root.pipelines {
-            Arc::clone(&self).execute_pipeline(ctx, pipeline)?;
+            Arc::clone(&self).execute_pipeline(ecx, pipeline)?;
         }
 
         Ok(())
@@ -71,14 +71,14 @@ impl<'env: 'txn, 'txn, S: StorageEngine> Executor<'env, 'txn, S, ReadonlyExecuti
 
     fn execute_pipeline(
         self: Arc<Self>,
-        ctx: &'txn ExecutionContext<'env, S, ReadonlyExecutionMode>,
+        ecx: &'txn ExecutionContext<'env, S, ReadonlyExecutionMode>,
         pipeline: Idx<Pipeline<'env, 'txn, S, ReadonlyExecutionMode>>,
     ) -> ExecutionResult<()> {
         let pipeline = &self.arena[pipeline];
-        let mut stream = Arc::clone(&pipeline.source).source(ctx)?;
+        let mut stream = Arc::clone(&pipeline.source).source(ecx)?;
         'outer: while let Some(mut tuple) = stream.next()? {
             for op in &pipeline.operators {
-                tuple = match op.execute(ctx, tuple)? {
+                tuple = match op.execute(ecx, tuple)? {
                     OperatorState::Yield(tuple) => tuple,
                     OperatorState::Continue => continue 'outer,
                     // Once an operator completes, the entire pipeline is finished
@@ -86,7 +86,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> Executor<'env, 'txn, S, ReadonlyExecuti
                 };
             }
 
-            pipeline.sink.sink(ctx, tuple)?;
+            pipeline.sink.sink(ecx, tuple)?;
         }
 
         Ok(())
@@ -94,25 +94,25 @@ impl<'env: 'txn, 'txn, S: StorageEngine> Executor<'env, 'txn, S, ReadonlyExecuti
 }
 
 fn execute_root_pipeline<'env, 'txn, S: StorageEngine>(
-    ctx: &'txn ExecutionContext<'env, S, ReadonlyExecutionMode>,
+    ecx: &'txn ExecutionContext<'env, S, ReadonlyExecutionMode>,
     pipeline: RootPipeline<'env, 'txn, S, ReadonlyExecutionMode>,
 ) -> ExecutionResult<()> {
     let root = pipeline.arena.root();
     let executor = Arc::new(Executor { arena: pipeline.arena, _marker: std::marker::PhantomData });
-    executor.execute(ctx, root)
+    executor.execute(ecx, root)
 }
 
 fn execute_root_pipeline_write<'env, 'txn, S: StorageEngine>(
-    ctx: &'txn ExecutionContext<'env, S, ReadWriteExecutionMode>,
+    ecx: &'txn ExecutionContext<'env, S, ReadWriteExecutionMode>,
     pipeline: RootPipeline<'env, 'txn, S, ReadWriteExecutionMode>,
 ) -> ExecutionResult<()> {
     let root = pipeline.arena.root();
     let executor = Arc::new(Executor { arena: pipeline.arena, _marker: std::marker::PhantomData });
-    executor.execute(ctx, root)
+    executor.execute(ecx, root)
 }
 
 pub fn execute<'env: 'txn, 'txn, S: StorageEngine>(
-    ctx: &'txn ExecutionContext<'env, S, ReadonlyExecutionMode>,
+    ecx: &'txn ExecutionContext<'env, S, ReadonlyExecutionMode>,
     plan: PhysicalPlan<'env, 'txn, S, ReadonlyExecutionMode>,
 ) -> ExecutionResult<Vec<Tuple>> {
     let sink = Arc::new(OutputSink::default());
@@ -121,13 +121,13 @@ pub fn execute<'env: 'txn, 'txn, S: StorageEngine>(
         plan,
     );
 
-    execute_root_pipeline(ctx, root_pipeline)?;
+    execute_root_pipeline(ecx, root_pipeline)?;
 
     Ok(Arc::try_unwrap(sink).expect("should be last reference to output sink").tuples.into_inner())
 }
 
 pub fn execute_write<'env: 'txn, 'txn, S: StorageEngine>(
-    ctx: &'txn ExecutionContext<'env, S, ReadWriteExecutionMode>,
+    ecx: &'txn ExecutionContext<'env, S, ReadWriteExecutionMode>,
     plan: PhysicalPlan<'env, 'txn, S, ReadWriteExecutionMode>,
 ) -> ExecutionResult<Vec<Tuple>> {
     let sink = Arc::new(OutputSink::default());
@@ -137,7 +137,7 @@ pub fn execute_write<'env: 'txn, 'txn, S: StorageEngine>(
         plan,
     );
 
-    execute_root_pipeline_write(ctx, root_pipeline)?;
+    execute_root_pipeline_write(ecx, root_pipeline)?;
 
     Ok(Arc::try_unwrap(sink).expect("should be last reference to output sink").tuples.into_inner())
 }
@@ -185,7 +185,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
 {
     fn source(
         self: Arc<Self>,
-        _ctx: &'txn ExecutionContext<'env, S, M>,
+        _ecx: &'txn ExecutionContext<'env, S, M>,
     ) -> ExecutionResult<TupleStream<'txn>> {
         todo!()
     }
@@ -194,7 +194,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSink<'env, 'txn, S, M>
     for OutputSink
 {
-    fn sink(&self, _ctx: &'txn ExecutionContext<'env, S, M>, tuple: Tuple) -> ExecutionResult<()> {
+    fn sink(&self, _ecx: &'txn ExecutionContext<'env, S, M>, tuple: Tuple) -> ExecutionResult<()> {
         self.tuples.write().push(tuple);
         Ok(())
     }

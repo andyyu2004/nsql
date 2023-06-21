@@ -66,14 +66,14 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSource<'env, 'txn, S, ReadWrite
 {
     fn source(
         self: Arc<Self>,
-        ctx: &'txn ExecutionContext<'env, S, ReadWriteExecutionMode>,
+        ecx: &'txn ExecutionContext<'env, S, ReadWriteExecutionMode>,
     ) -> ExecutionResult<TupleStream<'txn>> {
         tracing::debug!(name = %self.info.name, "physical create table");
         assert!(!self.info.columns.is_empty());
 
-        let catalog = ctx.catalog();
+        let catalog = ecx.catalog();
 
-        let tx = ctx.tx()?;
+        let tx = ecx.tx()?;
 
         let table = Table::new(self.info.namespace, self.info.name.clone());
 

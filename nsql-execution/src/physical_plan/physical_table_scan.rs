@@ -32,13 +32,13 @@ impl<'env: 'txn, 'txn> PhysicalTableScan {
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSource<'env, 'txn, S, M>
     for PhysicalTableScan
 {
-    #[tracing::instrument(skip(self, ctx))]
+    #[tracing::instrument(skip(self, ecx))]
     fn source(
         self: Arc<Self>,
-        ctx: &'txn ExecutionContext<'env, S, M>,
+        ecx: &'txn ExecutionContext<'env, S, M>,
     ) -> ExecutionResult<TupleStream<'txn>> {
-        let tx = ctx.tx()?;
-        let catalog = ctx.catalog();
+        let tx = ecx.tx()?;
+        let catalog = ecx.catalog();
         let table = catalog.table(&tx, self.table)?;
         let storage = Arc::new(table.storage::<S, M>(catalog, tx)?);
 

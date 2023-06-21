@@ -50,9 +50,9 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
 {
     fn source(
         self: Arc<Self>,
-        ctx: &'txn ExecutionContext<'env, S, M>,
+        ecx: &'txn ExecutionContext<'env, S, M>,
     ) -> ExecutionResult<TupleStream<'txn>> {
-        let tx = ctx.tcx();
+        let tx = ecx.tcx();
         match self.kind {
             ir::TransactionStmtKind::Begin(_) => {
                 if tx.auto_commit() {

@@ -148,13 +148,13 @@ impl<S: StorageEngine> Shared<S> {
             ReadOrWriteTransaction::Read(tx) => {
                 tracing::info!("executing readonly query");
                 let physical_plan = planner.plan(&tx, plan)?;
-                let ctx = ExecutionContext::new(
+                let ecx = ExecutionContext::new(
                     storage,
                     catalog,
                     TransactionContext::new(tx, auto_commit),
                 );
-                let tuples = nsql_execution::execute(&ctx, physical_plan)?;
-                let (auto_commit, state, tx) = ctx.take_txn();
+                let tuples = nsql_execution::execute(&ecx, physical_plan)?;
+                let (auto_commit, state, tx) = ecx.take_txn();
                 if auto_commit || !matches!(state, TransactionState::Active) {
                     tracing::info!("ending readonly transaction");
                     (None, tuples)
@@ -165,22 +165,22 @@ impl<S: StorageEngine> Shared<S> {
             ReadOrWriteTransaction::Write(tx) => {
                 tracing::info!("executing write query");
                 let physical_plan = planner.plan_write(&tx, plan)?;
-                let ctx = ExecutionContext::new(
+                let ecx = ExecutionContext::new(
                     storage,
                     catalog,
                     TransactionContext::new(tx, auto_commit),
                 );
-                let tuples = match nsql_execution::execute_write(&ctx, physical_plan) {
+                let tuples = match nsql_execution::execute_write(&ecx, physical_plan) {
                     Ok(tuples) => tuples,
                     Err(err) => {
                         tracing::info!(error = %err, "aborting write transaction due to error during execution");
-                        let (_, _, tx) = ctx.take_txn();
+                        let (_, _, tx) = ecx.take_txn();
                         tx.abort()?;
                         return Err(err);
                     }
                 };
 
-                let (auto_commit, state, tx) = ctx.take_txn();
+                let (auto_commit, state, tx) = ecx.take_txn();
                 match state {
                     TransactionState::Active if auto_commit => {
                         tracing::info!("auto-committing write transaction");

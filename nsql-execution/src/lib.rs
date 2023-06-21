@@ -118,7 +118,7 @@ trait PhysicalOperator<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env
 {
     fn execute(
         &self,
-        ctx: &'txn ExecutionContext<'env, S, M>,
+        ecx: &'txn ExecutionContext<'env, S, M>,
         input: T,
     ) -> ExecutionResult<OperatorState<T>>;
 }
@@ -131,16 +131,16 @@ trait PhysicalSource<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, 
     /// Return the next chunk from the source. An empty chunk indicates that the source is exhausted.
     fn source(
         self: Arc<Self>,
-        ctx: &'txn ExecutionContext<'env, S, M>,
+        ecx: &'txn ExecutionContext<'env, S, M>,
     ) -> ExecutionResult<TupleStream<'txn>>;
 }
 
 trait PhysicalSink<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>:
     PhysicalSource<'env, 'txn, S, M>
 {
-    fn sink(&self, ctx: &'txn ExecutionContext<'env, S, M>, tuple: Tuple) -> ExecutionResult<()>;
+    fn sink(&self, ecx: &'txn ExecutionContext<'env, S, M>, tuple: Tuple) -> ExecutionResult<()>;
 
-    fn finalize(&self, _ctx: &'txn ExecutionContext<'env, S, M>) -> ExecutionResult<()> {
+    fn finalize(&self, _ecx: &'txn ExecutionContext<'env, S, M>) -> ExecutionResult<()> {
         Ok(())
     }
 }
