@@ -956,6 +956,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "itertools"
+version = "0.11.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b1c173a5686ce8bfa551b3563d0c2170bf24ca44da99c7ca4bfdab5418c3fe57"
+dependencies = [
+ "either",
+]
+
+[[package]]
 name = "itoa"
 version = "1.0.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1151,7 +1160,7 @@ name = "nsql-bind"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "itertools",
+ "itertools 0.10.5",
  "nsql-catalog",
  "nsql-core",
  "nsql-ir",
@@ -1193,7 +1202,7 @@ dependencies = [
  "anyhow",
  "atomic-take",
  "dot-structures",
- "itertools",
+ "itertools 0.10.5",
  "nsql-arena",
  "nsql-catalog",
  "nsql-core",
@@ -1211,6 +1220,7 @@ dependencies = [
 name = "nsql-ir"
 version = "0.1.0"
 dependencies = [
+ "itertools 0.11.0",
  "nsql-catalog",
  "nsql-core",
  "nsql-storage",
@@ -1279,7 +1289,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "fix-hidden-lifetime-bug",
- "itertools",
+ "itertools 0.10.5",
  "next-gen",
  "nsql-arena",
  "nsql-core",
@@ -1736,7 +1746,7 @@ dependencies = [
  "chrono",
  "crossterm",
  "fd-lock",
- "itertools",
+ "itertools 0.10.5",
  "nu-ansi-term 0.47.0",
  "serde",
  "strip-ansi-escapes",
@@ -2027,7 +2037,7 @@ dependencies = [
  "futures",
  "glob",
  "humantime",
- "itertools",
+ "itertools 0.10.5",
  "libtest-mimic 0.6.0",
  "md-5",
  "owo-colors",

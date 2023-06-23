@@ -790,6 +790,33 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
 
                 (ty, ir::ExprKind::BinOp { op, lhs: Box::new(lhs), rhs: Box::new(rhs) })
             }
+            ast::Expr::Array(array) => {
+                // Keep this in sync with `Value::ty`
+                let ty = match &array.elem[..] {
+                    // default array type to `Int` if it is empty
+                    [] => LogicalType::Int,
+                    // otherwise, we can get the type from the first element
+                    [first, ..] => self.bind_expr(scope, first)?.ty,
+                };
+
+                let exprs = array
+                    .elem
+                    .iter()
+                    .map(|e| {
+                        let expr = self.bind_expr(scope, e)?;
+                        // FIXME this isn't going to work with `NULLs` in the array
+                        ensure!(
+                            expr.ty == ty,
+                            "cannot create array of type {} with element of type {}",
+                            ty,
+                            expr.ty
+                        );
+                        Ok(expr)
+                    })
+                    .collect::<Result<Box<_>, _>>()?;
+
+                (LogicalType::Array(Box::new(ty)), ir::ExprKind::Array(exprs))
+            }
             _ => todo!("todo expr: {:?}", expr),
         };
 

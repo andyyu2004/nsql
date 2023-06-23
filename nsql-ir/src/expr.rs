@@ -4,6 +4,7 @@ use std::fmt;
 use std::ops::Deref;
 
 pub use eval::EvalNotConst;
+use itertools::Itertools;
 use nsql_catalog::{ColumnIndex, Table};
 use nsql_core::{LogicalType, Oid};
 use nsql_storage::tuple::TupleIndex;
@@ -66,6 +67,7 @@ impl fmt::Display for Expr {
 #[derive(Debug, Clone)]
 pub enum ExprKind {
     Value(Value),
+    Array(Box<[Expr]>),
     BinOp {
         op: BinOp,
         lhs: Box<Expr>,
@@ -85,6 +87,7 @@ impl fmt::Display for ExprKind {
             ExprKind::Value(value) => write!(f, "{value}"),
             ExprKind::ColumnRef { path, .. } => write!(f, "{path}"),
             ExprKind::BinOp { op, lhs, rhs } => write!(f, "({lhs} {op} {rhs})"),
+            ExprKind::Array(exprs) => write!(f, "[{}]", exprs.iter().format(", ")),
         }
     }
 }

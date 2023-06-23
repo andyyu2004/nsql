@@ -82,20 +82,7 @@ pub enum LogicalType {
     Text,
     Oid,
     Bytea,
-}
-
-impl LogicalType {
-    pub fn physical_type(&self) -> PhysicalType {
-        match self {
-            LogicalType::Bool => PhysicalType::Bool,
-            LogicalType::Int => PhysicalType::Int32,
-            LogicalType::Decimal => PhysicalType::Decimal,
-            LogicalType::Text => todo!(),
-            LogicalType::Null => todo!(),
-            LogicalType::Oid => todo!(),
-            LogicalType::Bytea => todo!(),
-        }
-    }
+    Array(Box<LogicalType>),
 }
 
 impl fmt::Display for LogicalType {
@@ -108,16 +95,7 @@ impl fmt::Display for LogicalType {
             LogicalType::Null => write!(f, "null"),
             LogicalType::Oid => write!(f, "oid"),
             LogicalType::Bytea => write!(f, "bytea"),
+            LogicalType::Array(_) => write!(f, "array"),
         }
     }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum PhysicalType {
-    /// 8-bit boolean
-    Bool,
-    /// 32-bit signed integer
-    Int32,
-    /// 128-bit fixed-size decimal
-    Decimal,
 }

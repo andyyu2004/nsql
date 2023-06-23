@@ -29,6 +29,12 @@ impl Expr {
                 }
             }
             ExprKind::ColumnRef { .. } => Err(EvalNotConst),
+            // we can actually recurse for this case but not necessary for now
+            ExprKind::Array(exprs) => exprs
+                .iter()
+                .map(|expr| expr.const_eval())
+                .collect::<Result<_, _>>()
+                .map(Value::Array),
         }
     }
 }
