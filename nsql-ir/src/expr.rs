@@ -58,9 +58,9 @@ impl QueryPlan {
             | QueryPlan::Projection { projected_schema, .. } => projected_schema,
             QueryPlan::Filter { source, .. } => source.schema(),
             QueryPlan::Unnest { schema, .. } => schema,
-            QueryPlan::Values { .. } => todo!(),
-            QueryPlan::Limit(_, _) => todo!(),
-            QueryPlan::Order(_, _) => todo!(),
+            QueryPlan::Values { schema, .. } => schema,
+            QueryPlan::Limit(source, _) => source.schema(),
+            QueryPlan::Order(source, _) => source.schema(),
             QueryPlan::Empty => &[],
         }
     }
@@ -130,7 +130,7 @@ pub enum ExprKind {
     },
     ColumnRef {
         /// A display path for the column (for pretty printing etc)
-        path: Path,
+        display_path: Path,
         /// An index into the tuple the expression is evaluated against
         index: TupleIndex,
     },
@@ -140,7 +140,7 @@ impl fmt::Display for ExprKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match &self {
             ExprKind::Value(value) => write!(f, "{value}"),
-            ExprKind::ColumnRef { path, .. } => write!(f, "{path}"),
+            ExprKind::ColumnRef { display_path, .. } => write!(f, "{display_path}"),
             ExprKind::BinOp { op, lhs, rhs } => write!(f, "({lhs} {op} {rhs})"),
             ExprKind::Array(exprs) => write!(f, "[{}]", exprs.iter().format(", ")),
         }

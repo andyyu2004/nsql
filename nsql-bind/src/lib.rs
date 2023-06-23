@@ -9,7 +9,7 @@ use std::str::FromStr;
 pub use anyhow::Error;
 use anyhow::{anyhow, bail, ensure};
 use ir::expr::EvalNotConst;
-use ir::{Decimal, Path, TransactionMode};
+use ir::{Decimal, Path, TransactionMode, TupleIndex};
 use itertools::Itertools;
 use nsql_catalog::{
     Catalog, ColumnIndex, CreateColumnInfo, CreateNamespaceInfo, Namespace, SystemEntity, Table,
@@ -172,25 +172,56 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
 
                 let table_columns =
                     self.catalog.get::<Table>(tx, table)?.columns(self.catalog, tx)?;
-                // We model the insertion columns list as a projection over the source
-                let mut projection = columns
-                    .iter()
-                    .map(|ident| ast::Expr::Identifier(ident.clone()))
-                    .map(|expr| self.bind_expr(&scope, &expr))
-                    .collect::<Result<Vec<_>>>()?;
 
-                assert!(projection.len() <= table_columns.len());
-                if !projection.is_empty() {
-                    // pad any missing columns with a default value of null
-                    for column in table_columns.iter().skip(projection.len()) {
-                        let ty = column.logical_type().clone();
-                        projection
-                            .push(ir::Expr { ty, kind: ir::ExprKind::Value(ir::Value::Null) });
+                // if there are no columns specified, then we don't apply any projection to the source
+                if !columns.is_empty() {
+                    // We model the insertion columns list as a projection over the source, with missing columns filled in with nulls
+                    let target_column_indices = columns
+                        .iter()
+                        .map(|ident| ast::Expr::Identifier(ident.clone()))
+                        .map(|expr| match self.bind_expr(&scope, &expr)?.kind {
+                            ir::ExprKind::ColumnRef { index, .. } => Ok(index),
+                            _ => unreachable!("expected column reference"),
+                        })
+                        .collect::<Result<Vec<_>>>()?;
+
+                    let mut projection = Vec::with_capacity(table_columns.len());
+                    // loop over all columns in the table and find the corresponding column in the base projection,
+                    // if one does not exist then we fill it in with a null
+                    let source_schema = source.schema();
+                    for column in table_columns.iter() {
+                        if let Some(expr) = target_column_indices.iter().enumerate().find_map(
+                            |(i, column_index)| {
+                                (column_index.as_usize() == column.index().as_usize()).then_some(
+                                    ir::Expr {
+                                        ty: source_schema[i].clone(),
+                                        kind: ir::ExprKind::ColumnRef {
+                                            display_path: Path::Unqualified("".into()),
+                                            index: TupleIndex::new(i),
+                                        },
+                                    },
+                                )
+                            },
+                        ) {
+                            projection.push(expr);
+                        } else {
+                            let ty = column.logical_type().clone();
+                            projection
+                                .push(ir::Expr { ty, kind: ir::ExprKind::Value(ir::Value::Null) });
+                        }
                     }
 
                     assert_eq!(projection.len(), table_columns.len());
                     source = source.project(projection);
                 }
+
+                let source_schema = source.schema();
+                ensure!(
+                    source_schema
+                        .iter()
+                        .cloned()
+                        .eq(table_columns.iter().map(|c| c.logical_type()))
+                );
 
                 let returning = returning
                     .as_ref()
@@ -798,12 +829,18 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
             ast::Expr::Value(literal) => self.bind_value_expr(literal),
             ast::Expr::Identifier(ident) => {
                 let (ty, index) = self.bind_ident(scope, ident)?;
-                (ty, ir::ExprKind::ColumnRef { path: Path::unqualified(&ident.value), index })
+                (
+                    ty,
+                    ir::ExprKind::ColumnRef {
+                        display_path: Path::unqualified(&ident.value),
+                        index,
+                    },
+                )
             }
             ast::Expr::CompoundIdentifier(ident) => {
                 let path = self.lower_path(ident)?;
                 let (ty, index) = scope.lookup_column(&path)?;
-                (ty, ir::ExprKind::ColumnRef { path, index })
+                (ty, ir::ExprKind::ColumnRef { display_path: path, index })
             }
             ast::Expr::BinaryOp { left, op, right } => {
                 let lhs = self.bind_expr(scope, left)?;

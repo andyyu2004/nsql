@@ -156,7 +156,7 @@ impl<S: StorageEngine> Scope<S> {
             .filter(|(idx, _)| !exclude.contains(idx))
             .map(move |(index, (path, ty))| ir::Expr {
                 ty: ty.clone(),
-                kind: ir::ExprKind::ColumnRef { path: path.clone(), index },
+                kind: ir::ExprKind::ColumnRef { display_path: path.clone(), index },
             })
     }
 
