@@ -539,8 +539,10 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
             sort_by,
             having,
             qualify,
+            named_window,
         } = select;
-        not_implemented!(*distinct);
+        not_implemented!(!named_window.is_empty());
+        not_implemented!(distinct.is_some());
         not_implemented!(top.is_some());
         not_implemented!(into.is_some());
         not_implemented!(!lateral_views.is_empty());
