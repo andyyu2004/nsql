@@ -1,7 +1,8 @@
-use std::mem;
+use std::{cmp, mem};
 
 use nsql_storage_engine::fallible_iterator;
 use parking_lot::RwLock;
+use rayon::prelude::*;
 
 use super::*;
 
@@ -52,17 +53,17 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSink
         // sort tuples when the sink is finalized
         let tuples: &mut [Tuple] = &mut self.tuples.write();
 
-        tuples.sort_by(|a, b| {
+        tuples.par_sort_by(|a, b| {
             for order in self.ordering.iter() {
                 let a = self.evaluator.evaluate_expr(a, &order.expr);
                 let b = self.evaluator.evaluate_expr(b, &order.expr);
                 let cmp = a.partial_cmp(&b).unwrap();
-                if cmp != std::cmp::Ordering::Equal {
+                if cmp != cmp::Ordering::Equal {
                     return if order.asc { cmp } else { cmp.reverse() };
                 }
             }
 
-            std::cmp::Ordering::Equal
+            cmp::Ordering::Equal
         });
 
         Ok(())
