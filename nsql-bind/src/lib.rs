@@ -614,6 +614,11 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                 not_implemented!(with_offset_alias.is_some());
 
                 let expr = self.bind_expr(scope, array_expr)?;
+                ensure!(
+                    matches!(expr.ty, LogicalType::Array(_) | LogicalType::Null),
+                    "UNNEST expression must be an array"
+                );
+
                 let mut scope = scope.bind_unnest(&expr);
 
                 if let Some(alias) = alias {
