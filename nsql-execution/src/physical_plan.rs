@@ -12,6 +12,7 @@ mod physical_projection;
 mod physical_show;
 mod physical_table_scan;
 mod physical_transaction;
+mod physical_unnest;
 mod physical_update;
 mod physical_values;
 
@@ -37,6 +38,7 @@ use self::physical_projection::PhysicalProjection;
 use self::physical_show::PhysicalShow;
 use self::physical_table_scan::PhysicalTableScan;
 use self::physical_transaction::PhysicalTransaction;
+use self::physical_unnest::PhysicalUnnest;
 use self::physical_update::PhysicalUpdate;
 use self::physical_values::PhysicalValues;
 use crate::executor::OutputSink;
@@ -165,6 +167,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalPlanner<'env, S> {
             Plan::Filter { source, predicate } => {
                 PhysicalFilter::plan(f(self, tx, source)?, predicate)
             }
+            Plan::Unnest { expr } => PhysicalUnnest::plan(expr),
             Plan::Empty => PhysicalDummyScan::plan(),
             Plan::CreateTable(_)
             | Plan::CreateNamespace(_)

@@ -609,7 +609,19 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                 (scope, subquery)
             }
             ast::TableFactor::TableFunction { .. } => todo!(),
-            ast::TableFactor::UNNEST { .. } => todo!(),
+            ast::TableFactor::UNNEST { alias, array_expr, with_offset, with_offset_alias } => {
+                not_implemented!(*with_offset);
+                not_implemented!(with_offset_alias.is_some());
+
+                let expr = self.bind_expr(scope, array_expr)?;
+                let mut scope = scope.bind_unnest(&expr);
+
+                if let Some(alias) = alias {
+                    scope = scope.alias(self.lower_table_alias(alias))?;
+                }
+
+                (scope, Box::new(ir::QueryPlan::Unnest { expr }))
+            }
             ast::TableFactor::NestedJoin { .. } => todo!(),
             ast::TableFactor::Pivot { .. } => todo!(),
         };
@@ -705,7 +717,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                 .collect::<Result<Vec<_>, _>>()?,
         );
 
-        Ok((scope.bind_values(&values)?, values))
+        Ok((scope.bind_values(&values), values))
     }
 
     fn bind_row(&self, scope: &Scope<S>, row: &[ast::Expr]) -> Result<Vec<ir::Expr>> {

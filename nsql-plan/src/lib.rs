@@ -11,6 +11,9 @@ pub enum Plan {
     Drop(Vec<ir::EntityRef>),
     Show(ir::ObjectType),
     Explain(ir::ExplainMode, Box<Plan>),
+    Unnest {
+        expr: ir::Expr,
+    },
     Update {
         table: Oid<Table>,
         source: Box<Plan>,
@@ -94,6 +97,7 @@ impl Planner {
                 let source = self.plan_query(source);
                 Plan::Order { source, order }
             }
+            ir::QueryPlan::Unnest { expr } => Plan::Unnest { expr },
         };
 
         Box::new(plan)

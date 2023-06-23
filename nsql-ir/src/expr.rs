@@ -17,6 +17,8 @@ pub enum QueryPlan {
     TableScan { table: Oid<Table>, projection: Option<Box<[ColumnIndex]>> },
     Projection { source: Box<QueryPlan>, projection: Box<[Expr]> },
     Filter { source: Box<QueryPlan>, predicate: Expr },
+    // maybe this can be implemented as a standard table function in the future (change the sqlparser dialect to duckdb if so)
+    Unnest { expr: Expr },
     Values(Values),
     Limit(Box<QueryPlan>, u64),
     Order(Box<QueryPlan>, Box<[OrderExpr]>),

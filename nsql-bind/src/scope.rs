@@ -122,7 +122,7 @@ impl<S: StorageEngine> Scope<S> {
     }
 
     #[tracing::instrument(skip(self))]
-    pub fn bind_values(&self, values: &ir::Values) -> Result<Scope<S>> {
+    pub fn bind_values(&self, values: &ir::Values) -> Scope<S> {
         let mut bound_columns = self.bound_columns.clone();
 
         for (i, expr) in values[0].iter().enumerate() {
@@ -131,7 +131,17 @@ impl<S: StorageEngine> Scope<S> {
             bound_columns = bound_columns.push_back((Path::Unqualified(name), expr.ty.clone()));
         }
 
-        Ok(Self { tables: self.tables.clone(), bound_columns, marker: PhantomData })
+        Self { tables: self.tables.clone(), bound_columns, marker: PhantomData }
+    }
+
+    pub fn bind_unnest(&self, expr: &ir::Expr) -> Scope<S> {
+        Self {
+            tables: self.tables.clone(),
+            bound_columns: self
+                .bound_columns
+                .push_back((Path::Unqualified("unnest".into()), expr.ty.clone())),
+            marker: PhantomData,
+        }
     }
 
     /// Returns an iterator over the columns in the scope exposed as `Expr`s
