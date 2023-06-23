@@ -1,0 +1,2 @@
+query I
+SELECT * FROM UNNEST([1, 2, 3])

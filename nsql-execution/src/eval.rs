@@ -39,6 +39,10 @@ impl Evaluator {
                     ir::BinOp::Or => todo!(),
                 }
             }
+            ir::ExprKind::Array(exprs) => {
+                let values = exprs.iter().map(|expr| self.evaluate_expr(input, expr));
+                Value::Array(values.collect())
+            }
         }
     }
 }

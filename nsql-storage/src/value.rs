@@ -1,7 +1,8 @@
 use std::error::Error;
+use std::fmt;
 use std::marker::PhantomData;
-use std::{cmp, fmt};
 
+use itertools::Itertools;
 use nsql_core::{LogicalType, Name, Oid, UntypedOid};
 use rust_decimal::prelude::ToPrimitive;
 pub use rust_decimal::Decimal;
@@ -42,9 +43,22 @@ impl<T> fmt::Display for CastError<T> {
 impl<T> Error for CastError<T> {}
 
 /// An nsql value
-// FIXME write a custom archive impl that has a schema in scope to avoid needing to archive a disriminant
-#[derive(Debug, Clone, PartialEq, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
-#[archive_attr(derive(Debug))]
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    Eq,
+    // deriving this as implementing manually is a pain,
+    // but different variants should not be compared with each other (other than `Null` which is < all other values)
+    PartialOrd,
+    Ord,
+    Hash,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+#[omit_bounds]
+#[archive(bound(serialize = "__S: rkyv::ser::ScratchSpace + rkyv::ser::Serializer"))]
 pub enum Value {
     Null,
     Int32(i32),
@@ -53,23 +67,8 @@ pub enum Value {
     Decimal(Decimal),
     Text(String),
     Bytea(Box<[u8]>),
-}
 
-impl PartialOrd for Value {
-    fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
-        match (self, other) {
-            (Value::Null, Value::Null) => todo!(),
-            (Value::Null, _) => todo!(),
-            (_, Value::Null) => todo!(),
-            (Value::Int32(a), Value::Int32(b)) => a.partial_cmp(b),
-            (Value::Oid(a), Value::Oid(b)) => a.partial_cmp(b),
-            (Value::Bool(a), Value::Bool(b)) => a.partial_cmp(b),
-            (Value::Decimal(a), Value::Decimal(b)) => a.partial_cmp(b),
-            (Value::Text(a), Value::Text(b)) => a.partial_cmp(b),
-            (Value::Bytea(a), Value::Bytea(b)) => a.partial_cmp(b),
-            (a, b) => panic!("cannot compare values {:?} and {:?}", a, b),
-        }
-    }
+    Array(#[omit_bounds] Vec<Value>),
 }
 
 impl<'a> rkyv::Archive for &'a Value {
@@ -129,6 +128,11 @@ impl Value {
             Value::Text(_) => LogicalType::Text,
             Value::Oid(_) => LogicalType::Oid,
             Value::Bytea(_) => LogicalType::Bytea,
+            // Keep this in sync with binder logic
+            Value::Array(values) => match &values[..] {
+                [] => LogicalType::Int,
+                [first, ..] => first.ty(),
+            },
         }
     }
 }
@@ -144,6 +148,7 @@ impl fmt::Display for Value {
             Value::Int32(i) => write!(f, "{i}"),
             Value::Oid(oid) => write!(f, "{oid}"),
             Value::Bytea(bytes) => write!(f, "{bytes:x?}"),
+            Value::Array(values) => write!(f, "[{}]", values.iter().format(", ")),
         }
     }
 }

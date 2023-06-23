@@ -95,6 +95,7 @@ impl Type {
             LogicalType::Bytea => Type::BYTEA,
             LogicalType::Null => todo!(),
             LogicalType::Decimal => todo!(),
+            LogicalType::Array(_) => todo!(),
         }
     }
 }

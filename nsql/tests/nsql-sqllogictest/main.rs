@@ -32,8 +32,7 @@ fn nsql_sqllogictest(path: &Path) -> nsql::Result<(), Box<dyn Error>> {
 datatest_stable::harness!(
     nsql_sqllogictest,
     format!("{}/{}", env!("CARGO_MANIFEST_DIR"), "tests/nsql-sqllogictest/sqllogictest"),
-    // r"^.*/*.slt",
-    r"^.*/simple-order.slt",
+    r"^.*/*.slt",
 );
 
 #[derive(Debug, Eq, PartialEq, Clone)]
@@ -46,6 +45,7 @@ impl ColumnType for TypeWrapper {
             'B' => LogicalType::Bool,
             'D' => LogicalType::Decimal,
             'T' => LogicalType::Text,
+            'A' => LogicalType::Array(Box::new(LogicalType::Int)),
             _ => return None,
         };
         Some(TypeWrapper(ty))
@@ -60,6 +60,7 @@ impl ColumnType for TypeWrapper {
             LogicalType::Null => todo!(),
             LogicalType::Oid => todo!(),
             LogicalType::Bytea => todo!(),
+            LogicalType::Array(_) => 'A',
         }
     }
 }

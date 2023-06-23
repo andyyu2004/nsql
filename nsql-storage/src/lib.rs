@@ -1,4 +1,5 @@
 #![deny(rust_2018_idioms)]
+#![feature(trivial_bounds)]
 
 pub mod eval;
 mod index;
