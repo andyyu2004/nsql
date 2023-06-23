@@ -53,7 +53,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSink
         // sort tuples when the sink is finalized
         let tuples: &mut [Tuple] = &mut self.tuples.write();
 
-        tuples.par_sort_by(|a, b| {
+        tuples.par_sort_unstable_by(|a, b| {
             for order in self.ordering.iter() {
                 let a = self.evaluator.evaluate_expr(a, &order.expr);
                 let b = self.evaluator.evaluate_expr(b, &order.expr);
