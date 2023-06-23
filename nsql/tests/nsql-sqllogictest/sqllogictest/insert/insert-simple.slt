@@ -37,4 +37,6 @@ duplicate column name in insert column list: `x`
 
 statement error
 INSERT INTO xs(x) VALUES ('bad')
+----
+cannot insert value of type `text` into column `x` of type `int`
 

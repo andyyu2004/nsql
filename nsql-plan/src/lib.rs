@@ -1,7 +1,7 @@
 use nsql_catalog::{ColumnIndex, CreateNamespaceInfo, Table};
 use nsql_core::Oid;
 
-// FIXME remove this layer
+// FIXME not sure how useful this layer is...
 #[derive(Debug)]
 pub enum Plan {
     Empty,

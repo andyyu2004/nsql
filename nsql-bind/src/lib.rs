@@ -215,13 +215,14 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                     source = source.project(projection);
                 }
 
-                let source_schema = source.schema();
-                ensure!(
-                    source_schema
-                        .iter()
-                        .cloned()
-                        .eq(table_columns.iter().map(|c| c.logical_type()))
-                );
+                for (column, ty) in table_columns.iter().zip(source.schema()) {
+                    ensure!(
+                        ty.is_subtype_of(&column.logical_type()),
+                        "cannot insert value of type `{ty}` into column `{}` of type `{}`",
+                        column.name(),
+                        column.logical_type()
+                    )
+                }
 
                 let returning = returning
                     .as_ref()
