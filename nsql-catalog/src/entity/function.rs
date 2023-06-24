@@ -1,6 +1,8 @@
 use super::*;
 use crate::{Namespace, Type};
 
+mod builtins;
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash, FromTuple, IntoTuple)]
 pub struct Function {
     pub(crate) oid: Oid<Self>,
@@ -21,10 +23,11 @@ impl Function {
     }
 
     pub fn call(&self, args: Box<[Value]>) -> Value {
-        match self.name.as_str() {
-            "range" => Value::Int32(42),
-            _ => todo!(),
+        if let Some(f) = builtins::get_builtin(self.oid) {
+            return f(args);
         }
+
+        panic!()
     }
 }
 

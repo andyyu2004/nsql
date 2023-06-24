@@ -275,6 +275,7 @@ impl<V: FromValue> FromValue for Vec<V> {
 }
 
 impl FromValue for u64 {
+    #[inline]
     fn from_value(value: Value) -> Result<Self, CastError<Self>> {
         match value {
             Value::Bool(b) => Ok(b as u64),
@@ -286,6 +287,7 @@ impl FromValue for u64 {
 }
 
 impl<T> FromValue for Oid<T> {
+    #[inline]
     fn from_value(value: Value) -> Result<Self, CastError<Self>> {
         match value {
             Value::Oid(oid) => Ok(oid.cast()),
@@ -295,6 +297,7 @@ impl<T> FromValue for Oid<T> {
 }
 
 impl FromValue for bool {
+    #[inline]
     fn from_value(value: Value) -> Result<Self, CastError<Self>> {
         match value {
             Value::Bool(b) => Ok(b),
@@ -303,7 +306,18 @@ impl FromValue for bool {
     }
 }
 
+impl FromValue for i32 {
+    #[inline]
+    fn from_value(value: Value) -> Result<Self, CastError<Self>> {
+        match value {
+            Value::Int32(i) => Ok(i),
+            _ => Err(CastError { value, phantom: PhantomData }),
+        }
+    }
+}
+
 impl FromValue for i8 {
+    #[inline]
     fn from_value(value: Value) -> Result<Self, CastError<Self>> {
         match value {
             Value::Int32(i) => Ok(i as i8),
@@ -313,6 +327,7 @@ impl FromValue for i8 {
 }
 
 impl FromValue for u8 {
+    #[inline]
     fn from_value(value: Value) -> Result<Self, CastError<Self>> {
         match value {
             Value::Int32(i) => Ok(i as u8),
@@ -322,6 +337,7 @@ impl FromValue for u8 {
 }
 
 impl FromValue for String {
+    #[inline]
     fn from_value(value: Value) -> Result<Self, CastError<Self>> {
         match value {
             Value::Text(s) => Ok(s),
@@ -331,6 +347,7 @@ impl FromValue for String {
 }
 
 impl FromValue for Bytea {
+    #[inline]
     fn from_value(value: Value) -> Result<Self, CastError<Self>> {
         match value {
             Value::Bytea(b) => Ok(b),
@@ -340,6 +357,7 @@ impl FromValue for Bytea {
 }
 
 impl FromValue for Name {
+    #[inline]
     fn from_value(value: Value) -> Result<Self, CastError<Self>> {
         match value {
             Value::Text(s) => Ok(s.into()),

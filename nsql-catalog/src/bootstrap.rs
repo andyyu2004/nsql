@@ -1,5 +1,3 @@
-use std::sync::atomic::{self, AtomicU64};
-
 use nsql_storage::eval::{Expr, ExprOp, TupleExpr};
 use nsql_storage::tuple::TupleIndex;
 use nsql_storage::Result;
@@ -16,6 +14,7 @@ struct BootstrapType {
 }
 
 struct BootstrapFunction {
+    oid: Oid<Function>,
     name: &'static str,
     args: Vec<Oid<Type>>,
     ret: Oid<Type>,
@@ -123,6 +122,10 @@ impl Type {
     pub(crate) const BYTEA: Oid<Self> = Oid::new(104);
 }
 
+impl Function {
+    pub(crate) const RANGE2: Oid<Self> = Oid::new(100);
+}
+
 // FIXME there is still quite a bit of duplicated work between here and `bootstrap_table_storage_info`
 fn bootstrap_info() -> BootstrapInfo {
     BootstrapInfo {
@@ -227,6 +230,7 @@ fn bootstrap_info() -> BootstrapInfo {
             BootstrapType { oid: Type::BYTEA, name: "bytea" },
         ],
         functions: vec![BootstrapFunction {
+            oid: Function::RANGE2,
             name: "range",
             args: vec![Type::INT, Type::INT],
             ret: Type::OID,
@@ -255,9 +259,8 @@ impl BootstrapInfo {
         let namespaces =
             self.namespaces.into_iter().map(|ns| Namespace { oid: ns.oid, name: ns.name.into() });
 
-        let next_function_oid = AtomicU64::new(100);
-        let functions = self.functions.into_iter().map(move |f| Function {
-            oid: Oid::new(next_function_oid.fetch_add(1, atomic::Ordering::Relaxed)),
+        let functions = self.functions.into_iter().map(|f| Function {
+            oid: f.oid,
             namespace: Namespace::MAIN,
             name: f.name.into(),
             args: f.args.into_boxed_slice(),
