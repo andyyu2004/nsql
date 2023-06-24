@@ -38,7 +38,7 @@ macro_rules! not_implemented {
 
 macro_rules! unbound {
     ($ty:ty, $path: expr) => {
-        anyhow::anyhow!("unbound {} `{}`", <$ty>::desc(), $path.clone())
+        anyhow::anyhow!("{} `{}` not in scope", <$ty>::desc(), $path.clone())
     };
 }
 

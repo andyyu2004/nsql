@@ -17,7 +17,7 @@ SELECT x FROM xs
 statement error
 INSERT INTO xs(y) VALUES (1), (2), (3)
 ----
-unbound column `y`
+column `y` not in scope
 
 # should pad `z` with NULL
 statement ok
