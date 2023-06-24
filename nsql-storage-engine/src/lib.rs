@@ -92,8 +92,18 @@ pub trait ReadTree<'env, 'txn, S: StorageEngine> {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct KeyExists;
+
 pub trait WriteTree<'env, 'txn, S: StorageEngine>: ReadTree<'env, 'txn, S> {
-    fn insert(&mut self, key: &[u8], value: &[u8]) -> Result<(), S::Error>;
+    /// Insert a key/value pair into the tree.
+    /// This must return an `KeyExists` error if the key already exists.
+    /// It may still do the insert if this is the case (the caller can rollback the transaction).
+    fn insert(&mut self, key: &[u8], value: &[u8]) -> Result<Result<(), KeyExists>, S::Error>;
+
+    /// Update a key/value pair in the tree.
+    /// The key may or may not exist before this call.
+    fn update(&mut self, key: &[u8], value: &[u8]) -> Result<(), S::Error>;
 
     fn delete(&mut self, key: &[u8]) -> std::result::Result<bool, S::Error>;
 }

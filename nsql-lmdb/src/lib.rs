@@ -9,8 +9,8 @@ use std::sync::Arc;
 use heed::types::ByteSlice;
 use heed::Flag;
 use nsql_storage_engine::{
-    fallible_iterator, Range, ReadOrWriteTransactionRef, ReadTree, StorageEngine, Transaction,
-    WriteTransaction, WriteTree,
+    fallible_iterator, KeyExists, Range, ReadOrWriteTransactionRef, ReadTree, StorageEngine,
+    Transaction, WriteTransaction, WriteTree,
 };
 
 type Result<T, E = heed::Error> = std::result::Result<T, E>;
@@ -211,8 +211,19 @@ impl<'env, 'txn> ReadTree<'env, 'txn, LmdbStorageEngine> for LmdbWriteTree<'env,
 
 impl<'env, 'txn> WriteTree<'env, 'txn, LmdbStorageEngine> for LmdbWriteTree<'env, 'txn> {
     #[inline]
-    fn insert(&mut self, key: &[u8], value: &[u8]) -> Result<(), heed::Error> {
-        self.db.put(&self.txn.0, key, value)
+    fn insert(&mut self, key: &[u8], value: &[u8]) -> Result<Result<(), KeyExists>, heed::Error> {
+        match self.db.put(&self.txn.0, key, value) {
+            Ok(()) => Ok(Ok(())),
+            Err(err) => match err {
+                heed::Error::Mdb(heed::MdbError::KeyExist) => Ok(Err(KeyExists)),
+                _ => Err(err),
+            },
+        }
+    }
+
+    #[inline]
+    fn update(&mut self, key: &[u8], value: &[u8]) -> Result<(), heed::Error> {
+        self.db.update(&self.txn.0, key, value)
     }
 
     #[inline]

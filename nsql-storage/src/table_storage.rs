@@ -5,8 +5,8 @@ use fix_hidden_lifetime_bug::fix_hidden_lifetime_bug;
 use next_gen::generator_fn::GeneratorFn;
 use nsql_core::{LogicalType, Name, Oid};
 use nsql_storage_engine::{
-    fallible_iterator, ExecutionMode, FallibleIterator, ReadTree, ReadWriteExecutionMode,
-    StorageEngine, WriteTree,
+    fallible_iterator, ExecutionMode, FallibleIterator, KeyExists, ReadTree,
+    ReadWriteExecutionMode, StorageEngine, WriteTree,
 };
 use rkyv::AlignedVec;
 
@@ -43,7 +43,7 @@ impl<'env, 'txn, S: StorageEngine> TableStorage<'env, 'txn, S, ReadWriteExecutio
     pub fn update(&mut self, tuple: &Tuple) -> Result<(), S::Error> {
         let (k, v) = self.split_tuple(tuple);
         debug_assert!(self.tree.delete(&k)?, "updating a tuple that didn't exist");
-        self.tree.insert(&k, &v)?;
+        self.tree.insert(&k, &v)?.expect("updating a tuple that didn't exist");
 
         Ok(())
     }
@@ -64,12 +64,11 @@ impl<'env, 'txn, S: StorageEngine> TableStorage<'env, 'txn, S, ReadWriteExecutio
         }
 
         let (k, v) = self.split_tuple(tuple);
-        if self.tree.exists(&k)? {
+
+        if let Err(KeyExists) = self.tree.insert(&k, &v)? {
             let key = unsafe { nsql_rkyv::deserialize_raw::<Vec<Value>>(&k) }.into();
             return Ok(Err(PrimaryKeyConflict { key }));
         }
-
-        self.tree.insert(&k, &v)?;
 
         Ok(Ok(()))
     }

@@ -7,7 +7,7 @@ use std::ops::{Bound, Deref, RangeBounds};
 use std::path::Path;
 use std::sync::Arc;
 
-use nsql_storage_engine::{fallible_iterator, Range, ReadOrWriteTransactionRef};
+use nsql_storage_engine::{fallible_iterator, KeyExists, Range, ReadOrWriteTransactionRef};
 use redb::{AccessGuard, ReadableTable, TableHandle};
 
 type Result<T, E = redb::Error> = std::result::Result<T, E>;
@@ -185,9 +185,17 @@ impl<'env, 'txn> nsql_storage_engine::WriteTree<'env, 'txn, RedbStorageEngine>
     for redb::Table<'env, 'txn, &[u8], &[u8]>
 {
     #[inline]
-    fn insert(&mut self, key: &[u8], value: &[u8]) -> Result<(), redb::Error> {
+    fn insert(&mut self, key: &[u8], value: &[u8]) -> Result<Result<(), KeyExists>, redb::Error> {
         // can return a bool if we need to know if the key was already present
-        self.insert(key, value).map(|prev| prev.is_none())?;
+        match self.insert(key, value)? {
+            Some(_) => Ok(Err(KeyExists)),
+            None => Ok(Ok(())),
+        }
+    }
+
+    #[inline]
+    fn update(&mut self, key: &[u8], value: &[u8]) -> Result<(), redb::Error> {
+        self.insert(key, value)?;
         Ok(())
     }
 
