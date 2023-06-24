@@ -93,7 +93,7 @@ pub trait ReadTree<'env, 'txn, S: StorageEngine> {
 }
 
 pub trait WriteTree<'env, 'txn, S: StorageEngine>: ReadTree<'env, 'txn, S> {
-    fn put(&mut self, key: &[u8], value: &[u8]) -> Result<(), S::Error>;
+    fn insert(&mut self, key: &[u8], value: &[u8]) -> Result<(), S::Error>;
 
     fn delete(&mut self, key: &[u8]) -> std::result::Result<bool, S::Error>;
 }

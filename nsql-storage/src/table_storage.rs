@@ -43,7 +43,7 @@ impl<'env, 'txn, S: StorageEngine> TableStorage<'env, 'txn, S, ReadWriteExecutio
     pub fn update(&mut self, tuple: &Tuple) -> Result<(), S::Error> {
         let (k, v) = self.split_tuple(tuple);
         debug_assert!(self.tree.delete(&k)?, "updating a tuple that didn't exist");
-        self.tree.put(&k, &v)?;
+        self.tree.insert(&k, &v)?;
 
         Ok(())
     }
@@ -69,7 +69,7 @@ impl<'env, 'txn, S: StorageEngine> TableStorage<'env, 'txn, S, ReadWriteExecutio
             return Ok(Err(PrimaryKeyConflict { key }));
         }
 
-        self.tree.put(&k, &v)?;
+        self.tree.insert(&k, &v)?;
 
         Ok(Ok(()))
     }

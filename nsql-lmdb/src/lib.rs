@@ -211,7 +211,7 @@ impl<'env, 'txn> ReadTree<'env, 'txn, LmdbStorageEngine> for LmdbWriteTree<'env,
 
 impl<'env, 'txn> WriteTree<'env, 'txn, LmdbStorageEngine> for LmdbWriteTree<'env, 'txn> {
     #[inline]
-    fn put(&mut self, key: &[u8], value: &[u8]) -> Result<(), heed::Error> {
+    fn insert(&mut self, key: &[u8], value: &[u8]) -> Result<(), heed::Error> {
         self.db.put(&self.txn.0, key, value)
     }
 

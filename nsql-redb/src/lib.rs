@@ -185,7 +185,7 @@ impl<'env, 'txn> nsql_storage_engine::WriteTree<'env, 'txn, RedbStorageEngine>
     for redb::Table<'env, 'txn, &[u8], &[u8]>
 {
     #[inline]
-    fn put(&mut self, key: &[u8], value: &[u8]) -> Result<(), redb::Error> {
+    fn insert(&mut self, key: &[u8], value: &[u8]) -> Result<(), redb::Error> {
         // can return a bool if we need to know if the key was already present
         self.insert(key, value).map(|prev| prev.is_none())?;
         Ok(())
