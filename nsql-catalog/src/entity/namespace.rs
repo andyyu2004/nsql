@@ -23,6 +23,13 @@ impl SystemEntity for Namespace {
 
     type Key = Oid<Self>;
 
+    type SearchKey = Name;
+
+    #[inline]
+    fn search_key(&self) -> Self::SearchKey {
+        self.name()
+    }
+
     #[inline]
     fn key(&self) -> Oid<Self> {
         self.oid

@@ -95,9 +95,16 @@ impl SystemEntity for Column {
 
     type Key = (Oid<Self::Parent>, ColumnIndex);
 
+    type SearchKey = (Oid<Self::Parent>, Name);
+
     #[inline]
     fn key(&self) -> Self::Key {
         (self.table, self.index)
+    }
+
+    #[inline]
+    fn search_key(&self) -> Self::SearchKey {
+        (self.table, self.name())
     }
 
     #[inline]
@@ -141,4 +148,3 @@ impl SystemEntity for Column {
         Table::ATTRIBUTE
     }
 }
-

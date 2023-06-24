@@ -6,15 +6,30 @@ pub struct Type {
     pub(crate) name: Name,
 }
 
+impl Type {
+    #[inline]
+    pub fn name(&self) -> Name {
+        Name::clone(&self.name)
+    }
+}
+
 impl SystemEntity for Type {
     type Parent = ();
 
     type Key = Oid<Self>;
 
+    type SearchKey = Name;
+
     #[inline]
     fn key(&self) -> Oid<Self> {
         self.oid
     }
+
+    #[inline]
+    fn search_key(&self) -> Name {
+        self.name()
+    }
+
     #[inline]
     fn name<'env, S: StorageEngine>(
         &self,

@@ -136,9 +136,16 @@ impl SystemEntity for Table {
 
     type Key = Oid<Self>;
 
+    type SearchKey = Name;
+
     #[inline]
     fn key(&self) -> Oid<Self> {
         self.oid
+    }
+
+    #[inline]
+    fn search_key(&self) -> Self::SearchKey {
+        self.name()
     }
 
     #[inline]

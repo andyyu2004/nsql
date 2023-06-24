@@ -64,6 +64,13 @@ impl SystemEntity for Index {
 
     type Key = <Table as SystemEntity>::Key;
 
+    type SearchKey = !;
+
+    #[inline]
+    fn search_key(&self) -> Self::SearchKey {
+        todo!()
+    }
+
     #[inline]
     fn key(&self) -> Self::Key {
         self.table

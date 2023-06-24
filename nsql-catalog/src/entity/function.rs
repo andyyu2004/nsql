@@ -21,9 +21,16 @@ impl SystemEntity for Function {
 
     type Key = Oid<Self>;
 
+    type SearchKey = (Name, Box<[Oid<Type>]>);
+
     #[inline]
     fn key(&self) -> Self::Key {
         self.oid
+    }
+
+    #[inline]
+    fn search_key(&self) -> Self::SearchKey {
+        (self.name(), self.args.clone())
     }
 
     #[inline]

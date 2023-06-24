@@ -285,7 +285,8 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                     .iter()
                     .map(|name| match object_type {
                         ast::ObjectType::Table => {
-                            let table = self.bind_namespaced_entity::<Table>(tx, name)?;
+                            let table =
+                                self.bind_namespaced_entity::<Table>(tx, name, Name::clone)?;
                             Ok(ir::EntityRef::Table(table))
                         }
                         ast::ObjectType::View => todo!(),
@@ -466,7 +467,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                     let ns = self
                         .catalog
                         .namespaces(tx)?
-                        .find(self.catalog, tx, None, name.as_str())?
+                        .find(self.catalog, tx, None, name)?
                         .ok_or_else(|| unbound!(Namespace, path))?;
                     Ok(ns.key())
                 }
@@ -485,6 +486,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
         &self,
         tx: &dyn Transaction<'env, S>,
         path: &Path,
+        mk_search_key: impl FnOnce(&Name) -> T::SearchKey,
     ) -> Result<T::Key> {
         match path {
             Path::Unqualified(name) => self.bind_namespaced_entity::<T>(
@@ -493,6 +495,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                     prefix: Box::new(Path::Unqualified(MAIN_SCHEMA.into())),
                     name: name.clone(),
                 },
+                mk_search_key,
             ),
             Path::Qualified { prefix, name } => match prefix.as_ref() {
                 Path::Qualified { .. } => not_implemented!("qualified schemas"),
@@ -500,13 +503,13 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                     let namespace = self
                         .catalog
                         .namespaces(tx)?
-                        .find(self.catalog, tx, None, schema.as_str())?
+                        .find(self.catalog, tx, None, schema)?
                         .ok_or_else(|| unbound!(Namespace, path))?;
 
                     let entity = self
                         .catalog
                         .system_table::<T>(tx)?
-                        .find(self.catalog, tx, Some(namespace.key()), name.as_str())?
+                        .find(self.catalog, tx, Some(namespace.key()), &mk_search_key(name))?
                         .ok_or_else(|| unbound!(T, path))?;
 
                     Ok(entity.key())
@@ -718,7 +721,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
     ) -> Result<(Scope<S>, Oid<Table>)> {
         let alias = alias.map(|alias| self.lower_table_alias(alias));
         let table_name = self.lower_path(&table_name.0)?;
-        let table = self.bind_namespaced_entity::<Table>(tx, &table_name)?;
+        let table = self.bind_namespaced_entity::<Table>(tx, &table_name, Name::clone)?;
 
         Ok((scope.bind_table(self, tx, table_name, table, alias.as_ref())?, table))
     }
@@ -952,7 +955,9 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                 not_implemented!(!order_by.is_empty());
 
                 let path = self.lower_path(&name.0)?;
-                let function = self.bind_namespaced_entity::<Function>(tx, &path)?;
+                let function = self.bind_namespaced_entity::<Function>(tx, &path, |name| {
+                    (name.clone(), Box::new([]))
+                })?;
                 todo!();
             }
             _ => todo!("todo expr: {:?}", expr),
