@@ -6,7 +6,7 @@ use nsql_core::LogicalType;
 use rkyv::{Archive, Deserialize, Serialize};
 
 use crate::tuple::{Tuple, TupleIndex};
-use crate::value::{Bytea, CastError, FromValue, Value};
+use crate::value::{CastError, FromValue, Value};
 
 #[macro_export]
 macro_rules! expr_project {
@@ -19,7 +19,7 @@ macro_rules! expr_project {
     };
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Archive, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Archive, Serialize, Deserialize)]
 pub struct TupleExpr {
     exprs: Box<[Expr]>,
 }
@@ -39,9 +39,10 @@ impl TupleExpr {
 impl FromValue for TupleExpr {
     #[inline]
     fn from_value(value: Value) -> Result<Self, CastError<Self>> {
-        let bytes = value.cast_non_null::<Bytea>().map_err(CastError::cast)?;
-        // FIXME we need to validate the bytes
-        Ok(unsafe { nsql_rkyv::deserialize_raw(&bytes) })
+        match value {
+            Value::TupleExpr(expr) => Ok(expr),
+            _ => Err(CastError::<Self>::new(value)),
+        }
     }
 }
 
@@ -57,13 +58,12 @@ impl FromValue for LogicalType {
 
 impl From<TupleExpr> for Value {
     #[inline]
-    fn from(val: TupleExpr) -> Self {
-        let bytes = nsql_rkyv::to_bytes(&val);
-        Value::Bytea(bytes.as_ref().into())
+    fn from(expr: TupleExpr) -> Self {
+        Value::TupleExpr(expr)
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Archive, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Archive, Serialize, Deserialize)]
 #[repr(transparent)]
 pub struct Expr {
     ops: Box<[ExprOp]>,
@@ -85,7 +85,7 @@ impl Expr {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Archive, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Archive, Serialize, Deserialize)]
 pub enum ExprOp {
     Project(TupleIndex),
 }

@@ -107,7 +107,7 @@ impl SystemEntity for Index {
                 ColumnStorageInfo::new(LogicalType::Oid, true),
                 ColumnStorageInfo::new(LogicalType::Oid, false),
                 ColumnStorageInfo::new(LogicalType::Int, false),
-                ColumnStorageInfo::new(LogicalType::Bytea, false),
+                ColumnStorageInfo::new(LogicalType::TupleExpr, false),
             ],
         )
     }

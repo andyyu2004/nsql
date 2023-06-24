@@ -66,6 +66,7 @@ impl ColumnType for TypeWrapper {
             LogicalType::Oid => todo!(),
             LogicalType::Bytea => todo!(),
             LogicalType::Type => todo!(),
+            LogicalType::TupleExpr => todo!(),
             LogicalType::Array(_) => 'A',
         }
     }

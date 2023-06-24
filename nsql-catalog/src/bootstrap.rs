@@ -184,7 +184,7 @@ fn bootstrap_info() -> BootstrapInfo {
                     BootstrapColumn { name: "table", ty: LogicalType::Oid, pk: true },
                     BootstrapColumn { name: "target", ty: LogicalType::Oid, pk: false },
                     BootstrapColumn { name: "kind", ty: LogicalType::Int, pk: false },
-                    BootstrapColumn { name: "index_expr", ty: LogicalType::Bytea, pk: false },
+                    BootstrapColumn { name: "index_expr", ty: LogicalType::TupleExpr, pk: false },
                 ],
                 indexes: vec![],
             },

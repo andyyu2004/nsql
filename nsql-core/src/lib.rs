@@ -85,6 +85,7 @@ pub enum LogicalType {
     Oid,
     Bytea,
     Type,
+    TupleExpr,
     Array(#[omit_bounds] Box<LogicalType>),
 }
 
@@ -112,7 +113,8 @@ impl fmt::Display for LogicalType {
             LogicalType::Oid => write!(f, "oid"),
             LogicalType::Bytea => write!(f, "bytea"),
             LogicalType::Type => write!(f, "type"),
-            LogicalType::Array(_) => write!(f, "array"),
+            LogicalType::TupleExpr => write!(f, "tuple"),
+            LogicalType::Array(element) => write!(f, "[{element}]"),
         }
     }
 }

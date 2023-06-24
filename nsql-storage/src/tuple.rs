@@ -126,7 +126,9 @@ impl IndexMut<usize> for Tuple {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy, Archive, Serialize, Deserialize)]
+#[derive(
+    Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Copy, Archive, Serialize, Deserialize,
+)]
 pub struct TupleIndex(usize);
 
 impl TupleIndex {

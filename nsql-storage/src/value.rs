@@ -8,6 +8,8 @@ use nsql_core::{LogicalType, Name, Oid, UntypedOid};
 use rust_decimal::prelude::ToPrimitive;
 pub use rust_decimal::Decimal;
 
+use crate::eval::TupleExpr;
+
 pub struct CastError<T> {
     value: Value,
     phantom: PhantomData<fn() -> T>,
@@ -71,6 +73,7 @@ pub enum Value {
     Array(#[omit_bounds] Vec<Value>),
     // experiment adding this as a value for serialiazation purposes
     Type(LogicalType),
+    TupleExpr(TupleExpr),
 }
 
 #[derive(
@@ -238,6 +241,7 @@ impl Value {
                 [first, ..] => first.ty(),
             }),
             Value::Type(_) => LogicalType::Type,
+            Value::TupleExpr(_) => LogicalType::TupleExpr,
         }
     }
 }
@@ -255,6 +259,7 @@ impl fmt::Display for Value {
             Value::Bytea(bytes) => write!(f, "{bytes:x?}"),
             Value::Array(values) => write!(f, "[{}]", values.iter().format(", ")),
             Value::Type(ty) => write!(f, "{ty}"),
+            Value::TupleExpr(_expr) => write!(f, "<tuple-expr>"),
         }
     }
 }
