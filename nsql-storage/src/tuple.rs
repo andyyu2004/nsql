@@ -7,6 +7,7 @@ use rkyv::{Archive, Archived, Deserialize, Serialize};
 
 use crate::value::{CastError, FromValue, Value};
 
+// FIXME make this cheap to clone
 #[derive(Debug, Clone, PartialEq, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
 #[repr(transparent)]
 pub struct Tuple(Box<[Value]>);

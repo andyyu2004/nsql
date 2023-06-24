@@ -679,8 +679,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
         match &join.join_operator {
             ast::JoinOperator::CrossJoin => {
                 let plan = lhs.join(ir::Join::Cross, rhs);
-                todo!();
-                // Ok((scope, plan))
+                Ok((scope, plan))
             }
             ast::JoinOperator::Inner(constraint) => match &constraint {
                 ast::JoinConstraint::On(expr) => {

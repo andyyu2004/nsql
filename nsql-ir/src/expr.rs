@@ -63,6 +63,15 @@ pub enum Join {
     Cross,
 }
 
+impl fmt::Display for Join {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Join::Inner(JoinConstraint::On(expr)) => write!(f, "INNER JOIN ON {}", expr),
+            Join::Cross => write!(f, "CROSS JOIN"),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum JoinConstraint {
     On(Expr),

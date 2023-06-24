@@ -32,9 +32,11 @@ impl<'env: 'txn, 'txn, S: StorageEngine> Executor<'env, 'txn, S, ReadWriteExecut
     ) -> ExecutionResult<()> {
         let pipeline: &Pipeline<'env, 'txn, S, _> = &self.arena[pipeline];
         let mut stream = Arc::clone(&pipeline.source).source(ecx)?;
-        'outer: while let Some(mut tuple) = stream.next()? {
+
+        'outer: while let Some(input_tuple) = stream.next()? {
             let mut again = false;
             loop {
+                let mut tuple = input_tuple.clone();
                 for op in &pipeline.operators {
                     tuple = match op.execute(ecx, tuple)? {
                         OperatorState::Again(tuple) => {
@@ -48,10 +50,8 @@ impl<'env: 'txn, 'txn, S: StorageEngine> Executor<'env, 'txn, S, ReadWriteExecut
                     };
                 }
 
-                if again {
-                    pipeline.sink.sink(ecx, tuple.clone())?;
-                } else {
-                    pipeline.sink.sink(ecx, tuple)?;
+                pipeline.sink.sink(ecx, tuple)?;
+                if !again {
                     break;
                 }
             }
@@ -86,12 +86,13 @@ impl<'env: 'txn, 'txn, S: StorageEngine> Executor<'env, 'txn, S, ReadonlyExecuti
         ecx: &'txn ExecutionContext<'env, S, ReadonlyExecutionMode>,
         pipeline: Idx<Pipeline<'env, 'txn, S, ReadonlyExecutionMode>>,
     ) -> ExecutionResult<()> {
-        let pipeline = &self.arena[pipeline];
+        let pipeline: &Pipeline<'env, 'txn, S, _> = &self.arena[pipeline];
         let mut stream = Arc::clone(&pipeline.source).source(ecx)?;
 
-        'outer: while let Some(mut tuple) = stream.next()? {
+        'outer: while let Some(input_tuple) = stream.next()? {
             let mut again = false;
             loop {
+                let mut tuple = input_tuple.clone();
                 for op in &pipeline.operators {
                     tuple = match op.execute(ecx, tuple)? {
                         OperatorState::Again(tuple) => {
@@ -105,10 +106,8 @@ impl<'env: 'txn, 'txn, S: StorageEngine> Executor<'env, 'txn, S, ReadonlyExecuti
                     };
                 }
 
-                if again {
-                    pipeline.sink.sink(ecx, tuple.clone())?;
-                } else {
-                    pipeline.sink.sink(ecx, tuple)?;
+                pipeline.sink.sink(ecx, tuple)?;
+                if !again {
                     break;
                 }
             }

@@ -21,12 +21,12 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
 {
     pub fn plan(
         join: ir::Join,
-        lhs: Arc<dyn PhysicalNode<'env, 'txn, S, M>>,
-        rhs: Arc<dyn PhysicalNode<'env, 'txn, S, M>>,
+        probe_node: Arc<dyn PhysicalNode<'env, 'txn, S, M>>,
+        build_node: Arc<dyn PhysicalNode<'env, 'txn, S, M>>,
     ) -> Arc<dyn PhysicalNode<'env, 'txn, S, M>> {
         Arc::new(Self {
             join,
-            children: [lhs, rhs],
+            children: [probe_node, build_node],
             finalized: AtomicBool::new(false),
             rhs_index: AtomicUsize::new(0),
             rhs_tuples: Default::default(),
@@ -46,14 +46,14 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode
         self: Arc<Self>,
     ) -> Result<Arc<dyn PhysicalSource<'env, 'txn, S, M>>, Arc<dyn PhysicalNode<'env, 'txn, S, M>>>
     {
-        Err(self)
+        Ok(self)
     }
 
     fn as_sink(
         self: Arc<Self>,
     ) -> Result<Arc<dyn PhysicalSink<'env, 'txn, S, M>>, Arc<dyn PhysicalNode<'env, 'txn, S, M>>>
     {
-        Err(self)
+        Ok(self)
     }
 
     fn as_operator(
@@ -72,7 +72,6 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode
         // `current` is the probe pipeline of the join
         arena[current].add_operator(Arc::clone(&self) as _);
 
-        // arena.build(meta_builder, Arc::clone(&self.children[0]));
         Arc::clone(&self.children[0]).build_pipelines(arena, meta_builder, current);
 
         // create a new meta pipeline for the build side of the join with `self` as the sink
@@ -94,9 +93,6 @@ impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalOperator<'
         assert!(self.finalized.load(atomic::Ordering::Relaxed), "probing before build is finished");
 
         let rhs_tuples = self.rhs_tuples.read();
-        // FIXME it looks like we're feeding our own output back into ourselves
-        // the pipeline building is definitely wrong
-        dbg!(&input);
         if rhs_tuples.is_empty() {
             return Ok(OperatorState::Done);
         }
@@ -111,6 +107,7 @@ impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalOperator<'
             Ok(next_index) => next_index,
             Err(last_index) => {
                 assert_eq!(last_index, rhs_tuples.len());
+                self.rhs_index.store(0, atomic::Ordering::Relaxed);
                 return Ok(OperatorState::Continue);
             }
         };
@@ -121,14 +118,15 @@ impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalOperator<'
         match &self.join {
             ir::Join::Inner(constraint) => match constraint {
                 ir::JoinConstraint::On(predicate) => {
-                    if self.evaluator.evaluate_expr(&joint_tuple, predicate).cast_non_null()? {
-                        Ok(OperatorState::Again(joint_tuple))
-                    } else {
-                        Ok(OperatorState::Continue)
-                    }
+                    Ok(OperatorState::Again(joint_tuple))
+                    // if self.evaluator.evaluate_expr(&joint_tuple, predicate).cast_non_null()? {
+                    //     Ok(OperatorState::Again(joint_tuple))
+                    // } else {
+                    //     Ok(OperatorState::Continue)
+                    // }
                 }
             },
-            ir::Join::Cross => todo!(),
+            ir::Join::Cross => Ok(OperatorState::Again(joint_tuple)),
         }
     }
 }
@@ -152,7 +150,7 @@ impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSource<'en
 {
     fn source(
         self: Arc<Self>,
-        ecx: &'txn ExecutionContext<'env, S, M>,
+        _ecx: &'txn ExecutionContext<'env, S, M>,
     ) -> ExecutionResult<TupleStream<'txn>> {
         todo!()
     }
@@ -167,7 +165,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Explain<'_, 
         _tx: &dyn Transaction<'_, S>,
         f: &mut fmt::Formatter<'_>,
     ) -> explain::Result {
-        write!(f, "join")?;
+        write!(f, "nested loop join ({})", self.join)?;
         Ok(())
     }
 }
