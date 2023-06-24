@@ -1,3 +1,4 @@
+use std::fmt;
 use std::sync::Arc;
 
 use ::next_gen::prelude::*;
@@ -19,6 +20,14 @@ pub struct TableStorage<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'en
     tree: M::Tree<'txn>,
     info: TableStorageInfo,
     indexes: Box<[IndexStorage<'env, 'txn, S, M>]>,
+}
+
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> fmt::Debug
+    for TableStorage<'env, 'txn, S, M>
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("TableStorage").field("info", &self.info).finish_non_exhaustive()
+    }
 }
 
 #[derive(Debug)]

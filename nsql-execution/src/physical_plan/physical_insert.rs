@@ -9,6 +9,7 @@ use parking_lot::{Mutex, RwLock};
 use super::*;
 use crate::ReadWriteExecutionMode;
 
+#[derive(Debug)]
 pub(crate) struct PhysicalInsert<'env, 'txn, S: StorageEngine> {
     children: [Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode>>; 1],
     table_oid: Oid<Table>,

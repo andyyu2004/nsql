@@ -6,6 +6,7 @@ use rayon::prelude::*;
 
 use super::*;
 
+#[derive(Debug)]
 pub struct PhysicalOrder<'env, 'txn, S, M> {
     children: [Arc<dyn PhysicalNode<'env, 'txn, S, M>>; 1],
     ordering: Box<[ir::OrderExpr]>,

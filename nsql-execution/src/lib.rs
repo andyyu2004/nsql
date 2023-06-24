@@ -45,7 +45,7 @@ fn build_pipelines<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>
 
 #[allow(clippy::type_complexity)]
 trait PhysicalNode<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>:
-    Explain<'env, S> + 'txn
+    Explain<'env, S> + fmt::Debug + 'txn
 {
     fn children(&self) -> &[Arc<dyn PhysicalNode<'env, 'txn, S, M>>];
 
@@ -86,8 +86,9 @@ trait PhysicalNode<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>
             Err(node) => match node.as_source() {
                 Ok(source) => arena[current].set_source(source),
                 Err(operator) => {
-                    // Safety: we checked the other two cases above, must be an operator
-                    let operator = unsafe { operator.as_operator().unwrap_unchecked() };
+                    let operator = operator
+                        .as_operator()
+                        .expect("node is neither a source, sink, nor an operator");
                     let children = operator.children();
                     assert_eq!(
                         children.len(),

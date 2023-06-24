@@ -39,8 +39,20 @@ pub enum QueryPlan {
         values: Values,
         schema: QueryPlanSchema,
     },
-    Limit(Box<QueryPlan>, u64),
-    Order(Box<QueryPlan>, Box<[OrderExpr]>),
+    Join {
+        schema: QueryPlanSchema,
+        lhs: Box<QueryPlan>,
+        rhs: Box<QueryPlan>,
+        // cross join only for now
+    },
+    Limit {
+        source: Box<QueryPlan>,
+        limit: u64,
+    },
+    Order {
+        source: Box<QueryPlan>,
+        order: Box<[OrderExpr]>,
+    },
     Empty,
 }
 
@@ -56,11 +68,12 @@ impl QueryPlan {
         match self {
             QueryPlan::TableScan { projected_schema, .. }
             | QueryPlan::Projection { projected_schema, .. } => projected_schema,
-            QueryPlan::Filter { source, .. } => source.schema(),
-            QueryPlan::Unnest { schema, .. } => schema,
-            QueryPlan::Values { schema, .. } => schema,
-            QueryPlan::Limit(source, _) => source.schema(),
-            QueryPlan::Order(source, _) => source.schema(),
+            QueryPlan::Join { schema, .. }
+            | QueryPlan::Unnest { schema, .. }
+            | QueryPlan::Values { schema, .. } => schema,
+            QueryPlan::Filter { source, .. }
+            | QueryPlan::Limit { source, .. }
+            | QueryPlan::Order { source, .. } => source.schema(),
             QueryPlan::Empty => &[],
         }
     }
@@ -86,11 +99,17 @@ impl QueryPlan {
 
     #[inline]
     pub fn limit(self: Box<Self>, limit: u64) -> Box<QueryPlan> {
-        Box::new(QueryPlan::Limit(self, limit))
+        Box::new(QueryPlan::Limit { source: self, limit })
     }
 
+    #[inline]
     pub fn order_by(self: Box<Self>, order: impl Into<Box<[OrderExpr]>>) -> Box<QueryPlan> {
-        Box::new(QueryPlan::Order(self, order.into()))
+        Box::new(QueryPlan::Order { source: self, order: order.into() })
+    }
+
+    pub fn join(self: Box<Self>, rhs: Box<QueryPlan>) -> Box<QueryPlan> {
+        let schema = self.schema().iter().chain(rhs.schema()).cloned().collect();
+        Box::new(QueryPlan::Join { schema, lhs: self, rhs })
     }
 
     #[inline]

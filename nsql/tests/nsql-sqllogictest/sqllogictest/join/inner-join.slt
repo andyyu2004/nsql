@@ -1,0 +1,23 @@
+# FIXME need to test duplicate names
+
+statement ok
+CREATE TABLE book (book_id INT PRIMARY KEY, title TEXT, author INT)
+
+statement ok
+CREATE TABLE author (author_id INT PRIMARY KEY, name TEXT)
+
+statement ok
+INSERT INTO book VALUES (1, 'The Hobbit', 1)
+
+statement ok
+INSERT INTO book VALUES (2, 'The Silmarillion', 1)
+
+statement ok
+INSERT INTO author VALUES (1, 'J.R.R. Tolkien')
+
+query ITIIT ok
+SELECT * FROM book CROSS JOIN author
+----
+id|title|author|id|name
+1|The Hobbit|1|1|J.R.R. Tolkien
+2|The Silmarillion|1|1|J.R.R. Tolkien

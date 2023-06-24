@@ -1,5 +1,6 @@
 use super::*;
 
+#[derive(Debug)]
 pub struct PhysicalFilter<'env, 'txn, S, M> {
     children: [Arc<dyn PhysicalNode<'env, 'txn, S, M>>; 1],
     predicate: ir::Expr,

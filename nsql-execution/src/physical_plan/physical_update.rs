@@ -6,6 +6,7 @@ use parking_lot::RwLock;
 use super::*;
 use crate::ReadWriteExecutionMode;
 
+#[derive(Debug)]
 pub(crate) struct PhysicalUpdate<'env, 'txn, S> {
     children: [Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode>>; 1],
     table: Oid<Table>,

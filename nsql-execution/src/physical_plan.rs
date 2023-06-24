@@ -1,4 +1,5 @@
 pub(crate) mod explain;
+mod join;
 mod physical_create_namespace;
 mod physical_create_table;
 mod physical_drop;
@@ -25,6 +26,7 @@ use nsql_plan::Plan;
 use nsql_storage_engine::{StorageEngine, Transaction};
 
 pub use self::explain::Explain;
+use self::join::PhysicalNestedLoopJoin;
 use self::physical_create_namespace::PhysicalCreateNamespace;
 use self::physical_create_table::PhysicalCreateTable;
 use self::physical_drop::PhysicalDrop;
@@ -142,7 +144,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalPlanner<'env, S> {
         &self,
         tx: &dyn Transaction<'env, S>,
         plan: Box<Plan>,
-        f: impl FnOnce(
+        mut f: impl FnMut(
             &Self,
             &dyn Transaction<'env, S>,
             Box<Plan>,
@@ -163,6 +165,9 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalPlanner<'env, S> {
             Plan::Order { source, order } => PhysicalOrder::plan(f(self, tx, source)?, order),
             Plan::Filter { source, predicate } => {
                 PhysicalFilter::plan(f(self, tx, source)?, predicate)
+            }
+            Plan::Join { lhs, rhs } => {
+                PhysicalNestedLoopJoin::plan(f(self, tx, lhs)?, f(self, tx, rhs)?)
             }
             Plan::Unnest { expr } => PhysicalUnnest::plan(expr),
             Plan::Empty => PhysicalDummyScan::plan(),

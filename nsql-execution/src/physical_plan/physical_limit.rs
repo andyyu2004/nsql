@@ -2,6 +2,7 @@ use std::sync::atomic::{self, AtomicU64};
 
 use super::*;
 
+#[derive(Debug)]
 pub struct PhysicalLimit<'env, 'txn, S, M> {
     children: [Arc<dyn PhysicalNode<'env, 'txn, S, M>>; 1],
     yielded: AtomicU64,

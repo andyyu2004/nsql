@@ -2,6 +2,7 @@ use itertools::Itertools;
 
 use super::*;
 
+#[derive(Debug)]
 pub struct PhysicalProjection<'env, 'txn, S, M> {
     children: [Arc<dyn PhysicalNode<'env, 'txn, S, M>>; 1],
     projection: Box<[ir::Expr]>,
