@@ -1,5 +1,5 @@
 use super::*;
-use crate::{Namespace, Type};
+use crate::Namespace;
 
 mod builtins;
 
@@ -8,8 +8,8 @@ pub struct Function {
     pub(crate) oid: Oid<Self>,
     pub(crate) namespace: Oid<Namespace>,
     pub(crate) name: Name,
-    pub(crate) args: Box<[Oid<Type>]>,
-    pub(crate) ret: Oid<Type>,
+    pub(crate) args: Box<[LogicalType]>,
+    pub(crate) ret: LogicalType,
 }
 
 impl Function {
@@ -18,8 +18,9 @@ impl Function {
         Name::clone(&self.name)
     }
 
-    pub fn return_type(&self) -> Oid<Type> {
-        self.ret
+    #[inline]
+    pub fn return_type(&self) -> LogicalType {
+        self.ret.clone()
     }
 
     pub fn call(&self, args: Box<[Value]>) -> Value {
@@ -36,7 +37,7 @@ impl SystemEntity for Function {
 
     type Key = Oid<Self>;
 
-    type SearchKey = (Name, Box<[Oid<Type>]>);
+    type SearchKey = (Name, Box<[LogicalType]>);
 
     #[inline]
     fn key(&self) -> Self::Key {
@@ -78,8 +79,8 @@ impl SystemEntity for Function {
                 ColumnStorageInfo::new(LogicalType::Oid, true),
                 ColumnStorageInfo::new(LogicalType::Oid, false),
                 ColumnStorageInfo::new(LogicalType::Text, false),
-                ColumnStorageInfo::new(LogicalType::array(LogicalType::Oid), false),
-                ColumnStorageInfo::new(LogicalType::Oid, false),
+                ColumnStorageInfo::new(LogicalType::array(LogicalType::Type), false),
+                ColumnStorageInfo::new(LogicalType::Type, false),
             ],
         )
     }

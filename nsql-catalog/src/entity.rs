@@ -13,4 +13,3 @@ pub(crate) mod function;
 pub(crate) mod index;
 pub(crate) mod namespace;
 pub(crate) mod table;
-pub(crate) mod ty;

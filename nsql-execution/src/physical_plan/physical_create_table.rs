@@ -1,4 +1,4 @@
-use nsql_catalog::{Column, ColumnIndex, SystemEntity, Table, Type};
+use nsql_catalog::{Column, ColumnIndex, SystemEntity, Table};
 use nsql_storage_engine::fallible_iterator;
 
 use super::*;
@@ -85,7 +85,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSource<'env, 'txn, S, ReadWrite
                 table.key(),
                 info.name.clone(),
                 ColumnIndex::new(info.index),
-                Type::logical_type_to_oid(&info.ty),
+                info.ty.clone(),
                 info.is_primary_key,
             ))?;
         }

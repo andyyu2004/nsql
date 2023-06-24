@@ -2,6 +2,7 @@
 use core::fmt;
 use std::error::Error;
 
+use nsql_core::LogicalType;
 use rkyv::{Archive, Deserialize, Serialize};
 
 use crate::tuple::{Tuple, TupleIndex};
@@ -41,6 +42,16 @@ impl FromValue for TupleExpr {
         let bytes = value.cast_non_null::<Bytea>().map_err(CastError::cast)?;
         // FIXME we need to validate the bytes
         Ok(unsafe { nsql_rkyv::deserialize_raw(&bytes) })
+    }
+}
+
+impl FromValue for LogicalType {
+    #[inline]
+    fn from_value(value: Value) -> Result<Self, CastError<Self>> {
+        match value {
+            Value::Type(ty) => Ok(ty),
+            _ => Err(CastError::<Self>::new(value)),
+        }
     }
 }
 

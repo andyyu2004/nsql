@@ -69,6 +69,8 @@ pub enum Value {
     Text(String),
     Bytea(Bytea),
     Array(#[omit_bounds] Vec<Value>),
+    // experiment adding this as a value for serialiazation purposes
+    Type(LogicalType),
 }
 
 #[derive(
@@ -121,6 +123,13 @@ where
     #[inline]
     fn from(vs: Box<[V]>) -> Self {
         Vec::from(vs).into()
+    }
+}
+
+impl From<LogicalType> for Value {
+    #[inline]
+    fn from(v: LogicalType) -> Self {
+        Self::Type(v)
     }
 }
 
@@ -228,6 +237,7 @@ impl Value {
                 [] => LogicalType::Int,
                 [first, ..] => first.ty(),
             }),
+            Value::Type(_) => LogicalType::Type,
         }
     }
 }
@@ -244,6 +254,7 @@ impl fmt::Display for Value {
             Value::Oid(oid) => write!(f, "{oid}"),
             Value::Bytea(bytes) => write!(f, "{bytes:x?}"),
             Value::Array(values) => write!(f, "[{}]", values.iter().format(", ")),
+            Value::Type(ty) => write!(f, "{ty}"),
         }
     }
 }

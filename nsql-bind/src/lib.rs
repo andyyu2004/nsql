@@ -13,7 +13,7 @@ use ir::{Decimal, Path, TransactionMode, TupleIndex};
 use itertools::Itertools;
 use nsql_catalog::{
     Catalog, ColumnIndex, CreateColumnInfo, CreateNamespaceInfo, Function, Namespace, SystemEntity,
-    Table, Type, MAIN_SCHEMA,
+    Table, MAIN_SCHEMA,
 };
 use nsql_core::{LogicalType, Name, Oid};
 use nsql_parse::ast;
@@ -694,7 +694,8 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                 let expr = self.bind_expr(tx, scope, array_expr)?;
                 ensure!(
                     matches!(expr.ty, LogicalType::Array(_)),
-                    "UNNEST expression must be an array"
+                    "UNNEST expression must be an array, got {}",
+                    expr.ty,
                 );
 
                 let mut scope = scope.bind_unnest(&expr);
@@ -977,8 +978,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                         .map(|arg| self.bind_expr(tx, scope, arg))
                         .collect::<Result<Box<_>, _>>()?;
 
-                let arg_types =
-                    args.iter().map(|arg| Type::logical_type_to_oid(&arg.ty)).collect::<Vec<_>>();
+                let arg_types = args.iter().map(|arg| arg.ty.clone()).collect::<Vec<_>>();
 
                 let path = self.lower_path(&name.0)?;
                 let function = self.bind_namespaced_entity::<Function>(tx, &path, |name| {
@@ -986,7 +986,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                 })?;
 
                 let function = self.catalog.get::<Function>(tx, function)?;
-                let ty = Type::oid_to_logical_type(function.return_type());
+                let ty = function.return_type();
 
                 (ty, ir::ExprKind::FunctionCall { function, args })
             }

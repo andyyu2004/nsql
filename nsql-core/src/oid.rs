@@ -15,6 +15,10 @@ pub struct Oid<T: ?Sized> {
     marker: PhantomData<fn() -> T>,
 }
 
+impl<T> Oid<T> {
+    pub const NULL: Self = Self::new(0);
+}
+
 pub type UntypedOid = Oid<()>;
 
 impl<T: ?Sized> fmt::Debug for Oid<T> {

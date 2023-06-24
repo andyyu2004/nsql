@@ -1,18 +1,17 @@
 use super::*;
-use crate::Type;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, FromTuple, IntoTuple)]
 pub struct Column {
     pub(crate) table: Oid<Table>,
     pub(crate) index: ColumnIndex,
-    pub(crate) ty: Oid<Type>,
+    pub(crate) ty: LogicalType,
     pub(crate) name: Name,
     pub(crate) is_primary_key: bool,
 }
 
 impl From<&Column> for ColumnStorageInfo {
     fn from(val: &Column) -> Self {
-        ColumnStorageInfo::new(Type::oid_to_logical_type(val.ty), val.is_primary_key)
+        ColumnStorageInfo::new(val.ty.clone(), val.is_primary_key)
     }
 }
 
@@ -21,7 +20,7 @@ impl Column {
         table: Oid<Table>,
         name: Name,
         index: ColumnIndex,
-        ty: Oid<Type>,
+        ty: LogicalType,
         is_primary_key: bool,
     ) -> Self {
         Self { table, name, index, ty, is_primary_key }
@@ -39,7 +38,7 @@ impl Column {
 
     #[inline]
     pub fn logical_type(&self) -> LogicalType {
-        Type::oid_to_logical_type(self.ty)
+        self.ty.clone()
     }
 
     #[inline]
@@ -136,7 +135,7 @@ impl SystemEntity for Column {
             vec![
                 ColumnStorageInfo::new(LogicalType::Oid, true),
                 ColumnStorageInfo::new(LogicalType::Int, true),
-                ColumnStorageInfo::new(LogicalType::Oid, false),
+                ColumnStorageInfo::new(LogicalType::Type, false),
                 ColumnStorageInfo::new(LogicalType::Text, false),
                 ColumnStorageInfo::new(LogicalType::Bool, false),
             ],

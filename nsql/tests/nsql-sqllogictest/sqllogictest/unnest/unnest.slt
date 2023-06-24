@@ -14,3 +14,10 @@ query error
 SELECT * FROM UNNEST(1)
 ----
 UNNEST expression must be an array
+
+query I
+SELECT * FROM UNNEST(range(5, 8))
+----
+5
+6
+7

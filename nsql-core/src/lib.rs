@@ -8,6 +8,7 @@ use std::fmt;
 use std::ops::Deref;
 
 pub use oid::{Oid, UntypedOid};
+use rkyv::{Archive, Deserialize, Serialize};
 use smol_str::SmolStr;
 
 /// Lowercase name of a catalog entry (for case insensitive lookup)
@@ -73,7 +74,8 @@ impl Borrow<str> for Name {
     }
 }
 
-#[derive(Debug, Eq, PartialEq, Clone, Hash)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Hash, Archive, Serialize, Deserialize)]
+#[archive(bound(serialize = "__S: rkyv::ser::ScratchSpace + rkyv::ser::Serializer"))]
 pub enum LogicalType {
     Null,
     Bool,
@@ -82,7 +84,8 @@ pub enum LogicalType {
     Text,
     Oid,
     Bytea,
-    Array(Box<LogicalType>),
+    Type,
+    Array(#[omit_bounds] Box<LogicalType>),
 }
 
 impl LogicalType {
@@ -108,6 +111,7 @@ impl fmt::Display for LogicalType {
             LogicalType::Null => write!(f, "null"),
             LogicalType::Oid => write!(f, "oid"),
             LogicalType::Bytea => write!(f, "bytea"),
+            LogicalType::Type => write!(f, "type"),
             LogicalType::Array(_) => write!(f, "array"),
         }
     }

@@ -1,3 +1,4 @@
+use nsql_core::LogicalType;
 use nsql_storage::eval::{Expr, ExprOp, TupleExpr};
 use nsql_storage::tuple::TupleIndex;
 use nsql_storage::Result;
@@ -5,19 +6,14 @@ use nsql_storage_engine::{ReadWriteExecutionMode, StorageEngine};
 
 use crate::{
     Column, ColumnIndex, Function, Index, IndexKind, Namespace, Oid, SystemEntity, SystemTableView,
-    Table, Type, MAIN_SCHEMA,
+    Table, MAIN_SCHEMA,
 };
-
-struct BootstrapType {
-    oid: Oid<Type>,
-    name: &'static str,
-}
 
 struct BootstrapFunction {
     oid: Oid<Function>,
     name: &'static str,
-    args: Vec<Oid<Type>>,
-    ret: Oid<Type>,
+    args: Vec<LogicalType>,
+    ret: LogicalType,
 }
 
 struct BootstrapNamespace {
@@ -41,7 +37,7 @@ struct BootstrapIndex {
 
 struct BootstrapColumn {
     name: &'static str,
-    ty: Oid<Type>,
+    ty: LogicalType,
     pk: bool,
 }
 
@@ -51,7 +47,7 @@ pub(crate) fn bootstrap<'env, S: StorageEngine>(
 ) -> Result<()> {
     tracing::debug!("bootstrapping namespaces");
 
-    let (mut namespaces, mut tables, mut columns, mut types, mut indexes, mut functions) =
+    let (mut namespaces, mut tables, mut columns, mut indexes, mut functions) =
         bootstrap_info().desugar();
 
     let mut namespace_table =
@@ -74,11 +70,6 @@ pub(crate) fn bootstrap<'env, S: StorageEngine>(
     let mut column_table =
         SystemTableView::<S, ReadWriteExecutionMode, Column>::new_bootstrap(storage, txn)?;
     columns.try_for_each(|column| column_table.insert(column))?;
-
-    tracing::debug!("bootstrapping types");
-    let mut ty_table =
-        SystemTableView::<S, ReadWriteExecutionMode, Type>::new_bootstrap(storage, txn)?;
-    types.try_for_each(|ty| ty_table.insert(ty))?;
 
     tracing::debug!("bootstrapping indexes");
     let mut index_table =
@@ -114,14 +105,6 @@ impl Namespace {
     pub(crate) const CATALOG: Oid<Self> = Oid::new(100);
 }
 
-impl Type {
-    pub(crate) const OID: Oid<Self> = Oid::new(100);
-    pub(crate) const BOOL: Oid<Self> = Oid::new(101);
-    pub(crate) const INT: Oid<Self> = Oid::new(102);
-    pub(crate) const TEXT: Oid<Self> = Oid::new(103);
-    pub(crate) const BYTEA: Oid<Self> = Oid::new(104);
-}
-
 impl Function {
     pub(crate) const RANGE2: Oid<Self> = Oid::new(100);
 }
@@ -138,8 +121,8 @@ fn bootstrap_info() -> BootstrapInfo {
                 oid: Table::NAMESPACE,
                 name: "nsql_namespace",
                 columns: vec![
-                    BootstrapColumn { name: "oid", ty: Type::OID, pk: true },
-                    BootstrapColumn { name: "name", ty: Type::TEXT, pk: false },
+                    BootstrapColumn { name: "oid", ty: LogicalType::Oid, pk: true },
+                    BootstrapColumn { name: "name", ty: LogicalType::Text, pk: false },
                 ],
                 indexes: vec![BootstrapIndex {
                     table: Table::NAMESPACE_NAME_UNIQUE_INDEX,
@@ -152,9 +135,9 @@ fn bootstrap_info() -> BootstrapInfo {
                 oid: Table::TABLE,
                 name: "nsql_table",
                 columns: vec![
-                    BootstrapColumn { name: "oid", ty: Type::OID, pk: true },
-                    BootstrapColumn { name: "namespace", ty: Type::OID, pk: false },
-                    BootstrapColumn { name: "name", ty: Type::TEXT, pk: false },
+                    BootstrapColumn { name: "oid", ty: LogicalType::Oid, pk: true },
+                    BootstrapColumn { name: "namespace", ty: LogicalType::Oid, pk: false },
+                    BootstrapColumn { name: "name", ty: LogicalType::Text, pk: false },
                 ],
                 indexes: vec![BootstrapIndex {
                     table: Table::TABLE_NAME_UNIQUE_INDEX,
@@ -167,11 +150,11 @@ fn bootstrap_info() -> BootstrapInfo {
                 oid: Table::ATTRIBUTE,
                 name: "nsql_attribute",
                 columns: vec![
-                    BootstrapColumn { name: "table", ty: Type::OID, pk: true },
-                    BootstrapColumn { name: "index", ty: Type::INT, pk: true },
-                    BootstrapColumn { name: "ty", ty: Type::OID, pk: false },
-                    BootstrapColumn { name: "name", ty: Type::TEXT, pk: false },
-                    BootstrapColumn { name: "is_primary_key", ty: Type::BOOL, pk: false },
+                    BootstrapColumn { name: "table", ty: LogicalType::Oid, pk: true },
+                    BootstrapColumn { name: "index", ty: LogicalType::Int, pk: true },
+                    BootstrapColumn { name: "ty", ty: LogicalType::Type, pk: false },
+                    BootstrapColumn { name: "name", ty: LogicalType::Text, pk: false },
+                    BootstrapColumn { name: "is_primary_key", ty: LogicalType::Bool, pk: false },
                 ],
                 indexes: vec![BootstrapIndex {
                     table: Table::ATTRIBUTE_NAME_UNIQUE_INDEX,
@@ -184,8 +167,8 @@ fn bootstrap_info() -> BootstrapInfo {
                 oid: Table::TYPE,
                 name: "nsql_type",
                 columns: vec![
-                    BootstrapColumn { name: "oid", ty: Type::OID, pk: true },
-                    BootstrapColumn { name: "name", ty: Type::TEXT, pk: false },
+                    BootstrapColumn { name: "oid", ty: LogicalType::Oid, pk: true },
+                    BootstrapColumn { name: "name", ty: LogicalType::Text, pk: false },
                 ],
                 indexes: vec![BootstrapIndex {
                     table: Table::TYPE_NAME_UNIQUE_INDEX,
@@ -198,10 +181,10 @@ fn bootstrap_info() -> BootstrapInfo {
                 oid: Table::INDEX,
                 name: "nsql_index",
                 columns: vec![
-                    BootstrapColumn { name: "table", ty: Type::OID, pk: true },
-                    BootstrapColumn { name: "target", ty: Type::OID, pk: false },
-                    BootstrapColumn { name: "kind", ty: Type::INT, pk: false },
-                    BootstrapColumn { name: "index_expr", ty: Type::BYTEA, pk: false },
+                    BootstrapColumn { name: "table", ty: LogicalType::Oid, pk: true },
+                    BootstrapColumn { name: "target", ty: LogicalType::Oid, pk: false },
+                    BootstrapColumn { name: "kind", ty: LogicalType::Int, pk: false },
+                    BootstrapColumn { name: "index_expr", ty: LogicalType::Bytea, pk: false },
                 ],
                 indexes: vec![],
             },
@@ -209,10 +192,14 @@ fn bootstrap_info() -> BootstrapInfo {
                 oid: Table::FUNCTION,
                 name: "nsql_function",
                 columns: vec![
-                    BootstrapColumn { name: "oid", ty: Type::OID, pk: true },
-                    BootstrapColumn { name: "namespace", ty: Type::OID, pk: false },
-                    BootstrapColumn { name: "name", ty: Type::INT, pk: false },
-                    BootstrapColumn { name: "args", ty: Type::BYTEA, pk: false },
+                    BootstrapColumn { name: "oid", ty: LogicalType::Oid, pk: true },
+                    BootstrapColumn { name: "namespace", ty: LogicalType::Oid, pk: false },
+                    BootstrapColumn { name: "name", ty: LogicalType::Int, pk: false },
+                    BootstrapColumn {
+                        name: "args",
+                        ty: LogicalType::array(LogicalType::Type),
+                        pk: false,
+                    },
                 ],
                 indexes: vec![BootstrapIndex {
                     table: Table::FUNCTION_NAME_ARGS_UNIQUE_INDEX,
@@ -222,18 +209,11 @@ fn bootstrap_info() -> BootstrapInfo {
                 }],
             },
         ],
-        types: vec![
-            BootstrapType { oid: Type::OID, name: "oid" },
-            BootstrapType { oid: Type::BOOL, name: "bool" },
-            BootstrapType { oid: Type::INT, name: "int" },
-            BootstrapType { oid: Type::TEXT, name: "text" },
-            BootstrapType { oid: Type::BYTEA, name: "bytea" },
-        ],
         functions: vec![BootstrapFunction {
             oid: Function::RANGE2,
             name: "range",
-            args: vec![Type::INT, Type::INT],
-            ret: Type::OID,
+            args: vec![LogicalType::Int, LogicalType::Int],
+            ret: LogicalType::array(LogicalType::Oid),
         }],
     }
 }
@@ -241,7 +221,6 @@ fn bootstrap_info() -> BootstrapInfo {
 struct BootstrapInfo {
     namespaces: Vec<BootstrapNamespace>,
     tables: Vec<BootstrapTable>,
-    types: Vec<BootstrapType>,
     functions: Vec<BootstrapFunction>,
 }
 
@@ -252,7 +231,6 @@ impl BootstrapInfo {
         impl Iterator<Item = Namespace>,
         impl Iterator<Item = Table>,
         impl Iterator<Item = Column>,
-        impl Iterator<Item = Type>,
         impl Iterator<Item = Index>,
         impl Iterator<Item = Function>,
     ) {
@@ -266,8 +244,6 @@ impl BootstrapInfo {
             args: f.args.into_boxed_slice(),
             ret: f.ret,
         });
-
-        let types = self.types.into_iter().map(|ty| Type { oid: ty.oid, name: ty.name.into() });
 
         let mut tables = vec![];
         let mut columns = vec![];
@@ -308,7 +284,7 @@ impl BootstrapInfo {
                             columns.push(Column {
                                 table: index.table,
                                 index: ColumnIndex::new(col_index.try_into().unwrap()),
-                                ty: target_column.ty,
+                                ty: target_column.ty.clone(),
                                 name: target_column.name.into(),
                                 // all columns in an index are part of the primary key (for now) as
                                 // we only have unique indexes
@@ -343,7 +319,6 @@ impl BootstrapInfo {
             namespaces.into_iter(),
             tables.into_iter(),
             columns.into_iter(),
-            types.into_iter(),
             indexes.into_iter(),
             functions.into_iter(),
         )
