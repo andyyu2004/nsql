@@ -5,7 +5,7 @@ use std::error::Error;
 use rkyv::{Archive, Deserialize, Serialize};
 
 use crate::tuple::{Tuple, TupleIndex};
-use crate::value::{CastError, FromValue, Value};
+use crate::value::{Bytea, CastError, FromValue, Value};
 
 #[macro_export]
 macro_rules! expr_project {
@@ -38,16 +38,16 @@ impl TupleExpr {
 impl FromValue for TupleExpr {
     #[inline]
     fn from_value(value: Value) -> Result<Self, CastError<Self>> {
-        let bytes = value.cast_non_null::<Box<[u8]>>().map_err(CastError::cast)?;
+        let bytes = value.cast_non_null::<Bytea>().map_err(CastError::cast)?;
         // FIXME we need to validate the bytes
         Ok(unsafe { nsql_rkyv::deserialize_raw(&bytes) })
     }
 }
 
-impl Into<Value> for TupleExpr {
+impl From<TupleExpr> for Value {
     #[inline]
-    fn into(self) -> Value {
-        let bytes = nsql_rkyv::to_bytes(&self);
+    fn from(val: TupleExpr) -> Self {
+        let bytes = nsql_rkyv::to_bytes(&val);
         Value::Bytea(bytes.as_ref().into())
     }
 }

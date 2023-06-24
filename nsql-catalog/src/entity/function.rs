@@ -1,11 +1,12 @@
 use super::*;
-use crate::Namespace;
+use crate::{Namespace, Type};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, FromTuple, IntoTuple)]
 pub struct Function {
     pub(crate) oid: Oid<Self>,
     pub(crate) namespace: Oid<Namespace>,
     pub(crate) name: Name,
+    pub(crate) args: Box<[Oid<Type>]>,
 }
 
 impl Function {
@@ -49,11 +50,19 @@ impl SystemEntity for Function {
     }
 
     fn bootstrap_table_storage_info() -> TableStorageInfo {
-        TableStorageInfo::new(Table::ATTRIBUTE.untyped(), vec![])
+        TableStorageInfo::new(
+            Table::FUNCTION.untyped(),
+            vec![
+                ColumnStorageInfo::new(LogicalType::Oid, true),
+                ColumnStorageInfo::new(LogicalType::Oid, false),
+                ColumnStorageInfo::new(LogicalType::Text, false),
+                ColumnStorageInfo::new(LogicalType::array(LogicalType::Oid), false),
+            ],
+        )
     }
 
     #[inline]
     fn table() -> Oid<Table> {
-        Table::ATTRIBUTE
+        Table::FUNCTION
     }
 }

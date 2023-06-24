@@ -19,6 +19,7 @@ use nsql_storage_engine::{
 };
 
 pub use self::entity::column::{Column, ColumnIndex, CreateColumnInfo};
+pub use self::entity::function::Function;
 pub use self::entity::index::{Index, IndexKind};
 pub use self::entity::namespace::{CreateNamespaceInfo, Namespace};
 pub use self::entity::table::{CreateTableInfo, Table};

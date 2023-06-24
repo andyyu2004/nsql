@@ -12,11 +12,11 @@ use ir::expr::EvalNotConst;
 use ir::{Decimal, Path, TransactionMode, TupleIndex};
 use itertools::Itertools;
 use nsql_catalog::{
-    Catalog, ColumnIndex, CreateColumnInfo, CreateNamespaceInfo, Namespace, SystemEntity, Table,
-    MAIN_SCHEMA,
+    Catalog, ColumnIndex, CreateColumnInfo, CreateNamespaceInfo, Function, Namespace, SystemEntity,
+    Table, MAIN_SCHEMA,
 };
 use nsql_core::{LogicalType, Name, Oid};
-use nsql_parse::ast::{self, HiveDistributionStyle};
+use nsql_parse::ast;
 use nsql_storage_engine::{StorageEngine, Transaction};
 
 use self::scope::Scope;
@@ -94,7 +94,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                 not_implemented!(global.is_some());
                 not_implemented!(*if_not_exists);
                 not_implemented!(!constraints.is_empty());
-                not_implemented!(*hive_distribution != HiveDistributionStyle::NONE);
+                not_implemented!(*hive_distribution != ast::HiveDistributionStyle::NONE);
                 not_implemented!(!table_properties.is_empty());
                 not_implemented!(!with_options.is_empty());
                 not_implemented!(file_format.is_some());
@@ -952,7 +952,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                 not_implemented!(!order_by.is_empty());
 
                 let path = self.lower_path(&name.0)?;
-                // self.bind_namespaced_entity(tx, &path);
+                let function = self.bind_namespaced_entity::<Function>(tx, &path)?;
                 todo!();
             }
             _ => todo!("todo expr: {:?}", expr),

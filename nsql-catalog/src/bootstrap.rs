@@ -1,18 +1,23 @@
+use std::sync::atomic::{self, AtomicU64};
+
 use nsql_storage::eval::{Expr, ExprOp, TupleExpr};
 use nsql_storage::tuple::TupleIndex;
 use nsql_storage::Result;
 use nsql_storage_engine::{ReadWriteExecutionMode, StorageEngine};
 
 use crate::{
-    Column, ColumnIndex, Index, IndexKind, Namespace, Oid, SystemEntity, SystemTableView, Table,
-    Type, MAIN_SCHEMA,
+    Column, ColumnIndex, Function, Index, IndexKind, Namespace, Oid, SystemEntity, SystemTableView,
+    Table, Type, MAIN_SCHEMA,
 };
-
-// TODO write derive macros for deriving from tuple and into tuple and generating storage info
 
 struct BootstrapType {
     oid: Oid<Type>,
     name: &'static str,
+}
+
+struct BootstrapFunction {
+    name: &'static str,
+    args: Vec<Oid<Type>>,
 }
 
 struct BootstrapNamespace {
@@ -46,7 +51,7 @@ pub(crate) fn bootstrap<'env, S: StorageEngine>(
 ) -> Result<()> {
     tracing::debug!("bootstrapping namespaces");
 
-    let (mut namespaces, mut tables, mut columns, mut types, mut indexes) =
+    let (mut namespaces, mut tables, mut columns, mut types, mut indexes, mut functions) =
         bootstrap_info().desugar();
 
     let mut namespace_table =
@@ -80,6 +85,11 @@ pub(crate) fn bootstrap<'env, S: StorageEngine>(
         SystemTableView::<S, ReadWriteExecutionMode, Index>::new_bootstrap(storage, txn)?;
     indexes.try_for_each(|index| index_table.insert(index))?;
 
+    tracing::debug!("bootstrapping functions");
+    let mut functions_table =
+        SystemTableView::<S, ReadWriteExecutionMode, Function>::new_bootstrap(storage, txn)?;
+    functions.try_for_each(|function| functions_table.insert(function))?;
+
     Ok(())
 }
 
@@ -89,11 +99,13 @@ impl Table {
     pub(crate) const ATTRIBUTE: Oid<Self> = Oid::new(102);
     pub(crate) const TYPE: Oid<Self> = Oid::new(103);
     pub(crate) const INDEX: Oid<Self> = Oid::new(104);
+    pub(crate) const FUNCTION: Oid<Self> = Oid::new(105);
 
-    pub(crate) const NAMESPACE_NAME_UNIQUE_INDEX: Oid<Self> = Oid::new(105);
-    pub(crate) const TABLE_NAME_UNIQUE_INDEX: Oid<Self> = Oid::new(106);
-    pub(crate) const ATTRIBUTE_NAME_UNIQUE_INDEX: Oid<Self> = Oid::new(107);
-    pub(crate) const TYPE_NAME_UNIQUE_INDEX: Oid<Self> = Oid::new(108);
+    pub(crate) const NAMESPACE_NAME_UNIQUE_INDEX: Oid<Self> = Oid::new(205);
+    pub(crate) const TABLE_NAME_UNIQUE_INDEX: Oid<Self> = Oid::new(206);
+    pub(crate) const ATTRIBUTE_NAME_UNIQUE_INDEX: Oid<Self> = Oid::new(207);
+    pub(crate) const TYPE_NAME_UNIQUE_INDEX: Oid<Self> = Oid::new(208);
+    pub(crate) const FUNCTION_NAME_ARGS_UNIQUE_INDEX: Oid<Self> = Oid::new(209);
 }
 
 impl Namespace {
@@ -110,6 +122,7 @@ impl Type {
     pub(crate) const BYTEA: Oid<Self> = Oid::new(104);
 }
 
+// FIXME there is still quite a bit of duplicated work between here and `bootstrap_table_storage_info`
 fn bootstrap_info() -> BootstrapInfo {
     BootstrapInfo {
         namespaces: vec![
@@ -188,6 +201,22 @@ fn bootstrap_info() -> BootstrapInfo {
                 ],
                 indexes: vec![],
             },
+            BootstrapTable {
+                oid: Table::FUNCTION,
+                name: "nsql_function",
+                columns: vec![
+                    BootstrapColumn { name: "oid", ty: Type::OID, pk: true },
+                    BootstrapColumn { name: "namespace", ty: Type::OID, pk: false },
+                    BootstrapColumn { name: "name", ty: Type::INT, pk: false },
+                    BootstrapColumn { name: "args", ty: Type::BYTEA, pk: false },
+                ],
+                indexes: vec![BootstrapIndex {
+                    table: Table::FUNCTION_NAME_ARGS_UNIQUE_INDEX,
+                    name: "nsql_function_namespace_name_args_index",
+                    kind: IndexKind::Unique,
+                    column_names: vec!["namespace", "name", "args"],
+                }],
+            },
         ],
         types: vec![
             BootstrapType { oid: Type::OID, name: "oid" },
@@ -196,6 +225,7 @@ fn bootstrap_info() -> BootstrapInfo {
             BootstrapType { oid: Type::TEXT, name: "text" },
             BootstrapType { oid: Type::BYTEA, name: "bytea" },
         ],
+        functions: vec![BootstrapFunction { name: "range", args: vec![Type::INT, Type::INT] }],
     }
 }
 
@@ -203,6 +233,7 @@ struct BootstrapInfo {
     namespaces: Vec<BootstrapNamespace>,
     tables: Vec<BootstrapTable>,
     types: Vec<BootstrapType>,
+    functions: Vec<BootstrapFunction>,
 }
 
 impl BootstrapInfo {
@@ -214,9 +245,18 @@ impl BootstrapInfo {
         impl Iterator<Item = Column>,
         impl Iterator<Item = Type>,
         impl Iterator<Item = Index>,
+        impl Iterator<Item = Function>,
     ) {
         let namespaces =
             self.namespaces.into_iter().map(|ns| Namespace { oid: ns.oid, name: ns.name.into() });
+
+        let next_function_oid = AtomicU64::new(100);
+        let functions = self.functions.into_iter().map(move |f| Function {
+            oid: Oid::new(next_function_oid.fetch_add(1, atomic::Ordering::Relaxed)),
+            namespace: Namespace::MAIN,
+            name: f.name.into(),
+            args: f.args.into(),
+        });
 
         let types = self.types.into_iter().map(|ty| Type { oid: ty.oid, name: ty.name.into() });
 
@@ -290,6 +330,13 @@ impl BootstrapInfo {
             }
         }
 
-        (namespaces, tables.into_iter(), columns.into_iter(), types, indexes.into_iter())
+        (
+            namespaces.into_iter(),
+            tables.into_iter(),
+            columns.into_iter(),
+            types.into_iter(),
+            indexes.into_iter(),
+            functions.into_iter(),
+        )
     }
 }

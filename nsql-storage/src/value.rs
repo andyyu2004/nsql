@@ -1,6 +1,7 @@
 use std::error::Error;
 use std::fmt;
 use std::marker::PhantomData;
+use std::ops::Deref;
 
 use itertools::Itertools;
 use nsql_core::{LogicalType, Name, Oid, UntypedOid};
@@ -66,15 +67,67 @@ pub enum Value {
     Bool(bool),
     Decimal(Decimal),
     Text(String),
-    Bytea(Box<[u8]>),
-
+    Bytea(Bytea),
     Array(#[omit_bounds] Vec<Value>),
+}
+
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+pub struct Bytea(Box<[u8]>);
+
+impl<B> From<B> for Bytea
+where
+    B: AsRef<[u8]>,
+{
+    #[inline]
+    fn from(value: B) -> Self {
+        Self(value.as_ref().into())
+    }
+}
+
+impl Deref for Bytea {
+    type Target = [u8];
+
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl<V> From<Vec<V>> for Value
+where
+    V: Into<Value>,
+{
+    #[inline]
+    fn from(vs: Vec<V>) -> Self {
+        Self::Array(vs.into_iter().map(Into::into).collect())
+    }
+}
+
+impl<V> From<Box<[V]>> for Value
+where
+    V: Into<Value>,
+{
+    #[inline]
+    fn from(vs: Box<[V]>) -> Self {
+        Vec::from(vs).into()
+    }
 }
 
 impl From<Box<[u8]>> for Value {
     #[inline]
     fn from(v: Box<[u8]>) -> Self {
-        Self::Bytea(v)
+        Self::Bytea(Bytea(v))
     }
 }
 
@@ -171,10 +224,10 @@ impl Value {
             Value::Oid(_) => LogicalType::Oid,
             Value::Bytea(_) => LogicalType::Bytea,
             // Keep this in sync with binder logic
-            Value::Array(values) => match &values[..] {
+            Value::Array(values) => LogicalType::array(match &values[..] {
                 [] => LogicalType::Int,
                 [first, ..] => first.ty(),
-            },
+            }),
         }
     }
 }
@@ -199,6 +252,26 @@ impl fmt::Display for Value {
 pub trait FromValue: Sized {
     /// Cast a nsql `value` to a rust value.
     fn from_value(value: Value) -> Result<Self, CastError<Self>>;
+}
+
+impl<V: FromValue> FromValue for Box<[V]> {
+    #[inline]
+    fn from_value(value: Value) -> Result<Self, CastError<Self>> {
+        Vec::<V>::from_value(value).map(|v| v.into_boxed_slice()).map_err(CastError::cast)
+    }
+}
+
+impl<V: FromValue> FromValue for Vec<V> {
+    #[inline]
+    fn from_value(value: Value) -> Result<Self, CastError<Self>> {
+        match value {
+            Value::Array(values) => values
+                .into_iter()
+                .map(|value| V::from_value(value).map_err(CastError::cast))
+                .collect(),
+            _ => Err(CastError { value, phantom: PhantomData }),
+        }
+    }
 }
 
 impl FromValue for u64 {
@@ -257,7 +330,7 @@ impl FromValue for String {
     }
 }
 
-impl FromValue for Box<[u8]> {
+impl FromValue for Bytea {
     fn from_value(value: Value) -> Result<Self, CastError<Self>> {
         match value {
             Value::Bytea(b) => Ok(b),
