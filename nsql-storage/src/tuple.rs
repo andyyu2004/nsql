@@ -188,9 +188,9 @@ where
     U: FromValue + 'static,
 {
     fn from_values(mut values: impl Iterator<Item = Value>) -> Result<Self, FromTupleError> {
-        let first = values.next().ok_or(FromTupleError::NotEnoughValues)?;
-        let second = values.next().ok_or(FromTupleError::NotEnoughValues)?;
-        Ok((T::from_value(first)?, U::from_value(second)?))
+        let fst = values.next().ok_or(FromTupleError::NotEnoughValues)?.cast_non_null()?;
+        let snd = values.next().ok_or(FromTupleError::NotEnoughValues)?.cast_non_null()?;
+        Ok((fst, snd))
     }
 }
 

@@ -1,7 +1,7 @@
 use super::*;
 use crate::Type;
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, FromTuple, IntoTuple)]
 pub struct Column {
     pub(crate) table: Oid<Table>,
     pub(crate) index: ColumnIndex,
@@ -58,6 +58,13 @@ impl FromValue for ColumnIndex {
     fn from_value(value: Value) -> Result<Self, CastError<Self>> {
         let index = value.cast_non_null::<u8>().map_err(CastError::cast)?;
         Ok(Self { index })
+    }
+}
+
+impl From<ColumnIndex> for Value {
+    #[inline]
+    fn from(val: ColumnIndex) -> Self {
+        Value::Int32(val.index as i32)
     }
 }
 
@@ -135,30 +142,3 @@ impl SystemEntity for Column {
     }
 }
 
-impl FromTuple for Column {
-    fn from_values(mut values: impl Iterator<Item = Value>) -> Result<Self, FromTupleError> {
-        Ok(Self {
-            table: values.next().ok_or(FromTupleError::NotEnoughValues)?.cast_non_null()?,
-            index: values.next().ok_or(FromTupleError::NotEnoughValues)?.cast_non_null()?,
-            ty: values.next().ok_or(FromTupleError::NotEnoughValues)?.cast_non_null()?,
-            name: values.next().ok_or(FromTupleError::NotEnoughValues)?.cast_non_null()?,
-            is_primary_key: values
-                .next()
-                .ok_or(FromTupleError::NotEnoughValues)?
-                .cast_non_null()?,
-        })
-    }
-}
-
-impl IntoTuple for Column {
-    #[inline]
-    fn into_tuple(self) -> Tuple {
-        Tuple::from([
-            Value::Oid(self.table.untyped()),
-            Value::Int32(self.index.index as i32),
-            Value::Oid(self.ty.untyped()),
-            Value::Text(self.name.into()),
-            Value::Bool(self.is_primary_key),
-        ])
-    }
-}

@@ -9,7 +9,7 @@ use nsql_storage_engine::{
 use super::*;
 use crate::{Catalog, Column, Index, Name, Namespace, Oid, SystemEntity};
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, FromTuple, IntoTuple)]
 pub struct Table {
     pub(crate) oid: Oid<Self>,
     pub(crate) namespace: Oid<Namespace>,
@@ -179,25 +179,5 @@ impl SystemEntity for Table {
     #[inline]
     fn table() -> Oid<Table> {
         Table::TABLE
-    }
-}
-
-impl IntoTuple for Table {
-    fn into_tuple(self) -> Tuple {
-        Tuple::from([
-            Value::Oid(self.oid.untyped()),
-            Value::Oid(self.namespace.untyped()),
-            Value::Text(self.name.to_string()),
-        ])
-    }
-}
-
-impl FromTuple for Table {
-    fn from_values(mut values: impl Iterator<Item = Value>) -> Result<Self, FromTupleError> {
-        Ok(Self {
-            oid: values.next().ok_or(FromTupleError::NotEnoughValues)?.cast_non_null()?,
-            namespace: values.next().ok_or(FromTupleError::NotEnoughValues)?.cast_non_null()?,
-            name: values.next().ok_or(FromTupleError::NotEnoughValues)?.cast_non_null()?,
-        })
     }
 }

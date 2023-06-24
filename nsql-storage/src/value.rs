@@ -71,6 +71,48 @@ pub enum Value {
     Array(#[omit_bounds] Vec<Value>),
 }
 
+impl From<Box<[u8]>> for Value {
+    #[inline]
+    fn from(v: Box<[u8]>) -> Self {
+        Self::Bytea(v)
+    }
+}
+
+impl From<String> for Value {
+    #[inline]
+    fn from(v: String) -> Self {
+        Self::Text(v)
+    }
+}
+
+impl From<Name> for Value {
+    #[inline]
+    fn from(v: Name) -> Self {
+        Self::Text(v.into())
+    }
+}
+
+impl From<bool> for Value {
+    #[inline]
+    fn from(v: bool) -> Self {
+        Self::Bool(v)
+    }
+}
+
+impl From<i32> for Value {
+    #[inline]
+    fn from(v: i32) -> Self {
+        Self::Int32(v)
+    }
+}
+
+impl<T> From<Oid<T>> for Value {
+    #[inline]
+    fn from(v: Oid<T>) -> Self {
+        Self::Oid(v.untyped())
+    }
+}
+
 impl<'a> rkyv::Archive for &'a Value {
     type Archived = <Value as rkyv::Archive>::Archived;
 
@@ -231,8 +273,4 @@ impl FromValue for Name {
             _ => Err(CastError { value, phantom: PhantomData }),
         }
     }
-}
-
-pub trait IntoValue {
-    fn into_value(self) -> Value;
 }

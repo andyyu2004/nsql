@@ -8,6 +8,7 @@ anyhow = "1.0.70"
 fix-hidden-lifetime-bug = "0.2.5"
 indexmap = "1.9.3"
 nsql-core = { path = "../nsql-core" }
+nsql-derive = { version = "0.1.0", path = "../nsql-derive" }
 nsql-storage = { path = "../nsql-storage" }
 nsql-storage-engine = { path = "../nsql-storage-engine" }
 nsql-util = { path = "../nsql-util" }

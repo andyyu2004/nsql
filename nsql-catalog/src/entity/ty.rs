@@ -1,6 +1,6 @@
 use super::*;
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, FromTuple, IntoTuple)]
 pub struct Type {
     pub(crate) oid: Oid<Type>,
     pub(crate) name: Name,
@@ -50,21 +50,6 @@ impl SystemEntity for Type {
     #[inline]
     fn table() -> Oid<Table> {
         Table::TYPE
-    }
-}
-
-impl FromTuple for Type {
-    fn from_values(mut values: impl Iterator<Item = Value>) -> Result<Self, FromTupleError> {
-        Ok(Self {
-            oid: values.next().ok_or(FromTupleError::NotEnoughValues)?.cast_non_null()?,
-            name: values.next().ok_or(FromTupleError::NotEnoughValues)?.cast_non_null()?,
-        })
-    }
-}
-
-impl IntoTuple for Type {
-    fn into_tuple(self) -> Tuple {
-        Tuple::from([Value::Oid(self.oid.untyped()), Value::Text(self.name.into())])
     }
 }
 

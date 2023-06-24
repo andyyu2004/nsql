@@ -5,7 +5,7 @@ use std::error::Error;
 use rkyv::{Archive, Deserialize, Serialize};
 
 use crate::tuple::{Tuple, TupleIndex};
-use crate::value::{CastError, FromValue, IntoValue, Value};
+use crate::value::{CastError, FromValue, Value};
 
 #[macro_export]
 macro_rules! expr_project {
@@ -44,9 +44,9 @@ impl FromValue for TupleExpr {
     }
 }
 
-impl IntoValue for TupleExpr {
+impl Into<Value> for TupleExpr {
     #[inline]
-    fn into_value(self) -> Value {
+    fn into(self) -> Value {
         let bytes = nsql_rkyv::to_bytes(&self);
         Value::Bytea(bytes.as_ref().into())
     }

@@ -1,7 +1,7 @@
 use super::*;
 use crate::Namespace;
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, FromTuple, IntoTuple)]
 pub struct Function {
     pub(crate) oid: Oid<Self>,
     pub(crate) namespace: Oid<Namespace>,
@@ -55,18 +55,5 @@ impl SystemEntity for Function {
     #[inline]
     fn table() -> Oid<Table> {
         Table::ATTRIBUTE
-    }
-}
-
-impl FromTuple for Function {
-    fn from_values(values: impl Iterator<Item = Value>) -> Result<Self, FromTupleError> {
-        todo!()
-    }
-}
-
-impl IntoTuple for Function {
-    #[inline]
-    fn into_tuple(self) -> Tuple {
-        Tuple::from([])
     }
 }
