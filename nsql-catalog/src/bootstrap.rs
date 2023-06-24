@@ -18,6 +18,7 @@ struct BootstrapType {
 struct BootstrapFunction {
     name: &'static str,
     args: Vec<Oid<Type>>,
+    ret: Oid<Type>,
 }
 
 struct BootstrapNamespace {
@@ -225,7 +226,11 @@ fn bootstrap_info() -> BootstrapInfo {
             BootstrapType { oid: Type::TEXT, name: "text" },
             BootstrapType { oid: Type::BYTEA, name: "bytea" },
         ],
-        functions: vec![BootstrapFunction { name: "range", args: vec![Type::INT, Type::INT] }],
+        functions: vec![BootstrapFunction {
+            name: "range",
+            args: vec![Type::INT, Type::INT],
+            ret: Type::OID,
+        }],
     }
 }
 
@@ -255,7 +260,8 @@ impl BootstrapInfo {
             oid: Oid::new(next_function_oid.fetch_add(1, atomic::Ordering::Relaxed)),
             namespace: Namespace::MAIN,
             name: f.name.into(),
-            args: f.args.into(),
+            args: f.args.into_boxed_slice(),
+            ret: f.ret,
         });
 
         let types = self.types.into_iter().map(|ty| Type { oid: ty.oid, name: ty.name.into() });

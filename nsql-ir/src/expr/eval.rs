@@ -35,6 +35,7 @@ impl Expr {
                 .map(|expr| expr.const_eval())
                 .collect::<Result<_, _>>()
                 .map(Value::Array),
+            ExprKind::FunctionCall { .. } => Err(EvalNotConst),
         }
     }
 }

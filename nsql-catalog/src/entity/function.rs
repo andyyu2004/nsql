@@ -7,12 +7,24 @@ pub struct Function {
     pub(crate) namespace: Oid<Namespace>,
     pub(crate) name: Name,
     pub(crate) args: Box<[Oid<Type>]>,
+    pub(crate) ret: Oid<Type>,
 }
 
 impl Function {
     #[inline]
     pub fn name(&self) -> Name {
         Name::clone(&self.name)
+    }
+
+    pub fn return_type(&self) -> Oid<Type> {
+        self.ret
+    }
+
+    pub fn call(&self, args: Box<[Value]>) -> Value {
+        match self.name.as_str() {
+            "range" => Value::Int32(42),
+            _ => todo!(),
+        }
     }
 }
 
@@ -64,6 +76,7 @@ impl SystemEntity for Function {
                 ColumnStorageInfo::new(LogicalType::Oid, false),
                 ColumnStorageInfo::new(LogicalType::Text, false),
                 ColumnStorageInfo::new(LogicalType::array(LogicalType::Oid), false),
+                ColumnStorageInfo::new(LogicalType::Oid, false),
             ],
         )
     }

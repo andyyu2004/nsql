@@ -13,7 +13,7 @@ use ir::{Decimal, Path, TransactionMode, TupleIndex};
 use itertools::Itertools;
 use nsql_catalog::{
     Catalog, ColumnIndex, CreateColumnInfo, CreateNamespaceInfo, Function, Namespace, SystemEntity,
-    Table, MAIN_SCHEMA,
+    Table, Type, MAIN_SCHEMA,
 };
 use nsql_core::{LogicalType, Name, Oid};
 use nsql_parse::ast;
@@ -954,11 +954,41 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                 not_implemented!(*special);
                 not_implemented!(!order_by.is_empty());
 
+                let args = args
+                    .iter()
+                    .map(|arg| {
+                        Ok(match arg {
+                            ast::FunctionArg::Named { .. } => {
+                                not_implemented!("named function args")
+                            }
+                            ast::FunctionArg::Unnamed(expr) => match expr {
+                                ast::FunctionArgExpr::Expr(expr) => expr,
+                                ast::FunctionArgExpr::QualifiedWildcard(_) => {
+                                    not_implemented!("qualified wildcard arg")
+                                }
+                                ast::FunctionArgExpr::Wildcard => not_implemented!("wildcard arg"),
+                            },
+                        })
+                    })
+                    .collect::<Result<Vec<&ast::Expr>, _>>()?;
+
+                let args =
+                    args.iter()
+                        .map(|arg| self.bind_expr(tx, scope, arg))
+                        .collect::<Result<Box<_>, _>>()?;
+
+                let arg_types =
+                    args.iter().map(|arg| Type::logical_type_to_oid(&arg.ty)).collect::<Vec<_>>();
+
                 let path = self.lower_path(&name.0)?;
                 let function = self.bind_namespaced_entity::<Function>(tx, &path, |name| {
-                    (name.clone(), Box::new([]))
+                    (name.clone(), arg_types.into())
                 })?;
-                todo!();
+
+                let function = self.catalog.get::<Function>(tx, function)?;
+                let ty = Type::oid_to_logical_type(function.return_type());
+
+                (ty, ir::ExprKind::FunctionCall { function, args })
             }
             _ => todo!("todo expr: {:?}", expr),
         };

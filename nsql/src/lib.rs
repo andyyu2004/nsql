@@ -148,11 +148,7 @@ impl<S: StorageEngine> Shared<S> {
             ReadOrWriteTransaction::Read(tx) => {
                 tracing::info!("executing readonly query");
                 let physical_plan = planner.plan(&tx, plan)?;
-                let ecx = ExecutionContext::new(
-                    storage,
-                    catalog,
-                    TransactionContext::new(tx, auto_commit),
-                );
+                let ecx = ExecutionContext::new(catalog, TransactionContext::new(tx, auto_commit));
                 let tuples = nsql_execution::execute(&ecx, physical_plan)?;
                 let (auto_commit, state, tx) = ecx.take_txn();
                 if auto_commit || !matches!(state, TransactionState::Active) {
@@ -165,11 +161,7 @@ impl<S: StorageEngine> Shared<S> {
             ReadOrWriteTransaction::Write(tx) => {
                 tracing::info!("executing write query");
                 let physical_plan = planner.plan_write(&tx, plan)?;
-                let ecx = ExecutionContext::new(
-                    storage,
-                    catalog,
-                    TransactionContext::new(tx, auto_commit),
-                );
+                let ecx = ExecutionContext::new(catalog, TransactionContext::new(tx, auto_commit));
                 let tuples = match nsql_execution::execute_write(&ecx, physical_plan) {
                     Ok(tuples) => tuples,
                     Err(err) => {
