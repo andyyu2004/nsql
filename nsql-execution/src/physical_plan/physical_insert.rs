@@ -1,14 +1,17 @@
+use std::sync::OnceLock;
+
 use nsql_catalog::Table;
 use nsql_core::Oid;
-use nsql_storage::PrimaryKeyConflict;
+use nsql_storage::{PrimaryKeyConflict, TableStorage};
 use nsql_storage_engine::fallible_iterator;
-use parking_lot::RwLock;
+use parking_lot::{Mutex, RwLock};
 
 use super::*;
 use crate::ReadWriteExecutionMode;
 
-pub(crate) struct PhysicalInsert<'env, 'txn, S> {
+pub(crate) struct PhysicalInsert<'env, 'txn, S: StorageEngine> {
     children: [Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode>>; 1],
+    storage: OnceLock<Mutex<TableStorage<'env, 'txn, S, ReadWriteExecutionMode>>>,
     table: Oid<Table>,
     returning: Option<Box<[ir::Expr]>>,
     returning_tuples: RwLock<Vec<Tuple>>,
@@ -25,6 +28,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalInsert<'env, 'txn, S> {
             table,
             returning,
             children: [source],
+            storage: Default::default(),
             returning_tuples: Default::default(),
             returning_evaluator: Evaluator::new(),
         })
@@ -78,7 +82,11 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSink<'env, 'txn, S, ReadWriteEx
         let tx = ecx.tx()?;
         let table = catalog.table(tx, self.table)?;
 
-        let mut storage = table.storage::<S, ReadWriteExecutionMode>(catalog, tx)?;
+        let storage = self.storage.get_or_try_init(|| {
+            table.storage::<S, ReadWriteExecutionMode>(catalog, tx).map(Mutex::new)
+        })?;
+
+        let mut storage = storage.lock();
         storage.insert(&tuple)?.map_err(|PrimaryKeyConflict { key }| {
             anyhow::anyhow!("duplicate key `{key}` violates unique constraint")
         })?;

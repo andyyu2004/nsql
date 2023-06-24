@@ -10,7 +10,6 @@ pub struct PhysicalOrder<'env, 'txn, S, M> {
     children: [Arc<dyn PhysicalNode<'env, 'txn, S, M>>; 1],
     ordering: Box<[ir::OrderExpr]>,
     tuples: RwLock<Vec<Tuple>>,
-    evaluator: Evaluator,
 }
 
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
@@ -20,12 +19,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
         source: Arc<dyn PhysicalNode<'env, 'txn, S, M>>,
         ordering: Box<[ir::OrderExpr]>,
     ) -> Arc<dyn PhysicalNode<'env, 'txn, S, M>> {
-        Arc::new(Self {
-            children: [source],
-            ordering,
-            evaluator: Evaluator::new(),
-            tuples: Default::default(),
-        })
+        Arc::new(Self { children: [source], ordering, tuples: Default::default() })
     }
 }
 
@@ -52,11 +46,13 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSink
     fn finalize(&self, _ecx: &'txn ExecutionContext<'env, S, M>) -> ExecutionResult<()> {
         // sort tuples when the sink is finalized
         let tuples: &mut [Tuple] = &mut self.tuples.write();
+        let ordering = &self.ordering;
+        let evaluator = Evaluator::new();
 
         tuples.par_sort_unstable_by(|a, b| {
-            for order in self.ordering.iter() {
-                let a = self.evaluator.evaluate_expr(a, &order.expr);
-                let b = self.evaluator.evaluate_expr(b, &order.expr);
+            for order in ordering.iter() {
+                let a = evaluator.evaluate_expr(a, &order.expr);
+                let b = evaluator.evaluate_expr(b, &order.expr);
                 let cmp = a.partial_cmp(&b).unwrap();
                 if cmp != cmp::Ordering::Equal {
                     return if order.asc { cmp } else { cmp.reverse() };
