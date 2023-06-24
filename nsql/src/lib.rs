@@ -34,6 +34,7 @@ pub struct MaterializedQueryOutput {
 }
 
 impl<S: StorageEngine> Nsql<S> {
+    /// Create a new database at the given path, overwriting any existing database.
     pub fn create(path: impl AsRef<Path>) -> Result<Self> {
         let storage = S::create(path)?;
         let tx = storage.begin_write()?;
@@ -43,9 +44,14 @@ impl<S: StorageEngine> Nsql<S> {
         Ok(Self::new(Shared { storage: Storage::new(storage) }))
     }
 
+    /// Open an existing database at the given path, creating one if it does not exist.
     pub fn open(path: impl AsRef<Path>) -> Result<Self> {
-        let storage = S::open(path)?;
-        Ok(Self::new(Shared { storage: Storage::new(storage) }))
+        let path = path.as_ref();
+        if !path.exists() {
+            return Self::create(path);
+        }
+
+        Ok(Self::new(Shared { storage: Storage::new(S::open(path)?) }))
     }
 
     #[inline]

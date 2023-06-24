@@ -23,7 +23,7 @@ fn main() -> nsql::Result<()> {
 
     let prompt = NsqlPrompt {};
 
-    let nsql = Nsql::<RedbStorageEngine>::create("/tmp/test.db")?;
+    let nsql = Nsql::<RedbStorageEngine>::open("/tmp/test.db")?;
     let (conn, state) = nsql.connect();
 
     loop {
