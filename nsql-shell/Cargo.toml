@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+argh = "0.1.10"
 nsql = { path = "../nsql" }
 nu-ansi-term = "0.47.0"
 reedline = "0.19.0"

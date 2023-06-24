@@ -1,5 +1,7 @@
 use std::borrow::Cow;
+use std::path::PathBuf;
 
+use argh::FromArgs;
 use nsql::{LmdbStorageEngine, MaterializedQueryOutput, Nsql};
 use nu_ansi_term::{Color, Style};
 use reedline::{
@@ -10,7 +12,31 @@ use reedline::{
 use tabled::builder::Builder;
 use tabled::Table;
 
+#[derive(Debug, FromArgs)]
+#[argh(description = "nsql")]
+struct Args {
+    #[argh(option, short = 'c')]
+    /// execute command and quit
+    cmd: Option<String>,
+
+    #[argh(positional)]
+    path: PathBuf,
+}
+
 fn main() -> nsql::Result<()> {
+    let args: Args = argh::from_env();
+
+    let nsql = Nsql::<LmdbStorageEngine>::open(&args.path)?;
+    let (conn, state) = nsql.connect();
+
+    if let Some(cmd) = args.cmd {
+        match conn.query(&state, &cmd) {
+            Ok(output) => println!("{}", tabulate(output)),
+            Err(e) => println!("{}", e),
+        }
+        return Ok(());
+    }
+
     let mut ikb = default_vi_insert_keybindings();
     ikb.add_binding(KeyModifiers::CONTROL, KeyCode::Char('f'), ReedlineEvent::HistoryHintComplete);
 
@@ -22,9 +48,6 @@ fn main() -> nsql::Result<()> {
         ));
 
     let prompt = NsqlPrompt {};
-
-    let nsql = Nsql::<LmdbStorageEngine>::open("/tmp/test.db")?;
-    let (conn, state) = nsql.connect();
 
     loop {
         let sig = line_editor.read_line(&prompt)?;
