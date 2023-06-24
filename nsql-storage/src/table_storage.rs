@@ -105,8 +105,8 @@ impl<'env, 'txn, S: StorageEngine> TableStorage<'env, 'txn, S, ReadWriteExecutio
             }
         }
 
-        let pk_bytes = rkyv::to_bytes::<_, 0>(&pk_tuple).unwrap();
-        let non_pk_bytes = rkyv::to_bytes::<_, 0>(&non_pk_tuple).unwrap();
+        let pk_bytes = nsql_rkyv::to_bytes(&pk_tuple);
+        let non_pk_bytes = nsql_rkyv::to_bytes(&non_pk_tuple);
 
         (pk_bytes, non_pk_bytes)
     }
