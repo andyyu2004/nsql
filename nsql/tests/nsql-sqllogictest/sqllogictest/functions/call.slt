@@ -1,0 +1,8 @@
+# args don't match
+query error
+SELECT range(0, 20, 30, 40)
+
+query A
+SELECT range(0, 5)
+----
+[0, 1, 2, 3, 4]

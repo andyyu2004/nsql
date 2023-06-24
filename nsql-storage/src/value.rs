@@ -1,6 +1,7 @@
 use std::error::Error;
 use std::fmt;
 use std::marker::PhantomData;
+use std::ops::Deref;
 
 use itertools::Itertools;
 use nsql_core::{LogicalType, Name, Oid, UntypedOid};
@@ -66,9 +67,103 @@ pub enum Value {
     Bool(bool),
     Decimal(Decimal),
     Text(String),
-    Bytea(Box<[u8]>),
-
+    Bytea(Bytea),
     Array(#[omit_bounds] Vec<Value>),
+}
+
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+)]
+pub struct Bytea(Box<[u8]>);
+
+impl<B> From<B> for Bytea
+where
+    B: AsRef<[u8]>,
+{
+    #[inline]
+    fn from(value: B) -> Self {
+        Self(value.as_ref().into())
+    }
+}
+
+impl Deref for Bytea {
+    type Target = [u8];
+
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl<V> From<Vec<V>> for Value
+where
+    V: Into<Value>,
+{
+    #[inline]
+    fn from(vs: Vec<V>) -> Self {
+        Self::Array(vs.into_iter().map(Into::into).collect())
+    }
+}
+
+impl<V> From<Box<[V]>> for Value
+where
+    V: Into<Value>,
+{
+    #[inline]
+    fn from(vs: Box<[V]>) -> Self {
+        Vec::from(vs).into()
+    }
+}
+
+impl From<Box<[u8]>> for Value {
+    #[inline]
+    fn from(v: Box<[u8]>) -> Self {
+        Self::Bytea(Bytea(v))
+    }
+}
+
+impl From<String> for Value {
+    #[inline]
+    fn from(v: String) -> Self {
+        Self::Text(v)
+    }
+}
+
+impl From<Name> for Value {
+    #[inline]
+    fn from(v: Name) -> Self {
+        Self::Text(v.into())
+    }
+}
+
+impl From<bool> for Value {
+    #[inline]
+    fn from(v: bool) -> Self {
+        Self::Bool(v)
+    }
+}
+
+impl From<i32> for Value {
+    #[inline]
+    fn from(v: i32) -> Self {
+        Self::Int32(v)
+    }
+}
+
+impl<T> From<Oid<T>> for Value {
+    #[inline]
+    fn from(v: Oid<T>) -> Self {
+        Self::Oid(v.untyped())
+    }
 }
 
 impl<'a> rkyv::Archive for &'a Value {
@@ -129,10 +224,10 @@ impl Value {
             Value::Oid(_) => LogicalType::Oid,
             Value::Bytea(_) => LogicalType::Bytea,
             // Keep this in sync with binder logic
-            Value::Array(values) => match &values[..] {
+            Value::Array(values) => LogicalType::array(match &values[..] {
                 [] => LogicalType::Int,
                 [first, ..] => first.ty(),
-            },
+            }),
         }
     }
 }
@@ -159,7 +254,28 @@ pub trait FromValue: Sized {
     fn from_value(value: Value) -> Result<Self, CastError<Self>>;
 }
 
+impl<V: FromValue> FromValue for Box<[V]> {
+    #[inline]
+    fn from_value(value: Value) -> Result<Self, CastError<Self>> {
+        Vec::<V>::from_value(value).map(|v| v.into_boxed_slice()).map_err(CastError::cast)
+    }
+}
+
+impl<V: FromValue> FromValue for Vec<V> {
+    #[inline]
+    fn from_value(value: Value) -> Result<Self, CastError<Self>> {
+        match value {
+            Value::Array(values) => values
+                .into_iter()
+                .map(|value| V::from_value(value).map_err(CastError::cast))
+                .collect(),
+            _ => Err(CastError { value, phantom: PhantomData }),
+        }
+    }
+}
+
 impl FromValue for u64 {
+    #[inline]
     fn from_value(value: Value) -> Result<Self, CastError<Self>> {
         match value {
             Value::Bool(b) => Ok(b as u64),
@@ -171,6 +287,7 @@ impl FromValue for u64 {
 }
 
 impl<T> FromValue for Oid<T> {
+    #[inline]
     fn from_value(value: Value) -> Result<Self, CastError<Self>> {
         match value {
             Value::Oid(oid) => Ok(oid.cast()),
@@ -180,6 +297,7 @@ impl<T> FromValue for Oid<T> {
 }
 
 impl FromValue for bool {
+    #[inline]
     fn from_value(value: Value) -> Result<Self, CastError<Self>> {
         match value {
             Value::Bool(b) => Ok(b),
@@ -188,7 +306,18 @@ impl FromValue for bool {
     }
 }
 
+impl FromValue for i32 {
+    #[inline]
+    fn from_value(value: Value) -> Result<Self, CastError<Self>> {
+        match value {
+            Value::Int32(i) => Ok(i),
+            _ => Err(CastError { value, phantom: PhantomData }),
+        }
+    }
+}
+
 impl FromValue for i8 {
+    #[inline]
     fn from_value(value: Value) -> Result<Self, CastError<Self>> {
         match value {
             Value::Int32(i) => Ok(i as i8),
@@ -198,6 +327,7 @@ impl FromValue for i8 {
 }
 
 impl FromValue for u8 {
+    #[inline]
     fn from_value(value: Value) -> Result<Self, CastError<Self>> {
         match value {
             Value::Int32(i) => Ok(i as u8),
@@ -207,6 +337,7 @@ impl FromValue for u8 {
 }
 
 impl FromValue for String {
+    #[inline]
     fn from_value(value: Value) -> Result<Self, CastError<Self>> {
         match value {
             Value::Text(s) => Ok(s),
@@ -215,7 +346,8 @@ impl FromValue for String {
     }
 }
 
-impl FromValue for Box<[u8]> {
+impl FromValue for Bytea {
+    #[inline]
     fn from_value(value: Value) -> Result<Self, CastError<Self>> {
         match value {
             Value::Bytea(b) => Ok(b),
@@ -225,14 +357,11 @@ impl FromValue for Box<[u8]> {
 }
 
 impl FromValue for Name {
+    #[inline]
     fn from_value(value: Value) -> Result<Self, CastError<Self>> {
         match value {
             Value::Text(s) => Ok(s.into()),
             _ => Err(CastError { value, phantom: PhantomData }),
         }
     }
-}
-
-pub trait IntoValue {
-    fn into_value(self) -> Value;
 }

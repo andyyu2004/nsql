@@ -1,7 +1,7 @@
 use super::*;
 use crate::Type;
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, FromTuple, IntoTuple)]
 pub struct Column {
     pub(crate) table: Oid<Table>,
     pub(crate) index: ColumnIndex,
@@ -61,6 +61,13 @@ impl FromValue for ColumnIndex {
     }
 }
 
+impl From<ColumnIndex> for Value {
+    #[inline]
+    fn from(val: ColumnIndex) -> Self {
+        Value::Int32(val.index as i32)
+    }
+}
+
 impl ColumnIndex {
     // FIXME ideally this would be private
     #[inline]
@@ -88,9 +95,16 @@ impl SystemEntity for Column {
 
     type Key = (Oid<Self::Parent>, ColumnIndex);
 
+    type SearchKey = (Oid<Self::Parent>, Name);
+
     #[inline]
     fn key(&self) -> Self::Key {
         (self.table, self.index)
+    }
+
+    #[inline]
+    fn search_key(&self) -> Self::SearchKey {
+        (self.table, self.name())
     }
 
     #[inline]
@@ -132,34 +146,5 @@ impl SystemEntity for Column {
     #[inline]
     fn table() -> Oid<Table> {
         Table::ATTRIBUTE
-    }
-}
-
-impl FromTuple for Column {
-    fn from_values(values: impl Iterator<Item = Value>) -> Result<Self, FromTupleError> {
-        let mut values = values;
-        Ok(Self {
-            table: values.next().ok_or(FromTupleError::NotEnoughValues)?.cast_non_null()?,
-            index: values.next().ok_or(FromTupleError::NotEnoughValues)?.cast_non_null()?,
-            ty: values.next().ok_or(FromTupleError::NotEnoughValues)?.cast_non_null()?,
-            name: values.next().ok_or(FromTupleError::NotEnoughValues)?.cast_non_null()?,
-            is_primary_key: values
-                .next()
-                .ok_or(FromTupleError::NotEnoughValues)?
-                .cast_non_null()?,
-        })
-    }
-}
-
-impl IntoTuple for Column {
-    #[inline]
-    fn into_tuple(self) -> Tuple {
-        Tuple::from([
-            Value::Oid(self.table.untyped()),
-            Value::Int32(self.index.index as i32),
-            Value::Oid(self.ty.untyped()),
-            Value::Text(self.name.into()),
-            Value::Bool(self.is_primary_key),
-        ])
     }
 }

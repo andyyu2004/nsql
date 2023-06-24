@@ -1,4 +1,5 @@
 #![deny(rust_2018_idioms)]
+#![feature(never_type)]
 
 mod bootstrap;
 mod entity;
@@ -19,6 +20,7 @@ use nsql_storage_engine::{
 };
 
 pub use self::entity::column::{Column, ColumnIndex, CreateColumnInfo};
+pub use self::entity::function::Function;
 pub use self::entity::index::{Index, IndexKind};
 pub use self::entity::namespace::{CreateNamespaceInfo, Namespace};
 pub use self::entity::table::{CreateTableInfo, Table};
@@ -32,7 +34,13 @@ pub trait SystemEntity: FromTuple + IntoTuple + Eq + fmt::Debug {
 
     type Key: FromTuple + Eq + Hash + fmt::Debug;
 
+    type SearchKey: Eq + Hash + fmt::Debug;
+
     fn key(&self) -> Self::Key;
+
+    /// A unique key that can be used to search for this entity within it's parent.
+    /// e.g. `name`
+    fn search_key(&self) -> Self::SearchKey;
 
     fn name<'env, S: StorageEngine>(
         &self,
@@ -59,6 +67,8 @@ impl SystemEntity for () {
 
     type Key = ();
 
+    type SearchKey = ();
+
     fn name<'env, S: StorageEngine>(
         &self,
         _catalog: Catalog<'env, S>,
@@ -68,6 +78,8 @@ impl SystemEntity for () {
     }
 
     fn key(&self) -> Self::Key {}
+
+    fn search_key(&self) -> Self::SearchKey {}
 
     fn desc() -> &'static str {
         "catalog"

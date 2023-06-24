@@ -12,11 +12,11 @@ use ir::expr::EvalNotConst;
 use ir::{Decimal, Path, TransactionMode, TupleIndex};
 use itertools::Itertools;
 use nsql_catalog::{
-    Catalog, ColumnIndex, CreateColumnInfo, CreateNamespaceInfo, Namespace, SystemEntity, Table,
-    MAIN_SCHEMA,
+    Catalog, ColumnIndex, CreateColumnInfo, CreateNamespaceInfo, Function, Namespace, SystemEntity,
+    Table, Type, MAIN_SCHEMA,
 };
 use nsql_core::{LogicalType, Name, Oid};
-use nsql_parse::ast::{self, HiveDistributionStyle};
+use nsql_parse::ast;
 use nsql_storage_engine::{StorageEngine, Transaction};
 
 use self::scope::Scope;
@@ -94,7 +94,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                 not_implemented!(global.is_some());
                 not_implemented!(*if_not_exists);
                 not_implemented!(!constraints.is_empty());
-                not_implemented!(*hive_distribution != HiveDistributionStyle::NONE);
+                not_implemented!(*hive_distribution != ast::HiveDistributionStyle::NONE);
                 not_implemented!(!table_properties.is_empty());
                 not_implemented!(!with_options.is_empty());
                 not_implemented!(file_format.is_some());
@@ -179,7 +179,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                     let target_column_indices = columns
                         .iter()
                         .map(|ident| ast::Expr::Identifier(ident.clone()))
-                        .map(|expr| match self.bind_expr(&scope, &expr)?.kind {
+                        .map(|expr| match self.bind_expr(tx, &scope, &expr)?.kind {
                             ir::ExprKind::ColumnRef { index, .. } => Ok(index),
                             _ => unreachable!("expected column reference"),
                         })
@@ -229,7 +229,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                     .map(|items| {
                         items
                             .iter()
-                            .map(|selection| self.bind_select_item(&scope, selection))
+                            .map(|selection| self.bind_select_item(tx, &scope, selection))
                             .flatten_ok()
                             .collect::<Result<_>>()
                     })
@@ -285,7 +285,8 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                     .iter()
                     .map(|name| match object_type {
                         ast::ObjectType::Table => {
-                            let table = self.bind_namespaced_entity::<Table>(tx, name)?;
+                            let table =
+                                self.bind_namespaced_entity::<Table>(tx, name, Name::clone)?;
                             Ok(ir::EntityRef::Table(table))
                         }
                         ast::ObjectType::View => todo!(),
@@ -317,7 +318,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                 let mut source = self.build_table_scan(tx, table, None)?;
                 if let Some(predicate) = selection
                     .as_ref()
-                    .map(|selection| self.bind_predicate(&scope, selection))
+                    .map(|selection| self.bind_predicate(tx, &scope, selection))
                     .transpose()?
                 {
                     source = source.filter(predicate);
@@ -331,7 +332,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                     .map(|items| {
                         items
                             .iter()
-                            .map(|selection| self.bind_select_item(&scope, selection))
+                            .map(|selection| self.bind_select_item(tx, &scope, selection))
                             .flatten_ok()
                             .collect::<Result<_>>()
                     })
@@ -414,10 +415,10 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                 }
 
                 // if the column is being updated, we bind the expression in the assignment
-                self.bind_expr(scope, &assignment.value)?
+                self.bind_expr(tx, scope, &assignment.value)?
             } else {
                 // otherwise, we bind the column to itself (effectively an identity projection)
-                self.bind_expr(scope, &ast::Expr::Identifier(ast::Ident::new(column.name())))?
+                self.bind_expr(tx, scope, &ast::Expr::Identifier(ast::Ident::new(column.name())))?
             };
 
             projections.push(expr);
@@ -466,7 +467,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                     let ns = self
                         .catalog
                         .namespaces(tx)?
-                        .find(self.catalog, tx, None, name.as_str())?
+                        .find(self.catalog, tx, None, name)?
                         .ok_or_else(|| unbound!(Namespace, path))?;
                     Ok(ns.key())
                 }
@@ -485,6 +486,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
         &self,
         tx: &dyn Transaction<'env, S>,
         path: &Path,
+        mk_search_key: impl FnOnce(&Name) -> T::SearchKey,
     ) -> Result<T::Key> {
         match path {
             Path::Unqualified(name) => self.bind_namespaced_entity::<T>(
@@ -493,6 +495,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                     prefix: Box::new(Path::Unqualified(MAIN_SCHEMA.into())),
                     name: name.clone(),
                 },
+                mk_search_key,
             ),
             Path::Qualified { prefix, name } => match prefix.as_ref() {
                 Path::Qualified { .. } => not_implemented!("qualified schemas"),
@@ -500,13 +503,13 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                     let namespace = self
                         .catalog
                         .namespaces(tx)?
-                        .find(self.catalog, tx, None, schema.as_str())?
+                        .find(self.catalog, tx, None, schema)?
                         .ok_or_else(|| unbound!(Namespace, path))?;
 
                     let entity = self
                         .catalog
                         .system_table::<T>(tx)?
-                        .find(self.catalog, tx, Some(namespace.key()), name.as_str())?
+                        .find(self.catalog, tx, Some(namespace.key()), &mk_search_key(name))?
                         .ok_or_else(|| unbound!(T, path))?;
 
                     Ok(entity.key())
@@ -546,7 +549,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                 .iter()
                 .map(|item| {
                     let ast::OrderByExpr { expr, asc, nulls_first } = &item;
-                    let expr = self.bind_expr(&scope, expr)?;
+                    let expr = self.bind_expr(tx, &scope, expr)?;
                     Ok(ir::OrderExpr {
                         expr,
                         asc: asc.unwrap_or(true),
@@ -559,7 +562,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
 
         if let Some(limit) = limit {
             // LIMIT is currently not allowed to reference any columns
-            let limit_expr = self.bind_expr(&Scope::default(), limit)?;
+            let limit_expr = self.bind_expr(tx, &Scope::default(), limit)?;
             let limit = limit_expr
                 .const_eval()
                 .map_err(|EvalNotConst| anyhow!("LIMIT expression must be constant"))?
@@ -583,7 +586,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
             ast::SetExpr::Query(_) => todo!(),
             ast::SetExpr::SetOperation { .. } => todo!(),
             ast::SetExpr::Values(values) => {
-                let (scope, values) = self.bind_values(scope, values)?;
+                let (scope, values) = self.bind_values(tx, scope, values)?;
                 (scope, Box::new(ir::QueryPlan::values(values)))
             }
             ast::SetExpr::Insert(_) => todo!(),
@@ -635,13 +638,13 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
         };
 
         if let Some(predicate) = selection {
-            let predicate = self.bind_predicate(&scope, predicate)?;
+            let predicate = self.bind_predicate(tx, &scope, predicate)?;
             source = source.filter(predicate);
         }
 
         let projection = projection
             .iter()
-            .map(|item| self.bind_select_item(&scope, item))
+            .map(|item| self.bind_select_item(tx, &scope, item))
             .flatten_ok()
             .collect::<Result<Box<_>>>()?;
 
@@ -688,7 +691,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                 not_implemented!(*with_offset);
                 not_implemented!(with_offset_alias.is_some());
 
-                let expr = self.bind_expr(scope, array_expr)?;
+                let expr = self.bind_expr(tx, scope, array_expr)?;
                 ensure!(
                     matches!(expr.ty, LogicalType::Array(_)),
                     "UNNEST expression must be an array"
@@ -718,7 +721,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
     ) -> Result<(Scope<S>, Oid<Table>)> {
         let alias = alias.map(|alias| self.lower_table_alias(alias));
         let table_name = self.lower_path(&table_name.0)?;
-        let table = self.bind_namespaced_entity::<Table>(tx, &table_name)?;
+        let table = self.bind_namespaced_entity::<Table>(tx, &table_name, Name::clone)?;
 
         Ok((scope.bind_table(self, tx, table_name, table, alias.as_ref())?, table))
     }
@@ -734,9 +737,14 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
         name.value.as_str().into()
     }
 
-    fn bind_select_item(&self, scope: &Scope<S>, item: &ast::SelectItem) -> Result<Vec<ir::Expr>> {
+    fn bind_select_item(
+        &self,
+        tx: &dyn Transaction<'env, S>,
+        scope: &Scope<S>,
+        item: &ast::SelectItem,
+    ) -> Result<Vec<ir::Expr>> {
         let expr = match item {
-            ast::SelectItem::UnnamedExpr(expr) => self.bind_expr(scope, expr)?,
+            ast::SelectItem::UnnamedExpr(expr) => self.bind_expr(tx, scope, expr)?,
             ast::SelectItem::ExprWithAlias { expr: _, alias: _ } => todo!(),
             ast::SelectItem::QualifiedWildcard(_, _) => not_implemented!("qualified wildcard"),
             ast::SelectItem::Wildcard(ast::WildcardAdditionalOptions {
@@ -772,6 +780,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
 
     fn bind_values(
         &self,
+        tx: &dyn Transaction<'env, S>,
         scope: &Scope<S>,
         values: &ast::Values,
     ) -> Result<(Scope<S>, ir::Values)> {
@@ -793,19 +802,29 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
             values
                 .rows
                 .iter()
-                .map(|row| self.bind_row(scope, row))
+                .map(|row| self.bind_row(tx, scope, row))
                 .collect::<Result<Vec<_>, _>>()?,
         );
 
         Ok((scope.bind_values(&values), values))
     }
 
-    fn bind_row(&self, scope: &Scope<S>, row: &[ast::Expr]) -> Result<Vec<ir::Expr>> {
-        row.iter().map(|expr| self.bind_expr(scope, expr)).collect()
+    fn bind_row(
+        &self,
+        tx: &dyn Transaction<'env, S>,
+        scope: &Scope<S>,
+        row: &[ast::Expr],
+    ) -> Result<Vec<ir::Expr>> {
+        row.iter().map(|expr| self.bind_expr(tx, scope, expr)).collect()
     }
 
-    fn bind_predicate(&self, scope: &Scope<S>, predicate: &ast::Expr) -> Result<ir::Expr> {
-        let predicate = self.bind_expr(scope, predicate)?;
+    fn bind_predicate(
+        &self,
+        tx: &dyn Transaction<'env, S>,
+        scope: &Scope<S>,
+        predicate: &ast::Expr,
+    ) -> Result<ir::Expr> {
+        let predicate = self.bind_expr(tx, scope, predicate)?;
         // We intentionally are being strict here and only allow boolean predicates rather than
         // anything that can be cast to a boolean.
         ensure!(
@@ -825,7 +844,12 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
         scope.lookup_column(&Path::Unqualified(ident.value.clone().into()))
     }
 
-    fn bind_expr(&self, scope: &Scope<S>, expr: &ast::Expr) -> Result<ir::Expr> {
+    fn bind_expr(
+        &self,
+        tx: &dyn Transaction<'env, S>,
+        scope: &Scope<S>,
+        expr: &ast::Expr,
+    ) -> Result<ir::Expr> {
         let (ty, kind) = match expr {
             ast::Expr::Value(literal) => self.bind_value_expr(literal),
             ast::Expr::Identifier(ident) => {
@@ -844,8 +868,8 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                 (ty, ir::ExprKind::ColumnRef { display_path: path, index })
             }
             ast::Expr::BinaryOp { left, op, right } => {
-                let lhs = self.bind_expr(scope, left)?;
-                let rhs = self.bind_expr(scope, right)?;
+                let lhs = self.bind_expr(tx, scope, left)?;
+                let rhs = self.bind_expr(tx, scope, right)?;
                 let (ty, op) = match op {
                     ast::BinaryOperator::Eq => {
                         ensure!(
@@ -896,14 +920,14 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                     // default array type to `Int` if it is empty
                     [] => LogicalType::Int,
                     // otherwise, we can get the type from the first element
-                    [first, ..] => self.bind_expr(scope, first)?.ty,
+                    [first, ..] => self.bind_expr(tx, scope, first)?.ty,
                 };
 
                 let exprs = array
                     .elem
                     .iter()
                     .map(|e| {
-                        let expr = self.bind_expr(scope, e)?;
+                        let expr = self.bind_expr(tx, scope, e)?;
                         // FIXME this isn't going to work with `NULLs` in the array
                         ensure!(
                             expr.ty == ty,
@@ -916,6 +940,55 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                     .collect::<Result<Box<_>, _>>()?;
 
                 (LogicalType::Array(Box::new(ty)), ir::ExprKind::Array(exprs))
+            }
+            ast::Expr::Function(ast::Function {
+                name,
+                args,
+                over,
+                distinct,
+                special,
+                order_by,
+            }) => {
+                not_implemented!(over.is_some());
+                not_implemented!(*distinct);
+                not_implemented!(*special);
+                not_implemented!(!order_by.is_empty());
+
+                let args = args
+                    .iter()
+                    .map(|arg| {
+                        Ok(match arg {
+                            ast::FunctionArg::Named { .. } => {
+                                not_implemented!("named function args")
+                            }
+                            ast::FunctionArg::Unnamed(expr) => match expr {
+                                ast::FunctionArgExpr::Expr(expr) => expr,
+                                ast::FunctionArgExpr::QualifiedWildcard(_) => {
+                                    not_implemented!("qualified wildcard arg")
+                                }
+                                ast::FunctionArgExpr::Wildcard => not_implemented!("wildcard arg"),
+                            },
+                        })
+                    })
+                    .collect::<Result<Vec<&ast::Expr>, _>>()?;
+
+                let args =
+                    args.iter()
+                        .map(|arg| self.bind_expr(tx, scope, arg))
+                        .collect::<Result<Box<_>, _>>()?;
+
+                let arg_types =
+                    args.iter().map(|arg| Type::logical_type_to_oid(&arg.ty)).collect::<Vec<_>>();
+
+                let path = self.lower_path(&name.0)?;
+                let function = self.bind_namespaced_entity::<Function>(tx, &path, |name| {
+                    (name.clone(), arg_types.into())
+                })?;
+
+                let function = self.catalog.get::<Function>(tx, function)?;
+                let ty = Type::oid_to_logical_type(function.return_type());
+
+                (ty, ir::ExprKind::FunctionCall { function, args })
             }
             _ => todo!("todo expr: {:?}", expr),
         };

@@ -6,6 +6,7 @@ members = [
     "nsql-bind",
     "nsql-catalog",
     "nsql-core",
+    "nsql-derive",
     "nsql-execution",
     "nsql-ir",
     "nsql-parse",

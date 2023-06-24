@@ -203,7 +203,6 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> TransactionC
 }
 
 pub struct ExecutionContext<'env, S: StorageEngine, M: ExecutionMode<'env, S>> {
-    storage: &'env S,
     catalog: Catalog<'env, S>,
     tcx: TransactionContext<'env, S, M>,
 }
@@ -218,17 +217,8 @@ impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> ExecutionContext<'env, S
 
 impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> ExecutionContext<'env, S, M> {
     #[inline]
-    pub fn new(
-        storage: &'env S,
-        catalog: Catalog<'env, S>,
-        tcx: TransactionContext<'env, S, M>,
-    ) -> Self {
-        Self { storage, catalog, tcx }
-    }
-
-    #[inline]
-    pub fn storage(&self) -> &S {
-        self.storage
+    pub fn new(catalog: Catalog<'env, S>, tcx: TransactionContext<'env, S, M>) -> Self {
+        Self { catalog, tcx }
     }
 
     #[inline]

@@ -86,6 +86,11 @@ pub enum LogicalType {
 }
 
 impl LogicalType {
+    #[inline]
+    pub fn array(inner: LogicalType) -> Self {
+        LogicalType::Array(Box::new(inner))
+    }
+
     // HACK to workaround null type equality for now
     #[inline]
     pub fn is_subtype_of(&self, supertype: &Self) -> bool {

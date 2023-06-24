@@ -1,11 +1,10 @@
 use nsql_storage::eval::TupleExpr;
-use nsql_storage::value::IntoValue;
 use nsql_storage::IndexStorageInfo;
 
 use super::*;
 use crate::Namespace;
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, FromTuple)]
 pub struct Index {
     pub(crate) table: Oid<Table>,
     pub(crate) target: Oid<Table>,
@@ -48,18 +47,6 @@ impl FromValue for IndexKind {
     }
 }
 
-impl FromTuple for Index {
-    #[inline]
-    fn from_values(mut values: impl Iterator<Item = Value>) -> Result<Self, FromTupleError> {
-        Ok(Self {
-            table: values.next().ok_or(FromTupleError::NotEnoughValues)?.cast_non_null()?,
-            target: values.next().ok_or(FromTupleError::NotEnoughValues)?.cast_non_null()?,
-            kind: values.next().ok_or(FromTupleError::NotEnoughValues)?.cast_non_null()?,
-            index_expr: values.next().ok_or(FromTupleError::NotEnoughValues)?.cast_non_null()?,
-        })
-    }
-}
-
 impl IntoTuple for Index {
     #[inline]
     fn into_tuple(self) -> Tuple {
@@ -67,7 +54,7 @@ impl IntoTuple for Index {
             Value::Oid(self.table.untyped()),
             Value::Oid(self.target.untyped()),
             Value::Int32(self.kind as i32),
-            self.index_expr.into_value(),
+            self.index_expr.into(),
         ])
     }
 }
@@ -76,6 +63,13 @@ impl SystemEntity for Index {
     type Parent = Namespace;
 
     type Key = <Table as SystemEntity>::Key;
+
+    type SearchKey = !;
+
+    #[inline]
+    fn search_key(&self) -> Self::SearchKey {
+        todo!()
+    }
 
     #[inline]
     fn key(&self) -> Self::Key {

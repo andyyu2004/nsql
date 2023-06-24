@@ -1,6 +1,6 @@
 use super::*;
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, FromTuple, IntoTuple)]
 pub struct Namespace {
     pub(crate) oid: Oid<Namespace>,
     pub(crate) name: Name,
@@ -22,6 +22,13 @@ impl SystemEntity for Namespace {
     type Parent = ();
 
     type Key = Oid<Self>;
+
+    type SearchKey = Name;
+
+    #[inline]
+    fn search_key(&self) -> Self::SearchKey {
+        self.name()
+    }
 
     #[inline]
     fn key(&self) -> Oid<Self> {
@@ -64,21 +71,6 @@ impl SystemEntity for Namespace {
     #[inline]
     fn table() -> Oid<Table> {
         Table::NAMESPACE
-    }
-}
-
-impl FromTuple for Namespace {
-    fn from_values(mut values: impl Iterator<Item = Value>) -> Result<Self, FromTupleError> {
-        Ok(Self {
-            oid: values.next().ok_or(FromTupleError::NotEnoughValues)?.cast_non_null()?,
-            name: values.next().ok_or(FromTupleError::NotEnoughValues)?.cast_non_null()?,
-        })
-    }
-}
-
-impl IntoTuple for Namespace {
-    fn into_tuple(self) -> Tuple {
-        Tuple::from([Value::Oid(self.oid.untyped()), Value::Text(self.name.into())])
     }
 }
 

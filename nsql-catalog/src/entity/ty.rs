@@ -1,9 +1,16 @@
 use super::*;
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, FromTuple, IntoTuple)]
 pub struct Type {
     pub(crate) oid: Oid<Type>,
     pub(crate) name: Name,
+}
+
+impl Type {
+    #[inline]
+    pub fn name(&self) -> Name {
+        Name::clone(&self.name)
+    }
 }
 
 impl SystemEntity for Type {
@@ -11,10 +18,18 @@ impl SystemEntity for Type {
 
     type Key = Oid<Self>;
 
+    type SearchKey = Name;
+
     #[inline]
     fn key(&self) -> Oid<Self> {
         self.oid
     }
+
+    #[inline]
+    fn search_key(&self) -> Name {
+        self.name()
+    }
+
     #[inline]
     fn name<'env, S: StorageEngine>(
         &self,
@@ -53,36 +68,15 @@ impl SystemEntity for Type {
     }
 }
 
-impl FromTuple for Type {
-    fn from_values(mut values: impl Iterator<Item = Value>) -> Result<Self, FromTupleError> {
-        Ok(Self {
-            oid: values.next().ok_or(FromTupleError::NotEnoughValues)?.cast_non_null()?,
-            name: values.next().ok_or(FromTupleError::NotEnoughValues)?.cast_non_null()?,
-        })
-    }
-}
-
-impl IntoTuple for Type {
-    fn into_tuple(self) -> Tuple {
-        Tuple::from([Value::Oid(self.oid.untyped()), Value::Text(self.name.into())])
-    }
-}
-
 impl Type {
     pub fn oid_to_logical_type(oid: Oid<Self>) -> LogicalType {
-        // can't use match because of structuraleq sadness
-        if oid == Type::OID {
-            LogicalType::Oid
-        } else if oid == Type::BOOL {
-            LogicalType::Bool
-        } else if oid == Type::INT {
-            LogicalType::Int
-        } else if oid == Type::TEXT {
-            LogicalType::Text
-        } else if oid == Type::BYTEA {
-            LogicalType::Bytea
-        } else {
-            panic!()
+        match oid {
+            Type::OID => LogicalType::Oid,
+            Type::BOOL => LogicalType::Bool,
+            Type::INT => LogicalType::Int,
+            Type::TEXT => LogicalType::Text,
+            Type::BYTEA => LogicalType::Bytea,
+            _ => panic!(),
         }
     }
 

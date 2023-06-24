@@ -59,11 +59,10 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: SystemEnt
         catalog: Catalog<'env, S>,
         tx: &dyn Transaction<'env, S>,
         parent: Option<Oid<T::Parent>>,
-        name: &str,
+        key: &T::SearchKey,
     ) -> Result<Option<T>> {
         self.scan()?.find(|entry| {
-            Ok(entry.parent_oid(catalog, tx)? == parent
-                && entry.name(catalog, tx)?.as_str() == name)
+            Ok(entry.parent_oid(catalog, tx)? == parent && &entry.search_key() == key)
         })
     }
 

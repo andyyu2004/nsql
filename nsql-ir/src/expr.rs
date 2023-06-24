@@ -5,7 +5,7 @@ use std::ops::Deref;
 
 pub use eval::EvalNotConst;
 use itertools::Itertools;
-use nsql_catalog::{ColumnIndex, Table};
+use nsql_catalog::{ColumnIndex, Function, Table};
 use nsql_core::{LogicalType, Oid};
 use nsql_storage::tuple::TupleIndex;
 use nsql_storage::value::Value;
@@ -134,6 +134,10 @@ pub enum ExprKind {
         /// An index into the tuple the expression is evaluated against
         index: TupleIndex,
     },
+    FunctionCall {
+        function: Function,
+        args: Box<[Expr]>,
+    },
 }
 
 impl fmt::Display for ExprKind {
@@ -143,6 +147,9 @@ impl fmt::Display for ExprKind {
             ExprKind::ColumnRef { display_path, .. } => write!(f, "{display_path}"),
             ExprKind::BinOp { op, lhs, rhs } => write!(f, "({lhs} {op} {rhs})"),
             ExprKind::Array(exprs) => write!(f, "[{}]", exprs.iter().format(", ")),
+            ExprKind::FunctionCall { function, args } => {
+                write!(f, "{}({})", function.name(), args.iter().format(", "))
+            }
         }
     }
 }

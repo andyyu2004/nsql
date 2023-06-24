@@ -9,36 +9,13 @@ use rkyv::{Archive, Deserialize, Serialize};
 /// type, it is currently possible to misuse this type and read from the wrong set.
 // This must only be constructed internally by the catalog.
 // FIXME move the typedoid to catalog crate but keep the untyped one here
-#[derive(Archive, Serialize, Deserialize)]
+#[derive(PartialOrd, Ord, PartialEq, Eq, Archive, Serialize, Deserialize)]
 pub struct Oid<T: ?Sized> {
     oid: u64,
     marker: PhantomData<fn() -> T>,
 }
 
 pub type UntypedOid = Oid<()>;
-
-impl<T> PartialEq for Oid<T> {
-    #[inline]
-    fn eq(&self, other: &Self) -> bool {
-        self.oid == other.oid
-    }
-}
-
-impl<T> Eq for Oid<T> {}
-
-impl<T> PartialOrd for Oid<T> {
-    #[inline]
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        self.oid.partial_cmp(&other.oid)
-    }
-}
-
-impl<T> Ord for Oid<T> {
-    #[inline]
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.oid.cmp(&other.oid)
-    }
-}
 
 impl<T: ?Sized> fmt::Debug for Oid<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
