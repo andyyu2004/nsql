@@ -1,6 +1,5 @@
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
-use nsql::Nsql;
-use nsql_redb::RedbStorageEngine;
+use nsql::{LmdbStorageEngine, Nsql};
 
 pub fn criterion_benchmark(c: &mut Criterion) {
     let mut group = c.benchmark_group("insert");
@@ -10,7 +9,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
         group.bench_with_input(BenchmarkId::from_parameter(size), &size, |b, &size| {
             b.iter(|| {
                 let db_path = nsql_test::tempfile::NamedTempFile::new().unwrap().into_temp_path();
-                let nsql = Nsql::<RedbStorageEngine>::create(db_path).unwrap();
+                let nsql = Nsql::<LmdbStorageEngine>::create(db_path).unwrap();
                 let (conn, state) = nsql.connect();
                 conn.query(&state, "CREATE TABLE t (id int PRIMARY KEY)").unwrap();
                 conn.query(
@@ -21,6 +20,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
             });
         });
     }
+
     group.finish();
 }
 

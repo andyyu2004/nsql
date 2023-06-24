@@ -11,8 +11,9 @@ use crate::ReadWriteExecutionMode;
 
 pub(crate) struct PhysicalInsert<'env, 'txn, S: StorageEngine> {
     children: [Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode>>; 1],
+    table_oid: Oid<Table>,
     storage: OnceLock<Mutex<TableStorage<'env, 'txn, S, ReadWriteExecutionMode>>>,
-    table: Oid<Table>,
+    table: OnceLock<Table>,
     returning: Option<Box<[ir::Expr]>>,
     returning_tuples: RwLock<Vec<Tuple>>,
     returning_evaluator: Evaluator,
@@ -20,17 +21,18 @@ pub(crate) struct PhysicalInsert<'env, 'txn, S: StorageEngine> {
 
 impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalInsert<'env, 'txn, S> {
     pub fn plan(
-        table: Oid<Table>,
+        table_oid: Oid<Table>,
         source: Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode>>,
         returning: Option<Box<[ir::Expr]>>,
     ) -> Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode>> {
         Arc::new(Self {
-            table,
+            table_oid,
             returning,
             children: [source],
-            storage: Default::default(),
-            returning_tuples: Default::default(),
             returning_evaluator: Evaluator::new(),
+            storage: Default::default(),
+            table: Default::default(),
+            returning_tuples: Default::default(),
         })
     }
 }
@@ -80,13 +82,14 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSink<'env, 'txn, S, ReadWriteEx
     ) -> ExecutionResult<()> {
         let catalog = ecx.catalog();
         let tx = ecx.tx()?;
-        let table = catalog.table(tx, self.table)?;
+
+        let table = self.table.get_or_try_init(|| catalog.get(tx, self.table_oid))?;
 
         let storage = self.storage.get_or_try_init(|| {
             table.storage::<S, ReadWriteExecutionMode>(catalog, tx).map(Mutex::new)
         })?;
 
-        let mut storage = storage.lock();
+        let storage: &mut TableStorage<'env, 'txn, _, _> = &mut storage.lock();
         storage.insert(&tuple)?.map_err(|PrimaryKeyConflict { key }| {
             anyhow::anyhow!("duplicate key `{key}` violates unique constraint")
         })?;
@@ -120,7 +123,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> Explain<'env, S> for PhysicalInsert<'en
         tx: &dyn Transaction<'env, S>,
         f: &mut fmt::Formatter<'_>,
     ) -> explain::Result {
-        write!(f, "insert into {}", catalog.table(tx, self.table)?.name())?;
+        write!(f, "insert into {}", catalog.table(tx, self.table_oid)?.name())?;
         Ok(())
     }
 }

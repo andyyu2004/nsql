@@ -22,6 +22,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> IndexStorage
 }
 
 impl<'env, 'txn, S: StorageEngine> IndexStorage<'env, 'txn, S, ReadWriteExecutionMode> {
+    #[inline]
     pub fn insert(&mut self, tuple: &Tuple) -> Result<(), anyhow::Error> {
         let tuple = self.index_expr.eval(tuple)?;
         self.storage

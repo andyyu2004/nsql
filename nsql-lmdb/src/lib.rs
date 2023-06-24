@@ -61,7 +61,6 @@ impl StorageEngine for LmdbStorageEngine {
     where
         Self: Sized,
     {
-        std::fs::OpenOptions::new().create(true).write(true).truncate(false).open(&path)?;
         Self::open(path)
     }
 
@@ -74,7 +73,7 @@ impl StorageEngine for LmdbStorageEngine {
         // Perhaps we can do a lmdb database per schema and have a reasonable limit on it (say ~100)
         let env = unsafe { heed::EnvOpenOptions::new().flag(Flag::NoSubDir).flag(Flag::NoTls) }
             .map_size(2 * 1024 * 1024 * 1024) // 2 GiB
-            .max_dbs(100)
+            .max_dbs(2000)
             .open(path)?;
         Ok(Self { env })
     }
