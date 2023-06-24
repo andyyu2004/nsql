@@ -136,8 +136,7 @@ impl SystemEntity for Column {
 }
 
 impl FromTuple for Column {
-    fn from_values(values: impl Iterator<Item = Value>) -> Result<Self, FromTupleError> {
-        let mut values = values;
+    fn from_values(mut values: impl Iterator<Item = Value>) -> Result<Self, FromTupleError> {
         Ok(Self {
             table: values.next().ok_or(FromTupleError::NotEnoughValues)?.cast_non_null()?,
             index: values.next().ok_or(FromTupleError::NotEnoughValues)?.cast_non_null()?,

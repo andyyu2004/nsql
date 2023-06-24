@@ -952,7 +952,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                 not_implemented!(!order_by.is_empty());
 
                 let path = self.lower_path(&name.0)?;
-                // self.bind_namespaced_entity(tx, &path);
+                self.bind_namespaced_entity(tx, &path);
                 todo!();
             }
             _ => todo!("todo expr: {:?}", expr),
