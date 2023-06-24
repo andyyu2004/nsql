@@ -9,6 +9,7 @@ use nsql_bind::Binder;
 use nsql_catalog::Catalog;
 pub use nsql_core::LogicalType;
 use nsql_execution::{ExecutionContext, PhysicalPlanner, TransactionContext, TransactionState};
+pub use nsql_lmdb::LmdbStorageEngine;
 use nsql_opt::optimize;
 use nsql_plan::Planner;
 pub use nsql_redb::RedbStorageEngine;
