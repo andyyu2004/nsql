@@ -213,7 +213,7 @@ fn bootstrap_info() -> BootstrapInfo {
             oid: Function::RANGE2,
             name: "range",
             args: vec![LogicalType::Int, LogicalType::Int],
-            ret: LogicalType::array(LogicalType::Oid),
+            ret: LogicalType::array(LogicalType::Int),
         }],
     }
 }

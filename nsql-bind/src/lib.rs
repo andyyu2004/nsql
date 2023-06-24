@@ -166,9 +166,9 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                     }
                 }
 
-                // We bind the columns of the table first, so that we can use them in the following projection
+                let (_, mut source) = self.bind_query(tx, scope, source)?;
+
                 let (scope, table) = self.bind_table(tx, scope, table_name, None)?;
-                let (scope, mut source) = self.bind_query(tx, &scope, source)?;
 
                 let table_columns =
                     self.catalog.get::<Table>(tx, table)?.columns(self.catalog, tx)?;

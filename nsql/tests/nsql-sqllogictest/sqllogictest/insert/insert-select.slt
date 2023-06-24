@@ -1,0 +1,19 @@
+statement ok
+CREATE TABLE t (x int PRIMARY KEY);
+
+statement ok
+INSERT INTO t SELECT unnest FROM unnest(range(1, 2))
+
+statement ok
+INSERT INTO t SELECT k FROM unnest(range(2, 3)) AS tmp(k)
+
+statement ok
+INSERT INTO t SELECT * FROM unnest(range(3, 4))
+
+query I
+SELECT * FROM t ORDER BY x;
+----
+1
+2
+3
+

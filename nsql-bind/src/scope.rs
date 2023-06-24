@@ -135,11 +135,14 @@ impl<S: StorageEngine> Scope<S> {
     }
 
     pub fn bind_unnest(&self, expr: &ir::Expr) -> Scope<S> {
+        let ty = match &expr.ty {
+            LogicalType::Array(element_type) => *element_type.clone(),
+            _ => panic!("unnest expression must be an array"),
+        };
+
         Self {
             tables: self.tables.clone(),
-            bound_columns: self
-                .bound_columns
-                .push_back((Path::Unqualified("unnest".into()), expr.ty.clone())),
+            bound_columns: self.bound_columns.push_back((Path::Unqualified("unnest".into()), ty)),
             marker: PhantomData,
         }
     }
@@ -161,8 +164,6 @@ impl<S: StorageEngine> Scope<S> {
     }
 
     pub fn alias(&self, alias: TableAlias) -> Result<Self> {
-        assert!(self.tables.is_empty(), "not sure when this occurs");
-
         // if no columns are specified, we only rename the table
         if !alias.columns.is_empty() && self.bound_columns.len() != alias.columns.len() {
             bail!(
