@@ -1,18 +1,37 @@
+use std::sync::atomic::{self, AtomicBool, AtomicUsize};
+
+use nsql_arena::Idx;
+use parking_lot::RwLock;
+
 use super::*;
+use crate::pipeline::{MetaPipelineBuilder, PipelineBuilder, PipelineBuilderArena};
 
 #[derive(Debug)]
 pub(crate) struct PhysicalNestedLoopJoin<'env, 'txn, S, M> {
     children: [Arc<dyn PhysicalNode<'env, 'txn, S, M>>; 2],
+    join: ir::Join,
+    rhs_tuples: RwLock<Vec<Tuple>>,
+    evaluator: Evaluator,
+    finalized: AtomicBool,
+    rhs_index: AtomicUsize,
 }
 
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     PhysicalNestedLoopJoin<'env, 'txn, S, M>
 {
     pub fn plan(
+        join: ir::Join,
         lhs: Arc<dyn PhysicalNode<'env, 'txn, S, M>>,
         rhs: Arc<dyn PhysicalNode<'env, 'txn, S, M>>,
     ) -> Arc<dyn PhysicalNode<'env, 'txn, S, M>> {
-        Arc::new(Self { children: [lhs, rhs] })
+        Arc::new(Self {
+            join,
+            children: [lhs, rhs],
+            finalized: AtomicBool::new(false),
+            rhs_index: AtomicUsize::new(0),
+            rhs_tuples: Default::default(),
+            evaluator: Evaluator::new(),
+        })
     }
 }
 
@@ -41,7 +60,101 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode
         self: Arc<Self>,
     ) -> Result<Arc<dyn PhysicalOperator<'env, 'txn, S, M>>, Arc<dyn PhysicalNode<'env, 'txn, S, M>>>
     {
-        Err(self)
+        Ok(self)
+    }
+
+    fn build_pipelines(
+        self: Arc<Self>,
+        arena: &mut PipelineBuilderArena<'env, 'txn, S, M>,
+        meta_builder: Idx<MetaPipelineBuilder<'env, 'txn, S, M>>,
+        current: Idx<PipelineBuilder<'env, 'txn, S, M>>,
+    ) {
+        // `current` is the probe pipeline of the join
+        arena[current].add_operator(Arc::clone(&self) as _);
+
+        // arena.build(meta_builder, Arc::clone(&self.children[0]));
+        Arc::clone(&self.children[0]).build_pipelines(arena, meta_builder, current);
+
+        // create a new meta pipeline for the build side of the join with `self` as the sink
+        let child_meta_pipeline =
+            arena.new_child_meta_pipeline(meta_builder, Arc::clone(&self) as _);
+
+        arena.build(child_meta_pipeline, Arc::clone(&self.children[1]));
+    }
+}
+
+impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalOperator<'env, 'txn, S, M>
+    for PhysicalNestedLoopJoin<'env, 'txn, S, M>
+{
+    fn execute(
+        &self,
+        _ecx: &'txn ExecutionContext<'env, S, M>,
+        input: Tuple,
+    ) -> ExecutionResult<OperatorState<Tuple>> {
+        assert!(self.finalized.load(atomic::Ordering::Relaxed), "probing before build is finished");
+
+        let rhs_tuples = self.rhs_tuples.read();
+        // FIXME it looks like we're feeding our own output back into ourselves
+        // the pipeline building is definitely wrong
+        dbg!(&input);
+        if rhs_tuples.is_empty() {
+            return Ok(OperatorState::Done);
+        }
+
+        let next_index = match self.rhs_index.fetch_update(
+            atomic::Ordering::Relaxed,
+            atomic::Ordering::Relaxed,
+            |i| {
+                if i < rhs_tuples.len() { Some(i + 1) } else { None }
+            },
+        ) {
+            Ok(next_index) => next_index,
+            Err(last_index) => {
+                assert_eq!(last_index, rhs_tuples.len());
+                return Ok(OperatorState::Continue);
+            }
+        };
+
+        let rhs_tuple = &rhs_tuples[next_index];
+        let joint_tuple = input.join(rhs_tuple);
+
+        match &self.join {
+            ir::Join::Inner(constraint) => match constraint {
+                ir::JoinConstraint::On(predicate) => {
+                    if self.evaluator.evaluate_expr(&joint_tuple, predicate).cast_non_null()? {
+                        Ok(OperatorState::Again(joint_tuple))
+                    } else {
+                        Ok(OperatorState::Continue)
+                    }
+                }
+            },
+            ir::Join::Cross => todo!(),
+        }
+    }
+}
+
+impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSink<'env, 'txn, S, M>
+    for PhysicalNestedLoopJoin<'env, 'txn, S, M>
+{
+    fn sink(&self, _ecx: &'txn ExecutionContext<'env, S, M>, tuple: Tuple) -> ExecutionResult<()> {
+        self.rhs_tuples.write().push(tuple);
+        Ok(())
+    }
+
+    fn finalize(&self, _ecx: &'txn ExecutionContext<'env, S, M>) -> ExecutionResult<()> {
+        self.finalized.store(true, atomic::Ordering::Relaxed);
+        Ok(())
+    }
+}
+
+impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSource<'env, 'txn, S, M>
+    for PhysicalNestedLoopJoin<'env, 'txn, S, M>
+{
+    fn source(
+        self: Arc<Self>,
+        ecx: &'txn ExecutionContext<'env, S, M>,
+    ) -> ExecutionResult<TupleStream<'txn>> {
+        todo!()
     }
 }
 

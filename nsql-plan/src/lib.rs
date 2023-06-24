@@ -20,7 +20,7 @@ pub enum Plan {
     Scan { table: Oid<Table>, projection: Option<Box<[ColumnIndex]>> },
     Limit { source: Box<Plan>, limit: u64 },
     Order { source: Box<Plan>, order: Box<[ir::OrderExpr]> },
-    Join { lhs: Box<Plan>, rhs: Box<Plan> },
+    Join { join: ir::Join, lhs: Box<Plan>, rhs: Box<Plan> },
 }
 
 #[derive(Debug, Default)]
@@ -71,8 +71,8 @@ impl Planner {
                 Plan::Order { source, order }
             }
             ir::QueryPlan::Unnest { expr, .. } => Plan::Unnest { expr },
-            ir::QueryPlan::Join { lhs, rhs, .. } => {
-                Plan::Join { lhs: self.plan_query(lhs), rhs: self.plan_query(rhs) }
+            ir::QueryPlan::Join { lhs, rhs, join, .. } => {
+                Plan::Join { join, lhs: self.plan_query(lhs), rhs: self.plan_query(rhs) }
             }
         };
 

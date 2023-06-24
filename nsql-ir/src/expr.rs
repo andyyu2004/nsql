@@ -41,6 +41,7 @@ pub enum QueryPlan {
     },
     Join {
         schema: QueryPlanSchema,
+        join: Join,
         lhs: Box<QueryPlan>,
         rhs: Box<QueryPlan>,
         // cross join only for now
@@ -54,6 +55,17 @@ pub enum QueryPlan {
         order: Box<[OrderExpr]>,
     },
     Empty,
+}
+
+#[derive(Debug, Clone)]
+pub enum Join {
+    Inner(JoinConstraint),
+    Cross,
+}
+
+#[derive(Debug, Clone)]
+pub enum JoinConstraint {
+    On(Expr),
 }
 
 #[derive(Debug, Clone)]
@@ -107,9 +119,9 @@ impl QueryPlan {
         Box::new(QueryPlan::Order { source: self, order: order.into() })
     }
 
-    pub fn join(self: Box<Self>, rhs: Box<QueryPlan>) -> Box<QueryPlan> {
+    pub fn join(self: Box<Self>, join: Join, rhs: Box<QueryPlan>) -> Box<QueryPlan> {
         let schema = self.schema().iter().chain(rhs.schema()).cloned().collect();
-        Box::new(QueryPlan::Join { schema, lhs: self, rhs })
+        Box::new(QueryPlan::Join { schema, join, lhs: self, rhs })
     }
 
     #[inline]

@@ -678,18 +678,25 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
         let (scope, rhs) = self.bind_table_factor(tx, scope, &join.relation)?;
         match &join.join_operator {
             ast::JoinOperator::CrossJoin => {
-                let plan = lhs.join(rhs);
-                Ok((scope, plan))
+                let plan = lhs.join(ir::Join::Cross, rhs);
+                todo!();
+                // Ok((scope, plan))
             }
-            // ast::JoinOperator::Inner(constraint) => match &constraint {
-            //     ast::JoinConstraint::On(expr) => {
-            //         let predicate = self.bind_predicate(tx, &scope, expr)?;
-            //         Ok((scope, plan.inner_join(predicate)))
-            //     }
-            //     ast::JoinConstraint::Using(_) | ast::JoinConstraint::Natural => {
-            //         not_implemented!("only `on` joins are currently supported")
-            //     }
-            // },
+            ast::JoinOperator::Inner(constraint) => match &constraint {
+                ast::JoinConstraint::On(expr) => {
+                    let predicate = self.bind_predicate(tx, &scope, expr)?;
+                    ensure!(
+                        predicate.ty == LogicalType::Bool,
+                        "join predicate must be a boolean expression"
+                    );
+                    Ok((scope, lhs.join(ir::Join::Inner(ir::JoinConstraint::On(predicate)), rhs)))
+                }
+                ast::JoinConstraint::Using(_)
+                | ast::JoinConstraint::Natural
+                | ast::JoinConstraint::None => {
+                    not_implemented!("only `on` joins are currently supported")
+                }
+            },
             _ => not_implemented!("only INNER JOIN is currently supported"),
         }
     }

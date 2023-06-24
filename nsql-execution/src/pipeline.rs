@@ -12,12 +12,14 @@ pub(crate) struct MetaPipeline<'env, 'txn, S, M> {
     pub(crate) children: Vec<Idx<MetaPipeline<'env, 'txn, S, M>>>,
 }
 
+#[derive(Debug)]
 pub(crate) struct MetaPipelineBuilder<'env, 'txn, S, M> {
     sink: Arc<dyn PhysicalSink<'env, 'txn, S, M>>,
     pipelines: Vec<Idx<PipelineBuilder<'env, 'txn, S, M>>>,
     children: Vec<Idx<MetaPipelineBuilder<'env, 'txn, S, M>>>,
 }
 
+#[derive(Debug)]
 pub(crate) struct PipelineBuilderArena<'env, 'txn, S, M> {
     root: Option<Idx<MetaPipelineBuilder<'env, 'txn, S, M>>>,
     pipelines: Arena<PipelineBuilder<'env, 'txn, S, M>>,
@@ -112,7 +114,10 @@ impl<'env, 'txn, S, M> PipelineArena<'env, 'txn, S, M> {
             .map(|idx| Arc::as_ptr(&self[*idx].sink) as *const dyn PhysicalSource<'env, 'txn, S, M>)
             .collect::<HashSet<_>>();
 
-        assert!(child_meta_pipeline_sink_ptrs.is_subset(&pipeline_source_ptrs));
+        assert!(
+            child_meta_pipeline_sink_ptrs.is_subset(&pipeline_source_ptrs),
+            "not all child meta pipeline sinks are the source of some pipeline"
+        );
 
         for child in &meta_pipeline.children {
             self.verify_meta_pipeline(*child);
@@ -190,6 +195,7 @@ impl<'env, 'txn, S, M> Pipeline<'env, 'txn, S, M> {
     }
 }
 
+#[derive(Debug)]
 pub(crate) struct PipelineBuilder<'env, 'txn, S, M> {
     source: Option<Arc<dyn PhysicalSource<'env, 'txn, S, M>>>,
     operators: Vec<Arc<dyn PhysicalOperator<'env, 'txn, S, M>>>,
@@ -201,6 +207,7 @@ impl<'env, 'txn, S, M> PipelineBuilder<'env, 'txn, S, M> {
         Self { source: None, operators: vec![], sink }
     }
 
+    #[track_caller]
     pub(crate) fn set_source(&mut self, source: Arc<dyn PhysicalSource<'env, 'txn, S, M>>) {
         assert!(self.source.is_none(), "pipeline source already set");
         self.source = Some(source);

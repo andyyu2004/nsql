@@ -166,8 +166,8 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalPlanner<'env, S> {
             Plan::Filter { source, predicate } => {
                 PhysicalFilter::plan(f(self, tx, source)?, predicate)
             }
-            Plan::Join { lhs, rhs } => {
-                PhysicalNestedLoopJoin::plan(f(self, tx, lhs)?, f(self, tx, rhs)?)
+            Plan::Join { join, lhs, rhs } => {
+                PhysicalNestedLoopJoin::plan(join, f(self, tx, lhs)?, f(self, tx, rhs)?)
             }
             Plan::Unnest { expr } => PhysicalUnnest::plan(expr),
             Plan::Empty => PhysicalDummyScan::plan(),

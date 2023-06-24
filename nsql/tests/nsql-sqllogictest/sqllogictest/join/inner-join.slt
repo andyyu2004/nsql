@@ -7,17 +7,24 @@ statement ok
 CREATE TABLE author (author_id INT PRIMARY KEY, name TEXT)
 
 statement ok
+INSERT INTO author VALUES (1, 'J.R.R. Tolkien')
+
+statement ok
+INSERT INTO author VALUES (2, 'Leo Tolstoy')
+
+statement ok
 INSERT INTO book VALUES (1, 'The Hobbit', 1)
 
 statement ok
 INSERT INTO book VALUES (2, 'The Silmarillion', 1)
 
 statement ok
-INSERT INTO author VALUES (1, 'J.R.R. Tolkien')
+INSERT INTO book VALUES (3, 'War and Peace', 2)
+
 
 query ITIIT ok
-SELECT * FROM book CROSS JOIN author
+SELECT * FROM book INNER JOIN author ON book.author = author.author_id ORDER BY book_id
 ----
-id|title|author|id|name
-1|The Hobbit|1|1|J.R.R. Tolkien
-2|The Silmarillion|1|1|J.R.R. Tolkien
+1 The Hobbit 1 1 J.R.R. Tolkien
+2 The Silmarillion 1 1 J.R.R. Tolkien
+3 War and Peace 2 2 Leo Tolstoy

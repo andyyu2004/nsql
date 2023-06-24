@@ -47,6 +47,13 @@ impl Tuple {
     }
 
     #[inline]
+    pub fn join(self, other: &Self) -> Self {
+        let mut values = self.0.into_vec();
+        values.extend_from_slice(&other.0);
+        Self::new(values.into_boxed_slice())
+    }
+
+    #[inline]
     pub fn project_archived(values: &[&Archived<Value>], projection: &[TupleIndex]) -> Tuple {
         projection.iter().map(|&idx| nsql_rkyv::deserialize(values[idx.0])).collect()
     }
