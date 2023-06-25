@@ -6,25 +6,23 @@ use std::ops::Deref;
 pub use eval::EvalNotConst;
 use itertools::Itertools;
 use nsql_catalog::{ColumnIndex, Function, Table};
-use nsql_core::{LogicalType, Oid};
+use nsql_core::{LogicalType, Oid, Schema};
 use nsql_storage::tuple::TupleIndex;
 use nsql_storage::value::Value;
 
 use crate::Path;
-
-pub type QueryPlanSchema = Vec<LogicalType>;
 
 #[derive(Debug, Clone)]
 pub enum QueryPlan {
     TableScan {
         table: Oid<Table>,
         projection: Option<Box<[ColumnIndex]>>,
-        projected_schema: QueryPlanSchema,
+        projected_schema: Schema,
     },
     Projection {
         source: Box<QueryPlan>,
         projection: Box<[Expr]>,
-        projected_schema: QueryPlanSchema,
+        projected_schema: Schema,
     },
     Filter {
         source: Box<QueryPlan>,
@@ -32,16 +30,68 @@ pub enum QueryPlan {
     },
     // maybe this can be implemented as a standard table function in the future (change the sqlparser dialect to duckdb if so)
     Unnest {
-        schema: QueryPlanSchema,
+        schema: Schema,
         expr: Expr,
     },
     Values {
         values: Values,
-        schema: QueryPlanSchema,
+        schema: Schema,
     },
-    Limit(Box<QueryPlan>, u64),
-    Order(Box<QueryPlan>, Box<[OrderExpr]>),
+    Join {
+        schema: Schema,
+        join: Join,
+        lhs: Box<QueryPlan>,
+        rhs: Box<QueryPlan>,
+        // cross join only for now
+    },
+    Limit {
+        source: Box<QueryPlan>,
+        limit: u64,
+    },
+    Order {
+        source: Box<QueryPlan>,
+        order: Box<[OrderExpr]>,
+    },
     Empty,
+}
+
+#[derive(Debug, Clone)]
+pub enum Join {
+    Inner(JoinConstraint),
+    Left(JoinConstraint),
+    Full(JoinConstraint),
+    Cross,
+}
+
+impl Join {
+    #[inline]
+    pub fn is_left(&self) -> bool {
+        matches!(self, Join::Left(_) | Join::Full(_))
+    }
+}
+
+impl fmt::Display for Join {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Join::Inner(constraint) => write!(f, "INNER JOIN {}", constraint),
+            Join::Left(constraint) => write!(f, "LEFT JOIN {}", constraint),
+            Join::Full(constraint) => write!(f, "FULL JOIN {}", constraint),
+            Join::Cross => write!(f, "CROSS JOIN"),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum JoinConstraint {
+    On(Expr),
+}
+
+impl fmt::Display for JoinConstraint {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            JoinConstraint::On(expr) => write!(f, "ON {}", expr),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -56,11 +106,12 @@ impl QueryPlan {
         match self {
             QueryPlan::TableScan { projected_schema, .. }
             | QueryPlan::Projection { projected_schema, .. } => projected_schema,
-            QueryPlan::Filter { source, .. } => source.schema(),
-            QueryPlan::Unnest { schema, .. } => schema,
-            QueryPlan::Values { schema, .. } => schema,
-            QueryPlan::Limit(source, _) => source.schema(),
-            QueryPlan::Order(source, _) => source.schema(),
+            QueryPlan::Join { schema, .. }
+            | QueryPlan::Unnest { schema, .. }
+            | QueryPlan::Values { schema, .. } => schema,
+            QueryPlan::Filter { source, .. }
+            | QueryPlan::Limit { source, .. }
+            | QueryPlan::Order { source, .. } => source.schema(),
             QueryPlan::Empty => &[],
         }
     }
@@ -68,7 +119,7 @@ impl QueryPlan {
     pub fn values(values: Values) -> Self {
         let schema = values
             .iter()
-            .map(|row| row.iter().map(|expr| expr.ty.clone()).collect::<Vec<_>>())
+            .map(|row| row.iter().map(|expr| expr.ty.clone()).collect())
             .next()
             .expect("values should be non-empty");
         QueryPlan::Values { values, schema }
@@ -78,7 +129,7 @@ impl QueryPlan {
     pub fn unnest(expr: Expr) -> Self {
         match &expr.ty {
             LogicalType::Array(element_type) => {
-                QueryPlan::Unnest { schema: vec![*element_type.clone()], expr }
+                QueryPlan::Unnest { schema: Schema::new([*element_type.clone()]), expr }
             }
             _ => panic!("unnest expression must be an array"),
         }
@@ -86,11 +137,17 @@ impl QueryPlan {
 
     #[inline]
     pub fn limit(self: Box<Self>, limit: u64) -> Box<QueryPlan> {
-        Box::new(QueryPlan::Limit(self, limit))
+        Box::new(QueryPlan::Limit { source: self, limit })
     }
 
+    #[inline]
     pub fn order_by(self: Box<Self>, order: impl Into<Box<[OrderExpr]>>) -> Box<QueryPlan> {
-        Box::new(QueryPlan::Order(self, order.into()))
+        Box::new(QueryPlan::Order { source: self, order: order.into() })
+    }
+
+    pub fn join(self: Box<Self>, join: Join, rhs: Box<QueryPlan>) -> Box<QueryPlan> {
+        let schema = self.schema().iter().chain(rhs.schema()).cloned().collect();
+        Box::new(QueryPlan::Join { schema, join, lhs: self, rhs })
     }
 
     #[inline]

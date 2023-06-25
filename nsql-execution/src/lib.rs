@@ -15,6 +15,7 @@ use std::sync::Arc;
 pub use anyhow::Error;
 use nsql_arena::Idx;
 use nsql_catalog::Catalog;
+use nsql_core::LogicalType;
 use nsql_storage::tuple::Tuple;
 use nsql_storage_engine::{
     ExecutionMode, FallibleIterator, ReadWriteExecutionMode, ReadonlyExecutionMode, StorageEngine,
@@ -45,9 +46,11 @@ fn build_pipelines<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>
 
 #[allow(clippy::type_complexity)]
 trait PhysicalNode<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>:
-    Explain<'env, S> + 'txn
+    Explain<'env, S> + fmt::Debug + 'txn
 {
     fn children(&self) -> &[Arc<dyn PhysicalNode<'env, 'txn, S, M>>];
+
+    fn schema(&self) -> &[LogicalType];
 
     fn as_source(
         self: Arc<Self>,
@@ -86,8 +89,9 @@ trait PhysicalNode<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>
             Err(node) => match node.as_source() {
                 Ok(source) => arena[current].set_source(source),
                 Err(operator) => {
-                    // Safety: we checked the other two cases above, must be an operator
-                    let operator = unsafe { operator.as_operator().unwrap_unchecked() };
+                    let operator = operator
+                        .as_operator()
+                        .expect("node is neither a source, sink, nor an operator");
                     let children = operator.children();
                     assert_eq!(
                         children.len(),
@@ -105,7 +109,9 @@ trait PhysicalNode<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>
 
 #[derive(Debug)]
 enum OperatorState<T> {
-    /// The operator has an output is ready to process the next input
+    /// The operator potentially has more output for the same input
+    Again(Option<T>),
+    /// The operator has an output and is ready to process the next input
     Yield(T),
     /// The operator produced no output for the given input and is ready to process the next input
     Continue,

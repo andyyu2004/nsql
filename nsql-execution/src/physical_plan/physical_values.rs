@@ -4,14 +4,16 @@ use super::*;
 
 #[derive(Debug)]
 pub struct PhysicalValues {
+    schema: Schema,
     values: ir::Values,
 }
 
 impl PhysicalValues {
     pub(crate) fn plan<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
+        schema: Schema,
         values: ir::Values,
     ) -> Arc<dyn PhysicalNode<'env, 'txn, S, M>> {
-        Arc::new(PhysicalValues { values })
+        Arc::new(PhysicalValues { schema, values })
     }
 }
 
@@ -45,6 +47,10 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode
     #[inline]
     fn children(&self) -> &[Arc<dyn PhysicalNode<'env, 'txn, S, M>>] {
         &[]
+    }
+
+    fn schema(&self) -> &[LogicalType] {
+        &self.schema
     }
 
     #[inline]

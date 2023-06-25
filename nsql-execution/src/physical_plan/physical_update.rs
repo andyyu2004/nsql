@@ -6,8 +6,10 @@ use parking_lot::RwLock;
 use super::*;
 use crate::ReadWriteExecutionMode;
 
+#[derive(Debug)]
 pub(crate) struct PhysicalUpdate<'env, 'txn, S> {
     children: [Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode>>; 1],
+    schema: Schema,
     table: Oid<Table>,
     tuples: RwLock<Vec<Tuple>>,
     returning: Option<Box<[ir::Expr]>>,
@@ -17,6 +19,7 @@ pub(crate) struct PhysicalUpdate<'env, 'txn, S> {
 
 impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalUpdate<'env, 'txn, S> {
     pub fn plan(
+        schema: Schema,
         table: Oid<Table>,
         // This is the source of the updates.
         // The schema should be that of the table being updated + the `tid` in the rightmost column
@@ -25,6 +28,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalUpdate<'env, 'txn, S> {
     ) -> Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode>> {
         Arc::new(Self {
             table,
+            schema,
             returning,
             tuples: Default::default(),
             children: [source],
@@ -40,6 +44,11 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalNode<'env, 'txn, S, ReadWriteEx
     #[inline]
     fn children(&self) -> &[Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode>>] {
         &self.children
+    }
+
+    #[inline]
+    fn schema(&self) -> &[LogicalType] {
+        &self.schema
     }
 
     #[inline]

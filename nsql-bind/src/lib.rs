@@ -15,7 +15,7 @@ use nsql_catalog::{
     Catalog, ColumnIndex, CreateColumnInfo, CreateNamespaceInfo, Function, Namespace, SystemEntity,
     Table, MAIN_SCHEMA,
 };
-use nsql_core::{LogicalType, Name, Oid};
+use nsql_core::{LogicalType, Name, Oid, Schema};
 use nsql_parse::ast;
 use nsql_storage_engine::{StorageEngine, Transaction};
 
@@ -231,11 +231,16 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                             .iter()
                             .map(|selection| self.bind_select_item(tx, &scope, selection))
                             .flatten_ok()
-                            .collect::<Result<_>>()
+                            .collect::<Result<Box<_>>>()
                     })
                     .transpose()?;
 
-                ir::Stmt::Insert { table, source, returning }
+                let schema = match &returning {
+                    Some(exprs) => exprs.iter().map(|e| e.ty.clone()).collect::<Schema>(),
+                    None => Schema::empty(),
+                };
+
+                ir::Stmt::Insert { table, source, returning, schema }
             }
             ast::Statement::Query(query) => {
                 let (_scope, query) = self.bind_query(tx, scope, query)?;
@@ -334,11 +339,16 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                             .iter()
                             .map(|selection| self.bind_select_item(tx, &scope, selection))
                             .flatten_ok()
-                            .collect::<Result<_>>()
+                            .collect::<Result<Box<_>>>()
                     })
                     .transpose()?;
 
-                ir::Stmt::Update { table, source, returning }
+                let schema = returning
+                    .as_ref()
+                    .map(|exprs| exprs.iter().map(|e| e.ty.clone()).collect())
+                    .unwrap_or_else(Schema::empty);
+
+                ir::Stmt::Update { table, source, returning, schema }
             }
             ast::Statement::Explain { describe_alias: _, analyze, verbose, statement, format } => {
                 not_implemented!(*analyze);
@@ -364,11 +374,11 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
         projection: Option<Box<[ColumnIndex]>>,
     ) -> Result<Box<ir::QueryPlan>> {
         let columns = self.catalog.get::<Table>(tx, table)?.columns(self.catalog, tx)?;
-        let schema = columns.iter().map(|column| column.logical_type()).collect::<Vec<_>>();
+        let schema = columns.iter().map(|column| column.logical_type()).collect::<Schema>();
         let projected_schema = projection
             .as_ref()
             .map(|projection| {
-                projection.iter().map(|&index| schema[index.as_usize()].clone()).collect::<Vec<_>>()
+                projection.iter().map(|&index| schema[index.as_usize()].clone()).collect()
             })
             .unwrap_or(schema);
 
@@ -454,8 +464,10 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
     fn lower_ty(&self, ty: &ast::DataType) -> Result<LogicalType> {
         match ty {
             ast::DataType::Int(width) if width.is_none() => Ok(LogicalType::Int),
+            ast::DataType::Text => Ok(LogicalType::Text),
+            ast::DataType::Bytea => Ok(LogicalType::Bytea),
             ast::DataType::Boolean => Ok(LogicalType::Bool),
-            ty => bail!("unhandled type: {:?}", ty),
+            _ => bail!("unhandled type: {:?}", ty),
         }
     }
 
@@ -657,9 +669,68 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
         scope: &Scope<S>,
         tables: &ast::TableWithJoins,
     ) -> Result<(Scope<S>, Box<ir::QueryPlan>)> {
-        not_implemented!(!tables.joins.is_empty());
-        let table = &tables.relation;
-        self.bind_table_factor(tx, scope, table)
+        let (mut scope, mut plan) = self.bind_table_factor(tx, scope, &tables.relation)?;
+
+        for join in &tables.joins {
+            (scope, plan) = self.bind_join(tx, &scope, plan, join)?;
+        }
+
+        Ok((scope, plan))
+    }
+
+    fn bind_join(
+        &self,
+        tx: &dyn Transaction<'env, S>,
+        scope: &Scope<S>,
+        lhs: Box<ir::QueryPlan>,
+        join: &ast::Join,
+    ) -> Result<(Scope<S>, Box<ir::QueryPlan>)> {
+        let (scope, rhs) = self.bind_table_factor(tx, scope, &join.relation)?;
+        match &join.join_operator {
+            ast::JoinOperator::CrossJoin => {
+                let plan = lhs.join(ir::Join::Cross, rhs);
+                Ok((scope, plan))
+            }
+            ast::JoinOperator::Inner(constraint) => {
+                let constraint = self.bind_join_constraint(tx, &scope, constraint)?;
+                Ok((scope, lhs.join(ir::Join::Inner(constraint), rhs)))
+            }
+            ast::JoinOperator::LeftOuter(constraint) => {
+                let constraint = self.bind_join_constraint(tx, &scope, constraint)?;
+                Ok((scope, lhs.join(ir::Join::Left(constraint), rhs)))
+            }
+            ast::JoinOperator::RightOuter(_) => todo!(),
+            ast::JoinOperator::FullOuter(_) => todo!(),
+            ast::JoinOperator::LeftSemi(_)
+            | ast::JoinOperator::RightSemi(_)
+            | ast::JoinOperator::LeftAnti(_)
+            | ast::JoinOperator::RightAnti(_)
+            | ast::JoinOperator::CrossApply
+            | ast::JoinOperator::OuterApply => not_implemented!("unsupported join type"),
+        }
+    }
+
+    fn bind_join_constraint(
+        &self,
+        tx: &dyn Transaction<'env, S>,
+        scope: &Scope<S>,
+        constraint: &ast::JoinConstraint,
+    ) -> Result<ir::JoinConstraint> {
+        match &constraint {
+            ast::JoinConstraint::On(expr) => {
+                let predicate = self.bind_predicate(tx, scope, expr)?;
+                ensure!(
+                    predicate.ty == LogicalType::Bool,
+                    "join predicate must be a boolean expression"
+                );
+                Ok(ir::JoinConstraint::On(predicate))
+            }
+            ast::JoinConstraint::Using(_)
+            | ast::JoinConstraint::Natural
+            | ast::JoinConstraint::None => {
+                not_implemented!("only `on` joins are currently supported")
+            }
+        }
     }
 
     fn bind_table_factor(
@@ -998,7 +1069,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
 
     fn bind_value_expr(&self, value: &ast::Value) -> (LogicalType, ir::ExprKind) {
         let lit = self.bind_value(value);
-        (lit.ty(), ir::ExprKind::Value(lit))
+        (lit.logical_type(), ir::ExprKind::Value(lit))
     }
 
     fn bind_value(&self, val: &ast::Value) -> ir::Value {

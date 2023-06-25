@@ -6,6 +6,7 @@ use rayon::prelude::*;
 
 use super::*;
 
+#[derive(Debug)]
 pub struct PhysicalOrder<'env, 'txn, S, M> {
     children: [Arc<dyn PhysicalNode<'env, 'txn, S, M>>; 1],
     ordering: Box<[ir::OrderExpr]>,
@@ -73,6 +74,10 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode
         &self.children
     }
 
+    fn schema(&self) -> &[LogicalType] {
+        self.children[0].schema()
+    }
+
     fn as_source(
         self: Arc<Self>,
     ) -> Result<Arc<dyn PhysicalSource<'env, 'txn, S, M>>, Arc<dyn PhysicalNode<'env, 'txn, S, M>>>
@@ -102,8 +107,9 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Explain<'env
         &self,
         _catalog: Catalog<'_, S>,
         _tx: &dyn Transaction<'_, S>,
-        _f: &mut fmt::Formatter<'_>,
+        f: &mut fmt::Formatter<'_>,
     ) -> explain::Result {
-        todo!();
+        write!(f, "order")?;
+        Ok(())
     }
 }

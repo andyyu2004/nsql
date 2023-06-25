@@ -37,7 +37,7 @@ impl<T> fmt::Display for CastError<T> {
             f,
             "cannot cast value {:?} of type {} to {}",
             self.value,
-            self.value.ty(),
+            self.value.logical_type(),
             std::any::type_name::<T>()
         )
     }
@@ -226,7 +226,7 @@ impl Value {
     }
 
     #[inline]
-    pub fn ty(&self) -> LogicalType {
+    pub fn logical_type(&self) -> LogicalType {
         match self {
             Value::Null => LogicalType::Null,
             Value::Int32(_) => LogicalType::Int,
@@ -238,7 +238,7 @@ impl Value {
             // Keep this in sync with binder logic
             Value::Array(values) => LogicalType::array(match &values[..] {
                 [] => LogicalType::Int,
-                [first, ..] => first.ty(),
+                [first, ..] => first.logical_type(),
             }),
             Value::Type(_) => LogicalType::Type,
             Value::TupleExpr(_) => LogicalType::TupleExpr,

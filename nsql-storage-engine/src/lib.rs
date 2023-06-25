@@ -275,7 +275,9 @@ impl<'env, 'txn, T: Transaction<'env, S>, S: StorageEngine>
     }
 }
 
-pub trait ExecutionMode<'env, S: StorageEngine>: private::Sealed + Clone + Copy + 'static {
+pub trait ExecutionMode<'env, S: StorageEngine>:
+    private::Sealed + Clone + Copy + fmt::Debug + 'static
+{
     type Transaction: Transaction<'env, S>;
 
     type TransactionRef<'txn>: Transaction<'env, S>
@@ -329,7 +331,7 @@ impl<'env, S: StorageEngine> ExecutionMode<'env, S> for ReadonlyExecutionMode {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct ReadWriteExecutionMode;
 
 impl private::Sealed for ReadWriteExecutionMode {}

@@ -1,4 +1,3 @@
-use std::collections::HashSet;
 use std::sync::Arc;
 
 pub(crate) use nsql_arena::{Arena, Idx};
@@ -7,17 +6,17 @@ use nsql_storage_engine::StorageEngine;
 use crate::{ExecutionMode, PhysicalNode, PhysicalOperator, PhysicalSink, PhysicalSource};
 
 pub(crate) struct MetaPipeline<'env, 'txn, S, M> {
-    pub(crate) sink: Arc<dyn PhysicalSink<'env, 'txn, S, M>>,
     pub(crate) pipelines: Vec<Idx<Pipeline<'env, 'txn, S, M>>>,
     pub(crate) children: Vec<Idx<MetaPipeline<'env, 'txn, S, M>>>,
 }
 
+#[derive(Debug)]
 pub(crate) struct MetaPipelineBuilder<'env, 'txn, S, M> {
-    sink: Arc<dyn PhysicalSink<'env, 'txn, S, M>>,
     pipelines: Vec<Idx<PipelineBuilder<'env, 'txn, S, M>>>,
     children: Vec<Idx<MetaPipelineBuilder<'env, 'txn, S, M>>>,
 }
 
+#[derive(Debug)]
 pub(crate) struct PipelineBuilderArena<'env, 'txn, S, M> {
     root: Option<Idx<MetaPipelineBuilder<'env, 'txn, S, M>>>,
     pipelines: Arena<PipelineBuilder<'env, 'txn, S, M>>,
@@ -97,22 +96,8 @@ impl<'env, 'txn, S, M> PipelineArena<'env, 'txn, S, M> {
     }
 
     fn verify_meta_pipeline(&self, idx: Idx<MetaPipeline<'env, 'txn, S, M>>) {
+        // No logic here at the moment
         let meta_pipeline = &self.meta_pipelines[idx];
-
-        // check that all child_meta_pipeline sinks are the source of some pipeline
-        let pipeline_source_ptrs = meta_pipeline
-            .pipelines
-            .iter()
-            .map(|idx| Arc::as_ptr(&self[*idx].source))
-            .collect::<HashSet<_>>();
-
-        let child_meta_pipeline_sink_ptrs = meta_pipeline
-            .children
-            .iter()
-            .map(|idx| Arc::as_ptr(&self[*idx].sink) as *const dyn PhysicalSource<'env, 'txn, S, M>)
-            .collect::<HashSet<_>>();
-
-        assert!(child_meta_pipeline_sink_ptrs.is_subset(&pipeline_source_ptrs));
 
         for child in &meta_pipeline.children {
             self.verify_meta_pipeline(*child);
@@ -130,7 +115,6 @@ impl<'env, 'txn, S, M> MetaPipelineBuilder<'env, 'txn, S, M> {
     ) -> Idx<Self> {
         arena.meta_pipelines.alloc(Self {
             pipelines: vec![arena.pipelines.alloc(PipelineBuilder::new(Arc::clone(&sink)))],
-            sink,
             children: Default::default(),
         })
     }
@@ -138,7 +122,7 @@ impl<'env, 'txn, S, M> MetaPipelineBuilder<'env, 'txn, S, M> {
     pub fn finish(self) -> MetaPipeline<'env, 'txn, S, M> {
         let pipelines = self.pipelines.iter().map(|idx| idx.cast()).collect();
         let children = self.children.iter().map(|idx| idx.cast()).collect();
-        MetaPipeline { sink: self.sink, pipelines, children }
+        MetaPipeline { pipelines, children }
     }
 }
 
@@ -190,6 +174,7 @@ impl<'env, 'txn, S, M> Pipeline<'env, 'txn, S, M> {
     }
 }
 
+#[derive(Debug)]
 pub(crate) struct PipelineBuilder<'env, 'txn, S, M> {
     source: Option<Arc<dyn PhysicalSource<'env, 'txn, S, M>>>,
     operators: Vec<Arc<dyn PhysicalOperator<'env, 'txn, S, M>>>,
@@ -201,6 +186,7 @@ impl<'env, 'txn, S, M> PipelineBuilder<'env, 'txn, S, M> {
         Self { source: None, operators: vec![], sink }
     }
 
+    #[track_caller]
     pub(crate) fn set_source(&mut self, source: Arc<dyn PhysicalSource<'env, 'txn, S, M>>) {
         assert!(self.source.is_none(), "pipeline source already set");
         self.source = Some(source);

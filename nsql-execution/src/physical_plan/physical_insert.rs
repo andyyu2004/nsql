@@ -9,8 +9,10 @@ use parking_lot::{Mutex, RwLock};
 use super::*;
 use crate::ReadWriteExecutionMode;
 
+#[derive(Debug)]
 pub(crate) struct PhysicalInsert<'env, 'txn, S: StorageEngine> {
     children: [Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode>>; 1],
+    schema: Schema,
     table_oid: Oid<Table>,
     storage: OnceLock<Mutex<TableStorage<'env, 'txn, S, ReadWriteExecutionMode>>>,
     table: OnceLock<Table>,
@@ -21,6 +23,7 @@ pub(crate) struct PhysicalInsert<'env, 'txn, S: StorageEngine> {
 
 impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalInsert<'env, 'txn, S> {
     pub fn plan(
+        schema: Schema,
         table_oid: Oid<Table>,
         source: Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode>>,
         returning: Option<Box<[ir::Expr]>>,
@@ -28,6 +31,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalInsert<'env, 'txn, S> {
         Arc::new(Self {
             table_oid,
             returning,
+            schema,
             children: [source],
             returning_evaluator: Evaluator::new(),
             storage: Default::default(),
@@ -42,6 +46,10 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalNode<'env, 'txn, S, ReadWriteEx
 {
     fn children(&self) -> &[Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode>>] {
         &self.children
+    }
+
+    fn schema(&self) -> &[LogicalType] {
+        &self.schema
     }
 
     fn as_source(
