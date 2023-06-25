@@ -52,7 +52,7 @@ impl<'env, 'txn, S: StorageEngine> TableStorage<'env, 'txn, S, ReadWriteExecutio
     pub fn update(&mut self, tuple: &Tuple) -> Result<(), S::Error> {
         let (k, v) = self.split_tuple(tuple);
         debug_assert!(self.tree.delete(&k)?, "updating a tuple that didn't exist");
-        self.tree.insert(&k, &v)?.expect("updating a tuple that didn't exist");
+        self.tree.update(&k, &v)?;
 
         Ok(())
     }
