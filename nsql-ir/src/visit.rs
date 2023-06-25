@@ -28,8 +28,8 @@ pub trait VisitorMut {
                 self.visit_expr_mut(predicate);
             }
             Plan::Unnest { expr, schema: _ } => self.visit_expr_mut(expr),
-            Plan::Values { values, schema: _ } => {}
-            Plan::Join { schema, join, lhs, rhs } => {
+            Plan::Values { values: _, schema: _ } => {}
+            Plan::Join { schema: _, join, lhs, rhs } => {
                 self.visit_plan_mut(lhs);
                 self.visit_plan_mut(rhs);
                 match join {
