@@ -33,18 +33,21 @@ impl<'env: 'txn, 'txn, S: StorageEngine> Executor<'env, 'txn, S, ReadWriteExecut
         let pipeline: &Pipeline<'env, 'txn, S, _> = &self.arena[pipeline];
         let mut stream = Arc::clone(&pipeline.source).source(ecx)?;
 
-        'outer: while let Some(input_tuple) = stream.next()? {
-            let mut again = false;
-            loop {
+        'main: while let Some(input_tuple) = stream.next()? {
+            'input: loop {
+                let mut again = false;
                 let mut tuple = input_tuple.clone();
                 for op in &pipeline.operators {
                     tuple = match op.execute(ecx, tuple)? {
-                        OperatorState::Again(tuple) => {
-                            again = true;
-                            tuple
-                        }
+                        OperatorState::Again(tuple) => match tuple {
+                            Some(tuple) => {
+                                again = true;
+                                tuple
+                            }
+                            None => continue 'input,
+                        },
                         OperatorState::Yield(tuple) => tuple,
-                        OperatorState::Continue => continue 'outer,
+                        OperatorState::Continue => continue 'main,
                         // Once an operator completes, the entire pipeline is finished
                         OperatorState::Done => return Ok(()),
                     };
@@ -52,7 +55,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> Executor<'env, 'txn, S, ReadWriteExecut
 
                 pipeline.sink.sink(ecx, tuple)?;
                 if !again {
-                    break;
+                    break 'input;
                 }
             }
         }
@@ -89,18 +92,21 @@ impl<'env: 'txn, 'txn, S: StorageEngine> Executor<'env, 'txn, S, ReadonlyExecuti
         let pipeline: &Pipeline<'env, 'txn, S, _> = &self.arena[pipeline];
         let mut stream = Arc::clone(&pipeline.source).source(ecx)?;
 
-        'outer: while let Some(input_tuple) = stream.next()? {
-            let mut again = false;
-            loop {
+        'main: while let Some(input_tuple) = stream.next()? {
+            'input: loop {
+                let mut again = false;
                 let mut tuple = input_tuple.clone();
                 for op in &pipeline.operators {
                     tuple = match op.execute(ecx, tuple)? {
-                        OperatorState::Again(tuple) => {
-                            again = true;
-                            tuple
-                        }
+                        OperatorState::Again(tuple) => match tuple {
+                            Some(tuple) => {
+                                again = true;
+                                tuple
+                            }
+                            None => continue 'input,
+                        },
                         OperatorState::Yield(tuple) => tuple,
-                        OperatorState::Continue => continue 'outer,
+                        OperatorState::Continue => continue 'main,
                         // Once an operator completes, the entire pipeline is finished
                         OperatorState::Done => return Ok(()),
                     };
@@ -108,7 +114,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> Executor<'env, 'txn, S, ReadonlyExecuti
 
                 pipeline.sink.sink(ecx, tuple)?;
                 if !again {
-                    break;
+                    break 'input;
                 }
             }
         }

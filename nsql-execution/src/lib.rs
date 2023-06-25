@@ -106,8 +106,8 @@ trait PhysicalNode<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>
 
 #[derive(Debug)]
 enum OperatorState<T> {
-    /// The operator has more output for the same input
-    Again(T),
+    /// The operator potentially has more output for the same input
+    Again(Option<T>),
     /// The operator has an output and is ready to process the next input
     Yield(T),
     /// The operator produced no output for the given input and is ready to process the next input

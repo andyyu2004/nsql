@@ -117,16 +117,14 @@ impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalOperator<'
 
         match &self.join {
             ir::Join::Inner(constraint) => match constraint {
-                ir::JoinConstraint::On(predicate) => {
-                    Ok(OperatorState::Again(joint_tuple))
-                    // if self.evaluator.evaluate_expr(&joint_tuple, predicate).cast_non_null()? {
-                    //     Ok(OperatorState::Again(joint_tuple))
-                    // } else {
-                    //     Ok(OperatorState::Continue)
-                    // }
-                }
+                ir::JoinConstraint::On(predicate) => Ok(OperatorState::Again(
+                    self.evaluator
+                        .evaluate_expr(&joint_tuple, predicate)
+                        .cast_non_null::<bool>()?
+                        .then_some(joint_tuple),
+                )),
             },
-            ir::Join::Cross => Ok(OperatorState::Again(joint_tuple)),
+            ir::Join::Cross => Ok(OperatorState::Again(Some(joint_tuple))),
         }
     }
 }
