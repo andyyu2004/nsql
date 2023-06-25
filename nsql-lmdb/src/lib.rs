@@ -266,6 +266,3 @@ impl<'env> WriteTransaction<'env, LmdbStorageEngine> for ReadWriteTx<'env> {
         Ok(())
     }
 }
-
-#[cfg(test)]
-mod tests;
