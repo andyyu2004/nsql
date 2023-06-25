@@ -847,6 +847,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                 if exprs.is_empty() {
                     bail!("selection list is empty after excluding columns")
                 }
+
                 return Ok(exprs);
             }
         };

@@ -58,8 +58,8 @@ impl Tuple {
     }
 
     #[inline]
-    pub fn join(&self, other: &Self) -> Self {
-        let mut values = self.values.clone().into_vec();
+    pub fn join(self, other: &Self) -> Self {
+        let mut values = self.values.into_vec();
         values.extend_from_slice(&other.values);
         Self::new(values.into_boxed_slice())
     }
