@@ -1,5 +1,3 @@
-// #![feature(return_position_impl_trait_in_trait)]
-// #![feature(impl_trait_projections)]
 //! This crate defines the storage engine interfaces
 
 #[cfg(test)]

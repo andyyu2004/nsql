@@ -1,6 +1,4 @@
 #![deny(rust_2018_idioms)]
-#![feature(return_position_impl_trait_in_trait)]
-#![feature(impl_trait_projections)]
 
 use std::ops::{Deref, RangeBounds};
 use std::path::Path;

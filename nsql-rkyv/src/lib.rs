@@ -1,6 +1,6 @@
 //! utility functions for using rkyv
 
-#![feature(generic_const_exprs, specialization, min_specialization, rustc_attrs)]
+#![feature(generic_const_exprs)]
 #![allow(incomplete_features)]
 
 use std::mem;

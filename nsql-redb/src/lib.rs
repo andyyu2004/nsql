@@ -1,7 +1,4 @@
 #![deny(rust_2018_idioms)]
-#![feature(type_alias_impl_trait)]
-#![feature(impl_trait_projections)]
-#![feature(bound_map)]
 
 use std::ops::{Bound, Deref, RangeBounds};
 use std::path::Path;
