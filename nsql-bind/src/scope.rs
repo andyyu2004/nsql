@@ -33,6 +33,19 @@ impl<S> Default for Scope<S> {
 }
 
 impl<S: StorageEngine> Scope<S> {
+    pub fn project(&self, projection: &[ir::Expr]) -> Self {
+        let bound_columns = projection
+            .iter()
+            .map(|expr| match &expr.kind {
+                ir::ExprKind::ColumnRef { path, .. } => (path.clone(), expr.ty.clone()),
+                // the generated column name is a string representation of the expression
+                _ => (Path::unqualified(expr.to_string()), expr.ty.clone()),
+            })
+            .collect();
+
+        Self { bound_columns, tables: Default::default(), marker: PhantomData }
+    }
+
     /// Insert a table and its columns to the scope
     #[tracing::instrument(skip(self, tx, binder))]
     pub fn bind_table<'env>(
@@ -155,7 +168,7 @@ impl<S: StorageEngine> Scope<S> {
             .filter(|(idx, _)| !exclude.contains(idx))
             .map(move |(index, (path, ty))| ir::Expr {
                 ty: ty.clone(),
-                kind: ir::ExprKind::ColumnRef { display_path: path.clone(), index },
+                kind: ir::ExprKind::ColumnRef { path: path.clone(), index },
             })
     }
 

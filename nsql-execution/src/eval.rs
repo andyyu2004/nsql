@@ -48,6 +48,7 @@ impl Evaluator {
                     args.iter().map(|expr| self.evaluate_expr(input, expr)).collect::<Box<_>>();
                 function.call(args)
             }
+            ir::ExprKind::Alias { expr, .. } => self.evaluate_expr(input, expr),
         }
     }
 }

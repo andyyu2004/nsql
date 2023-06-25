@@ -199,7 +199,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                                     ir::Expr {
                                         ty: source_schema[i].clone(),
                                         kind: ir::ExprKind::ColumnRef {
-                                            display_path: Path::Unqualified("".into()),
+                                            path: Path::Unqualified("".into()),
                                             index: TupleIndex::new(i),
                                         },
                                     },
@@ -663,7 +663,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
             .flatten_ok()
             .collect::<Result<Box<_>>>()?;
 
-        Ok((scope, source.project(projection)))
+        Ok((scope.project(&projection), source.project(projection)))
     }
 
     fn bind_joint_tables(
@@ -819,7 +819,9 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
     ) -> Result<Vec<ir::Expr>> {
         let expr = match item {
             ast::SelectItem::UnnamedExpr(expr) => self.bind_expr(tx, scope, expr)?,
-            ast::SelectItem::ExprWithAlias { expr: _, alias: _ } => todo!(),
+            ast::SelectItem::ExprWithAlias { expr, alias } => {
+                self.bind_expr(tx, scope, expr)?.alias(&alias.value)
+            }
             ast::SelectItem::QualifiedWildcard(_, _) => not_implemented!("qualified wildcard"),
             ast::SelectItem::Wildcard(ast::WildcardAdditionalOptions {
                 opt_exclude,
@@ -928,18 +930,12 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
             ast::Expr::Value(literal) => self.bind_value_expr(literal),
             ast::Expr::Identifier(ident) => {
                 let (ty, index) = self.bind_ident(scope, ident)?;
-                (
-                    ty,
-                    ir::ExprKind::ColumnRef {
-                        display_path: Path::unqualified(&ident.value),
-                        index,
-                    },
-                )
+                (ty, ir::ExprKind::ColumnRef { path: Path::unqualified(&ident.value), index })
             }
             ast::Expr::CompoundIdentifier(ident) => {
                 let path = self.lower_path(ident)?;
                 let (ty, index) = scope.lookup_column(&path)?;
-                (ty, ir::ExprKind::ColumnRef { display_path: path, index })
+                (ty, ir::ExprKind::ColumnRef { path, index })
             }
             ast::Expr::BinaryOp { left, op, right } => {
                 let lhs = self.bind_expr(tx, scope, left)?;

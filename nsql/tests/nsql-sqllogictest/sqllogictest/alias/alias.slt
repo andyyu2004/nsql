@@ -1,0 +1,9 @@
+query I
+SELECT 1 AS one
+----
+1
+
+query I
+SELECT one FROM (SELECT 1 AS one)
+----
+1

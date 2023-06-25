@@ -6,7 +6,7 @@ use std::ops::Deref;
 pub use eval::EvalNotConst;
 use itertools::Itertools;
 use nsql_catalog::Function;
-use nsql_core::LogicalType;
+use nsql_core::{LogicalType, Name};
 use nsql_storage::tuple::TupleIndex;
 use nsql_storage::value::Value;
 
@@ -16,6 +16,16 @@ use crate::Path;
 pub struct Expr {
     pub ty: LogicalType,
     pub kind: ExprKind,
+}
+
+impl Expr {
+    #[inline]
+    pub fn alias(&self, alias: impl AsRef<str>) -> Expr {
+        Expr {
+            ty: self.ty.clone(),
+            kind: ExprKind::Alias { expr: Box::new(self.clone()), alias: alias.as_ref().into() },
+        }
+    }
 }
 
 impl fmt::Display for Expr {
@@ -28,6 +38,10 @@ impl fmt::Display for Expr {
 pub enum ExprKind {
     Value(Value),
     Array(Box<[Expr]>),
+    Alias {
+        alias: Name,
+        expr: Box<Expr>,
+    },
     BinOp {
         op: BinOp,
         lhs: Box<Expr>,
@@ -35,7 +49,7 @@ pub enum ExprKind {
     },
     ColumnRef {
         /// A display path for the column (for pretty printing etc)
-        display_path: Path,
+        path: Path,
         /// An index into the tuple the expression is evaluated against
         index: TupleIndex,
     },
@@ -49,12 +63,13 @@ impl fmt::Display for ExprKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match &self {
             ExprKind::Value(value) => write!(f, "{value}"),
-            ExprKind::ColumnRef { display_path, .. } => write!(f, "{display_path}"),
+            ExprKind::ColumnRef { path: display_path, .. } => write!(f, "{display_path}"),
             ExprKind::BinOp { op, lhs, rhs } => write!(f, "({lhs} {op} {rhs})"),
             ExprKind::Array(exprs) => write!(f, "[{}]", exprs.iter().format(", ")),
             ExprKind::FunctionCall { function, args } => {
                 write!(f, "{}({})", function.name(), args.iter().format(", "))
             }
+            ExprKind::Alias { alias, expr: _ } => write!(f, "{alias}"),
         }
     }
 }
