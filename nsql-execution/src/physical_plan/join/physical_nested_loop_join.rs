@@ -14,6 +14,7 @@ pub(crate) struct PhysicalNestedLoopJoin<'env, 'txn, S, M> {
     evaluator: Evaluator,
     finalized: AtomicBool,
     rhs_index: AtomicUsize,
+    found_match_for_tuple: AtomicBool,
 }
 
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
@@ -28,6 +29,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
             join,
             children: [probe_node, build_node],
             finalized: AtomicBool::new(false),
+            found_match_for_tuple: AtomicBool::new(false),
             rhs_index: AtomicUsize::new(0),
             rhs_tuples: Default::default(),
             evaluator: Evaluator::new(),
@@ -108,6 +110,12 @@ impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalOperator<'
             Err(last_index) => {
                 assert_eq!(last_index, rhs_tuples.len());
                 self.rhs_index.store(0, atomic::Ordering::Relaxed);
+
+                if self.join.is_left()
+                    && !self.found_match_for_tuple.swap(false, atomic::Ordering::Relaxed)
+                {
+                    return Ok(OperatorState::Yield(input.fill_right(3)));
+                }
                 return Ok(OperatorState::Continue);
             }
         };
@@ -116,15 +124,19 @@ impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalOperator<'
         let joint_tuple = input.join(rhs_tuple);
 
         match &self.join {
-            ir::Join::Inner(constraint) => match constraint {
+            ir::Join::Inner(constraint) | ir::Join::Left(constraint) => match constraint {
                 ir::JoinConstraint::On(predicate) => Ok(OperatorState::Again(
                     self.evaluator
                         .evaluate_expr(&joint_tuple, predicate)
                         .cast_non_null::<bool>()?
-                        .then_some(joint_tuple),
+                        .then(|| {
+                            self.found_match_for_tuple.store(true, atomic::Ordering::Relaxed);
+                            joint_tuple
+                        }),
                 )),
             },
             ir::Join::Cross => Ok(OperatorState::Again(Some(joint_tuple))),
+            ir::Join::Full(_) => todo!(),
         }
     }
 }

@@ -681,22 +681,45 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                 let plan = lhs.join(ir::Join::Cross, rhs);
                 Ok((scope, plan))
             }
-            ast::JoinOperator::Inner(constraint) => match &constraint {
-                ast::JoinConstraint::On(expr) => {
-                    let predicate = self.bind_predicate(tx, &scope, expr)?;
-                    ensure!(
-                        predicate.ty == LogicalType::Bool,
-                        "join predicate must be a boolean expression"
-                    );
-                    Ok((scope, lhs.join(ir::Join::Inner(ir::JoinConstraint::On(predicate)), rhs)))
-                }
-                ast::JoinConstraint::Using(_)
-                | ast::JoinConstraint::Natural
-                | ast::JoinConstraint::None => {
-                    not_implemented!("only `on` joins are currently supported")
-                }
-            },
-            _ => not_implemented!("only INNER JOIN is currently supported"),
+            ast::JoinOperator::Inner(constraint) => {
+                let constraint = self.bind_join_constraint(tx, &scope, constraint)?;
+                Ok((scope, lhs.join(ir::Join::Inner(constraint), rhs)))
+            }
+            ast::JoinOperator::LeftOuter(constraint) => {
+                let constraint = self.bind_join_constraint(tx, &scope, constraint)?;
+                Ok((scope, lhs.join(ir::Join::Left(constraint), rhs)))
+            }
+            ast::JoinOperator::RightOuter(_) => todo!(),
+            ast::JoinOperator::FullOuter(_) => todo!(),
+            ast::JoinOperator::LeftSemi(_)
+            | ast::JoinOperator::RightSemi(_)
+            | ast::JoinOperator::LeftAnti(_)
+            | ast::JoinOperator::RightAnti(_)
+            | ast::JoinOperator::CrossApply
+            | ast::JoinOperator::OuterApply => not_implemented!("unsupported join type"),
+        }
+    }
+
+    fn bind_join_constraint(
+        &self,
+        tx: &dyn Transaction<'env, S>,
+        scope: &Scope<S>,
+        constraint: &ast::JoinConstraint,
+    ) -> Result<ir::JoinConstraint> {
+        match &constraint {
+            ast::JoinConstraint::On(expr) => {
+                let predicate = self.bind_predicate(tx, &scope, expr)?;
+                ensure!(
+                    predicate.ty == LogicalType::Bool,
+                    "join predicate must be a boolean expression"
+                );
+                Ok(ir::JoinConstraint::On(predicate))
+            }
+            ast::JoinConstraint::Using(_)
+            | ast::JoinConstraint::Natural
+            | ast::JoinConstraint::None => {
+                not_implemented!("only `on` joins are currently supported")
+            }
         }
     }
 

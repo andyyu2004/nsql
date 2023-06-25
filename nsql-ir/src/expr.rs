@@ -60,13 +60,24 @@ pub enum QueryPlan {
 #[derive(Debug, Clone)]
 pub enum Join {
     Inner(JoinConstraint),
+    Left(JoinConstraint),
+    Full(JoinConstraint),
     Cross,
+}
+
+impl Join {
+    #[inline]
+    pub fn is_left(&self) -> bool {
+        matches!(self, Join::Left(_) | Join::Full(_))
+    }
 }
 
 impl fmt::Display for Join {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Join::Inner(JoinConstraint::On(expr)) => write!(f, "INNER JOIN ON {}", expr),
+            Join::Inner(constraint) => write!(f, "INNER JOIN {}", constraint),
+            Join::Left(constraint) => write!(f, "LEFT JOIN {}", constraint),
+            Join::Full(constraint) => write!(f, "FULL JOIN {}", constraint),
             Join::Cross => write!(f, "CROSS JOIN"),
         }
     }
@@ -75,6 +86,14 @@ impl fmt::Display for Join {
 #[derive(Debug, Clone)]
 pub enum JoinConstraint {
     On(Expr),
+}
+
+impl fmt::Display for JoinConstraint {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            JoinConstraint::On(expr) => write!(f, "ON {}", expr),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
