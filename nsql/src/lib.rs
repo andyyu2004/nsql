@@ -10,7 +10,7 @@ use nsql_catalog::Catalog;
 pub use nsql_core::LogicalType;
 use nsql_execution::{ExecutionContext, PhysicalPlanner, TransactionContext, TransactionState};
 pub use nsql_lmdb::LmdbStorageEngine;
-use nsql_opt::optimize;
+use nsql_opt::optimize_in_place;
 pub use nsql_redb::RedbStorageEngine;
 pub use nsql_storage::tuple::Tuple;
 use nsql_storage::Storage;
@@ -143,7 +143,8 @@ impl<S: StorageEngine> Shared<S> {
             ),
         };
 
-        let plan = optimize(binder.bind(&tx, stmt)?);
+        let mut plan = binder.bind(&tx, stmt)?;
+        optimize_in_place(&mut plan);
 
         let planner = PhysicalPlanner::new(catalog);
 

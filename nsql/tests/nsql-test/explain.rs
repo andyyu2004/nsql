@@ -2,7 +2,7 @@ use expect_test::{expect, Expect};
 use nsql::Nsql;
 use nsql_storage::tuple::TupleIndex;
 
-fn check_explain<'a>(
+pub fn check_explain<'a>(
     setup: impl IntoIterator<Item = &'a str>,
     query: &str,
     expect: Expect,

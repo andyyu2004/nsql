@@ -2,7 +2,8 @@
 #![deny(rust_2018_idioms)]
 
 pub mod expr;
-use std::fmt;
+pub mod visit;
+use std::{fmt, mem};
 
 use nsql_catalog::{ColumnIndex, CreateColumnInfo, CreateNamespaceInfo, Namespace, Table};
 use nsql_core::{LogicalType, Name, Oid, Schema};
@@ -137,6 +138,11 @@ pub enum Plan {
 }
 
 impl Plan {
+    #[inline]
+    pub fn take(&mut self) -> Self {
+        mem::replace(self, Plan::Empty)
+    }
+
     pub fn required_transaction_mode(&self) -> TransactionMode {
         match self {
             Plan::Drop(_)
@@ -184,9 +190,9 @@ impl Join {
 impl fmt::Display for Join {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Join::Inner(constraint) => write!(f, "INNER JOIN {}", constraint),
-            Join::Left(constraint) => write!(f, "LEFT JOIN {}", constraint),
-            Join::Full(constraint) => write!(f, "FULL JOIN {}", constraint),
+            Join::Inner(constraint) => write!(f, "INNER JOIN{}", constraint),
+            Join::Left(constraint) => write!(f, "LEFT JOIN{}", constraint),
+            Join::Full(constraint) => write!(f, "FULL JOIN{}", constraint),
             Join::Cross => write!(f, "CROSS JOIN"),
         }
     }
@@ -201,7 +207,7 @@ pub enum JoinConstraint {
 impl fmt::Display for JoinConstraint {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            JoinConstraint::On(expr) => write!(f, "ON {}", expr),
+            JoinConstraint::On(expr) => write!(f, " ON {}", expr),
             JoinConstraint::None => Ok(()),
         }
     }
