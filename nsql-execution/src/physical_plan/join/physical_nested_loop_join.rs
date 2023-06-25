@@ -1,7 +1,9 @@
+use std::mem;
 use std::sync::atomic::{self, AtomicBool, AtomicUsize};
+use std::sync::OnceLock;
 
 use nsql_arena::Idx;
-use parking_lot::RwLock;
+use parking_lot::Mutex;
 
 use super::*;
 use crate::pipeline::{MetaPipelineBuilder, PipelineBuilder, PipelineBuilderArena};
@@ -11,9 +13,11 @@ pub(crate) struct PhysicalNestedLoopJoin<'env, 'txn, S, M> {
     children: [Arc<dyn PhysicalNode<'env, 'txn, S, M>>; 2],
     schema: Schema,
     join: ir::Join,
-    rhs_tuples: RwLock<Vec<Tuple>>,
+    // mutex is only used during build phase
+    rhs_tuples_build: Mutex<Vec<Tuple>>,
+    // tuples are moved into this vector during finalization (to avoid unnecessary locks)
+    rhs_tuples: OnceLock<Vec<Tuple>>,
     evaluator: Evaluator,
-    finalized: AtomicBool,
     rhs_index: AtomicUsize,
     found_match_for_tuple: AtomicBool,
 }
@@ -31,9 +35,9 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
             join,
             schema,
             children: [probe_node, build_node],
-            finalized: AtomicBool::new(false),
             found_match_for_tuple: AtomicBool::new(false),
             rhs_index: AtomicUsize::new(0),
+            rhs_tuples_build: Default::default(),
             rhs_tuples: Default::default(),
             evaluator: Evaluator::new(),
         })
@@ -107,9 +111,7 @@ impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalOperator<'
         _ecx: &'txn ExecutionContext<'env, S, M>,
         input: Tuple,
     ) -> ExecutionResult<OperatorState<Tuple>> {
-        assert!(self.finalized.load(atomic::Ordering::Relaxed), "probing before build is finished");
-
-        let rhs_tuples = self.rhs_tuples.read();
+        let rhs_tuples = self.rhs_tuples.get().expect("probing before build is finished");
         if rhs_tuples.is_empty() {
             return Ok(OperatorState::Done);
         }
@@ -163,12 +165,14 @@ impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSink<'env,
     for PhysicalNestedLoopJoin<'env, 'txn, S, M>
 {
     fn sink(&self, _ecx: &'txn ExecutionContext<'env, S, M>, tuple: Tuple) -> ExecutionResult<()> {
-        self.rhs_tuples.write().push(tuple);
+        self.rhs_tuples_build.lock().push(tuple);
         Ok(())
     }
 
     fn finalize(&self, _ecx: &'txn ExecutionContext<'env, S, M>) -> ExecutionResult<()> {
-        self.finalized.store(true, atomic::Ordering::Relaxed);
+        self.rhs_tuples
+            .set(mem::take(&mut self.rhs_tuples_build.lock()))
+            .expect("finalize called twice");
         Ok(())
     }
 }

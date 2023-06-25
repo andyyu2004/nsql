@@ -71,8 +71,9 @@ impl Tuple {
     }
 
     #[inline]
-    pub fn fill_right(&self, n: usize) -> Tuple {
-        let mut values = self.values.clone().into_vec();
+    pub fn fill_right(self, n: usize) -> Tuple {
+        let mut values = self.values.into_vec();
+        values.reserve_exact(n);
         values.resize_with(values.len() + n, || Value::Null);
         Self::new(values.into_boxed_slice())
     }
