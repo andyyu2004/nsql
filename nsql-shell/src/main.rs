@@ -19,6 +19,10 @@ struct Args {
     /// execute command and quit
     cmd: Option<String>,
 
+    #[argh(switch)]
+    /// suppress all output except errors
+    silent: bool,
+
     #[argh(positional)]
     path: PathBuf,
 }
@@ -31,9 +35,14 @@ fn main() -> nsql::Result<()> {
 
     if let Some(cmd) = args.cmd {
         match conn.query(&state, &cmd) {
-            Ok(output) => println!("{}", tabulate(output)),
+            Ok(output) => {
+                if !args.silent {
+                    println!("{}", tabulate(output))
+                }
+            }
             Err(e) => println!("{}", e),
         }
+
         return Ok(());
     }
 
