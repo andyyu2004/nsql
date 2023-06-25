@@ -5,7 +5,7 @@ pub mod expr;
 use std::fmt;
 
 use nsql_catalog::{CreateColumnInfo, CreateNamespaceInfo, Namespace, Table};
-use nsql_core::{Name, Oid};
+use nsql_core::{Name, Oid, Schema};
 pub use nsql_storage::tuple::TupleIndex;
 pub use nsql_storage::value::{Decimal, Value};
 
@@ -85,8 +85,18 @@ pub enum Stmt {
     CreateTable(CreateTableInfo),
     Query(Box<QueryPlan>),
     Explain(ExplainMode, Box<Stmt>),
-    Insert { table: Oid<Table>, source: Box<QueryPlan>, returning: Option<Box<[Expr]>> },
-    Update { table: Oid<Table>, source: Box<QueryPlan>, returning: Option<Box<[Expr]>> },
+    Insert {
+        table: Oid<Table>,
+        source: Box<QueryPlan>,
+        returning: Option<Box<[Expr]>>,
+        schema: Schema,
+    },
+    Update {
+        table: Oid<Table>,
+        source: Box<QueryPlan>,
+        returning: Option<Box<[Expr]>>,
+        schema: Schema,
+    },
 }
 
 impl Stmt {

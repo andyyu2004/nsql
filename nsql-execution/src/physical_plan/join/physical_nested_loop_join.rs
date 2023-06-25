@@ -9,6 +9,7 @@ use crate::pipeline::{MetaPipelineBuilder, PipelineBuilder, PipelineBuilderArena
 #[derive(Debug)]
 pub(crate) struct PhysicalNestedLoopJoin<'env, 'txn, S, M> {
     children: [Arc<dyn PhysicalNode<'env, 'txn, S, M>>; 2],
+    schema: Schema,
     join: ir::Join,
     rhs_tuples: RwLock<Vec<Tuple>>,
     evaluator: Evaluator,
@@ -21,12 +22,14 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     PhysicalNestedLoopJoin<'env, 'txn, S, M>
 {
     pub fn plan(
+        schema: Schema,
         join: ir::Join,
         probe_node: Arc<dyn PhysicalNode<'env, 'txn, S, M>>,
         build_node: Arc<dyn PhysicalNode<'env, 'txn, S, M>>,
     ) -> Arc<dyn PhysicalNode<'env, 'txn, S, M>> {
         Arc::new(Self {
             join,
+            schema,
             children: [probe_node, build_node],
             finalized: AtomicBool::new(false),
             found_match_for_tuple: AtomicBool::new(false),
@@ -35,6 +38,14 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
             evaluator: Evaluator::new(),
         })
     }
+
+    fn probe_node(&self) -> Arc<dyn PhysicalNode<'env, 'txn, S, M>> {
+        Arc::clone(&self.children[0])
+    }
+
+    fn build_node(&self) -> Arc<dyn PhysicalNode<'env, 'txn, S, M>> {
+        Arc::clone(&self.children[1])
+    }
 }
 
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode<'env, 'txn, S, M>
@@ -42,6 +53,10 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode
 {
     fn children(&self) -> &[Arc<dyn PhysicalNode<'env, 'txn, S, M>>] {
         &self.children
+    }
+
+    fn schema(&self) -> &[LogicalType] {
+        &self.schema
     }
 
     fn as_source(
@@ -74,13 +89,13 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode
         // `current` is the probe pipeline of the join
         arena[current].add_operator(Arc::clone(&self) as _);
 
-        Arc::clone(&self.children[0]).build_pipelines(arena, meta_builder, current);
+        self.probe_node().build_pipelines(arena, meta_builder, current);
 
         // create a new meta pipeline for the build side of the join with `self` as the sink
         let child_meta_pipeline =
             arena.new_child_meta_pipeline(meta_builder, Arc::clone(&self) as _);
 
-        arena.build(child_meta_pipeline, Arc::clone(&self.children[1]));
+        arena.build(child_meta_pipeline, self.build_node());
     }
 }
 
@@ -114,7 +129,9 @@ impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalOperator<'
                 if self.join.is_left()
                     && !self.found_match_for_tuple.swap(false, atomic::Ordering::Relaxed)
                 {
-                    return Ok(OperatorState::Yield(input.fill_right(3)));
+                    return Ok(OperatorState::Yield(
+                        input.fill_right(self.build_node().schema().len()),
+                    ));
                 }
                 return Ok(OperatorState::Continue);
             }

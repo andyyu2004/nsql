@@ -15,6 +15,7 @@ use std::sync::Arc;
 pub use anyhow::Error;
 use nsql_arena::Idx;
 use nsql_catalog::Catalog;
+use nsql_core::LogicalType;
 use nsql_storage::tuple::Tuple;
 use nsql_storage_engine::{
     ExecutionMode, FallibleIterator, ReadWriteExecutionMode, ReadonlyExecutionMode, StorageEngine,
@@ -48,6 +49,8 @@ trait PhysicalNode<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>
     Explain<'env, S> + fmt::Debug + 'txn
 {
     fn children(&self) -> &[Arc<dyn PhysicalNode<'env, 'txn, S, M>>];
+
+    fn schema(&self) -> &[LogicalType];
 
     fn as_source(
         self: Arc<Self>,

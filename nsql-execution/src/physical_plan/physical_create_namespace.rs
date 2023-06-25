@@ -26,6 +26,10 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalNode<'env, 'txn, S, ReadWriteEx
         &[]
     }
 
+    fn schema(&self) -> &[LogicalType] {
+        &[]
+    }
+
     fn as_source(
         self: Arc<Self>,
     ) -> Result<
@@ -67,12 +71,6 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSource<'env, 'txn, S, ReadWrite
         let info = self.info.clone();
 
         namespaces.insert(Namespace::new(info.name))?;
-
-        // if let Err(err) = catalog.create::<Namespace<S>>(tx, info) {
-        //     if !self.info.if_not_exists {
-        //         return Err(err)?;
-        //     }
-        // }
 
         Ok(Box::new(fallible_iterator::empty()))
     }

@@ -1,16 +1,21 @@
 use std::error::Error;
 use std::fmt;
 use std::ops::{Index, IndexMut};
+use std::sync::OnceLock;
 
-use rkyv::with::RefAsBox;
+use nsql_core::Schema;
+use rkyv::with::{RefAsBox, Skip};
 use rkyv::{Archive, Archived, Deserialize, Serialize};
 
 use crate::value::{CastError, FromValue, Value};
 
 // FIXME make this cheap to clone
 #[derive(Debug, Clone, PartialEq, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
-#[repr(transparent)]
-pub struct Tuple(Box<[Value]>);
+pub struct Tuple {
+    values: Box<[Value]>,
+    #[with(Skip)]
+    cached_schema: OnceLock<Schema>,
+}
 
 #[derive(Debug, Clone, PartialEq, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
 #[repr(transparent)]
@@ -19,12 +24,12 @@ pub struct TupleRef<'a>(#[with(RefAsBox)] &'a [Value]);
 impl Tuple {
     #[inline]
     pub fn new(values: Box<[Value]>) -> Self {
-        Self(values)
+        Self { values, cached_schema: Default::default() }
     }
 
     #[inline]
     pub fn len(&self) -> usize {
-        self.0.len()
+        self.values.len()
     }
 
     #[inline]
@@ -38,19 +43,24 @@ impl Tuple {
     }
 
     #[inline]
+    pub fn schema(&self) -> &Schema {
+        self.cached_schema.get_or_init(|| self.values.iter().map(|v| v.logical_type()).collect())
+    }
+
+    #[inline]
     pub fn values(&self) -> impl Iterator<Item = &Value> {
-        self.0.iter()
+        self.values.iter()
     }
 
     #[inline]
     pub fn into_values(self) -> Box<[Value]> {
-        self.0
+        self.values
     }
 
     #[inline]
     pub fn join(&self, other: &Self) -> Self {
-        let mut values = self.0.clone().into_vec();
-        values.extend_from_slice(&other.0);
+        let mut values = self.values.clone().into_vec();
+        values.extend_from_slice(&other.values);
         Self::new(values.into_boxed_slice())
     }
 
@@ -61,7 +71,7 @@ impl Tuple {
 
     #[inline]
     pub fn fill_right(&self, n: usize) -> Tuple {
-        let mut values = self.0.clone().into_vec();
+        let mut values = self.values.clone().into_vec();
         values.resize_with(values.len() + n, || Value::Null);
         Self::new(values.into_boxed_slice())
     }
@@ -70,14 +80,14 @@ impl Tuple {
 impl ArchivedTuple {
     #[inline]
     pub fn project(&self, projection: &[TupleIndex]) -> Tuple {
-        projection.iter().map(|&idx| nsql_rkyv::deserialize(&self.0[idx.0])).collect()
+        projection.iter().map(|&idx| nsql_rkyv::deserialize(&self.values[idx.0])).collect()
     }
 }
 
 impl fmt::Display for Tuple {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "(")?;
-        let mut iter = self.0.iter();
+        let mut iter = self.values();
         if let Some(value) = iter.next() {
             write!(f, "{value}")?;
             for value in iter {
@@ -121,7 +131,7 @@ impl Index<TupleIndex> for Tuple {
 
     #[inline]
     fn index(&self, index: TupleIndex) -> &Self::Output {
-        &self.0[index.0]
+        &self.values[index.0]
     }
 }
 
@@ -130,14 +140,14 @@ impl Index<usize> for Tuple {
 
     #[inline]
     fn index(&self, index: usize) -> &Self::Output {
-        &self.0[index]
+        &self.values[index]
     }
 }
 
 impl IndexMut<usize> for Tuple {
     #[inline]
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
-        &mut self.0[index]
+        &mut self.values[index]
     }
 }
 

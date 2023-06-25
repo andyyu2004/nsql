@@ -22,6 +22,7 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use nsql_catalog::Catalog;
+use nsql_core::{LogicalType, Schema};
 use nsql_plan::Plan;
 use nsql_storage_engine::{StorageEngine, Transaction};
 
@@ -92,13 +93,13 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalPlanner<'env, S> {
         plan: Box<Plan>,
     ) -> Result<Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode>>> {
         let plan = match *plan {
-            Plan::Update { table, source, returning } => {
+            Plan::Update { table, source, returning, schema } => {
                 let source = self.plan_write_node(tx, source)?;
-                PhysicalUpdate::plan(table, source, returning)
+                PhysicalUpdate::plan(schema, table, source, returning)
             }
-            Plan::Insert { table, source, returning } => {
+            Plan::Insert { table, source, returning, schema } => {
                 let source = self.plan_write_node(tx, source)?;
-                PhysicalInsert::plan(table, source, returning)
+                PhysicalInsert::plan(schema, table, source, returning)
             }
             Plan::CreateTable(info) => PhysicalCreateTable::plan(info),
             Plan::CreateNamespace(info) => PhysicalCreateNamespace::plan(info),
@@ -152,24 +153,26 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalPlanner<'env, S> {
     ) -> Result<Arc<dyn PhysicalNode<'env, 'txn, S, M>>> {
         let plan = match *plan {
             Plan::Transaction(kind) => PhysicalTransaction::plan(kind),
-            Plan::Scan { table, projection } => PhysicalTableScan::plan(table, projection),
+            Plan::Scan { table, projection, projected_schema } => {
+                PhysicalTableScan::plan(projected_schema, table, projection)
+            }
             Plan::Show(object_type) => PhysicalShow::plan(object_type),
             Plan::Explain(kind, plan) => {
                 return self.explain_plan(tx, kind, f(self, tx, plan)?);
             }
-            Plan::Values { values } => PhysicalValues::plan(values),
-            Plan::Projection { source, projection } => {
-                PhysicalProjection::plan(f(self, tx, source)?, projection)
+            Plan::Values { schema, values } => PhysicalValues::plan(schema, values),
+            Plan::Projection { projected_schema, source, projection } => {
+                PhysicalProjection::plan(projected_schema, f(self, tx, source)?, projection)
             }
             Plan::Limit { source, limit } => PhysicalLimit::plan(f(self, tx, source)?, limit),
             Plan::Order { source, order } => PhysicalOrder::plan(f(self, tx, source)?, order),
             Plan::Filter { source, predicate } => {
                 PhysicalFilter::plan(f(self, tx, source)?, predicate)
             }
-            Plan::Join { join, lhs, rhs } => {
-                PhysicalNestedLoopJoin::plan(join, f(self, tx, lhs)?, f(self, tx, rhs)?)
+            Plan::Join { schema, join, lhs, rhs } => {
+                PhysicalNestedLoopJoin::plan(schema, join, f(self, tx, lhs)?, f(self, tx, rhs)?)
             }
-            Plan::Unnest { expr } => PhysicalUnnest::plan(expr),
+            Plan::Unnest { schema, expr } => PhysicalUnnest::plan(schema, expr),
             Plan::Empty => PhysicalDummyScan::plan(),
             Plan::CreateTable(_)
             | Plan::CreateNamespace(_)

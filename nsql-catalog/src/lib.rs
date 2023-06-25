@@ -3,7 +3,6 @@
 
 mod bootstrap;
 mod entity;
-pub mod schema;
 mod system_table;
 
 use std::fmt;

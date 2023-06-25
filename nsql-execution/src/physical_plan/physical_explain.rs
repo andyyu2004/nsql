@@ -38,6 +38,10 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode
         &[]
     }
 
+    fn schema(&self) -> &[LogicalType] {
+        &[LogicalType::Text]
+    }
+
     fn as_source(
         self: Arc<Self>,
     ) -> Result<Arc<dyn PhysicalSource<'env, 'txn, S, M>>, Arc<dyn PhysicalNode<'env, 'txn, S, M>>>

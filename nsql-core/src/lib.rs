@@ -1,7 +1,6 @@
 #![deny(rust_2018_idioms)]
 
 mod oid;
-pub mod schema;
 
 use std::borrow::Borrow;
 use std::fmt;
@@ -116,5 +115,49 @@ impl fmt::Display for LogicalType {
             LogicalType::TupleExpr => write!(f, "tuple"),
             LogicalType::Array(element) => write!(f, "[{element}]"),
         }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Schema {
+    types: Box<[LogicalType]>,
+}
+
+impl Schema {
+    #[inline]
+    pub fn new(types: impl Into<Box<[LogicalType]>>) -> Self {
+        Self { types: types.into() }
+    }
+
+    #[inline]
+    pub fn empty() -> Self {
+        Self::new([])
+    }
+
+    #[inline]
+    pub fn types(&self) -> &[LogicalType] {
+        &self.types
+    }
+
+    #[inline]
+    pub fn is_subtype_of(&self, supertype: &[LogicalType]) -> bool {
+        self.types.len() == supertype.len()
+            && self.types.iter().zip(supertype.iter()).all(|(a, b)| a.is_subtype_of(b))
+    }
+}
+
+impl Deref for Schema {
+    type Target = [LogicalType];
+
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        &self.types
+    }
+}
+
+impl FromIterator<LogicalType> for Schema {
+    #[inline]
+    fn from_iter<T: IntoIterator<Item = LogicalType>>(iter: T) -> Self {
+        Self { types: iter.into_iter().collect::<Vec<_>>().into_boxed_slice() }
     }
 }

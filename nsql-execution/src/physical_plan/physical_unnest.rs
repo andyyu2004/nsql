@@ -6,15 +6,17 @@ use crate::TupleStream;
 
 #[derive(Debug)]
 pub struct PhysicalUnnest {
+    schema: Schema,
     evaluator: Evaluator,
     expr: ir::Expr,
 }
 
 impl PhysicalUnnest {
     pub(crate) fn plan<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
+        schema: Schema,
         expr: ir::Expr,
     ) -> Arc<dyn PhysicalNode<'env, 'txn, S, M>> {
-        Arc::new(Self { evaluator: Evaluator::new(), expr })
+        Arc::new(Self { schema, evaluator: Evaluator::new(), expr })
     }
 }
 
@@ -42,6 +44,10 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode
 {
     fn children(&self) -> &[Arc<dyn PhysicalNode<'env, 'txn, S, M>>] {
         &[]
+    }
+
+    fn schema(&self) -> &[LogicalType] {
+        &self.schema
     }
 
     fn as_source(

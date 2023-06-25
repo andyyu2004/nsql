@@ -6,25 +6,23 @@ use std::ops::Deref;
 pub use eval::EvalNotConst;
 use itertools::Itertools;
 use nsql_catalog::{ColumnIndex, Function, Table};
-use nsql_core::{LogicalType, Oid};
+use nsql_core::{LogicalType, Oid, Schema};
 use nsql_storage::tuple::TupleIndex;
 use nsql_storage::value::Value;
 
 use crate::Path;
-
-pub type QueryPlanSchema = Vec<LogicalType>;
 
 #[derive(Debug, Clone)]
 pub enum QueryPlan {
     TableScan {
         table: Oid<Table>,
         projection: Option<Box<[ColumnIndex]>>,
-        projected_schema: QueryPlanSchema,
+        projected_schema: Schema,
     },
     Projection {
         source: Box<QueryPlan>,
         projection: Box<[Expr]>,
-        projected_schema: QueryPlanSchema,
+        projected_schema: Schema,
     },
     Filter {
         source: Box<QueryPlan>,
@@ -32,15 +30,15 @@ pub enum QueryPlan {
     },
     // maybe this can be implemented as a standard table function in the future (change the sqlparser dialect to duckdb if so)
     Unnest {
-        schema: QueryPlanSchema,
+        schema: Schema,
         expr: Expr,
     },
     Values {
         values: Values,
-        schema: QueryPlanSchema,
+        schema: Schema,
     },
     Join {
-        schema: QueryPlanSchema,
+        schema: Schema,
         join: Join,
         lhs: Box<QueryPlan>,
         rhs: Box<QueryPlan>,
@@ -121,7 +119,7 @@ impl QueryPlan {
     pub fn values(values: Values) -> Self {
         let schema = values
             .iter()
-            .map(|row| row.iter().map(|expr| expr.ty.clone()).collect::<Vec<_>>())
+            .map(|row| row.iter().map(|expr| expr.ty.clone()).collect())
             .next()
             .expect("values should be non-empty");
         QueryPlan::Values { values, schema }
@@ -131,7 +129,7 @@ impl QueryPlan {
     pub fn unnest(expr: Expr) -> Self {
         match &expr.ty {
             LogicalType::Array(element_type) => {
-                QueryPlan::Unnest { schema: vec![*element_type.clone()], expr }
+                QueryPlan::Unnest { schema: Schema::new([*element_type.clone()]), expr }
             }
             _ => panic!("unnest expression must be an array"),
         }

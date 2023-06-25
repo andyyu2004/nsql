@@ -7,11 +7,11 @@ pub(crate) struct Executor<'env, 'txn, S, M> {
     _marker: std::marker::PhantomData<(S, M)>,
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine> Executor<'env, 'txn, S, ReadWriteExecutionMode> {
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Executor<'env, 'txn, S, M> {
     fn execute(
         self: Arc<Self>,
-        ecx: &'txn ExecutionContext<'env, S, ReadWriteExecutionMode>,
-        root: Idx<MetaPipeline<'env, 'txn, S, ReadWriteExecutionMode>>,
+        ecx: &'txn ExecutionContext<'env, S, M>,
+        root: Idx<MetaPipeline<'env, 'txn, S, M>>,
     ) -> ExecutionResult<()> {
         let root = &self.arena[root];
         for &child in &root.children {
@@ -27,16 +27,24 @@ impl<'env: 'txn, 'txn, S: StorageEngine> Executor<'env, 'txn, S, ReadWriteExecut
 
     fn execute_pipeline(
         self: Arc<Self>,
-        ecx: &'txn ExecutionContext<'env, S, ReadWriteExecutionMode>,
-        pipeline: Idx<Pipeline<'env, 'txn, S, ReadWriteExecutionMode>>,
+        ecx: &'txn ExecutionContext<'env, S, M>,
+        pipeline: Idx<Pipeline<'env, 'txn, S, M>>,
     ) -> ExecutionResult<()> {
-        let pipeline: &Pipeline<'env, 'txn, S, _> = &self.arena[pipeline];
+        let pipeline: &Pipeline<'env, 'txn, S, M> = &self.arena[pipeline];
         let mut stream = Arc::clone(&pipeline.source).source(ecx)?;
+        let source_schema = pipeline.source.schema();
 
         'main: while let Some(input_tuple) = stream.next()? {
             'input: loop {
                 let mut again = false;
                 let mut tuple = input_tuple.clone();
+                debug_assert!(
+                    tuple.schema().is_subtype_of(source_schema),
+                    "{:?} !<: {:?}",
+                    tuple.schema(),
+                    source_schema
+                );
+
                 for op in &pipeline.operators {
                     tuple = match op.execute(ecx, tuple)? {
                         OperatorState::Again(tuple) => match tuple {
@@ -51,65 +59,13 @@ impl<'env: 'txn, 'txn, S: StorageEngine> Executor<'env, 'txn, S, ReadWriteExecut
                         // Once an operator completes, the entire pipeline is finished
                         OperatorState::Done => return Ok(()),
                     };
-                }
 
-                pipeline.sink.sink(ecx, tuple)?;
-                if !again {
-                    break 'input;
-                }
-            }
-        }
-
-        pipeline.sink.finalize(ecx)?;
-
-        Ok(())
-    }
-}
-
-impl<'env: 'txn, 'txn, S: StorageEngine> Executor<'env, 'txn, S, ReadonlyExecutionMode> {
-    fn execute(
-        self: Arc<Self>,
-        ecx: &'txn ExecutionContext<'env, S, ReadonlyExecutionMode>,
-        root: Idx<MetaPipeline<'env, 'txn, S, ReadonlyExecutionMode>>,
-    ) -> ExecutionResult<()> {
-        let root = &self.arena[root];
-        for &child in &root.children {
-            Arc::clone(&self).execute(ecx, child)?;
-        }
-
-        for &pipeline in &root.pipelines {
-            Arc::clone(&self).execute_pipeline(ecx, pipeline)?;
-        }
-
-        Ok(())
-    }
-
-    fn execute_pipeline(
-        self: Arc<Self>,
-        ecx: &'txn ExecutionContext<'env, S, ReadonlyExecutionMode>,
-        pipeline: Idx<Pipeline<'env, 'txn, S, ReadonlyExecutionMode>>,
-    ) -> ExecutionResult<()> {
-        let pipeline: &Pipeline<'env, 'txn, S, _> = &self.arena[pipeline];
-        let mut stream = Arc::clone(&pipeline.source).source(ecx)?;
-
-        'main: while let Some(input_tuple) = stream.next()? {
-            'input: loop {
-                let mut again = false;
-                let mut tuple = input_tuple.clone();
-                for op in &pipeline.operators {
-                    tuple = match op.execute(ecx, tuple)? {
-                        OperatorState::Again(tuple) => match tuple {
-                            Some(tuple) => {
-                                again = true;
-                                tuple
-                            }
-                            None => continue 'input,
-                        },
-                        OperatorState::Yield(tuple) => tuple,
-                        OperatorState::Continue => continue 'main,
-                        // Once an operator completes, the entire pipeline is finished
-                        OperatorState::Done => return Ok(()),
-                    };
+                    debug_assert!(
+                        tuple.schema().is_subtype_of(op.schema()),
+                        "{:?} !<: {:?}",
+                        tuple.schema(),
+                        op.schema()
+                    );
                 }
 
                 pipeline.sink.sink(ecx, tuple)?;
@@ -188,6 +144,11 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode
     }
 
     #[inline]
+    fn schema(&self) -> &[LogicalType] {
+        &[]
+    }
+
+    #[inline]
     fn as_source(
         self: Arc<Self>,
     ) -> Result<Arc<dyn PhysicalSource<'env, 'txn, S, M>>, Arc<dyn PhysicalNode<'env, 'txn, S, M>>>
@@ -219,7 +180,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
         self: Arc<Self>,
         _ecx: &'txn ExecutionContext<'env, S, M>,
     ) -> ExecutionResult<TupleStream<'txn>> {
-        todo!()
+        unimplemented!()
     }
 }
 

@@ -5,6 +5,7 @@ use super::*;
 #[derive(Debug)]
 pub struct PhysicalProjection<'env, 'txn, S, M> {
     children: [Arc<dyn PhysicalNode<'env, 'txn, S, M>>; 1],
+    schema: Schema,
     projection: Box<[ir::Expr]>,
     evaluator: Evaluator,
 }
@@ -13,10 +14,11 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     PhysicalProjection<'env, 'txn, S, M>
 {
     pub(crate) fn plan(
+        schema: Schema,
         source: Arc<dyn PhysicalNode<'env, 'txn, S, M>>,
         projection: Box<[ir::Expr]>,
     ) -> Arc<dyn PhysicalNode<'env, 'txn, S, M>> {
-        Arc::new(Self { evaluator: Evaluator::new(), children: [source], projection })
+        Arc::new(Self { schema, evaluator: Evaluator::new(), children: [source], projection })
     }
 }
 
@@ -40,6 +42,10 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode
 {
     fn children(&self) -> &[Arc<dyn PhysicalNode<'env, 'txn, S, M>>] {
         &self.children
+    }
+
+    fn schema(&self) -> &[LogicalType] {
+        &self.schema
     }
 
     fn as_source(

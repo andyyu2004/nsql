@@ -101,10 +101,10 @@ impl<'env, 'txn, S: StorageEngine> TableStorage<'env, 'txn, S, ReadWriteExecutio
 
         for (value, col) in tuple.values().zip(&self.info.columns) {
             assert!(
-                value.ty().is_subtype_of(&col.logical_type),
+                value.logical_type().is_subtype_of(&col.logical_type),
                 "expected column type {:?}, got {:?}",
                 col.logical_type,
-                value.ty()
+                value.logical_type()
             );
 
             if col.is_primary_key {

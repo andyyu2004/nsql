@@ -15,7 +15,7 @@ use nsql_catalog::{
     Catalog, ColumnIndex, CreateColumnInfo, CreateNamespaceInfo, Function, Namespace, SystemEntity,
     Table, MAIN_SCHEMA,
 };
-use nsql_core::{LogicalType, Name, Oid};
+use nsql_core::{LogicalType, Name, Oid, Schema};
 use nsql_parse::ast;
 use nsql_storage_engine::{StorageEngine, Transaction};
 
@@ -231,11 +231,16 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                             .iter()
                             .map(|selection| self.bind_select_item(tx, &scope, selection))
                             .flatten_ok()
-                            .collect::<Result<_>>()
+                            .collect::<Result<Box<_>>>()
                     })
                     .transpose()?;
 
-                ir::Stmt::Insert { table, source, returning }
+                let schema = match &returning {
+                    Some(exprs) => exprs.iter().map(|e| e.ty.clone()).collect::<Schema>(),
+                    None => Schema::empty(),
+                };
+
+                ir::Stmt::Insert { table, source, returning, schema }
             }
             ast::Statement::Query(query) => {
                 let (_scope, query) = self.bind_query(tx, scope, query)?;
@@ -334,11 +339,16 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                             .iter()
                             .map(|selection| self.bind_select_item(tx, &scope, selection))
                             .flatten_ok()
-                            .collect::<Result<_>>()
+                            .collect::<Result<Box<_>>>()
                     })
                     .transpose()?;
 
-                ir::Stmt::Update { table, source, returning }
+                let schema = returning
+                    .as_ref()
+                    .map(|exprs| exprs.iter().map(|e| e.ty.clone()).collect())
+                    .unwrap_or_else(Schema::empty);
+
+                ir::Stmt::Update { table, source, returning, schema }
             }
             ast::Statement::Explain { describe_alias: _, analyze, verbose, statement, format } => {
                 not_implemented!(*analyze);
@@ -364,11 +374,11 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
         projection: Option<Box<[ColumnIndex]>>,
     ) -> Result<Box<ir::QueryPlan>> {
         let columns = self.catalog.get::<Table>(tx, table)?.columns(self.catalog, tx)?;
-        let schema = columns.iter().map(|column| column.logical_type()).collect::<Vec<_>>();
+        let schema = columns.iter().map(|column| column.logical_type()).collect::<Schema>();
         let projected_schema = projection
             .as_ref()
             .map(|projection| {
-                projection.iter().map(|&index| schema[index.as_usize()].clone()).collect::<Vec<_>>()
+                projection.iter().map(|&index| schema[index.as_usize()].clone()).collect()
             })
             .unwrap_or(schema);
 
@@ -708,7 +718,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
     ) -> Result<ir::JoinConstraint> {
         match &constraint {
             ast::JoinConstraint::On(expr) => {
-                let predicate = self.bind_predicate(tx, &scope, expr)?;
+                let predicate = self.bind_predicate(tx, scope, expr)?;
                 ensure!(
                     predicate.ty == LogicalType::Bool,
                     "join predicate must be a boolean expression"
@@ -1059,7 +1069,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
 
     fn bind_value_expr(&self, value: &ast::Value) -> (LogicalType, ir::ExprKind) {
         let lit = self.bind_value(value);
-        (lit.ty(), ir::ExprKind::Value(lit))
+        (lit.logical_type(), ir::ExprKind::Value(lit))
     }
 
     fn bind_value(&self, val: &ast::Value) -> ir::Value {
