@@ -5,6 +5,7 @@ use std::sync::Arc;
 
 pub use anyhow::Error;
 use arc_swap::ArcSwapOption;
+use mimalloc::MiMalloc;
 use nsql_bind::Binder;
 use nsql_catalog::Catalog;
 pub use nsql_core::LogicalType;
@@ -21,6 +22,9 @@ pub type Result<T, E = anyhow::Error> = std::result::Result<T, E>;
 pub struct Nsql<S> {
     shared: Arc<Shared<S>>,
 }
+
+#[global_allocator]
+static GLOBAL: MiMalloc = MiMalloc;
 
 impl<S> Clone for Nsql<S> {
     fn clone(&self) -> Self {
