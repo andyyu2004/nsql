@@ -1204,7 +1204,6 @@ dependencies = [
  "nsql-lmdb",
  "nsql-opt",
  "nsql-parse",
- "nsql-plan",
  "nsql-redb",
  "nsql-storage",
  "nsql-storage-engine",
@@ -1281,7 +1280,6 @@ dependencies = [
  "nsql-catalog",
  "nsql-core",
  "nsql-ir",
- "nsql-plan",
  "nsql-storage",
  "nsql-storage-engine",
  "nsql-util",
@@ -1313,7 +1311,7 @@ dependencies = [
 name = "nsql-opt"
 version = "0.1.0"
 dependencies = [
- "nsql-plan",
+ "nsql-ir",
 ]
 
 [[package]]
@@ -1321,15 +1319,6 @@ name = "nsql-parse"
 version = "0.1.0"
 dependencies = [
  "sqlparser",
-]
-
-[[package]]
-name = "nsql-plan"
-version = "0.1.0"
-dependencies = [
- "nsql-catalog",
- "nsql-core",
- "nsql-ir",
 ]
 
 [[package]]

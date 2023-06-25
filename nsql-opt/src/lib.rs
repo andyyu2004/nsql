@@ -1,5 +1,3 @@
-use nsql_plan::Plan;
-
-pub fn optimize(stmt: Box<Plan>) -> Box<Plan> {
+pub fn optimize(stmt: Box<ir::Plan>) -> Box<ir::Plan> {
     stmt
 }

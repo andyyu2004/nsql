@@ -10,7 +10,6 @@ members = [
     "nsql-execution",
     "nsql-ir",
     "nsql-parse",
-    "nsql-plan",
     "nsql-opt",
     "nsql-rkyv",
     "nsql-shell",

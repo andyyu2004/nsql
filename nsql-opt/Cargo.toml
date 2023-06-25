@@ -4,4 +4,4 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-nsql-plan = { path = "../nsql-plan" }
+ir = { path = "../nsql-ir", package = "nsql-ir" }

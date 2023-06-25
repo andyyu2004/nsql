@@ -21,9 +21,9 @@ use std::fmt;
 use std::sync::Arc;
 
 use anyhow::Result;
+use ir::Plan;
 use nsql_catalog::Catalog;
 use nsql_core::{LogicalType, Schema};
-use nsql_plan::Plan;
 use nsql_storage_engine::{StorageEngine, Transaction};
 
 pub use self::explain::Explain;
@@ -153,7 +153,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalPlanner<'env, S> {
     ) -> Result<Arc<dyn PhysicalNode<'env, 'txn, S, M>>> {
         let plan = match *plan {
             Plan::Transaction(kind) => PhysicalTransaction::plan(kind),
-            Plan::Scan { table, projection, projected_schema } => {
+            Plan::TableScan { table, projection, projected_schema } => {
                 PhysicalTableScan::plan(projected_schema, table, projection)
             }
             Plan::Show(object_type) => PhysicalShow::plan(object_type),
