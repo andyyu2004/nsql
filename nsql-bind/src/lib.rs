@@ -218,7 +218,16 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                     source = source.project(projection);
                 }
 
-                for (column, ty) in table_columns.iter().zip(source.schema()) {
+                let source_schema = source.schema();
+                ensure!(
+                    table_columns.len() == source_schema.len(),
+                    "table `{}` has {} columns but {} columns were supplied",
+                    table_name,
+                    table_columns.len(),
+                    source_schema.len()
+                );
+
+                for (column, ty) in table_columns.iter().zip(source_schema) {
                     ensure!(
                         ty.is_subtype_of(&column.logical_type()),
                         "cannot insert value of type `{ty}` into column `{}` of type `{}`",

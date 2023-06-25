@@ -7,8 +7,10 @@ CREATE TABLE ys(y int PRIMARY KEY, z int)
 statement ok
 INSERT INTO xs VALUES (1), (2), (3)
 
-statement ok
+statement error
 INSERT INTO xs VALUES (1, 2)
+----
+table `xs` has 1 columns but 2 columns were supplied
 
 query II rowsort
 SELECT x FROM xs
