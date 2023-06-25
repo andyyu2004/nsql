@@ -7,6 +7,9 @@ CREATE TABLE ys(y int PRIMARY KEY, z int)
 statement ok
 INSERT INTO xs VALUES (1), (2), (3)
 
+statement ok
+INSERT INTO xs VALUES (1, 2)
+
 query II rowsort
 SELECT x FROM xs
 ----

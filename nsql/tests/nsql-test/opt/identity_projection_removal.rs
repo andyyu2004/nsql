@@ -8,9 +8,10 @@ fn test_identity_projection_removal() -> nsql::Result<()> {
         vec!["CREATE TABLE t (id int PRIMARY KEY)"],
         "EXPLAIN SELECT * FROM t JOIN t",
         expect![[r#"
-            nested loop join (INNER JOIN)
-              scan t (id)
-              scan t (id)
+            projection (t.id, t.id)
+              nested loop join (INNER JOIN)
+                scan t (id)
+                scan t (id)
         "#]],
     )
 }
@@ -21,9 +22,28 @@ fn test_identity_projection_removal_nested() -> nsql::Result<()> {
         vec!["CREATE TABLE t (id int PRIMARY KEY)"],
         "EXPLAIN SELECT * FROM (SELECT * FROM t JOIN t)",
         expect![[r#"
-            nested loop join (INNER JOIN)
-              scan t (id)
-              scan t (id)
+            projection (t.id, t.id)
+              projection (t.id, t.id)
+                nested loop join (INNER JOIN)
+                  scan t (id)
+                  scan t (id)
+        "#]],
+    )
+}
+
+#[test]
+fn test_identity_projection_removal_very_nested() -> nsql::Result<()> {
+    check_explain(
+        vec!["CREATE TABLE t (id int PRIMARY KEY)"],
+        "EXPLAIN SELECT * FROM (SELECT * FROM (SELECT * FROM t) JOIN (SELECT * FROM t))",
+        expect![[r#"
+            projection (t.id, t.id)
+              projection (t.id, t.id)
+                nested loop join (INNER JOIN)
+                  projection (t.id)
+                    scan t (id)
+                  projection (t.id)
+                    scan t (id)
         "#]],
     )
 }

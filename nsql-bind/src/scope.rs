@@ -46,6 +46,20 @@ impl<S: StorageEngine> Scope<S> {
         Self { bound_columns, tables: Default::default(), marker: PhantomData }
     }
 
+    pub fn merge(&self, other: &Self) -> Result<Self> {
+        let mut tables = self.tables.clone();
+        for (path, ()) in other.tables.iter() {
+            tables.insert_mut(path.clone(), ());
+        }
+
+        let mut bound_columns = self.bound_columns.clone();
+        for (path, ty) in other.bound_columns.iter() {
+            bound_columns.push_back_mut((path.clone(), ty.clone()));
+        }
+
+        Ok(Self { tables, bound_columns, marker: PhantomData })
+    }
+
     /// Insert a table and its columns to the scope
     #[tracing::instrument(skip(self, tx, binder))]
     pub fn bind_table<'env>(
@@ -85,8 +99,8 @@ impl<S: StorageEngine> Scope<S> {
                 _ => column.name(),
             };
 
-            bound_columns = bound_columns
-                .push_back((Path::qualified(table_path.clone(), name), column.logical_type()));
+            bound_columns
+                .push_back_mut((Path::qualified(table_path.clone(), name), column.logical_type()));
         }
 
         Ok(Self { tables: self.tables.insert(table_path, ()), bound_columns, marker: PhantomData })
@@ -137,7 +151,7 @@ impl<S: StorageEngine> Scope<S> {
         for (i, expr) in values[0].iter().enumerate() {
             // default column names are col1, col2, etc.
             let name = Name::from(format!("col{}", i + 1));
-            bound_columns = bound_columns.push_back((Path::Unqualified(name), expr.ty.clone()));
+            bound_columns.push_back_mut((Path::Unqualified(name), expr.ty.clone()));
         }
 
         Self { tables: self.tables.clone(), bound_columns, marker: PhantomData }

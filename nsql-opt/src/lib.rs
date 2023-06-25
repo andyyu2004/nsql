@@ -1,7 +1,7 @@
 use ir::visit::VisitorMut;
 
 pub fn optimize_in_place(plan: &mut ir::Plan) {
-    RemoveIdentityProjections.visit_plan_mut(plan);
+    // RemoveIdentityProjections.visit_plan_mut(plan);
 }
 
 struct RemoveIdentityProjections;

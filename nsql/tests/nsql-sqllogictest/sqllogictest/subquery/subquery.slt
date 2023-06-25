@@ -2,3 +2,25 @@ query I
 SELECT * FROM (SELECT * FROM (VALUES (42)))
 ----
 42
+
+statement ok
+CREATE TABLE t (id int PRIMARY KEY)
+
+statement ok
+INSERT INTO t VALUES (1), (2)
+
+query II
+SELECT * FROM t JOIN (SELECT * FROM t)
+----
+1 1
+1 2
+2 1
+2 2
+
+query II
+SELECT * FROM (SELECT * FROM (SELECT * FROM t) JOIN (SELECT * FROM t))
+----
+1 1
+1 2
+2 1
+2 2

@@ -688,6 +688,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
         lhs: Box<ir::Plan>,
         join: &ast::Join,
     ) -> Result<(Scope<S>, Box<ir::Plan>)> {
+        // FIXME don't think the `rhs` should have access to the scope of the lhs
         let (scope, rhs) = self.bind_table_factor(tx, scope, &join.relation)?;
         match &join.join_operator {
             ast::JoinOperator::CrossJoin => {
@@ -752,12 +753,14 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
             ast::TableFactor::Derived { lateral, subquery, alias } => {
                 not_implemented!(*lateral);
 
-                let (mut scope, subquery) = self.bind_query(tx, scope, subquery)?;
+                // subqueries get a fresh empty scope
+                let (mut subquery_scope, subquery) =
+                    self.bind_query(tx, &Scope::default(), subquery)?;
                 if let Some(alias) = alias {
-                    scope = scope.alias(self.lower_table_alias(alias))?;
+                    subquery_scope = subquery_scope.alias(self.lower_table_alias(alias))?;
                 }
 
-                (scope, subquery)
+                (scope.merge(&subquery_scope)?, subquery)
             }
             ast::TableFactor::TableFunction { .. } => todo!(),
             ast::TableFactor::UNNEST { alias, array_expr, with_offset, with_offset_alias } => {

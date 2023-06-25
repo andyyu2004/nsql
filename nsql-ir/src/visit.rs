@@ -86,6 +86,9 @@ pub trait VisitorMut {
             }
             ExprKind::ColumnRef { .. } => {}
             ExprKind::FunctionCall { function: _, args } => self.visit_exprs_mut(args),
+            ExprKind::Alias { alias: _, expr } => {
+                self.visit_expr_mut(expr);
+            }
         }
     }
 }
