@@ -72,10 +72,6 @@ impl<S: StorageEngine> Scope<S> {
                 _ => column.name(),
             };
 
-            if bound_columns.iter().any(|(p, _)| p.name() == name) {
-                todo!("handle duplicate names (this will not work with current impl correctly)")
-            }
-
             bound_columns = bound_columns
                 .push_back((Path::qualified(table_path.clone(), name), column.logical_type()));
         }

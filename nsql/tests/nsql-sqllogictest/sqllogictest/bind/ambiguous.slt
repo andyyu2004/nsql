@@ -2,3 +2,35 @@ query error
 SELECT x FROM (VALUES(1, 2)) AS t(x, x)
 ----
 column `x` is ambiguous, it could refer to any one of `t.x`, `t.x`
+
+statement ok
+CREATE TABLE t (x int PRIMARY KEY);
+
+statement ok
+INSERT INTO t VALUES (1);
+
+statement ok
+CREATE TABLE u (x int PRIMARY KEY);
+
+statement ok
+INSERT INTO u VALUES (2);
+
+query II
+SELECT * FROM t JOIN u;
+----
+1 2
+
+query error
+SELECT x FROM t JOIN u;
+----
+column `x` is ambiguous, it could refer to any one of `t.x`, `u.x`
+
+query I
+SELECT t.x FROM t JOIN u;
+----
+1
+
+query I
+SELECT u.x FROM t JOIN u;
+----
+2
