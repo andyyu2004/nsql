@@ -151,6 +151,7 @@ impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalOperator<'
                             joint_tuple
                         }),
                 )),
+                ir::JoinConstraint::None => Ok(OperatorState::Again(Some(joint_tuple))),
             },
             ir::Join::Cross => Ok(OperatorState::Again(Some(joint_tuple))),
             ir::Join::Full(_) => todo!(),

@@ -724,9 +724,8 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                 );
                 Ok(ir::JoinConstraint::On(predicate))
             }
-            ast::JoinConstraint::Using(_)
-            | ast::JoinConstraint::Natural
-            | ast::JoinConstraint::None => {
+            ast::JoinConstraint::None => Ok(ir::JoinConstraint::None),
+            ast::JoinConstraint::Using(_) | ast::JoinConstraint::Natural => {
                 not_implemented!("only `on` joins are currently supported")
             }
         }

@@ -84,12 +84,14 @@ impl fmt::Display for Join {
 #[derive(Debug, Clone)]
 pub enum JoinConstraint {
     On(Expr),
+    None,
 }
 
 impl fmt::Display for JoinConstraint {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             JoinConstraint::On(expr) => write!(f, "ON {}", expr),
+            JoinConstraint::None => Ok(()),
         }
     }
 }
