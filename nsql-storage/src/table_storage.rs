@@ -11,6 +11,7 @@ use nsql_storage_engine::{
 };
 use rkyv::AlignedVec;
 
+use crate::eval::FunctionCatalog;
 use crate::index::{IndexStorage, IndexStorageInfo};
 use crate::tuple::{IntoTuple, Tuple, TupleIndex};
 use crate::value::Value;
@@ -66,10 +67,12 @@ impl<'env, 'txn, S: StorageEngine> TableStorage<'env, 'txn, S, ReadWriteExecutio
     #[inline]
     pub fn insert(
         &mut self,
+        catalog: &dyn FunctionCatalog<'env, S>,
+        tx: &S::WriteTransaction<'env>,
         tuple: &Tuple,
     ) -> Result<Result<(), PrimaryKeyConflict>, anyhow::Error> {
         for index in self.indexes.iter_mut() {
-            index.insert(tuple)?;
+            index.insert(catalog, tx, tuple)?;
         }
 
         let (k, v) = self.split_tuple(tuple);

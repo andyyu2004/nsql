@@ -70,7 +70,7 @@ pub enum Value {
     Decimal(Decimal),
     Text(String),
     Bytea(Bytea),
-    Array(#[omit_bounds] Vec<Value>),
+    Array(#[omit_bounds] Box<[Value]>),
     // experiment adding this as a value for serialiazation purposes
     Type(LogicalType),
     TupleExpr(TupleExpr),
@@ -282,6 +282,7 @@ impl<V: FromValue> FromValue for Vec<V> {
     fn from_value(value: Value) -> Result<Self, CastError<Self>> {
         match value {
             Value::Array(values) => values
+                .into_vec()
                 .into_iter()
                 .map(|value| V::from_value(value).map_err(CastError::cast))
                 .collect(),

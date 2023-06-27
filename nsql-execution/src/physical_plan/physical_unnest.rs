@@ -29,12 +29,12 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
     ) -> ExecutionResult<TupleStream<'txn>> {
         let values = match self.evaluator.evaluate_expr(&Tuple::empty(), &self.expr) {
             Value::Array(values) => values,
-            Value::Null => vec![],
+            Value::Null => Box::new([]),
             _ => panic!("unnest expression should evaluate to an array"),
         };
 
         Ok(Box::new(fallible_iterator::convert(
-            values.into_iter().map(|value| Tuple::from([value])).map(Ok),
+            values.into_vec().into_iter().map(|value| Tuple::from([value])).map(Ok),
         )))
     }
 }

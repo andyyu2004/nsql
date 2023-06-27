@@ -1,3 +1,5 @@
+use nsql_core::UntypedOid;
+
 use super::*;
 use crate::Namespace;
 
@@ -10,6 +12,30 @@ pub struct Function {
     pub(crate) name: Name,
     pub(crate) args: Box<[LogicalType]>,
     pub(crate) ret: LogicalType,
+}
+
+impl<'env, S: StorageEngine> nsql_storage::eval::FunctionCatalog<'env, S> for Catalog<'env, S> {
+    #[inline]
+    fn get_function(
+        &self,
+        tx: &dyn Transaction<'env, S>,
+        oid: UntypedOid,
+    ) -> Result<Box<dyn nsql_storage::eval::Function>> {
+        let f = self.get::<Function>(tx, oid.cast())?;
+        Ok(Box::new(f))
+    }
+}
+
+impl nsql_storage::eval::Function for Function {
+    #[inline]
+    fn call(&self, args: Box<[Value]>) -> Value {
+        self.call(args)
+    }
+
+    #[inline]
+    fn arity(&self) -> usize {
+        self.args.len()
+    }
 }
 
 impl Function {
@@ -27,6 +53,9 @@ impl Function {
         if let Some(f) = builtins::get_builtin(self.oid) {
             return f(args);
         }
+
+        // otherwise, we store the bytecode for non-builtin functions
+        // let bytecode: Expr = todo!();
 
         panic!()
     }

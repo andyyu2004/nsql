@@ -4,6 +4,7 @@
 
 mod eval;
 mod executor;
+mod expr;
 mod physical_plan;
 mod pipeline;
 

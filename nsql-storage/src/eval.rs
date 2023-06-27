@@ -1,12 +1,27 @@
 //! A serializable stack-based bytecode for evaluating expressions.
-use core::fmt;
-use std::error::Error;
 
-use nsql_core::LogicalType;
+use anyhow::Result;
+use nsql_core::{LogicalType, UntypedOid};
+use nsql_storage_engine::Transaction;
 use rkyv::{Archive, Deserialize, Serialize};
 
 use crate::tuple::{Tuple, TupleIndex};
 use crate::value::{CastError, FromValue, Value};
+
+pub trait FunctionCatalog<'env, S> {
+    fn get_function(
+        &self,
+        tx: &dyn Transaction<'env, S>,
+        oid: UntypedOid,
+    ) -> Result<Box<dyn Function>>;
+}
+
+pub trait Function {
+    /// The number of arguments this function takes.
+    fn arity(&self) -> usize;
+
+    fn call(&self, args: Box<[Value]>) -> Value;
+}
 
 #[macro_export]
 macro_rules! expr_project {
@@ -20,6 +35,8 @@ macro_rules! expr_project {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Archive, Serialize, Deserialize)]
+#[omit_bounds]
+#[archive(bound(serialize = "__S: rkyv::ser::ScratchSpace + rkyv::ser::Serializer"))]
 pub struct TupleExpr {
     exprs: Box<[Expr]>,
 }
@@ -31,8 +48,13 @@ impl TupleExpr {
     }
 
     #[inline]
-    pub fn eval(&self, tuple: &Tuple) -> Result<Tuple, ExecutionError> {
-        self.exprs.iter().map(|expr| expr.execute(tuple)).collect()
+    pub fn eval<'env, S>(
+        &self,
+        catalog: &dyn FunctionCatalog<'env, S>,
+        tx: &dyn Transaction<'env, S>,
+        tuple: &Tuple,
+    ) -> Result<Tuple> {
+        self.exprs.iter().map(|expr| expr.execute(catalog, tx, tuple)).collect()
     }
 }
 
@@ -74,10 +96,15 @@ impl Expr {
         Self { ops: ops.into() }
     }
 
-    pub fn execute(&self, tuple: &Tuple) -> Result<Value, ExecutionError> {
+    pub fn execute<'env, S>(
+        &self,
+        catalog: &dyn FunctionCatalog<'env, S>,
+        tx: &dyn Transaction<'env, S>,
+        tuple: &Tuple,
+    ) -> Result<Value> {
         let mut stack = vec![];
         for op in &self.ops[..] {
-            op.execute(&mut stack, tuple)?;
+            op.execute(&mut stack, catalog, tx, tuple)?;
         }
 
         assert_eq!(stack.len(), 1, "stack should have exactly one value after execution");
@@ -86,32 +113,47 @@ impl Expr {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Archive, Serialize, Deserialize)]
+#[omit_bounds]
+#[archive(bound(serialize = "__S: rkyv::ser::ScratchSpace + rkyv::ser::Serializer"))]
 pub enum ExprOp {
-    Project(TupleIndex),
+    Push(#[omit_bounds] Value),
+    Project { index: TupleIndex },
+    MkArray { len: usize },
+    Call { function: UntypedOid },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Archive, Serialize, Deserialize)]
+#[archive(bound(serialize = "__S: rkyv::ser::ScratchSpace + rkyv::ser::Serializer"))]
+enum Code {
+    Native(),
+    Expr(Expr),
 }
 
 impl ExprOp {
-    fn execute(&self, stack: &mut Vec<Value>, tuple: &Tuple) -> Result<(), ExecutionError> {
+    fn execute<'env, S>(
+        &self,
+        stack: &mut Vec<Value>,
+        catalog: &dyn FunctionCatalog<'env, S>,
+        tx: &dyn Transaction<'env, S>,
+        tuple: &Tuple,
+    ) -> Result<()> {
         match self {
-            ExprOp::Project(idx) => {
-                stack.push(tuple[*idx].clone());
+            ExprOp::Project { index } => stack.push(tuple[*index].clone()),
+            ExprOp::Push(value) => stack.push(value.clone()),
+            ExprOp::MkArray { len } => {
+                let array = stack.drain(stack.len() - *len..).collect::<Box<[Value]>>();
+                stack.push(Value::Array(array));
+            }
+            ExprOp::Call { function } => {
+                let f = catalog.get_function(tx, *function)?;
+                let args = stack.drain(stack.len() - f.arity()..).collect::<Box<[Value]>>();
+                f.call(args);
             }
         }
 
         Ok(())
     }
 }
-
-#[derive(Debug)]
-pub enum ExecutionError {}
-
-impl fmt::Display for ExecutionError {
-    fn fmt(&self, _f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        todo!()
-    }
-}
-
-impl Error for ExecutionError {}
 
 #[cfg(test)]
 mod tests;

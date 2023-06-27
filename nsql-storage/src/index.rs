@@ -1,6 +1,6 @@
 use nsql_storage_engine::{ExecutionMode, ReadWriteExecutionMode, StorageEngine};
 
-use crate::eval::TupleExpr;
+use crate::eval::{FunctionCatalog, TupleExpr};
 use crate::table_storage::PrimaryKeyConflict;
 use crate::tuple::Tuple;
 use crate::{TableStorage, TableStorageInfo};
@@ -23,11 +23,16 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> IndexStorage
 
 impl<'env, 'txn, S: StorageEngine> IndexStorage<'env, 'txn, S, ReadWriteExecutionMode> {
     #[inline]
-    pub fn insert(&mut self, tuple: &Tuple) -> Result<(), anyhow::Error> {
-        let tuple = self.index_expr.eval(tuple)?;
+    pub fn insert(
+        &mut self,
+        catalog: &dyn FunctionCatalog<'env, S>,
+        tx: &S::WriteTransaction<'env>,
+        tuple: &Tuple,
+    ) -> Result<(), anyhow::Error> {
+        let tuple = self.index_expr.eval(catalog, tx, tuple)?;
         self.storage
-            .insert(&tuple)?
-            .map_err(|PrimaryKeyConflict { key }| anyhow::anyhow!("unique index conflict: {}", key))
+            .insert(catalog, tx, &tuple)?
+            .map_err(|PrimaryKeyConflict { key }| anyhow::anyhow!("unique index conflict: {key}"))
     }
 }
 

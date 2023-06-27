@@ -98,7 +98,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSink<'env, 'txn, S, ReadWriteEx
         })?;
 
         let storage: &mut TableStorage<'env, 'txn, _, _> = &mut storage.lock();
-        storage.insert(&tuple)?.map_err(|PrimaryKeyConflict { key }| {
+        storage.insert(&catalog, tx, &tuple)?.map_err(|PrimaryKeyConflict { key }| {
             anyhow::anyhow!("duplicate key `{key}` violates unique constraint")
         })?;
 

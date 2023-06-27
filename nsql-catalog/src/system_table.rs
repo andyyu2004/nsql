@@ -3,6 +3,7 @@ use std::sync::Arc;
 
 use fix_hidden_lifetime_bug::fix_hidden_lifetime_bug;
 use nsql_core::Oid;
+use nsql_storage::eval::FunctionCatalog;
 use nsql_storage::tuple::{FromTuple, IntoTuple};
 use nsql_storage::{PrimaryKeyConflict, TableStorage};
 use nsql_storage_engine::{
@@ -90,16 +91,23 @@ impl<'env: 'txn, 'txn, S: StorageEngine, T: SystemEntity>
     SystemTableView<'env, 'txn, S, ReadWriteExecutionMode, T>
 {
     #[inline]
-    pub fn insert(&mut self, value: T) -> Result<()> {
-        self.storage.insert(&value.into_tuple())?.map_err(|PrimaryKeyConflict { key }| {
-            let typed_key =
-                T::Key::from_tuple(key).expect("this shouldn't fail as we know the expected shape");
-            anyhow::anyhow!(
-                "primary key conflict for {}: {:?} already exists",
-                T::desc(),
-                typed_key
-            )
-        })
+    pub fn insert(
+        &mut self,
+        catalog: &dyn FunctionCatalog<'env, S>,
+        tx: &S::WriteTransaction<'env>,
+        value: T,
+    ) -> Result<()> {
+        self.storage.insert(catalog, tx, &value.into_tuple())?.map_err(
+            |PrimaryKeyConflict { key }| {
+                let typed_key = T::Key::from_tuple(key)
+                    .expect("this shouldn't fail as we know the expected shape");
+                anyhow::anyhow!(
+                    "primary key conflict for {}: {:?} already exists",
+                    T::desc(),
+                    typed_key
+                )
+            },
+        )
     }
 
     #[inline]
