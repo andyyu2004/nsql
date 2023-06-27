@@ -39,7 +39,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
         self: Arc<Self>,
         ecx: &'txn ExecutionContext<'env, S, M>,
     ) -> ExecutionResult<TupleStream<'txn>> {
-        let tx = ecx.tx()?;
+        let tx = ecx.tx();
         let catalog = ecx.catalog();
         let table = catalog.table(&tx, self.table)?;
         let storage = Arc::new(table.storage::<S, M>(catalog, tx)?);

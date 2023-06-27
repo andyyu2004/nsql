@@ -306,7 +306,10 @@ impl BootstrapInfo {
                                 is_primary_key: true,
                             });
 
-                            Expr::new([ExprOp::Project { index: TupleIndex::new(target_idx) }])
+                            Expr::new(
+                                name,
+                                [ExprOp::Project { index: TupleIndex::new(target_idx) }],
+                            )
                         })
                         .collect::<Vec<_>>(),
                 );

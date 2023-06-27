@@ -89,7 +89,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSink<'env, 'txn, S, ReadWriteEx
         tuple: Tuple,
     ) -> ExecutionResult<()> {
         let catalog = ecx.catalog();
-        let tx = ecx.tx()?;
+        let tx = ecx.tx();
 
         let table = self.table.get_or_try_init(|| catalog.get(tx, self.table_oid))?;
 

@@ -233,8 +233,8 @@ impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> ExecutionContext<'env, S
     }
 
     #[inline]
-    pub fn tx(&self) -> Result<M::TransactionRef<'_>, S::Error> {
-        Ok(TransactionConversionHack::as_tx_ref(&self.tcx.tx))
+    pub fn tx(&self) -> M::TransactionRef<'_> {
+        TransactionConversionHack::as_tx_ref(&self.tcx.tx)
     }
 
     #[inline]

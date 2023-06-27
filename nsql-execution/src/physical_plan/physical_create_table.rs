@@ -77,7 +77,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSource<'env, 'txn, S, ReadWrite
 
         let catalog = ecx.catalog();
 
-        let tx = ecx.tx()?;
+        let tx = ecx.tx();
 
         let table = Table::new(self.info.namespace, self.info.name.clone());
 

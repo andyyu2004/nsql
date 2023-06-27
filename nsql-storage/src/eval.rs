@@ -1,6 +1,9 @@
 //! A serializable stack-based bytecode for evaluating expressions.
 
+use std::fmt;
+
 use anyhow::Result;
+use itertools::Itertools;
 use nsql_core::{LogicalType, UntypedOid};
 use nsql_storage_engine::Transaction;
 use rkyv::{Archive, Deserialize, Serialize};
@@ -39,6 +42,12 @@ macro_rules! expr_project {
 #[archive(bound(serialize = "__S: rkyv::ser::ScratchSpace + rkyv::ser::Serializer"))]
 pub struct TupleExpr {
     exprs: Box<[Expr]>,
+}
+
+impl fmt::Display for TupleExpr {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.exprs.iter().join(", "))
+    }
 }
 
 impl TupleExpr {
@@ -86,14 +95,20 @@ impl From<TupleExpr> for Value {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Archive, Serialize, Deserialize)]
-#[repr(transparent)]
 pub struct Expr {
+    pretty: String,
     ops: Box<[ExprOp]>,
 }
 
+impl fmt::Display for Expr {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.pretty)
+    }
+}
+
 impl Expr {
-    pub fn new(ops: impl Into<Box<[ExprOp]>>) -> Self {
-        Self { ops: ops.into() }
+    pub fn new(pretty: impl fmt::Display, ops: impl Into<Box<[ExprOp]>>) -> Self {
+        Self { pretty: pretty.to_string(), ops: ops.into() }
     }
 
     pub fn execute<'env, S>(
@@ -107,7 +122,13 @@ impl Expr {
             op.execute(&mut stack, catalog, tx, tuple)?;
         }
 
-        assert_eq!(stack.len(), 1, "stack should have exactly one value after execution");
+        assert_eq!(
+            stack.len(),
+            1,
+            "stack should have exactly one value after execution, had {}",
+            stack.len()
+        );
+
         Ok(stack.pop().unwrap())
     }
 }
@@ -119,14 +140,13 @@ pub enum ExprOp {
     Push(#[omit_bounds] Value),
     Project { index: TupleIndex },
     MkArray { len: usize },
-    Call { function: UntypedOid },
+    Call { function_oid: UntypedOid },
+    BinOp { op: BinOp },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Archive, Serialize, Deserialize)]
-#[archive(bound(serialize = "__S: rkyv::ser::ScratchSpace + rkyv::ser::Serializer"))]
-enum Code {
-    Native(),
-    Expr(Expr),
+pub enum BinOp {
+    Eq,
 }
 
 impl ExprOp {
@@ -137,19 +157,28 @@ impl ExprOp {
         tx: &dyn Transaction<'env, S>,
         tuple: &Tuple,
     ) -> Result<()> {
-        match self {
-            ExprOp::Project { index } => stack.push(tuple[*index].clone()),
-            ExprOp::Push(value) => stack.push(value.clone()),
+        let value = match self {
+            ExprOp::Project { index } => tuple[*index].clone(),
+            ExprOp::Push(value) => value.clone(),
             ExprOp::MkArray { len } => {
                 let array = stack.drain(stack.len() - *len..).collect::<Box<[Value]>>();
-                stack.push(Value::Array(array));
+                Value::Array(array)
             }
-            ExprOp::Call { function } => {
-                let f = catalog.get_function(tx, *function)?;
+            ExprOp::Call { function_oid } => {
+                let f = catalog.get_function(tx, *function_oid)?;
                 let args = stack.drain(stack.len() - f.arity()..).collect::<Box<[Value]>>();
-                f.call(args);
+                f.call(args)
             }
-        }
+            ExprOp::BinOp { op } => {
+                let rhs = stack.pop().unwrap();
+                let lhs = stack.pop().unwrap();
+                match op {
+                    BinOp::Eq => Value::Bool(lhs == rhs),
+                }
+            }
+        };
+
+        stack.push(value);
 
         Ok(())
     }

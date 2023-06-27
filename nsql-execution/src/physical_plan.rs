@@ -24,6 +24,7 @@ use anyhow::Result;
 use ir::Plan;
 use nsql_catalog::Catalog;
 use nsql_core::{LogicalType, Schema};
+use nsql_storage::eval::TupleExpr;
 use nsql_storage_engine::{StorageEngine, Transaction};
 
 pub use self::explain::Explain;
@@ -45,6 +46,7 @@ use self::physical_unnest::PhysicalUnnest;
 use self::physical_update::PhysicalUpdate;
 use self::physical_values::PhysicalValues;
 use crate::executor::OutputSink;
+use crate::expr::Compiler;
 use crate::{
     Evaluator, ExecutionContext, ExecutionMode, ExecutionResult, OperatorState, PhysicalNode,
     PhysicalOperator, PhysicalSink, PhysicalSource, ReadWriteExecutionMode, ReadonlyExecutionMode,
@@ -53,6 +55,7 @@ use crate::{
 
 pub struct PhysicalPlanner<'env, S> {
     catalog: Catalog<'env, S>,
+    compiler: Compiler,
 }
 
 /// Opaque physical plan that is ready to be executed
@@ -66,12 +69,12 @@ impl<'env, 'txn, S, M> PhysicalPlan<'env, 'txn, S, M> {
 
 impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalPlanner<'env, S> {
     pub fn new(catalog: Catalog<'env, S>) -> Self {
-        Self { catalog }
+        Self { catalog, compiler: Default::default() }
     }
 
     #[inline]
     pub fn plan(
-        &self,
+        &mut self,
         tx: &dyn Transaction<'env, S>,
         plan: Box<Plan>,
     ) -> Result<PhysicalPlan<'env, 'txn, S, ReadonlyExecutionMode>> {
@@ -80,7 +83,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalPlanner<'env, S> {
 
     #[inline]
     pub fn plan_write(
-        &self,
+        &mut self,
         tx: &dyn Transaction<'env, S>,
         plan: Box<Plan>,
     ) -> Result<PhysicalPlan<'env, 'txn, S, ReadWriteExecutionMode>> {
@@ -88,7 +91,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalPlanner<'env, S> {
     }
 
     fn plan_write_node(
-        &self,
+        &mut self,
         tx: &dyn Transaction<'env, S>,
         plan: Box<Plan>,
     ) -> Result<Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode>>> {
@@ -133,7 +136,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalPlanner<'env, S> {
 
     #[allow(clippy::boxed_local)]
     fn plan_node<M: ExecutionMode<'env, S>>(
-        &self,
+        &mut self,
         tx: &dyn Transaction<'env, S>,
         plan: Box<Plan>,
     ) -> Result<Arc<dyn PhysicalNode<'env, 'txn, S, M>>> {
@@ -142,11 +145,11 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalPlanner<'env, S> {
 
     #[allow(clippy::boxed_local)]
     fn fold_plan<M: ExecutionMode<'env, S>>(
-        &self,
+        &mut self,
         tx: &dyn Transaction<'env, S>,
         plan: Box<Plan>,
         mut f: impl FnMut(
-            &Self,
+            &mut Self,
             &dyn Transaction<'env, S>,
             Box<Plan>,
         ) -> Result<Arc<dyn PhysicalNode<'env, 'txn, S, M>>>,
@@ -158,12 +161,15 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalPlanner<'env, S> {
             }
             Plan::Show(object_type) => PhysicalShow::plan(object_type),
             Plan::Explain(kind, plan) => {
-                return self.explain_plan(tx, kind, f(self, tx, plan)?);
+                let plan = f(self, tx, plan)?;
+                return self.explain_plan(tx, kind, plan);
             }
             Plan::Values { schema, values } => PhysicalValues::plan(schema, values),
-            Plan::Projection { projected_schema, source, projection } => {
-                PhysicalProjection::plan(projected_schema, f(self, tx, source)?, projection)
-            }
+            Plan::Projection { projected_schema, source, projection } => PhysicalProjection::plan(
+                projected_schema,
+                f(self, tx, source)?,
+                self.compile_projection(projection),
+            ),
             Plan::Limit { source, limit } => PhysicalLimit::plan(f(self, tx, source)?, limit),
             Plan::Order { source, order } => PhysicalOrder::plan(f(self, tx, source)?, order),
             Plan::Filter { source, predicate } => {
@@ -184,5 +190,9 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalPlanner<'env, S> {
         };
 
         Ok(plan)
+    }
+
+    fn compile_projection(&mut self, projection: Box<[ir::Expr]>) -> TupleExpr {
+        self.compiler.compile_many(projection.into_vec())
     }
 }
