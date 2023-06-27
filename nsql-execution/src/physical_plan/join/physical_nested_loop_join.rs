@@ -109,14 +109,14 @@ impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalOperator<'
     fn execute(
         &self,
         _ecx: &'txn ExecutionContext<'env, S, M>,
-        input: Tuple,
+        lhs_tuple: Tuple,
     ) -> ExecutionResult<OperatorState<Tuple>> {
         let rhs_tuples = self.rhs_tuples.get().expect("probing before build is finished");
         if rhs_tuples.is_empty() {
             return Ok(OperatorState::Done);
         }
 
-        let next_index = match self.rhs_index.fetch_update(
+        let rhs_index = match self.rhs_index.fetch_update(
             atomic::Ordering::Relaxed,
             atomic::Ordering::Relaxed,
             |i| {
@@ -128,35 +128,49 @@ impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalOperator<'
                 assert_eq!(last_index, rhs_tuples.len());
                 self.rhs_index.store(0, atomic::Ordering::Relaxed);
 
-                if self.join.is_left()
-                    && !self.found_match_for_tuple.swap(false, atomic::Ordering::Relaxed)
-                {
+                let found_match = self.found_match_for_tuple.swap(false, atomic::Ordering::Relaxed);
+                // emit the lhs_tuple padded with nulls if no match was found
+                if !found_match && self.join.is_left() {
                     return Ok(OperatorState::Yield(
-                        input.fill_right(self.build_node().schema().len()),
+                        lhs_tuple.fill_right(self.build_node().schema().len()),
                     ));
                 }
                 return Ok(OperatorState::Continue);
             }
         };
 
-        let rhs_tuple = &rhs_tuples[next_index];
-        let joint_tuple = input.join(rhs_tuple);
+        let rhs_tuple = &rhs_tuples[rhs_index];
+        let joint_tuple = lhs_tuple.join(rhs_tuple);
 
         match &self.join {
-            ir::Join::Inner(constraint) | ir::Join::Left(constraint) => match constraint {
-                ir::JoinConstraint::On(predicate) => Ok(OperatorState::Again(
-                    self.evaluator
+            ir::Join::Inner(constraint)
+            | ir::Join::Left(constraint)
+            | ir::Join::Right(constraint)
+            | ir::Join::Full(constraint) => {
+                let keep = match constraint {
+                    ir::JoinConstraint::On(predicate) => self
+                        .evaluator
                         .evaluate_expr(&joint_tuple, predicate)
-                        .cast_non_null::<bool>()?
-                        .then(|| {
-                            self.found_match_for_tuple.store(true, atomic::Ordering::Relaxed);
-                            joint_tuple
-                        }),
-                )),
-                ir::JoinConstraint::None => Ok(OperatorState::Again(Some(joint_tuple))),
-            },
+                        .cast_non_null::<bool>()?,
+                    ir::JoinConstraint::None => true,
+                };
+
+                if keep {
+                    self.found_match_for_tuple.store(true, atomic::Ordering::Relaxed);
+                    Ok(OperatorState::Again(Some(joint_tuple)))
+                } else if rhs_index == rhs_tuples.len() - 1
+                    && self.join.is_right()
+                    && !self.found_match_for_tuple.load(atomic::Ordering::Relaxed)
+                {
+                    // emit a rhs_tuple padded with nulls if no match was found
+                    Ok(OperatorState::Again(Some(
+                        rhs_tuple.clone().fill_left(self.probe_node().schema().len()),
+                    )))
+                } else {
+                    Ok(OperatorState::Again(None))
+                }
+            }
             ir::Join::Cross => Ok(OperatorState::Again(Some(joint_tuple))),
-            ir::Join::Full(_) => todo!(),
         }
     }
 }

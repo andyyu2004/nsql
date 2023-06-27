@@ -176,6 +176,7 @@ impl Plan {
 pub enum Join {
     Inner(JoinConstraint),
     Left(JoinConstraint),
+    Right(JoinConstraint),
     Full(JoinConstraint),
     Cross,
 }
@@ -185,6 +186,11 @@ impl Join {
     pub fn is_left(&self) -> bool {
         matches!(self, Join::Left(_) | Join::Full(_))
     }
+
+    #[inline]
+    pub fn is_right(&self) -> bool {
+        matches!(self, Join::Right(_) | Join::Full(_))
+    }
 }
 
 impl fmt::Display for Join {
@@ -193,6 +199,7 @@ impl fmt::Display for Join {
             Join::Inner(constraint) => write!(f, "INNER JOIN{}", constraint),
             Join::Left(constraint) => write!(f, "LEFT JOIN{}", constraint),
             Join::Full(constraint) => write!(f, "FULL JOIN{}", constraint),
+            Join::Right(constraint) => write!(f, "RIGHT JOIN{}", constraint),
             Join::Cross => write!(f, "CROSS JOIN"),
         }
     }

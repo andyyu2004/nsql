@@ -712,8 +712,14 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                 let constraint = self.bind_join_constraint(tx, &scope, constraint)?;
                 Ok((scope, lhs.join(ir::Join::Left(constraint), rhs)))
             }
-            ast::JoinOperator::RightOuter(_) => todo!(),
-            ast::JoinOperator::FullOuter(_) => todo!(),
+            ast::JoinOperator::RightOuter(constraint) => {
+                let constraint = self.bind_join_constraint(tx, &scope, constraint)?;
+                Ok((scope, lhs.join(ir::Join::Right(constraint), rhs)))
+            }
+            ast::JoinOperator::FullOuter(constraint) => {
+                let constraint = self.bind_join_constraint(tx, &scope, constraint)?;
+                Ok((scope, lhs.join(ir::Join::Full(constraint), rhs)))
+            }
             ast::JoinOperator::LeftSemi(_)
             | ast::JoinOperator::RightSemi(_)
             | ast::JoinOperator::LeftAnti(_)

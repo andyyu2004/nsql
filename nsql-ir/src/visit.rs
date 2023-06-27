@@ -1,4 +1,4 @@
-use crate::{Expr, ExprKind, JoinConstraint, Plan};
+use crate::{Expr, ExprKind, Join, JoinConstraint, Plan};
 
 /// A trait for walking a plan and its expressions.
 /// The `visit_*` methods are called when the walker encounters the corresponding node and are
@@ -33,10 +33,11 @@ pub trait VisitorMut {
                 self.visit_plan_mut(lhs);
                 self.visit_plan_mut(rhs);
                 match join {
-                    crate::Join::Inner(constraint)
-                    | crate::Join::Left(constraint)
-                    | crate::Join::Full(constraint) => self.visit_join_constraint_mut(constraint),
-                    crate::Join::Cross => {}
+                    Join::Inner(constraint)
+                    | Join::Left(constraint)
+                    | Join::Right(constraint)
+                    | Join::Full(constraint) => self.visit_join_constraint_mut(constraint),
+                    Join::Cross => {}
                 }
             }
             Plan::Limit { source, limit: _ } => self.visit_plan_mut(source),

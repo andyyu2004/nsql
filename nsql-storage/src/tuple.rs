@@ -71,10 +71,25 @@ impl Tuple {
     }
 
     #[inline]
+    pub fn fill_left(self, n: usize) -> Tuple {
+        let mut values = self.values.into_vec();
+        let new_len = values.len() + n;
+        values.reserve_exact(n);
+        values.resize_with(new_len, || Value::Null);
+        values.rotate_right(n);
+        debug_assert_eq!(values.len(), new_len);
+        debug_assert_eq!(values.capacity(), new_len);
+        Self::new(values.into_boxed_slice())
+    }
+
+    #[inline]
     pub fn fill_right(self, n: usize) -> Tuple {
         let mut values = self.values.into_vec();
+        let new_len = values.len() + n;
         values.reserve_exact(n);
-        values.resize_with(values.len() + n, || Value::Null);
+        values.resize_with(new_len, || Value::Null);
+        debug_assert_eq!(values.len(), new_len);
+        debug_assert_eq!(values.capacity(), new_len);
         Self::new(values.into_boxed_slice())
     }
 }
