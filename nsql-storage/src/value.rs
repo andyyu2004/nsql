@@ -1,10 +1,11 @@
 use std::error::Error;
-use std::fmt;
 use std::marker::PhantomData;
 use std::ops::Deref;
+use std::{fmt, mem};
 
 use itertools::Itertools;
 use nsql_core::{LogicalType, Name, Oid, UntypedOid};
+use nsql_util::static_assert_eq;
 use rust_decimal::prelude::ToPrimitive;
 pub use rust_decimal::Decimal;
 
@@ -75,6 +76,8 @@ pub enum Value {
     Type(LogicalType),
     TupleExpr(TupleExpr),
 }
+
+static_assert_eq!(mem::size_of::<Value>(), 32);
 
 #[derive(
     Debug,

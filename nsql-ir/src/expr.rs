@@ -1,9 +1,9 @@
-mod eval;
+mod const_eval;
 
 use std::fmt;
 use std::ops::Deref;
 
-pub use eval::EvalNotConst;
+pub use const_eval::EvalNotConst;
 use itertools::Itertools;
 use nsql_catalog::Function;
 use nsql_core::{LogicalType, Name};

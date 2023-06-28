@@ -308,7 +308,10 @@ impl BootstrapInfo {
 
                             Expr::new(
                                 name,
-                                [ExprOp::Project { index: TupleIndex::new(target_idx) }],
+                                [
+                                    ExprOp::Project { index: TupleIndex::new(target_idx) },
+                                    ExprOp::Return,
+                                ],
                             )
                         })
                         .collect::<Vec<_>>(),

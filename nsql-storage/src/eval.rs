@@ -1,11 +1,12 @@
 //! A serializable stack-based bytecode for evaluating expressions.
 
-use std::fmt;
+use std::{fmt, mem};
 
 use anyhow::Result;
 use itertools::Itertools;
 use nsql_core::{LogicalType, UntypedOid};
 use nsql_storage_engine::Transaction;
+use nsql_util::static_assert_eq;
 use rkyv::{Archive, Deserialize, Serialize};
 
 use crate::tuple::{Tuple, TupleIndex};
@@ -24,17 +25,6 @@ pub trait Function: fmt::Debug + Send + Sync + 'static {
     fn arity(&self) -> usize;
 
     fn call(&self, args: Box<[Value]>) -> Value;
-}
-
-#[macro_export]
-macro_rules! expr_project {
-    ($($indices:expr),*) => {
-        $crate::eval::TupleExpr::new([
-            $($crate::eval::Expr::new([
-                $crate::eval::ExprOp::Project($crate::tuple::TupleIndex::new($indices))
-            ])),*
-        ])
-    };
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Archive, Serialize, Deserialize)]
@@ -67,7 +57,7 @@ impl TupleExpr {
         catalog: &dyn FunctionCatalog<'env, S>,
         tx: &dyn Transaction<'env, S>,
     ) -> Result<ExecutableTupleExpr> {
-        self.fold(|oid| catalog.get_function(tx, oid))
+        self.map(|oid| catalog.get_function(tx, oid))
     }
 }
 
@@ -121,15 +111,22 @@ impl<F> fmt::Display for Expr<F> {
 
 impl<F> Expr<F> {
     pub fn new(pretty: impl fmt::Display, ops: impl Into<Box<[ExprOp<F>]>>) -> Self {
-        Self { pretty: pretty.to_string(), ops: ops.into() }
+        let ops = ops.into();
+        assert!(ops.len() > 1, "should have at least one value and one return");
+        Self { pretty: pretty.to_string(), ops }
     }
 }
 
 impl ExecutableExpr {
     pub fn execute(&self, tuple: &Tuple) -> Value {
+        let mut ip = 0;
         let mut stack = vec![];
-        for op in &self.ops[..] {
-            op.execute(&mut stack, tuple);
+        loop {
+            let op = &self.ops[ip];
+            if matches!(op, ExprOp::Return) {
+                break;
+            }
+            op.execute(&mut stack, &mut ip, tuple);
         }
 
         assert_eq!(
@@ -154,7 +151,12 @@ pub enum ExprOp<F = UntypedOid> {
     MkArray { len: usize },
     Call { function: F },
     BinOp { op: BinOp },
+    IfNeJmp { offset: u32 },
+    Jmp { offset: u32 },
+    Return,
 }
+
+static_assert_eq!(mem::size_of::<ExprOp>(), 32);
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Archive, Serialize, Deserialize)]
 pub enum BinOp {
@@ -162,7 +164,7 @@ pub enum BinOp {
 }
 
 impl ExprOp<Box<dyn Function>> {
-    fn execute(&self, stack: &mut Vec<Value>, tuple: &Tuple) {
+    fn execute(&self, stack: &mut Vec<Value>, ip: &mut usize, tuple: &Tuple) {
         let value = match self {
             ExprOp::Project { index } => tuple[*index].clone(),
             ExprOp::Push(value) => value.clone(),
@@ -181,9 +183,17 @@ impl ExprOp<Box<dyn Function>> {
                     BinOp::Eq => Value::Bool(lhs == rhs),
                 }
             }
+            ExprOp::IfNeJmp { offset } => {
+                let rhs = stack.pop().unwrap();
+                let lhs = stack.pop().unwrap();
+                return *ip += if lhs != rhs { *offset as usize } else { 1 };
+            }
+            ExprOp::Jmp { offset } => return *ip += *offset as usize,
+            ExprOp::Return => return,
         };
 
         stack.push(value);
+        *ip += 1;
     }
 }
 
