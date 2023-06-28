@@ -26,7 +26,7 @@ impl Compiler {
 
     fn build(&mut self, expr: ir::Expr) {
         match expr.kind {
-            ir::ExprKind::Value(value) => self.ops.push(ExprOp::Push(value)),
+            ir::ExprKind::Literal(value) => self.ops.push(ExprOp::Push(value)),
             ir::ExprKind::Array(exprs) => {
                 let len = exprs.len();
                 for expr in exprs.into_vec() {
@@ -51,6 +51,7 @@ impl Compiler {
                 }
                 self.ops.push(ExprOp::Call { function: Box::new(function) });
             }
+            ir::ExprKind::Case { scrutinee, cases, else_result } => todo!(),
         }
     }
 }

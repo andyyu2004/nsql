@@ -79,7 +79,7 @@ pub trait VisitorMut {
 
     fn visit_expr_mut(&self, expr: &mut Expr) {
         match &mut expr.kind {
-            ExprKind::Value(_) => {}
+            ExprKind::Literal(_) => {}
             ExprKind::Array(exprs) => self.visit_exprs_mut(exprs),
             ExprKind::BinOp { op: _, lhs, rhs } => {
                 self.visit_expr_mut(lhs);
@@ -89,6 +89,16 @@ pub trait VisitorMut {
             ExprKind::FunctionCall { function: _, args } => self.visit_exprs_mut(args),
             ExprKind::Alias { alias: _, expr } => {
                 self.visit_expr_mut(expr);
+            }
+            ExprKind::Case { scrutinee, cases, else_result } => {
+                self.visit_expr_mut(scrutinee);
+                for case in &mut cases[..] {
+                    self.visit_expr_mut(&mut case.when);
+                    self.visit_expr_mut(&mut case.then);
+                }
+                if let Some(else_result) = else_result.as_mut() {
+                    self.visit_expr_mut(else_result);
+                }
             }
         }
     }

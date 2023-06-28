@@ -36,7 +36,7 @@ impl fmt::Display for Expr {
 
 #[derive(Debug, Clone)]
 pub enum ExprKind {
-    Value(Value),
+    Literal(Value),
     Array(Box<[Expr]>),
     Alias {
         alias: Name,
@@ -57,12 +57,17 @@ pub enum ExprKind {
         function: Function,
         args: Box<[Expr]>,
     },
+    Case {
+        scrutinee: Box<Expr>,
+        cases: Box<[Case]>,
+        else_result: Box<Option<Expr>>,
+    },
 }
 
 impl fmt::Display for ExprKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match &self {
-            ExprKind::Value(value) => write!(f, "{value}"),
+            ExprKind::Literal(value) => write!(f, "{value}"),
             ExprKind::ColumnRef { path: display_path, .. } => write!(f, "{display_path}"),
             ExprKind::BinOp { op, lhs, rhs } => write!(f, "({lhs} {op} {rhs})"),
             ExprKind::Array(exprs) => write!(f, "[{}]", exprs.iter().format(", ")),
@@ -70,8 +75,25 @@ impl fmt::Display for ExprKind {
                 write!(f, "{}({})", function.name(), args.iter().format(", "))
             }
             ExprKind::Alias { alias, expr: _ } => write!(f, "{alias}"),
+            ExprKind::Case { scrutinee, cases, else_result } => {
+                write!(f, "CASE {scrutinee} ")?;
+                for case in cases.iter() {
+                    writeln!(f, "\tWHEN {} THEN {} ", case.when, case.then)?;
+                }
+
+                if let Some(else_result) = else_result.as_ref() {
+                    write!(f, "\tELSE {else_result} ")?;
+                }
+                write!(f, "END")
+            }
         }
     }
+}
+
+#[derive(Debug, Clone)]
+pub struct Case {
+    pub when: Expr,
+    pub then: Expr,
 }
 
 #[derive(Debug, Clone)]

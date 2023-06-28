@@ -209,8 +209,10 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                             projection.push(expr);
                         } else {
                             let ty = column.logical_type().clone();
-                            projection
-                                .push(ir::Expr { ty, kind: ir::ExprKind::Value(ir::Value::Null) });
+                            projection.push(ir::Expr {
+                                ty,
+                                kind: ir::ExprKind::Literal(ir::Value::Null),
+                            });
                         }
                     }
 
@@ -1076,6 +1078,53 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
 
                 (ty, ir::ExprKind::FunctionCall { function, args })
             }
+            ast::Expr::Case { operand, conditions, results, else_result } => {
+                assert_eq!(conditions.len(), results.len());
+                assert!(!conditions.is_empty());
+
+                let scrutinee = match operand {
+                    Some(scrutinee) => self.bind_expr(tx, scope, scrutinee)?,
+                    // if there is no scrutinee, we can just use a literal `true` to compare each branch against
+                    None => ir::Expr {
+                        ty: LogicalType::Bool,
+                        kind: ir::ExprKind::Literal(ir::Value::Bool(true)),
+                    },
+                };
+
+                let cases = conditions
+                    .iter()
+                    .zip(results)
+                    .map(|(when, then)| {
+                        let when = self.bind_expr(tx, scope, when)?;
+                        ensure!(
+                            when.ty == scrutinee.ty,
+                            "case condition must match type of scrutinee"
+                        );
+
+                        let then = self.bind_expr(tx, scope, then)?;
+                        Ok(ir::Case { when, then })
+                    })
+                    .collect::<Result<Box<_>, _>>()?;
+
+                let result_type = cases[0].then.ty.clone();
+                for case in cases.iter() {
+                    ensure!(
+                        case.then.ty == result_type,
+                        "all case results must have the same type"
+                    );
+                }
+
+                let else_result = else_result
+                    .as_ref()
+                    .map(|r| self.bind_expr(tx, scope, r))
+                    .transpose()
+                    .map(Box::new)?;
+
+                (
+                    result_type,
+                    ir::ExprKind::Case { scrutinee: Box::new(scrutinee), cases, else_result },
+                )
+            }
             _ => todo!("todo expr: {:?}", expr),
         };
 
@@ -1084,7 +1133,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
 
     fn bind_value_expr(&self, value: &ast::Value) -> (LogicalType, ir::ExprKind) {
         let lit = self.bind_value(value);
-        (lit.logical_type(), ir::ExprKind::Value(lit))
+        (lit.logical_type(), ir::ExprKind::Literal(lit))
     }
 
     fn bind_value(&self, val: &ast::Value) -> ir::Value {

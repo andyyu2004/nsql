@@ -8,7 +8,7 @@ impl Expr {
     #[inline]
     pub fn const_eval(&self) -> Result<Value, EvalNotConst> {
         match &self.kind {
-            ExprKind::Value(val) => Ok(val.clone()),
+            ExprKind::Literal(val) => Ok(val.clone()),
             ExprKind::BinOp { op, lhs, rhs } => {
                 let lhs = lhs.const_eval()?;
                 let rhs = rhs.const_eval()?;
@@ -36,7 +36,7 @@ impl Expr {
                 .collect::<Result<_, _>>()
                 .map(Value::Array),
             ExprKind::Alias { expr, .. } => expr.const_eval(),
-            ExprKind::FunctionCall { .. } => Err(EvalNotConst),
+            ExprKind::FunctionCall { .. } | ExprKind::Case { .. } => Err(EvalNotConst),
         }
     }
 }
