@@ -9,7 +9,7 @@ use super::*;
 #[derive(Debug)]
 pub struct PhysicalOrder<'env, 'txn, S, M> {
     children: [Arc<dyn PhysicalNode<'env, 'txn, S, M>>; 1],
-    ordering: Box<[OrderExpr]>,
+    ordering: Box<[ir::OrderExpr<ExecutableExpr>]>,
     tuples: RwLock<Vec<Tuple>>,
 }
 
@@ -18,7 +18,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
 {
     pub(crate) fn plan(
         source: Arc<dyn PhysicalNode<'env, 'txn, S, M>>,
-        ordering: Box<[OrderExpr]>,
+        ordering: Box<[ir::OrderExpr<ExecutableExpr>]>,
     ) -> Arc<dyn PhysicalNode<'env, 'txn, S, M>> {
         Arc::new(Self { children: [source], ordering, tuples: Default::default() })
     }

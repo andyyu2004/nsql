@@ -173,15 +173,15 @@ impl Plan {
 }
 
 #[derive(Debug, Clone)]
-pub enum Join {
-    Inner(JoinConstraint),
-    Left(JoinConstraint),
-    Right(JoinConstraint),
-    Full(JoinConstraint),
+pub enum Join<E = Expr> {
+    Inner(JoinConstraint<E>),
+    Left(JoinConstraint<E>),
+    Right(JoinConstraint<E>),
+    Full(JoinConstraint<E>),
     Cross,
 }
 
-impl Join {
+impl<E> Join<E> {
     #[inline]
     pub fn is_left(&self) -> bool {
         matches!(self, Join::Left(_) | Join::Full(_))
@@ -191,9 +191,19 @@ impl Join {
     pub fn is_right(&self) -> bool {
         matches!(self, Join::Right(_) | Join::Full(_))
     }
+
+    pub fn map<X>(self, f: impl FnOnce(E) -> X) -> Join<X> {
+        match self {
+            Join::Inner(constraint) => Join::Inner(constraint.map(f)),
+            Join::Left(constraint) => Join::Left(constraint.map(f)),
+            Join::Right(constraint) => Join::Right(constraint.map(f)),
+            Join::Full(constraint) => Join::Full(constraint.map(f)),
+            Join::Cross => Join::Cross,
+        }
+    }
 }
 
-impl fmt::Display for Join {
+impl<E: fmt::Display> fmt::Display for Join<E> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Join::Inner(constraint) => write!(f, "INNER JOIN{}", constraint),
@@ -206,12 +216,22 @@ impl fmt::Display for Join {
 }
 
 #[derive(Debug, Clone)]
-pub enum JoinConstraint {
-    On(Expr),
+pub enum JoinConstraint<E = Expr> {
+    On(E),
     None,
 }
 
-impl fmt::Display for JoinConstraint {
+impl<E> JoinConstraint<E> {
+    #[inline]
+    pub fn map<X>(self, f: impl FnOnce(E) -> X) -> JoinConstraint<X> {
+        match self {
+            JoinConstraint::On(expr) => JoinConstraint::On(f(expr)),
+            JoinConstraint::None => JoinConstraint::None,
+        }
+    }
+}
+
+impl<E: fmt::Display> fmt::Display for JoinConstraint<E> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             JoinConstraint::On(expr) => write!(f, " ON {}", expr),
@@ -221,8 +241,8 @@ impl fmt::Display for JoinConstraint {
 }
 
 #[derive(Debug, Clone)]
-pub struct OrderExpr {
-    pub expr: Expr,
+pub struct OrderExpr<E = Expr> {
+    pub expr: E,
     pub asc: bool,
 }
 

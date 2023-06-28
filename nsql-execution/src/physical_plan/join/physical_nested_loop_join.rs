@@ -12,12 +12,11 @@ use crate::pipeline::{MetaPipelineBuilder, PipelineBuilder, PipelineBuilderArena
 pub(crate) struct PhysicalNestedLoopJoin<'env, 'txn, S, M> {
     children: [Arc<dyn PhysicalNode<'env, 'txn, S, M>>; 2],
     schema: Schema,
-    join: ir::Join,
+    join: ir::Join<ExecutableExpr>,
     // mutex is only used during build phase
     rhs_tuples_build: Mutex<Vec<Tuple>>,
     // tuples are moved into this vector during finalization (to avoid unnecessary locks)
     rhs_tuples: OnceLock<Vec<Tuple>>,
-    evaluator: Evaluator,
     rhs_index: AtomicUsize,
     found_match_for_tuple: AtomicBool,
 }
@@ -27,7 +26,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
 {
     pub fn plan(
         schema: Schema,
-        join: ir::Join,
+        join: ir::Join<ExecutableExpr>,
         probe_node: Arc<dyn PhysicalNode<'env, 'txn, S, M>>,
         build_node: Arc<dyn PhysicalNode<'env, 'txn, S, M>>,
     ) -> Arc<dyn PhysicalNode<'env, 'txn, S, M>> {
@@ -39,7 +38,6 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
             rhs_index: AtomicUsize::new(0),
             rhs_tuples_build: Default::default(),
             rhs_tuples: Default::default(),
-            evaluator: Evaluator::new(),
         })
     }
 
@@ -148,10 +146,9 @@ impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalOperator<'
             | ir::Join::Right(constraint)
             | ir::Join::Full(constraint) => {
                 let keep = match constraint {
-                    ir::JoinConstraint::On(predicate) => self
-                        .evaluator
-                        .evaluate_expr(&joint_tuple, predicate)
-                        .cast_non_null::<bool>()?,
+                    ir::JoinConstraint::On(predicate) => {
+                        predicate.execute(&joint_tuple).cast_non_null::<bool>()?
+                    }
                     ir::JoinConstraint::None => true,
                 };
 

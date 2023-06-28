@@ -896,7 +896,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                 .rows
                 .iter()
                 .map(|row| self.bind_row(tx, scope, row))
-                .collect::<Result<Vec<_>, _>>()?,
+                .collect::<Result<Box<_>, _>>()?,
         );
 
         Ok((scope.bind_values(&values), values))
@@ -907,7 +907,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
         tx: &dyn Transaction<'env, S>,
         scope: &Scope<S>,
         row: &[ast::Expr],
-    ) -> Result<Vec<ir::Expr>> {
+    ) -> Result<Box<[ir::Expr]>> {
         row.iter().map(|expr| self.bind_expr(tx, scope, expr)).collect()
     }
 

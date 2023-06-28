@@ -12,9 +12,8 @@ pub(crate) struct PhysicalUpdate<'env, 'txn, S> {
     schema: Schema,
     table: Oid<Table>,
     tuples: RwLock<Vec<Tuple>>,
-    returning: Option<Box<[ir::Expr]>>,
+    returning: Option<ExecutableTupleExpr>,
     returning_tuples: RwLock<Vec<Tuple>>,
-    returning_evaluator: Evaluator,
 }
 
 impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalUpdate<'env, 'txn, S> {
@@ -24,7 +23,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalUpdate<'env, 'txn, S> {
         // This is the source of the updates.
         // The schema should be that of the table being updated + the `tid` in the rightmost column
         source: Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode>>,
-        returning: Option<Box<[ir::Expr]>>,
+        returning: Option<ExecutableTupleExpr>,
     ) -> Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode>> {
         Arc::new(Self {
             table,
@@ -33,7 +32,6 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalUpdate<'env, 'txn, S> {
             tuples: Default::default(),
             children: [source],
             returning_tuples: Default::default(),
-            returning_evaluator: Evaluator::new(),
         })
     }
 }
@@ -110,9 +108,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSink<'env, 'txn, S, ReadWriteEx
             storage.update(tuple)?;
 
             if let Some(return_expr) = &self.returning {
-                self.returning_tuples
-                    .write()
-                    .push(self.returning_evaluator.evaluate(tuple, return_expr));
+                self.returning_tuples.write().push(return_expr.execute(tuple));
             }
         }
 

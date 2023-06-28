@@ -2,7 +2,6 @@
 #![feature(trait_upcasting)]
 #![feature(once_cell_try)]
 
-mod eval;
 mod executor;
 mod expr;
 mod physical_plan;
@@ -24,7 +23,6 @@ use nsql_storage_engine::{
 use nsql_util::atomic::AtomicEnum;
 pub use physical_plan::PhysicalPlanner;
 
-use self::eval::Evaluator;
 pub use self::executor::{execute, execute_write};
 use self::physical_plan::{explain, Explain, PhysicalPlan};
 use self::pipeline::{

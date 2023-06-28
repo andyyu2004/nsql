@@ -48,7 +48,7 @@ use self::physical_values::PhysicalValues;
 use crate::executor::OutputSink;
 use crate::expr::Compiler;
 use crate::{
-    Evaluator, ExecutionContext, ExecutionMode, ExecutionResult, OperatorState, PhysicalNode,
+    ExecutionContext, ExecutionMode, ExecutionResult, OperatorState, PhysicalNode,
     PhysicalOperator, PhysicalSink, PhysicalSource, ReadWriteExecutionMode, ReadonlyExecutionMode,
     Tuple, TupleStream,
 };
@@ -98,11 +98,21 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalPlanner<'env, S> {
         let plan = match *plan {
             Plan::Update { table, source, returning, schema } => {
                 let source = self.plan_write_node(tx, source)?;
-                PhysicalUpdate::plan(schema, table, source, returning)
+                PhysicalUpdate::plan(
+                    schema,
+                    table,
+                    source,
+                    returning.map(|e| self.compile_exprs(e)),
+                )
             }
             Plan::Insert { table, source, returning, schema } => {
                 let source = self.plan_write_node(tx, source)?;
-                PhysicalInsert::plan(schema, table, source, returning)
+                PhysicalInsert::plan(
+                    schema,
+                    table,
+                    source,
+                    returning.map(|exprs| self.compile_exprs(exprs)),
+                )
             }
             Plan::CreateTable(info) => PhysicalCreateTable::plan(info),
             Plan::CreateNamespace(info) => PhysicalCreateNamespace::plan(info),
@@ -164,11 +174,13 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalPlanner<'env, S> {
                 let plan = f(self, tx, plan)?;
                 return self.explain_plan(tx, kind, plan);
             }
-            Plan::Values { schema, values } => PhysicalValues::plan(schema, values),
+            Plan::Values { schema, values } => {
+                PhysicalValues::plan(schema, self.compile_values(values))
+            }
             Plan::Projection { projected_schema, source, projection } => PhysicalProjection::plan(
                 projected_schema,
                 f(self, tx, source)?,
-                self.compile_projection(projection),
+                self.compile_exprs(projection),
             ),
             Plan::Limit { source, limit } => PhysicalLimit::plan(f(self, tx, source)?, limit),
             Plan::Order { source, order } => {
@@ -177,9 +189,12 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalPlanner<'env, S> {
             Plan::Filter { source, predicate } => {
                 PhysicalFilter::plan(f(self, tx, source)?, self.compile_expr(predicate))
             }
-            Plan::Join { schema, join, lhs, rhs } => {
-                PhysicalNestedLoopJoin::plan(schema, join, f(self, tx, lhs)?, f(self, tx, rhs)?)
-            }
+            Plan::Join { schema, join, lhs, rhs } => PhysicalNestedLoopJoin::plan(
+                schema,
+                join.map(|expr| self.compile_expr(expr)),
+                f(self, tx, lhs)?,
+                f(self, tx, rhs)?,
+            ),
             Plan::Unnest { schema, expr } => PhysicalUnnest::plan(schema, self.compile_expr(expr)),
             Plan::Empty => PhysicalDummyScan::plan(),
             Plan::CreateTable(_)
@@ -194,25 +209,26 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalPlanner<'env, S> {
         Ok(plan)
     }
 
-    fn compile_projection(&mut self, projection: Box<[ir::Expr]>) -> ExecutableTupleExpr {
-        self.compiler.compile_many(projection.into_vec())
+    fn compile_values(&mut self, values: ir::Values) -> Box<[ExecutableTupleExpr]> {
+        values.into_inner().into_vec().into_iter().map(|e| self.compile_exprs(e)).collect()
+    }
+
+    fn compile_exprs(&mut self, exprs: Box<[ir::Expr]>) -> ExecutableTupleExpr {
+        self.compiler.compile_many(exprs.into_vec())
     }
 
     fn compile_expr(&mut self, expr: ir::Expr) -> ExecutableExpr {
         self.compiler.compile(expr)
     }
 
-    fn compile_order_exprs(&mut self, expr: Box<[ir::OrderExpr]>) -> Box<[OrderExpr]> {
+    fn compile_order_exprs(
+        &mut self,
+        expr: Box<[ir::OrderExpr]>,
+    ) -> Box<[ir::OrderExpr<ExecutableExpr>]> {
         expr.into_vec().into_iter().map(|e| self.compile_order_expr(e)).collect()
     }
 
-    fn compile_order_expr(&mut self, expr: ir::OrderExpr) -> OrderExpr {
-        OrderExpr { expr: self.compiler.compile(expr.expr), asc: expr.asc }
+    fn compile_order_expr(&mut self, expr: ir::OrderExpr) -> ir::OrderExpr<ExecutableExpr> {
+        ir::OrderExpr { expr: self.compiler.compile(expr.expr), asc: expr.asc }
     }
-}
-
-#[derive(Debug)]
-pub struct OrderExpr {
-    expr: ExecutableExpr,
-    asc: bool,
 }
