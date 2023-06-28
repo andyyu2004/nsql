@@ -7,16 +7,15 @@ use crate::TupleStream;
 #[derive(Debug)]
 pub struct PhysicalUnnest {
     schema: Schema,
-    evaluator: Evaluator,
-    expr: ir::Expr,
+    expr: ExecutableExpr,
 }
 
 impl PhysicalUnnest {
     pub(crate) fn plan<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
         schema: Schema,
-        expr: ir::Expr,
+        expr: ExecutableExpr,
     ) -> Arc<dyn PhysicalNode<'env, 'txn, S, M>> {
-        Arc::new(Self { schema, evaluator: Evaluator::new(), expr })
+        Arc::new(Self { schema, expr })
     }
 }
 
@@ -27,7 +26,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
         self: Arc<Self>,
         _ecx: &'txn ExecutionContext<'env, S, M>,
     ) -> ExecutionResult<TupleStream<'txn>> {
-        let values = match self.evaluator.evaluate_expr(&Tuple::empty(), &self.expr) {
+        let values = match self.expr.execute(&Tuple::empty()) {
             Value::Array(values) => values,
             Value::Null => Box::new([]),
             _ => panic!("unnest expression should evaluate to an array"),

@@ -9,6 +9,7 @@ impl Evaluator {
         Self {}
     }
 
+    // FIXME replace this entirely with the bytecode executor
     #[inline]
     pub fn evaluate(&self, input: &Tuple, exprs: &[ir::Expr]) -> Tuple {
         let values = exprs.iter().map(|expr| self.evaluate_expr(input, expr));

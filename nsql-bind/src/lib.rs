@@ -573,12 +573,10 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                 .iter()
                 .map(|item| {
                     let ast::OrderByExpr { expr, asc, nulls_first } = &item;
+                    // only nulls first is implemented
+                    not_implemented!(!nulls_first.unwrap_or(true));
                     let expr = self.bind_expr(tx, &scope, expr)?;
-                    Ok(ir::OrderExpr {
-                        expr,
-                        asc: asc.unwrap_or(true),
-                        nulls_first: nulls_first.unwrap_or(true),
-                    })
+                    Ok(ir::OrderExpr { expr, asc: asc.unwrap_or(true) })
                 })
                 .collect::<Result<Vec<_>>>()?;
             table_expr = table_expr.order_by(order_by);

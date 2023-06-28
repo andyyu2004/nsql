@@ -1,19 +1,23 @@
 use std::mem;
 
-use nsql_catalog::SystemEntity;
-use nsql_storage::eval::{BinOp, Expr, ExprOp, TupleExpr};
+use nsql_storage::eval::{
+    BinOp, ExecutableExpr, ExecutableExprOp, ExecutableTupleExpr, Expr, ExprOp, TupleExpr,
+};
 
 #[derive(Default, Debug)]
 pub(crate) struct Compiler {
-    ops: Vec<ExprOp>,
+    ops: Vec<ExecutableExprOp>,
 }
 
 impl Compiler {
-    pub fn compile_many(&mut self, exprs: impl IntoIterator<Item = ir::Expr>) -> TupleExpr {
+    pub fn compile_many(
+        &mut self,
+        exprs: impl IntoIterator<Item = ir::Expr>,
+    ) -> ExecutableTupleExpr {
         TupleExpr::new(exprs.into_iter().map(|expr| self.compile(expr)).collect::<Box<_>>())
     }
 
-    pub fn compile(&mut self, expr: ir::Expr) -> Expr {
+    pub fn compile(&mut self, expr: ir::Expr) -> ExecutableExpr {
         let pretty = expr.to_string();
         assert!(self.ops.is_empty());
         self.build(expr);
@@ -45,7 +49,7 @@ impl Compiler {
                 for arg in args.into_vec() {
                     self.build(arg);
                 }
-                self.ops.push(ExprOp::Call { function_oid: function.key().untyped() });
+                self.ops.push(ExprOp::Call { function: Box::new(function) });
             }
         }
     }

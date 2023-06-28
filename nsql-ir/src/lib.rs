@@ -224,7 +224,6 @@ impl fmt::Display for JoinConstraint {
 pub struct OrderExpr {
     pub expr: Expr,
     pub asc: bool,
-    pub nulls_first: bool,
 }
 
 impl Plan {

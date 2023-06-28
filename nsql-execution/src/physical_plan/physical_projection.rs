@@ -4,7 +4,7 @@ use super::*;
 pub struct PhysicalProjection<'env, 'txn, S, M> {
     children: [Arc<dyn PhysicalNode<'env, 'txn, S, M>>; 1],
     schema: Schema,
-    projection: TupleExpr,
+    projection: ExecutableTupleExpr,
 }
 
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
@@ -13,7 +13,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     pub(crate) fn plan(
         schema: Schema,
         source: Arc<dyn PhysicalNode<'env, 'txn, S, M>>,
-        projection: TupleExpr,
+        projection: ExecutableTupleExpr,
     ) -> Arc<dyn PhysicalNode<'env, 'txn, S, M>> {
         Arc::new(Self { schema, children: [source], projection })
     }
@@ -22,15 +22,13 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     PhysicalOperator<'env, 'txn, S, M> for PhysicalProjection<'env, 'txn, S, M>
 {
-    #[tracing::instrument(skip(self, ecx, input))]
+    #[tracing::instrument(skip(self, _ecx, input))]
     fn execute(
         &self,
-        ecx: &'txn ExecutionContext<'env, S, M>,
+        _ecx: &'txn ExecutionContext<'env, S, M>,
         input: Tuple,
     ) -> ExecutionResult<OperatorState<Tuple>> {
-        let catalog = ecx.catalog();
-        let tx = ecx.tx();
-        let output = self.projection.eval(&catalog, &tx, &input)?;
+        let output = self.projection.execute(&input);
         tracing::debug!(%input, %output, "evaluating projection");
         Ok(OperatorState::Yield(output))
     }

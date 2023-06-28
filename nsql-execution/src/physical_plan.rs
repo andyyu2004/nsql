@@ -24,7 +24,7 @@ use anyhow::Result;
 use ir::Plan;
 use nsql_catalog::Catalog;
 use nsql_core::{LogicalType, Schema};
-use nsql_storage::eval::TupleExpr;
+use nsql_storage::eval::{ExecutableExpr, ExecutableTupleExpr};
 use nsql_storage_engine::{StorageEngine, Transaction};
 
 pub use self::explain::Explain;
@@ -171,14 +171,16 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalPlanner<'env, S> {
                 self.compile_projection(projection),
             ),
             Plan::Limit { source, limit } => PhysicalLimit::plan(f(self, tx, source)?, limit),
-            Plan::Order { source, order } => PhysicalOrder::plan(f(self, tx, source)?, order),
+            Plan::Order { source, order } => {
+                PhysicalOrder::plan(f(self, tx, source)?, self.compile_order_exprs(order))
+            }
             Plan::Filter { source, predicate } => {
-                PhysicalFilter::plan(f(self, tx, source)?, predicate)
+                PhysicalFilter::plan(f(self, tx, source)?, self.compile_expr(predicate))
             }
             Plan::Join { schema, join, lhs, rhs } => {
                 PhysicalNestedLoopJoin::plan(schema, join, f(self, tx, lhs)?, f(self, tx, rhs)?)
             }
-            Plan::Unnest { schema, expr } => PhysicalUnnest::plan(schema, expr),
+            Plan::Unnest { schema, expr } => PhysicalUnnest::plan(schema, self.compile_expr(expr)),
             Plan::Empty => PhysicalDummyScan::plan(),
             Plan::CreateTable(_)
             | Plan::CreateNamespace(_)
@@ -192,7 +194,25 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalPlanner<'env, S> {
         Ok(plan)
     }
 
-    fn compile_projection(&mut self, projection: Box<[ir::Expr]>) -> TupleExpr {
+    fn compile_projection(&mut self, projection: Box<[ir::Expr]>) -> ExecutableTupleExpr {
         self.compiler.compile_many(projection.into_vec())
     }
+
+    fn compile_expr(&mut self, expr: ir::Expr) -> ExecutableExpr {
+        self.compiler.compile(expr)
+    }
+
+    fn compile_order_exprs(&mut self, expr: Box<[ir::OrderExpr]>) -> Box<[OrderExpr]> {
+        expr.into_vec().into_iter().map(|e| self.compile_order_expr(e)).collect()
+    }
+
+    fn compile_order_expr(&mut self, expr: ir::OrderExpr) -> OrderExpr {
+        OrderExpr { expr: self.compiler.compile(expr.expr), asc: expr.asc }
+    }
+}
+
+#[derive(Debug)]
+pub struct OrderExpr {
+    expr: ExecutableExpr,
+    asc: bool,
 }

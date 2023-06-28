@@ -3,8 +3,7 @@ use super::*;
 #[derive(Debug)]
 pub struct PhysicalFilter<'env, 'txn, S, M> {
     children: [Arc<dyn PhysicalNode<'env, 'txn, S, M>>; 1],
-    predicate: ir::Expr,
-    evaluator: Evaluator,
+    predicate: ExecutableExpr,
 }
 
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
@@ -12,9 +11,9 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
 {
     pub(crate) fn plan(
         source: Arc<dyn PhysicalNode<'env, 'txn, S, M>>,
-        predicate: ir::Expr,
+        predicate: ExecutableExpr,
     ) -> Arc<dyn PhysicalNode<'env, 'txn, S, M>> {
-        Arc::new(Self { evaluator: Evaluator::new(), children: [source], predicate })
+        Arc::new(Self { children: [source], predicate })
     }
 }
 
@@ -27,7 +26,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
         _ecx: &'txn ExecutionContext<'env, S, M>,
         input: Tuple,
     ) -> ExecutionResult<OperatorState<Tuple>> {
-        let value = self.evaluator.evaluate_expr(&input, &self.predicate);
+        let value = self.predicate.execute(&input);
         let keep =
             value.cast::<bool>().expect("this should have failed during planning").unwrap_or(false);
         tracing::debug!(%keep, %input, "filtering tuple");

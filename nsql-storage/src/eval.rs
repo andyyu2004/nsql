@@ -19,8 +19,8 @@ pub trait FunctionCatalog<'env, S> {
     ) -> Result<Box<dyn Function>>;
 }
 
-pub trait Function {
-    /// The number of arguments this function takes.
+pub trait Function: fmt::Debug + Send + Sync + 'static {
+    /// The number f arguments this function takes.
     fn arity(&self) -> usize;
 
     fn call(&self, args: Box<[Value]>) -> Value;
@@ -40,30 +40,41 @@ macro_rules! expr_project {
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Archive, Serialize, Deserialize)]
 #[omit_bounds]
 #[archive(bound(serialize = "__S: rkyv::ser::ScratchSpace + rkyv::ser::Serializer"))]
-pub struct TupleExpr {
-    exprs: Box<[Expr]>,
+pub struct TupleExpr<F = UntypedOid> {
+    exprs: Box<[Expr<F>]>,
 }
 
-impl fmt::Display for TupleExpr {
+pub type ExecutableTupleExpr = TupleExpr<Box<dyn Function>>;
+
+impl<F> fmt::Display for TupleExpr<F> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.exprs.iter().join(", "))
     }
 }
 
-impl TupleExpr {
+impl<F> TupleExpr<F> {
     #[inline]
-    pub fn new(exprs: impl Into<Box<[Expr]>>) -> Self {
+    pub fn new(exprs: impl Into<Box<[Expr<F>]>>) -> Self {
         Self { exprs: exprs.into() }
     }
+}
 
-    #[inline]
-    pub fn eval<'env, S>(
-        &self,
+impl TupleExpr {
+    /// Prepare this expression for evaluation.
+    // This resolves any function oids and replaces them with the actual function.
+    pub fn prepare<'env, S>(
+        self,
         catalog: &dyn FunctionCatalog<'env, S>,
         tx: &dyn Transaction<'env, S>,
-        tuple: &Tuple,
-    ) -> Result<Tuple> {
-        self.exprs.iter().map(|expr| expr.execute(catalog, tx, tuple)).collect()
+    ) -> Result<ExecutableTupleExpr> {
+        self.fold(|oid| catalog.get_function(tx, oid))
+    }
+}
+
+impl ExecutableTupleExpr {
+    #[inline]
+    pub fn execute(&self, tuple: &Tuple) -> Tuple {
+        self.exprs.iter().map(|expr| expr.execute(tuple)).collect()
     }
 }
 
@@ -94,32 +105,31 @@ impl From<TupleExpr> for Value {
     }
 }
 
+pub type ExecutableExpr = Expr<Box<dyn Function>>;
+
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Archive, Serialize, Deserialize)]
-pub struct Expr {
+pub struct Expr<F = UntypedOid> {
     pretty: String,
-    ops: Box<[ExprOp]>,
+    ops: Box<[ExprOp<F>]>,
 }
 
-impl fmt::Display for Expr {
+impl<F> fmt::Display for Expr<F> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.pretty)
     }
 }
 
-impl Expr {
-    pub fn new(pretty: impl fmt::Display, ops: impl Into<Box<[ExprOp]>>) -> Self {
+impl<F> Expr<F> {
+    pub fn new(pretty: impl fmt::Display, ops: impl Into<Box<[ExprOp<F>]>>) -> Self {
         Self { pretty: pretty.to_string(), ops: ops.into() }
     }
+}
 
-    pub fn execute<'env, S>(
-        &self,
-        catalog: &dyn FunctionCatalog<'env, S>,
-        tx: &dyn Transaction<'env, S>,
-        tuple: &Tuple,
-    ) -> Result<Value> {
+impl ExecutableExpr {
+    pub fn execute(&self, tuple: &Tuple) -> Value {
         let mut stack = vec![];
         for op in &self.ops[..] {
-            op.execute(&mut stack, catalog, tx, tuple)?;
+            op.execute(&mut stack, tuple);
         }
 
         assert_eq!(
@@ -129,18 +139,20 @@ impl Expr {
             stack.len()
         );
 
-        Ok(stack.pop().unwrap())
+        stack.pop().unwrap()
     }
 }
+
+pub type ExecutableExprOp = ExprOp<Box<dyn Function>>;
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Archive, Serialize, Deserialize)]
 #[omit_bounds]
 #[archive(bound(serialize = "__S: rkyv::ser::ScratchSpace + rkyv::ser::Serializer"))]
-pub enum ExprOp {
+pub enum ExprOp<F = UntypedOid> {
     Push(#[omit_bounds] Value),
     Project { index: TupleIndex },
     MkArray { len: usize },
-    Call { function_oid: UntypedOid },
+    Call { function: F },
     BinOp { op: BinOp },
 }
 
@@ -149,14 +161,8 @@ pub enum BinOp {
     Eq,
 }
 
-impl ExprOp {
-    fn execute<'env, S>(
-        &self,
-        stack: &mut Vec<Value>,
-        catalog: &dyn FunctionCatalog<'env, S>,
-        tx: &dyn Transaction<'env, S>,
-        tuple: &Tuple,
-    ) -> Result<()> {
+impl ExprOp<Box<dyn Function>> {
+    fn execute(&self, stack: &mut Vec<Value>, tuple: &Tuple) {
         let value = match self {
             ExprOp::Project { index } => tuple[*index].clone(),
             ExprOp::Push(value) => value.clone(),
@@ -164,10 +170,9 @@ impl ExprOp {
                 let array = stack.drain(stack.len() - *len..).collect::<Box<[Value]>>();
                 Value::Array(array)
             }
-            ExprOp::Call { function_oid } => {
-                let f = catalog.get_function(tx, *function_oid)?;
-                let args = stack.drain(stack.len() - f.arity()..).collect::<Box<[Value]>>();
-                f.call(args)
+            ExprOp::Call { function } => {
+                let args = stack.drain(stack.len() - function.arity()..).collect::<Box<[Value]>>();
+                function.call(args)
             }
             ExprOp::BinOp { op } => {
                 let rhs = stack.pop().unwrap();
@@ -179,10 +184,9 @@ impl ExprOp {
         };
 
         stack.push(value);
-
-        Ok(())
     }
 }
 
+mod fold;
 #[cfg(test)]
 mod tests;
