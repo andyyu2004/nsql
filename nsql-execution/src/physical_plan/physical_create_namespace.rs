@@ -66,11 +66,11 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSource<'env, 'txn, S, ReadWrite
         ecx: &'txn ExecutionContext<'env, S, ReadWriteExecutionMode>,
     ) -> ExecutionResult<TupleStream<'txn>> {
         let catalog = ecx.catalog();
-        let tx = ecx.tx()?;
+        let tx = ecx.tx();
         let mut namespaces = catalog.system_table_write::<Namespace>(tx)?;
         let info = self.info.clone();
 
-        namespaces.insert(Namespace::new(info.name))?;
+        namespaces.insert(&catalog, tx, Namespace::new(info.name))?;
 
         Ok(Box::new(fallible_iterator::empty()))
     }

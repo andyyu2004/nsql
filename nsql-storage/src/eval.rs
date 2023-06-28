@@ -1,12 +1,30 @@
 //! A serializable stack-based bytecode for evaluating expressions.
-use core::fmt;
-use std::error::Error;
 
-use nsql_core::LogicalType;
+use std::fmt;
+
+use anyhow::Result;
+use itertools::Itertools;
+use nsql_core::{LogicalType, UntypedOid};
+use nsql_storage_engine::Transaction;
 use rkyv::{Archive, Deserialize, Serialize};
 
 use crate::tuple::{Tuple, TupleIndex};
 use crate::value::{CastError, FromValue, Value};
+
+pub trait FunctionCatalog<'env, S> {
+    fn get_function(
+        &self,
+        tx: &dyn Transaction<'env, S>,
+        oid: UntypedOid,
+    ) -> Result<Box<dyn Function>>;
+}
+
+pub trait Function: fmt::Debug + Send + Sync + 'static {
+    /// The number f arguments this function takes.
+    fn arity(&self) -> usize;
+
+    fn call(&self, args: Box<[Value]>) -> Value;
+}
 
 #[macro_export]
 macro_rules! expr_project {
@@ -20,18 +38,42 @@ macro_rules! expr_project {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Archive, Serialize, Deserialize)]
-pub struct TupleExpr {
-    exprs: Box<[Expr]>,
+#[omit_bounds]
+#[archive(bound(serialize = "__S: rkyv::ser::ScratchSpace + rkyv::ser::Serializer"))]
+pub struct TupleExpr<F = UntypedOid> {
+    exprs: Box<[Expr<F>]>,
+}
+
+pub type ExecutableTupleExpr = TupleExpr<Box<dyn Function>>;
+
+impl<F> fmt::Display for TupleExpr<F> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.exprs.iter().join(", "))
+    }
+}
+
+impl<F> TupleExpr<F> {
+    #[inline]
+    pub fn new(exprs: impl Into<Box<[Expr<F>]>>) -> Self {
+        Self { exprs: exprs.into() }
+    }
 }
 
 impl TupleExpr {
-    #[inline]
-    pub fn new(exprs: impl Into<Box<[Expr]>>) -> Self {
-        Self { exprs: exprs.into() }
+    /// Prepare this expression for evaluation.
+    // This resolves any function oids and replaces them with the actual function.
+    pub fn prepare<'env, S>(
+        self,
+        catalog: &dyn FunctionCatalog<'env, S>,
+        tx: &dyn Transaction<'env, S>,
+    ) -> Result<ExecutableTupleExpr> {
+        self.fold(|oid| catalog.get_function(tx, oid))
     }
+}
 
+impl ExecutableTupleExpr {
     #[inline]
-    pub fn eval(&self, tuple: &Tuple) -> Result<Tuple, ExecutionError> {
+    pub fn execute(&self, tuple: &Tuple) -> Tuple {
         self.exprs.iter().map(|expr| expr.execute(tuple)).collect()
     }
 }
@@ -63,55 +105,88 @@ impl From<TupleExpr> for Value {
     }
 }
 
+pub type ExecutableExpr = Expr<Box<dyn Function>>;
+
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Archive, Serialize, Deserialize)]
-#[repr(transparent)]
-pub struct Expr {
-    ops: Box<[ExprOp]>,
+pub struct Expr<F = UntypedOid> {
+    pretty: String,
+    ops: Box<[ExprOp<F>]>,
 }
 
-impl Expr {
-    pub fn new(ops: impl Into<Box<[ExprOp]>>) -> Self {
-        Self { ops: ops.into() }
+impl<F> fmt::Display for Expr<F> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.pretty)
     }
+}
 
-    pub fn execute(&self, tuple: &Tuple) -> Result<Value, ExecutionError> {
+impl<F> Expr<F> {
+    pub fn new(pretty: impl fmt::Display, ops: impl Into<Box<[ExprOp<F>]>>) -> Self {
+        Self { pretty: pretty.to_string(), ops: ops.into() }
+    }
+}
+
+impl ExecutableExpr {
+    pub fn execute(&self, tuple: &Tuple) -> Value {
         let mut stack = vec![];
         for op in &self.ops[..] {
-            op.execute(&mut stack, tuple)?;
+            op.execute(&mut stack, tuple);
         }
 
-        assert_eq!(stack.len(), 1, "stack should have exactly one value after execution");
-        Ok(stack.pop().unwrap())
+        assert_eq!(
+            stack.len(),
+            1,
+            "stack should have exactly one value after execution, had {}",
+            stack.len()
+        );
+
+        stack.pop().unwrap()
     }
+}
+
+pub type ExecutableExprOp = ExprOp<Box<dyn Function>>;
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Archive, Serialize, Deserialize)]
+#[omit_bounds]
+#[archive(bound(serialize = "__S: rkyv::ser::ScratchSpace + rkyv::ser::Serializer"))]
+pub enum ExprOp<F = UntypedOid> {
+    Push(#[omit_bounds] Value),
+    Project { index: TupleIndex },
+    MkArray { len: usize },
+    Call { function: F },
+    BinOp { op: BinOp },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Archive, Serialize, Deserialize)]
-pub enum ExprOp {
-    Project(TupleIndex),
+pub enum BinOp {
+    Eq,
 }
 
-impl ExprOp {
-    fn execute(&self, stack: &mut Vec<Value>, tuple: &Tuple) -> Result<(), ExecutionError> {
-        match self {
-            ExprOp::Project(idx) => {
-                stack.push(tuple[*idx].clone());
+impl ExprOp<Box<dyn Function>> {
+    fn execute(&self, stack: &mut Vec<Value>, tuple: &Tuple) {
+        let value = match self {
+            ExprOp::Project { index } => tuple[*index].clone(),
+            ExprOp::Push(value) => value.clone(),
+            ExprOp::MkArray { len } => {
+                let array = stack.drain(stack.len() - *len..).collect::<Box<[Value]>>();
+                Value::Array(array)
             }
-        }
+            ExprOp::Call { function } => {
+                let args = stack.drain(stack.len() - function.arity()..).collect::<Box<[Value]>>();
+                function.call(args)
+            }
+            ExprOp::BinOp { op } => {
+                let rhs = stack.pop().unwrap();
+                let lhs = stack.pop().unwrap();
+                match op {
+                    BinOp::Eq => Value::Bool(lhs == rhs),
+                }
+            }
+        };
 
-        Ok(())
+        stack.push(value);
     }
 }
 
-#[derive(Debug)]
-pub enum ExecutionError {}
-
-impl fmt::Display for ExecutionError {
-    fn fmt(&self, _f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        todo!()
-    }
-}
-
-impl Error for ExecutionError {}
-
+mod fold;
 #[cfg(test)]
 mod tests;

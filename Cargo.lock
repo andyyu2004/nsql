@@ -1383,6 +1383,7 @@ name = "nsql-storage"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "atomic-take",
  "fix-hidden-lifetime-bug",
  "itertools 0.10.5",
  "next-gen",

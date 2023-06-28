@@ -112,7 +112,7 @@ impl fmt::Display for BinOp {
 }
 
 #[derive(Debug, Clone)]
-pub struct Values(Vec<Vec<Expr>>);
+pub struct Values(Box<[Box<[Expr]>]>);
 
 impl Values {
     /// Create a new `Values` expression
@@ -121,16 +121,21 @@ impl Values {
     ///
     /// Panics if these conditions are not met
     #[inline]
-    pub fn new(values: Vec<Vec<Expr>>) -> Self {
+    pub fn new(values: Box<[Box<[Expr]>]>) -> Self {
         assert!(!values.is_empty(), "values must be non-empty");
         let len = values[0].len();
         assert!(values.iter().all(|v| v.len() == len), "all inner vectors must be the same length");
         Self(values)
     }
+
+    #[inline]
+    pub fn into_inner(self) -> Box<[Box<[Expr]>]> {
+        self.0
+    }
 }
 
 impl Deref for Values {
-    type Target = Vec<Vec<Expr>>;
+    type Target = Box<[Box<[Expr]>]>;
 
     #[inline]
     fn deref(&self) -> &Self::Target {

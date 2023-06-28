@@ -70,7 +70,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSource<'env, 'txn, S, ReadWrite
         tracing::debug!("executing physical drop");
 
         let catalog = ecx.catalog();
-        let tx = ecx.tx()?;
+        let tx = ecx.tx();
         for &entity_ref in &self.refs {
             tracing::debug!(entity = ?entity_ref, "dropping");
             match entity_ref {

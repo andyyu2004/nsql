@@ -5,13 +5,13 @@ use super::*;
 #[derive(Debug)]
 pub struct PhysicalValues {
     schema: Schema,
-    values: ir::Values,
+    values: Box<[ExecutableTupleExpr]>,
 }
 
 impl PhysicalValues {
     pub(crate) fn plan<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
         schema: Schema,
-        values: ir::Values,
+        values: Box<[ExecutableTupleExpr]>,
     ) -> Arc<dyn PhysicalNode<'env, 'txn, S, M>> {
         Arc::new(PhysicalValues { schema, values })
     }
@@ -30,9 +30,8 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
                 return Ok(None);
             }
 
-            let evaluator = Evaluator::new();
-            let exprs = &self.values[index];
-            let tuple = evaluator.evaluate(&Tuple::empty(), exprs);
+            let exprs: &ExecutableTupleExpr = &self.values[index];
+            let tuple = exprs.execute(&Tuple::empty());
             index += 1;
 
             Ok(Some(tuple))

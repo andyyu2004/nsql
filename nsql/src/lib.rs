@@ -150,7 +150,7 @@ impl<S: StorageEngine> Shared<S> {
         let mut plan = binder.bind(&tx, stmt)?;
         optimize_in_place(&mut plan);
 
-        let planner = PhysicalPlanner::new(catalog);
+        let mut planner = PhysicalPlanner::new(catalog);
 
         let (tx, tuples) = match tx {
             ReadOrWriteTransaction::Read(tx) => {

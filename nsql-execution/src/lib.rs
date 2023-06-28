@@ -2,7 +2,7 @@
 #![feature(trait_upcasting)]
 #![feature(once_cell_try)]
 
-mod eval;
+mod compile;
 mod executor;
 mod physical_plan;
 mod pipeline;
@@ -23,7 +23,6 @@ use nsql_storage_engine::{
 use nsql_util::atomic::AtomicEnum;
 pub use physical_plan::PhysicalPlanner;
 
-use self::eval::Evaluator;
 pub use self::executor::{execute, execute_write};
 use self::physical_plan::{explain, Explain, PhysicalPlan};
 use self::pipeline::{
@@ -232,8 +231,8 @@ impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> ExecutionContext<'env, S
     }
 
     #[inline]
-    pub fn tx(&self) -> Result<M::TransactionRef<'_>, S::Error> {
-        Ok(TransactionConversionHack::as_tx_ref(&self.tcx.tx))
+    pub fn tx(&self) -> M::TransactionRef<'_> {
+        TransactionConversionHack::as_tx_ref(&self.tcx.tx)
     }
 
     #[inline]

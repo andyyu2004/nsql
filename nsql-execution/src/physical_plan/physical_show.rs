@@ -59,7 +59,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
         self: Arc<Self>,
         ecx: &'txn ExecutionContext<'env, S, M>,
     ) -> ExecutionResult<TupleStream<'txn>> {
-        let tx: M::TransactionRef<'txn> = ecx.tx()?;
+        let tx: M::TransactionRef<'txn> = ecx.tx();
         let tx: &'txn dyn Transaction<'env, S> = tx.dyn_ref();
         let catalog = ecx.catalog();
 

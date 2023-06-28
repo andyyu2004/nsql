@@ -1,13 +1,10 @@
-use itertools::Itertools;
-
 use super::*;
 
 #[derive(Debug)]
 pub struct PhysicalProjection<'env, 'txn, S, M> {
     children: [Arc<dyn PhysicalNode<'env, 'txn, S, M>>; 1],
     schema: Schema,
-    projection: Box<[ir::Expr]>,
-    evaluator: Evaluator,
+    projection: ExecutableTupleExpr,
 }
 
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
@@ -16,9 +13,9 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     pub(crate) fn plan(
         schema: Schema,
         source: Arc<dyn PhysicalNode<'env, 'txn, S, M>>,
-        projection: Box<[ir::Expr]>,
+        projection: ExecutableTupleExpr,
     ) -> Arc<dyn PhysicalNode<'env, 'txn, S, M>> {
-        Arc::new(Self { schema, evaluator: Evaluator::new(), children: [source], projection })
+        Arc::new(Self { schema, children: [source], projection })
     }
 }
 
@@ -31,7 +28,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
         _ecx: &'txn ExecutionContext<'env, S, M>,
         input: Tuple,
     ) -> ExecutionResult<OperatorState<Tuple>> {
-        let output = self.evaluator.evaluate(&input, &self.projection);
+        let output = self.projection.execute(&input);
         tracing::debug!(%input, %output, "evaluating projection");
         Ok(OperatorState::Yield(output))
     }
@@ -79,7 +76,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Explain<'env
         _tx: &dyn Transaction<'_, S>,
         f: &mut fmt::Formatter<'_>,
     ) -> explain::Result {
-        write!(f, "projection ({})", self.projection.iter().join(", "))?;
+        write!(f, "projection ({})", self.projection)?;
         Ok(())
     }
 }

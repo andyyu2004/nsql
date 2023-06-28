@@ -16,9 +16,8 @@ pub(crate) struct PhysicalInsert<'env, 'txn, S: StorageEngine> {
     table_oid: Oid<Table>,
     storage: OnceLock<Mutex<TableStorage<'env, 'txn, S, ReadWriteExecutionMode>>>,
     table: OnceLock<Table>,
-    returning: Option<Box<[ir::Expr]>>,
+    returning: Option<ExecutableTupleExpr>,
     returning_tuples: RwLock<Vec<Tuple>>,
-    returning_evaluator: Evaluator,
 }
 
 impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalInsert<'env, 'txn, S> {
@@ -26,14 +25,13 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalInsert<'env, 'txn, S> {
         schema: Schema,
         table_oid: Oid<Table>,
         source: Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode>>,
-        returning: Option<Box<[ir::Expr]>>,
+        returning: Option<ExecutableTupleExpr>,
     ) -> Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode>> {
         Arc::new(Self {
             table_oid,
             returning,
             schema,
             children: [source],
-            returning_evaluator: Evaluator::new(),
             storage: Default::default(),
             table: Default::default(),
             returning_tuples: Default::default(),
@@ -89,7 +87,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSink<'env, 'txn, S, ReadWriteEx
         tuple: Tuple,
     ) -> ExecutionResult<()> {
         let catalog = ecx.catalog();
-        let tx = ecx.tx()?;
+        let tx = ecx.tx();
 
         let table = self.table.get_or_try_init(|| catalog.get(tx, self.table_oid))?;
 
@@ -98,14 +96,12 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSink<'env, 'txn, S, ReadWriteEx
         })?;
 
         let storage: &mut TableStorage<'env, 'txn, _, _> = &mut storage.lock();
-        storage.insert(&tuple)?.map_err(|PrimaryKeyConflict { key }| {
+        storage.insert(&catalog, tx, &tuple)?.map_err(|PrimaryKeyConflict { key }| {
             anyhow::anyhow!("duplicate key `{key}` violates unique constraint")
         })?;
 
         if let Some(return_expr) = &self.returning {
-            self.returning_tuples
-                .write()
-                .push(self.returning_evaluator.evaluate(&tuple, return_expr));
+            self.returning_tuples.write().push(return_expr.execute(&tuple));
         }
 
         Ok(())

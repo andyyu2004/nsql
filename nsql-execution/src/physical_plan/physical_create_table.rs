@@ -77,21 +77,25 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSource<'env, 'txn, S, ReadWrite
 
         let catalog = ecx.catalog();
 
-        let tx = ecx.tx()?;
+        let tx = ecx.tx();
 
         let table = Table::new(self.info.namespace, self.info.name.clone());
 
-        catalog.system_table_write(tx)?.insert(table.clone())?;
+        catalog.system_table_write(tx)?.insert(&catalog, tx, table.clone())?;
 
         let mut columns = catalog.system_table_write(tx)?;
         for info in &self.info.columns {
-            columns.insert(Column::new(
-                table.key(),
-                info.name.clone(),
-                ColumnIndex::new(info.index),
-                info.ty.clone(),
-                info.is_primary_key,
-            ))?;
+            columns.insert(
+                &catalog,
+                tx,
+                Column::new(
+                    table.key(),
+                    info.name.clone(),
+                    ColumnIndex::new(info.index),
+                    info.ty.clone(),
+                    info.is_primary_key,
+                ),
+            )?;
         }
 
         // must drop the columns before the next line otherwise the next line will fail as it will
