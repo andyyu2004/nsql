@@ -17,10 +17,10 @@ pub trait FunctionCatalog<'env, S> {
         &self,
         tx: &dyn Transaction<'env, S>,
         oid: UntypedOid,
-    ) -> Result<Box<dyn Function>>;
+    ) -> Result<Box<dyn ScalarFunction>>;
 }
 
-pub trait Function: fmt::Debug + Send + Sync + 'static {
+pub trait ScalarFunction: fmt::Debug + Send + Sync + 'static {
     /// The number f arguments this function takes.
     fn arity(&self) -> usize;
 
@@ -34,7 +34,7 @@ pub struct TupleExpr<F = UntypedOid> {
     exprs: Box<[Expr<F>]>,
 }
 
-pub type ExecutableTupleExpr = TupleExpr<Box<dyn Function>>;
+pub type ExecutableTupleExpr = TupleExpr<Box<dyn ScalarFunction>>;
 
 impl<F> fmt::Display for TupleExpr<F> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -95,7 +95,7 @@ impl From<TupleExpr> for Value {
     }
 }
 
-pub type ExecutableExpr = Expr<Box<dyn Function>>;
+pub type ExecutableExpr = Expr<Box<dyn ScalarFunction>>;
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Archive, Serialize, Deserialize)]
 pub struct Expr<F = UntypedOid> {
@@ -140,7 +140,7 @@ impl ExecutableExpr {
     }
 }
 
-pub type ExecutableExprOp = ExprOp<Box<dyn Function>>;
+pub type ExecutableExprOp = ExprOp<Box<dyn ScalarFunction>>;
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Archive, Serialize, Deserialize)]
 #[omit_bounds]
@@ -163,7 +163,7 @@ pub enum BinOp {
     Eq,
 }
 
-impl ExprOp<Box<dyn Function>> {
+impl ExprOp<Box<dyn ScalarFunction>> {
     fn execute(&self, stack: &mut Vec<Value>, ip: &mut usize, tuple: &Tuple) {
         let value = match self {
             ExprOp::Project { index } => tuple[*index].clone(),

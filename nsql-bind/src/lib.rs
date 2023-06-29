@@ -11,8 +11,8 @@ use ir::expr::EvalNotConst;
 use ir::{Decimal, Path, TransactionMode, TupleIndex};
 use itertools::Itertools;
 use nsql_catalog::{
-    Catalog, ColumnIndex, CreateColumnInfo, CreateNamespaceInfo, Function, Namespace, SystemEntity,
-    Table, MAIN_SCHEMA,
+    Catalog, ColumnIndex, CreateColumnInfo, CreateNamespaceInfo, Function, FunctionKind, Namespace,
+    SystemEntity, Table, MAIN_SCHEMA,
 };
 use nsql_core::{LogicalType, Name, Oid, Schema};
 use nsql_parse::ast;
@@ -477,7 +477,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
 
     fn lower_ty(&self, ty: &ast::DataType) -> Result<LogicalType> {
         match ty {
-            ast::DataType::Int(width) if width.is_none() => Ok(LogicalType::Int),
+            ast::DataType::Int(width) if width.is_none() => Ok(LogicalType::Int32),
             ast::DataType::Text => Ok(LogicalType::Text),
             ast::DataType::Bytea => Ok(LogicalType::Bytea),
             ast::DataType::Boolean => Ok(LogicalType::Bool),
@@ -1007,7 +1007,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                 // Keep this in sync with `Value::ty`
                 let ty = match &array.elem[..] {
                     // default array type to `Int` if it is empty
-                    [] => LogicalType::Int,
+                    [] => LogicalType::Int32,
                     // otherwise, we can get the type from the first element
                     [first, ..] => self.bind_expr(tx, scope, first)?.ty,
                 };
@@ -1074,9 +1074,14 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                 })?;
 
                 let function = self.catalog.get::<Function>(tx, function)?;
-                let ty = function.return_type();
 
-                (ty, ir::ExprKind::FunctionCall { function, args })
+                let return_type = function.return_type();
+                match function.kind() {
+                    FunctionKind::Function => {
+                        (return_type, ir::ExprKind::FunctionCall { function, args })
+                    }
+                    FunctionKind::Aggregate => todo!(),
+                }
             }
             ast::Expr::Case { operand, conditions, results, else_result } => {
                 assert_eq!(conditions.len(), results.len());

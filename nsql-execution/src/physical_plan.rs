@@ -1,3 +1,4 @@
+mod aggregate;
 pub(crate) mod explain;
 mod join;
 mod physical_create_namespace;
@@ -27,6 +28,7 @@ use nsql_core::{LogicalType, Schema};
 use nsql_storage::eval::{ExecutableExpr, ExecutableTupleExpr};
 use nsql_storage_engine::{StorageEngine, Transaction};
 
+use self::aggregate::{PhysicalHashAggregate, PhysicalUngroupedAggregate};
 pub use self::explain::Explain;
 use self::join::PhysicalNestedLoopJoin;
 use self::physical_create_namespace::PhysicalCreateNamespace;
@@ -194,6 +196,14 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalPlanner<'env, S> {
                 join.map(|expr| self.compile_expr(expr)),
                 f(self, tx, lhs)?,
                 f(self, tx, rhs)?,
+            ),
+            Plan::Aggregate { function, source, schema, group_by } if group_by.is_empty() => {
+                PhysicalUngroupedAggregate::plan(schema, function, f(self, tx, source)?)
+            }
+            Plan::Aggregate { function, source, schema, group_by } => PhysicalHashAggregate::plan(
+                schema,
+                f(self, tx, source)?,
+                self.compile_exprs(group_by),
             ),
             Plan::Unnest { schema, expr } => PhysicalUnnest::plan(schema, self.compile_expr(expr)),
             Plan::Empty => PhysicalDummyScan::plan(),

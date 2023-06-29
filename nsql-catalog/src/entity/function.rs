@@ -1,3 +1,5 @@
+use std::{fmt, mem};
+
 use nsql_core::UntypedOid;
 
 use super::*;
@@ -5,13 +7,55 @@ use crate::Namespace;
 
 mod builtins;
 
+pub type ScalarFunction = fn(Box<[Value]>) -> Value;
+
+#[derive(Debug)]
+pub struct AggregateFunction {
+    initial_state: Value,
+    update: fn(Value, Value) -> Value,
+}
+
+impl AggregateFunction {
+    #[inline]
+    pub fn update(&mut self, value: Value) {
+        self.initial_state = (self.update)(self.initial_state.clone(), value);
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash, FromTuple, IntoTuple)]
 pub struct Function {
     pub(crate) oid: Oid<Self>,
+    pub(crate) kind: FunctionKind,
     pub(crate) namespace: Oid<Namespace>,
     pub(crate) name: Name,
     pub(crate) args: Box<[LogicalType]>,
     pub(crate) ret: LogicalType,
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+#[repr(u8)]
+pub enum FunctionKind {
+    Function,
+    Aggregate, // note: make sure the assertion below is changed if variants are reordered
+}
+
+impl FromValue for FunctionKind {
+    fn from_value(value: Value) -> Result<Self, CastError<Self>> {
+        match value {
+            Value::Byte(b) => {
+                assert!(b <= FunctionKind::Aggregate as u8);
+                Ok(unsafe { mem::transmute(b) })
+            }
+            _ => Err(CastError::new(value)),
+        }
+    }
+}
+
+impl From<FunctionKind> for Value {
+    #[inline]
+    fn from(value: FunctionKind) -> Self {
+        Value::Byte(value as u8)
+    }
 }
 
 impl<'env, S: StorageEngine> nsql_storage::eval::FunctionCatalog<'env, S> for Catalog<'env, S> {
@@ -20,16 +64,16 @@ impl<'env, S: StorageEngine> nsql_storage::eval::FunctionCatalog<'env, S> for Ca
         &self,
         tx: &dyn Transaction<'env, S>,
         oid: UntypedOid,
-    ) -> Result<Box<dyn nsql_storage::eval::Function>> {
+    ) -> Result<Box<dyn nsql_storage::eval::ScalarFunction>> {
         let f = self.get::<Function>(tx, oid.cast())?;
         Ok(Box::new(f))
     }
 }
 
-impl nsql_storage::eval::Function for Function {
+impl nsql_storage::eval::ScalarFunction for Function {
     #[inline]
     fn call(&self, args: Box<[Value]>) -> Value {
-        self.call(args)
+        self.get_scalar_function()(args)
     }
 
     #[inline]
@@ -45,17 +89,32 @@ impl Function {
     }
 
     #[inline]
+    pub fn kind(&self) -> FunctionKind {
+        self.kind
+    }
+
+    #[inline]
     pub fn return_type(&self) -> LogicalType {
         self.ret.clone()
     }
 
-    pub fn call(&self, args: Box<[Value]>) -> Value {
-        if let Some(f) = builtins::get_builtin(self.oid) {
-            return f(args);
+    #[inline]
+    pub fn get_scalar_function(&self) -> ScalarFunction {
+        if let Some(f) = builtins::get_scalar_function(self.oid) {
+            return f;
         }
 
         // otherwise, we store the bytecode for non-builtin functions
         // let bytecode: Expr = todo!();
+
+        panic!()
+    }
+
+    #[inline]
+    pub fn get_aggregate_function(&self) -> AggregateFunction {
+        if let Some(f) = builtins::get_aggregate_function(self.oid) {
+            return f;
+        }
 
         panic!()
     }
@@ -106,6 +165,7 @@ impl SystemEntity for Function {
             Table::FUNCTION.untyped(),
             vec![
                 ColumnStorageInfo::new(LogicalType::Oid, true),
+                ColumnStorageInfo::new(LogicalType::Byte, false),
                 ColumnStorageInfo::new(LogicalType::Oid, false),
                 ColumnStorageInfo::new(LogicalType::Text, false),
                 ColumnStorageInfo::new(LogicalType::array(LogicalType::Type), false),

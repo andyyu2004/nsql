@@ -61,6 +61,10 @@ pub trait VisitorMut {
                     self.visit_exprs_mut(returning);
                 }
             }
+            Plan::Aggregate { source, function: _, group_by, schema: _ } => {
+                self.visit_plan_mut(source);
+                self.visit_exprs_mut(group_by);
+            }
         }
     }
 

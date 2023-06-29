@@ -134,7 +134,7 @@ impl SystemEntity for Column {
             Table::ATTRIBUTE.untyped(),
             vec![
                 ColumnStorageInfo::new(LogicalType::Oid, true),
-                ColumnStorageInfo::new(LogicalType::Int, true),
+                ColumnStorageInfo::new(LogicalType::Int32, true),
                 ColumnStorageInfo::new(LogicalType::Type, false),
                 ColumnStorageInfo::new(LogicalType::Text, false),
                 ColumnStorageInfo::new(LogicalType::Bool, false),

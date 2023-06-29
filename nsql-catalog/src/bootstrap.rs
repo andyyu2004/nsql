@@ -5,6 +5,7 @@ use nsql_storage::tuple::TupleIndex;
 use nsql_storage::Result;
 use nsql_storage_engine::{ReadWriteExecutionMode, StorageEngine, Transaction};
 
+use crate::entity::function::FunctionKind;
 use crate::{
     Column, ColumnIndex, Function, Index, IndexKind, Namespace, Oid, SystemEntity, SystemTableView,
     Table, MAIN_SCHEMA,
@@ -13,6 +14,7 @@ use crate::{
 struct BootstrapFunction {
     oid: Oid<Function>,
     name: &'static str,
+    kind: FunctionKind,
     args: Vec<LogicalType>,
     ret: LogicalType,
 }
@@ -49,7 +51,7 @@ impl<'env, S> FunctionCatalog<'env, S> for BootstrapFunctionCatalog {
         &self,
         _tx: &dyn Transaction<'env, S>,
         _oid: UntypedOid,
-    ) -> Result<Box<dyn nsql_storage::eval::Function>> {
+    ) -> Result<Box<dyn nsql_storage::eval::ScalarFunction>> {
         bail!("cannot get function during bootstrap")
     }
 }
@@ -122,6 +124,7 @@ impl Namespace {
 
 impl Function {
     pub(crate) const RANGE2: Oid<Self> = Oid::new(100);
+    pub(crate) const SUM_INT: Oid<Self> = Oid::new(101);
 }
 
 // FIXME there is still quite a bit of duplicated work between here and `bootstrap_table_storage_info`
@@ -166,7 +169,7 @@ fn bootstrap_info() -> BootstrapInfo {
                 name: "nsql_attribute",
                 columns: vec![
                     BootstrapColumn { name: "table", ty: LogicalType::Oid, pk: true },
-                    BootstrapColumn { name: "index", ty: LogicalType::Int, pk: true },
+                    BootstrapColumn { name: "index", ty: LogicalType::Int32, pk: true },
                     BootstrapColumn { name: "ty", ty: LogicalType::Type, pk: false },
                     BootstrapColumn { name: "name", ty: LogicalType::Text, pk: false },
                     BootstrapColumn { name: "is_primary_key", ty: LogicalType::Bool, pk: false },
@@ -198,7 +201,7 @@ fn bootstrap_info() -> BootstrapInfo {
                 columns: vec![
                     BootstrapColumn { name: "table", ty: LogicalType::Oid, pk: true },
                     BootstrapColumn { name: "target", ty: LogicalType::Oid, pk: false },
-                    BootstrapColumn { name: "kind", ty: LogicalType::Int, pk: false },
+                    BootstrapColumn { name: "kind", ty: LogicalType::Int32, pk: false },
                     BootstrapColumn { name: "index_expr", ty: LogicalType::TupleExpr, pk: false },
                 ],
                 indexes: vec![],
@@ -209,7 +212,7 @@ fn bootstrap_info() -> BootstrapInfo {
                 columns: vec![
                     BootstrapColumn { name: "oid", ty: LogicalType::Oid, pk: true },
                     BootstrapColumn { name: "namespace", ty: LogicalType::Oid, pk: false },
-                    BootstrapColumn { name: "name", ty: LogicalType::Int, pk: false },
+                    BootstrapColumn { name: "name", ty: LogicalType::Int32, pk: false },
                     BootstrapColumn {
                         name: "args",
                         ty: LogicalType::array(LogicalType::Type),
@@ -224,12 +227,22 @@ fn bootstrap_info() -> BootstrapInfo {
                 }],
             },
         ],
-        functions: vec![BootstrapFunction {
-            oid: Function::RANGE2,
-            name: "range",
-            args: vec![LogicalType::Int, LogicalType::Int],
-            ret: LogicalType::array(LogicalType::Int),
-        }],
+        functions: vec![
+            BootstrapFunction {
+                oid: Function::RANGE2,
+                name: "range",
+                kind: FunctionKind::Function,
+                args: vec![LogicalType::Int32, LogicalType::Int32],
+                ret: LogicalType::array(LogicalType::Int32),
+            },
+            BootstrapFunction {
+                oid: Function::SUM_INT,
+                name: "sum",
+                kind: FunctionKind::Aggregate,
+                args: vec![LogicalType::Int32],
+                ret: LogicalType::Int32,
+            },
+        ],
     }
 }
 
@@ -258,6 +271,7 @@ impl BootstrapInfo {
             name: f.name.into(),
             args: f.args.into_boxed_slice(),
             ret: f.ret,
+            kind: f.kind,
         });
 
         let mut tables = vec![];

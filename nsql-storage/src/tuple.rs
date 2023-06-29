@@ -1,5 +1,6 @@
 use std::error::Error;
 use std::fmt;
+use std::hash::{Hash, Hasher};
 use std::ops::{Index, IndexMut};
 use std::sync::OnceLock;
 
@@ -10,11 +11,27 @@ use rkyv::{Archive, Archived, Deserialize, Serialize};
 use crate::value::{CastError, FromValue, Value};
 
 // FIXME make this cheap to clone
-#[derive(Debug, Clone, PartialEq, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
+#[derive(Debug, Clone, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
 pub struct Tuple {
     values: Box<[Value]>,
     #[with(Skip)]
     cached_schema: OnceLock<Schema>,
+}
+
+impl PartialEq for Tuple {
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        self.values == other.values
+    }
+}
+
+impl Eq for Tuple {}
+
+impl Hash for Tuple {
+    #[inline]
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.values.hash(state);
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]

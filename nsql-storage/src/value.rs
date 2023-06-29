@@ -65,6 +65,7 @@ impl<T> Error for CastError<T> {}
 #[archive(bound(serialize = "__S: rkyv::ser::ScratchSpace + rkyv::ser::Serializer"))]
 pub enum Value {
     Null,
+    Byte(u8),
     Int32(i32),
     Oid(UntypedOid),
     Bool(bool),
@@ -232,7 +233,7 @@ impl Value {
     pub fn logical_type(&self) -> LogicalType {
         match self {
             Value::Null => LogicalType::Null,
-            Value::Int32(_) => LogicalType::Int,
+            Value::Int32(_) => LogicalType::Int32,
             Value::Bool(_) => LogicalType::Bool,
             Value::Decimal(_) => LogicalType::Decimal,
             Value::Text(_) => LogicalType::Text,
@@ -240,11 +241,12 @@ impl Value {
             Value::Bytea(_) => LogicalType::Bytea,
             // Keep this in sync with binder logic
             Value::Array(values) => LogicalType::array(match &values[..] {
-                [] => LogicalType::Int,
+                [] => LogicalType::Int32,
                 [first, ..] => first.logical_type(),
             }),
             Value::Type(_) => LogicalType::Type,
             Value::TupleExpr(_) => LogicalType::TupleExpr,
+            Value::Byte(_) => LogicalType::Byte,
         }
     }
 }
@@ -259,6 +261,7 @@ impl fmt::Display for Value {
             Value::Text(s) => write!(f, "{s}"),
             Value::Int32(i) => write!(f, "{i}"),
             Value::Oid(oid) => write!(f, "{oid}"),
+            Value::Byte(byte) => write!(f, "{byte:x}"),
             Value::Bytea(bytes) => write!(f, "{bytes:x?}"),
             Value::Array(values) => write!(f, "[{}]", values.iter().format(", ")),
             Value::Type(ty) => write!(f, "{ty}"),

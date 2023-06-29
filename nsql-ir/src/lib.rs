@@ -5,7 +5,9 @@ pub mod expr;
 pub mod visit;
 use std::{fmt, mem};
 
-use nsql_catalog::{ColumnIndex, CreateColumnInfo, CreateNamespaceInfo, Namespace, Table};
+use nsql_catalog::{
+    ColumnIndex, CreateColumnInfo, CreateNamespaceInfo, Function, Namespace, Table,
+};
 use nsql_core::{LogicalType, Name, Oid, Schema};
 pub use nsql_storage::tuple::TupleIndex;
 pub use nsql_storage::value::{Decimal, Value};
@@ -84,6 +86,12 @@ pub enum Plan {
     Transaction(TransactionStmtKind),
     CreateNamespace(CreateNamespaceInfo),
     CreateTable(CreateTableInfo),
+    Aggregate {
+        function: Function,
+        source: Box<Plan>,
+        group_by: Box<[Expr]>,
+        schema: Schema,
+    },
     TableScan {
         table: Oid<Table>,
         projection: Option<Box<[ColumnIndex]>>,
@@ -161,6 +169,7 @@ impl Plan {
             Plan::Explain(_, inner) => inner.required_transaction_mode(),
             Plan::Show(..) | Plan::TableScan { .. } => TransactionMode::ReadOnly,
             Plan::Limit { source, .. }
+            | Plan::Aggregate { source, .. }
             | Plan::Order { source, .. }
             | Plan::Projection { source, .. }
             | Plan::Filter { source, .. } => source.required_transaction_mode(),
@@ -251,7 +260,8 @@ impl Plan {
         match self {
             Plan::TableScan { projected_schema, .. }
             | Plan::Projection { projected_schema, .. } => projected_schema,
-            Plan::Join { schema, .. }
+            Plan::Aggregate { schema, .. }
+            | Plan::Join { schema, .. }
             | Plan::Unnest { schema, .. }
             | Plan::Insert { schema, .. }
             | Plan::Update { schema, .. }

@@ -106,7 +106,7 @@ impl SystemEntity for Index {
             vec![
                 ColumnStorageInfo::new(LogicalType::Oid, true),
                 ColumnStorageInfo::new(LogicalType::Oid, false),
-                ColumnStorageInfo::new(LogicalType::Int, false),
+                ColumnStorageInfo::new(LogicalType::Int32, false),
                 ColumnStorageInfo::new(LogicalType::TupleExpr, false),
             ],
         )

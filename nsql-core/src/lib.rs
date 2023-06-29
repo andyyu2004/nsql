@@ -77,8 +77,9 @@ impl Borrow<str> for Name {
 #[archive(bound(serialize = "__S: rkyv::ser::ScratchSpace + rkyv::ser::Serializer"))]
 pub enum LogicalType {
     Null,
+    Byte,
     Bool,
-    Int,
+    Int32,
     Decimal,
     Text,
     Oid,
@@ -105,7 +106,8 @@ impl fmt::Display for LogicalType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             LogicalType::Bool => write!(f, "boolean"),
-            LogicalType::Int => write!(f, "int"),
+            LogicalType::Byte => write!(f, "byte"),
+            LogicalType::Int32 => write!(f, "int"),
             LogicalType::Decimal => write!(f, "decimal"),
             LogicalType::Text => write!(f, "text"),
             LogicalType::Null => write!(f, "null"),
@@ -132,6 +134,16 @@ impl Schema {
     #[inline]
     pub fn empty() -> Self {
         Self::new([])
+    }
+
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.types.is_empty()
+    }
+
+    #[inline]
+    pub fn len(&self) -> usize {
+        self.types.len()
     }
 
     #[inline]
