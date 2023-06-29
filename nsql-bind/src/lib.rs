@@ -1098,7 +1098,9 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                         let when = self.bind_expr(tx, scope, when)?;
                         ensure!(
                             when.ty == scrutinee.ty,
-                            "case condition must match type of scrutinee"
+                            "case condition must match type of scrutinee, expected `{}`, got `{}`",
+                            scrutinee.ty,
+                            when.ty
                         );
 
                         let then = self.bind_expr(tx, scope, then)?;
@@ -1106,19 +1108,21 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                     })
                     .collect::<Result<Box<_>, _>>()?;
 
-                let result_type = cases[0].then.ty.clone();
-                for case in cases.iter() {
-                    ensure!(
-                        case.then.ty == result_type,
-                        "all case results must have the same type"
-                    );
-                }
-
                 let else_result = else_result
                     .as_ref()
                     .map(|r| self.bind_expr(tx, scope, r))
                     .transpose()
                     .map(Box::new)?;
+
+                let result_type = cases[0].then.ty.clone();
+                for expr in cases.iter().map(|case| &case.then).chain(else_result.iter()) {
+                    ensure!(
+                        expr.ty == result_type,
+                        "all case results must have the same type, expected `{}`, got `{}`",
+                        result_type,
+                        expr.ty
+                    );
+                }
 
                 (
                     result_type,
