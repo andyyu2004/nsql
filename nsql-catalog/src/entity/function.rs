@@ -1,4 +1,4 @@
-use std::{fmt, mem};
+use std::mem;
 
 use nsql_core::UntypedOid;
 

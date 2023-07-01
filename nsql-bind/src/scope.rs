@@ -37,6 +37,8 @@ impl<S: StorageEngine> Scope<S> {
         let bound_columns = projection
             .iter()
             .map(|expr| match &expr.kind {
+                // FIXME this is missing the alias case right? need a test case
+                // ir::ExprKind::Alias {..}
                 ir::ExprKind::ColumnRef { path, .. } => (path.clone(), expr.ty.clone()),
                 // the generated column name is a string representation of the expression
                 _ => (Path::unqualified(expr.to_string()), expr.ty.clone()),

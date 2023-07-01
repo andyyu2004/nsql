@@ -1,6 +1,7 @@
 #![deny(rust_2018_idioms)]
 
 mod scope;
+mod select;
 
 use std::collections::HashSet;
 use std::str::FromStr;
@@ -19,6 +20,7 @@ use nsql_parse::ast;
 use nsql_storage_engine::{StorageEngine, Transaction};
 
 use self::scope::Scope;
+use self::select::SelectBinder;
 
 pub struct Binder<'env, S> {
     catalog: Catalog<'env, S>,
@@ -666,11 +668,8 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
             source = source.filter(predicate);
         }
 
-        let projection = projection
-            .iter()
-            .map(|item| self.bind_select_item(tx, &scope, item))
-            .flatten_ok()
-            .collect::<Result<Box<_>>>()?;
+        let mut binder = SelectBinder::new(self);
+        let projection = binder.bind(tx, &scope, projection)?;
 
         Ok((scope.project(&projection), source.project(projection)))
     }
@@ -939,6 +938,50 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
         scope.lookup_column(&Path::Unqualified(ident.value.clone().into()))
     }
 
+    fn bind_function(
+        &self,
+        tx: &dyn Transaction<'env, S>,
+        scope: &Scope<S>,
+        f: &ast::Function,
+    ) -> Result<(Function, Box<[ir::Expr]>)> {
+        let ast::Function { name, args, over, distinct, special, order_by } = f;
+        not_implemented!(over.is_some());
+        not_implemented!(*distinct);
+        not_implemented!(*special);
+        not_implemented!(!order_by.is_empty());
+
+        let args = args
+            .iter()
+            .map(|arg| {
+                Ok(match arg {
+                    ast::FunctionArg::Named { .. } => {
+                        not_implemented!("named function args")
+                    }
+                    ast::FunctionArg::Unnamed(expr) => match expr {
+                        ast::FunctionArgExpr::Expr(expr) => expr,
+                        ast::FunctionArgExpr::QualifiedWildcard(_) => {
+                            not_implemented!("qualified wildcard arg")
+                        }
+                        ast::FunctionArgExpr::Wildcard => not_implemented!("wildcard arg"),
+                    },
+                })
+            })
+            .collect::<Result<Vec<&ast::Expr>, _>>()?;
+
+        let args =
+            args.iter().map(|arg| self.bind_expr(tx, scope, arg)).collect::<Result<Box<_>, _>>()?;
+
+        let arg_types = args.iter().map(|arg| arg.ty.clone()).collect::<Vec<_>>();
+
+        let path = self.lower_path(&name.0)?;
+        let function = self.bind_namespaced_entity::<Function>(tx, &path, |name| {
+            (name.clone(), arg_types.into())
+        })?;
+
+        let function = self.catalog.get::<Function>(tx, function)?;
+        Ok((function, args))
+    }
+
     fn bind_expr(
         &self,
         tx: &dyn Transaction<'env, S>,
@@ -1030,57 +1073,16 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
 
                 (LogicalType::Array(Box::new(ty)), ir::ExprKind::Array(exprs))
             }
-            ast::Expr::Function(ast::Function {
-                name,
-                args,
-                over,
-                distinct,
-                special,
-                order_by,
-            }) => {
-                not_implemented!(over.is_some());
-                not_implemented!(*distinct);
-                not_implemented!(*special);
-                not_implemented!(!order_by.is_empty());
-
-                let args = args
-                    .iter()
-                    .map(|arg| {
-                        Ok(match arg {
-                            ast::FunctionArg::Named { .. } => {
-                                not_implemented!("named function args")
-                            }
-                            ast::FunctionArg::Unnamed(expr) => match expr {
-                                ast::FunctionArgExpr::Expr(expr) => expr,
-                                ast::FunctionArgExpr::QualifiedWildcard(_) => {
-                                    not_implemented!("qualified wildcard arg")
-                                }
-                                ast::FunctionArgExpr::Wildcard => not_implemented!("wildcard arg"),
-                            },
-                        })
-                    })
-                    .collect::<Result<Vec<&ast::Expr>, _>>()?;
-
-                let args =
-                    args.iter()
-                        .map(|arg| self.bind_expr(tx, scope, arg))
-                        .collect::<Result<Box<_>, _>>()?;
-
-                let arg_types = args.iter().map(|arg| arg.ty.clone()).collect::<Vec<_>>();
-
-                let path = self.lower_path(&name.0)?;
-                let function = self.bind_namespaced_entity::<Function>(tx, &path, |name| {
-                    (name.clone(), arg_types.into())
-                })?;
-
-                let function = self.catalog.get::<Function>(tx, function)?;
-
+            ast::Expr::Function(f) => {
+                let (function, args) = self.bind_function(tx, scope, f)?;
                 let return_type = function.return_type();
                 match function.kind() {
                     FunctionKind::Function => {
                         (return_type, ir::ExprKind::FunctionCall { function, args })
                     }
-                    FunctionKind::Aggregate => todo!(),
+                    FunctionKind::Aggregate => {
+                        not_implemented!("aggregate function call in this position")
+                    }
                 }
             }
             ast::Expr::Case { operand, conditions, results, else_result } => {
