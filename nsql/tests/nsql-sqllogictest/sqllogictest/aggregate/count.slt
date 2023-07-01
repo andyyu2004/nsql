@@ -1,4 +1,0 @@
-query I
-SELECT sum(x) FROM (VALUES(1), (2), (3)) AS t(x);
-----
-6

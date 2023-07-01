@@ -25,6 +25,16 @@ impl PartialEq for Tuple {
     }
 }
 
+impl IntoIterator for Tuple {
+    type Item = Value;
+    type IntoIter = std::vec::IntoIter<Self::Item>;
+
+    #[inline]
+    fn into_iter(self) -> Self::IntoIter {
+        self.values.into_vec().into_iter()
+    }
+}
+
 impl Eq for Tuple {}
 
 impl Hash for Tuple {

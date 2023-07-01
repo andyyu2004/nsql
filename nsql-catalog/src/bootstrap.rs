@@ -125,6 +125,7 @@ impl Namespace {
 impl Function {
     pub(crate) const RANGE2: Oid<Self> = Oid::new(100);
     pub(crate) const SUM_INT: Oid<Self> = Oid::new(101);
+    pub(crate) const PRODUCT_INT: Oid<Self> = Oid::new(102);
 }
 
 // FIXME there is still quite a bit of duplicated work between here and `bootstrap_table_storage_info`
@@ -238,6 +239,13 @@ fn bootstrap_info() -> BootstrapInfo {
             BootstrapFunction {
                 oid: Function::SUM_INT,
                 name: "sum",
+                kind: FunctionKind::Aggregate,
+                args: vec![LogicalType::Int32],
+                ret: LogicalType::Int32,
+            },
+            BootstrapFunction {
+                oid: Function::PRODUCT_INT,
+                name: "product",
                 kind: FunctionKind::Aggregate,
                 args: vec![LogicalType::Int32],
                 ret: LogicalType::Int32,

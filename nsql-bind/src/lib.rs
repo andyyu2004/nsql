@@ -668,8 +668,12 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
             source = source.filter(predicate);
         }
 
-        let mut binder = SelectBinder::new(self);
-        let projection = binder.bind(tx, &scope, projection)?;
+        let binder = SelectBinder::new(self);
+        let (aggregates, projection) = binder.bind(tx, &scope, projection)?;
+
+        if !aggregates.is_empty() {
+            source = source.aggregate(aggregates, Box::new([]));
+        }
 
         Ok((scope.project(&projection), source.project(projection)))
     }

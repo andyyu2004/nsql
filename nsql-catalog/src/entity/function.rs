@@ -11,14 +11,19 @@ pub type ScalarFunction = fn(Box<[Value]>) -> Value;
 
 #[derive(Debug)]
 pub struct AggregateFunction {
-    initial_state: Value,
+    state: Value,
     update: fn(Value, Value) -> Value,
 }
 
 impl AggregateFunction {
     #[inline]
     pub fn update(&mut self, value: Value) {
-        self.initial_state = (self.update)(self.initial_state.clone(), value);
+        self.state = (self.update)(self.state.clone(), value);
+    }
+
+    #[inline]
+    pub fn finalize(self) -> Value {
+        self.state
     }
 }
 
@@ -107,7 +112,7 @@ impl Function {
         // otherwise, we store the bytecode for non-builtin functions
         // let bytecode: Expr = todo!();
 
-        panic!()
+        panic!("missing scalar function")
     }
 
     #[inline]
@@ -116,7 +121,7 @@ impl Function {
             return f;
         }
 
-        panic!()
+        panic!("missing aggregate function")
     }
 }
 

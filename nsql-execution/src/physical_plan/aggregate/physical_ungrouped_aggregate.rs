@@ -1,11 +1,16 @@
+use std::mem;
+
 use nsql_catalog::{AggregateFunction, Function};
+use nsql_storage_engine::fallible_iterator;
+use parking_lot::Mutex;
 
 use super::*;
 
 #[derive(Debug)]
 pub struct PhysicalUngroupedAggregate<'env, 'txn, S, M> {
     schema: Schema,
-    aggregate_function: AggregateFunction,
+    functions: Box<[(Function, ExecutableExpr)]>,
+    aggregate_functions: Mutex<Vec<AggregateFunction>>,
     children: [Arc<dyn PhysicalNode<'env, 'txn, S, M>>; 1],
 }
 
@@ -14,14 +19,15 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
 {
     pub(crate) fn plan(
         schema: Schema,
-        function: Function,
+        functions: Box<[(Function, ExecutableExpr)]>,
         source: Arc<dyn PhysicalNode<'env, 'txn, S, M>>,
     ) -> Arc<dyn PhysicalNode<'env, 'txn, S, M>> {
-        assert_eq!(schema.len(), 1, "ungrouped aggregate can only produce one value");
-        let aggregate_function = function.get_aggregate_function();
         Arc::new(Self {
             schema,
-            aggregate_function: function.get_aggregate_function(),
+            aggregate_functions: Mutex::new(
+                functions.iter().map(|(f, _args)| f.get_aggregate_function()).collect(),
+            ),
+            functions,
             children: [source],
         })
     }
@@ -34,9 +40,11 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
         self: Arc<Self>,
         _ecx: &'txn ExecutionContext<'env, S, M>,
     ) -> ExecutionResult<TupleStream<'txn>> {
-        todo!();
-        // let tuples = mem::take(&mut *self.output.write());
-        // Ok(Box::new(fallible_iterator::convert(tuples.into_iter().map(Ok))))
+        let values = mem::take(&mut *self.aggregate_functions.lock())
+            .into_iter()
+            .map(|f| f.finalize())
+            .collect();
+        Ok(Box::new(fallible_iterator::once(Tuple::new(values))))
     }
 }
 
@@ -44,8 +52,12 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSink
     for PhysicalUngroupedAggregate<'env, 'txn, S, M>
 {
     fn sink(&self, _ecx: &'txn ExecutionContext<'env, S, M>, tuple: Tuple) -> ExecutionResult<()> {
-        todo!();
-        // self.aggregate_function.update(tuple);
+        let mut aggregate_functions = self.aggregate_functions.lock();
+        for (state, (_f, expr)) in aggregate_functions.iter_mut().zip(&self.functions[..]) {
+            let v = expr.execute(&tuple);
+            state.update(v);
+        }
+
         Ok(())
     }
 }

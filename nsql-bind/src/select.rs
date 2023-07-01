@@ -2,7 +2,7 @@ use crate::*;
 
 pub(crate) struct SelectBinder<'a, 'env, S> {
     binder: &'a Binder<'env, S>,
-    aggregates: Vec<ir::Expr>,
+    aggregates: Vec<(Function, Box<[ir::Expr]>)>,
 }
 
 impl<'a, 'env, S: StorageEngine> SelectBinder<'a, 'env, S> {
@@ -11,16 +11,17 @@ impl<'a, 'env, S: StorageEngine> SelectBinder<'a, 'env, S> {
     }
 
     pub fn bind(
-        &mut self,
+        mut self,
         tx: &dyn Transaction<'env, S>,
         scope: &Scope<S>,
         items: &[ast::SelectItem],
-    ) -> Result<Box<[ir::Expr]>> {
-        items
+    ) -> Result<(Box<[(Function, Box<[ir::Expr]>)]>, Box<[ir::Expr]>)> {
+        let items = items
             .iter()
             .map(|item| self.bind_select_item(tx, scope, item))
             .flatten_ok()
-            .collect::<Result<Box<_>>>()
+            .collect::<Result<Box<_>>>()?;
+        Ok((self.aggregates.into_boxed_slice(), items))
     }
 
     fn bind_select_item(
@@ -53,9 +54,18 @@ impl<'a, 'env, S: StorageEngine> SelectBinder<'a, 'env, S> {
                 let kind = match function.kind() {
                     FunctionKind::Function => ir::ExprKind::FunctionCall { function, args },
                     FunctionKind::Aggregate => {
-                        todo!()
+                        let idx = self.aggregates.len();
+                        self.aggregates.push((function, args));
+                        // FIXME need to add column to scope
+                        // create a column reference to the aggregate column that will be added
+                        ir::ExprKind::ColumnRef {
+                            // FIXME check for alias
+                            path: Path::unqualified(expr.to_string()),
+                            index: TupleIndex::new(idx),
+                        }
                     }
                 };
+
                 Ok(ir::Expr { ty, kind })
             }
             _ => self.binder.bind_expr(tx, scope, expr),

@@ -87,7 +87,8 @@ pub enum Plan {
     CreateNamespace(CreateNamespaceInfo),
     CreateTable(CreateTableInfo),
     Aggregate {
-        function: Function,
+        /// aggregate functions (and it's args) to apply
+        functions: Box<[(Function, Box<[Expr]>)]>,
         source: Box<Plan>,
         group_by: Box<[Expr]>,
         schema: Schema,
@@ -296,6 +297,16 @@ impl Plan {
             }
             _ => panic!("unnest expression must be an array"),
         }
+    }
+
+    pub fn aggregate(
+        self: Box<Self>,
+        functions: Box<[(Function, Box<[Expr]>)]>,
+        group_by: Box<[Expr]>,
+    ) -> Box<Self> {
+        assert!(group_by.is_empty());
+        let schema = functions.iter().map(|(f, _args)| f.return_type()).collect();
+        Box::new(Plan::Aggregate { schema, functions, group_by, source: self })
     }
 
     #[inline]

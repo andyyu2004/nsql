@@ -197,10 +197,23 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalPlanner<'env, S> {
                 f(self, tx, lhs)?,
                 f(self, tx, rhs)?,
             ),
-            Plan::Aggregate { function, source, schema, group_by } if group_by.is_empty() => {
-                PhysicalUngroupedAggregate::plan(schema, function, f(self, tx, source)?)
+            Plan::Aggregate { functions, source, schema, group_by } if group_by.is_empty() => {
+                let functions = functions
+                    .into_vec()
+                    .into_iter()
+                    .map(|(f, args)| {
+                        assert_eq!(
+                            args.len(),
+                            1,
+                            "only one argument allowed for aggregate functions for now"
+                        );
+                        let arg = self.compile_expr(args[0].clone());
+                        Ok((f, arg))
+                    })
+                    .collect::<Result<Box<_>>>()?;
+                PhysicalUngroupedAggregate::plan(schema, functions, f(self, tx, source)?)
             }
-            Plan::Aggregate { function, source, schema, group_by } => PhysicalHashAggregate::plan(
+            Plan::Aggregate { functions, source, schema, group_by } => PhysicalHashAggregate::plan(
                 schema,
                 f(self, tx, source)?,
                 self.compile_exprs(group_by),
