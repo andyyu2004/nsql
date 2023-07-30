@@ -647,7 +647,6 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
         not_implemented!(top.is_some());
         not_implemented!(into.is_some());
         not_implemented!(!lateral_views.is_empty());
-        not_implemented!(!group_by.is_empty());
         not_implemented!(!cluster_by.is_empty());
         not_implemented!(!distribute_by.is_empty());
         not_implemented!(!sort_by.is_empty());
@@ -665,11 +664,17 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
             source = source.filter(predicate);
         }
 
-        let binder = SelectBinder::new(self);
-        let SelectBindOutput { aggregates, projection } = binder.bind(tx, &scope, projection)?;
+        let group_by = group_by
+            .iter()
+            .map(|expr| self.bind_expr(tx, &scope, expr))
+            .collect::<Result<Box<_>>>()?;
+
+        let binder = SelectBinder::new(self, group_by);
+        let SelectBindOutput { aggregates, projection, group_by } =
+            binder.bind(tx, &scope, projection)?;
 
         if !aggregates.is_empty() {
-            source = source.aggregate(aggregates, Box::new([]));
+            source = source.aggregate(aggregates, group_by);
         }
 
         Ok((scope.project(&projection), source.project(projection)))
@@ -1013,7 +1018,20 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                         );
                         (LogicalType::Bool, ir::BinOp::Eq)
                     }
-                    // ast::BinaryOperator::Plus => ir::BinOp::Add,
+                    ast::BinaryOperator::Plus => {
+                        ensure!(
+                            lhs.ty == rhs.ty,
+                            "cannot add value of type {} to {}",
+                            lhs.ty,
+                            rhs.ty
+                        );
+                        ensure!(
+                            matches!(lhs.ty, LogicalType::Int32),
+                            "cannot add value of type {}",
+                            lhs.ty,
+                        );
+                        (LogicalType::Int32, ir::BinOp::Plus)
+                    }
                     // ast::BinaryOperator::Minus => ir::BinOp::Sub,
                     // ast::BinaryOperator::Multiply => ir::BinOp::Mul,
                     // ast::BinaryOperator::Divide => ir::BinOp::Div,

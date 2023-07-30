@@ -13,7 +13,7 @@ impl Expr {
                 let lhs = lhs.const_eval()?;
                 let rhs = rhs.const_eval()?;
                 match op {
-                    BinOp::Add => todo!(),
+                    BinOp::Plus => todo!(),
                     BinOp::Sub => todo!(),
                     BinOp::Mul => todo!(),
                     BinOp::Div => todo!(),

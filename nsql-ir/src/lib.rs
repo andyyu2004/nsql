@@ -304,8 +304,12 @@ impl Plan {
         functions: Box<[(Function, Box<[Expr]>)]>,
         group_by: Box<[Expr]>,
     ) -> Box<Self> {
-        assert!(group_by.is_empty());
-        let schema = functions.iter().map(|(f, _args)| f.return_type()).collect();
+        // The aggregate plan returns all the columns used in the group by clause followed by the aggregate values
+        let schema = group_by
+            .iter()
+            .map(|e| e.ty.clone())
+            .chain(functions.iter().map(|(f, _args)| f.return_type()))
+            .collect();
         Box::new(Plan::Aggregate { schema, functions, group_by, source: self })
     }
 

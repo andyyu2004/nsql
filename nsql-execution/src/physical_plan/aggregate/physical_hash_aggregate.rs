@@ -1,13 +1,19 @@
+use std::mem;
+
 use dashmap::DashMap;
+use nsql_catalog::{AggregateFunctionInstance, Function};
+use nsql_storage_engine::fallible_iterator;
+use parking_lot::Mutex;
 
 use super::*;
 
 #[derive(Debug)]
 pub struct PhysicalHashAggregate<'env, 'txn, S, M> {
     schema: Schema,
+    functions: Box<[(Function, ExecutableExpr)]>,
     children: [Arc<dyn PhysicalNode<'env, 'txn, S, M>>; 1],
     group_expr: ExecutableTupleExpr,
-    output_groups: DashMap<Tuple, Vec<Tuple>>,
+    output_groups: DashMap<Tuple, Mutex<Vec<AggregateFunctionInstance>>>,
 }
 
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
@@ -15,10 +21,17 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
 {
     pub(crate) fn plan(
         schema: Schema,
+        functions: Box<[(Function, ExecutableExpr)]>,
         source: Arc<dyn PhysicalNode<'env, 'txn, S, M>>,
         group_expr: ExecutableTupleExpr,
     ) -> Arc<dyn PhysicalNode<'env, 'txn, S, M>> {
-        Arc::new(Self { schema, group_expr, children: [source], output_groups: Default::default() })
+        Arc::new(Self {
+            schema,
+            functions,
+            group_expr,
+            children: [source],
+            output_groups: Default::default(),
+        })
     }
 }
 
@@ -29,9 +42,16 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
         self: Arc<Self>,
         _ecx: &'txn ExecutionContext<'env, S, M>,
     ) -> ExecutionResult<TupleStream<'txn>> {
-        todo!();
-        // let tuples = mem::take(&mut *self.output.write());
-        // Ok(Box::new(fallible_iterator::convert(tuples.into_iter().map(Ok))))
+        let mut output = vec![];
+        for entry in self.output_groups.iter() {
+            // FIXME is there a way to consume the map without mutable access/ownership? i.e. a drain or something
+            let (group, functions) = entry.pair();
+            let mut functions = functions.lock();
+            let values = mem::take(&mut *functions).into_iter().map(|f| f.finalize());
+            output.push(Tuple::from_iter(group.clone().into_iter().chain(values)));
+        }
+
+        Ok(Box::new(fallible_iterator::convert(output.into_iter().map(Ok))))
     }
 }
 
@@ -40,7 +60,15 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSink
 {
     fn sink(&self, _ecx: &'txn ExecutionContext<'env, S, M>, tuple: Tuple) -> ExecutionResult<()> {
         let group = self.group_expr.execute(&tuple);
-        self.output_groups.entry(group).or_default().push(tuple);
+        let functions = self.output_groups.entry(group).or_insert_with(|| {
+            Mutex::new(self.functions.iter().map(|(f, _expr)| f.get_aggregate_instance()).collect())
+        });
+
+        let mut aggregate_functions = functions.lock();
+        for (state, (_f, expr)) in aggregate_functions.iter_mut().zip(&self.functions[..]) {
+            let value = expr.execute(&tuple);
+            state.update(value);
+        }
 
         Ok(())
     }
@@ -86,9 +114,18 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Explain<'env
         &self,
         _catalog: Catalog<'_, S>,
         _tx: &dyn Transaction<'_, S>,
-        f: &mut fmt::Formatter<'_>,
+        fmt: &mut fmt::Formatter<'_>,
     ) -> explain::Result {
-        write!(f, "ungrouped aggregate")?;
+        write!(
+            fmt,
+            "hash aggregate ({}) by {}",
+            self.functions
+                .iter()
+                .map(|(f, args)| format!("{}({})", f.name(), args))
+                .collect::<Vec<_>>()
+                .join(", "),
+            self.group_expr
+        )?;
         Ok(())
     }
 }

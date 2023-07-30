@@ -12,7 +12,7 @@ use nsql_storage::value::Value;
 
 use crate::QPath;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Expr {
     pub ty: LogicalType,
     pub kind: ExprKind,
@@ -34,7 +34,7 @@ impl fmt::Display for Expr {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ExprKind {
     Literal(Value),
     Array(Box<[Expr]>),
@@ -68,8 +68,8 @@ impl fmt::Display for ExprKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match &self {
             ExprKind::Literal(value) => write!(f, "{value}"),
-            ExprKind::ColumnRef { qpath: display_path, .. } => write!(f, "{display_path}"),
-            ExprKind::BinOp { op, lhs, rhs } => write!(f, "({lhs} {op} {rhs})"),
+            ExprKind::ColumnRef { qpath, .. } => write!(f, "{qpath}"),
+            ExprKind::BinOp { op, lhs, rhs } => write!(f, "{lhs} {op} {rhs}"),
             ExprKind::Array(exprs) => write!(f, "[{}]", exprs.iter().format(", ")),
             ExprKind::FunctionCall { function, args } => {
                 write!(f, "{}({})", function.name(), args.iter().format(", "))
@@ -90,15 +90,15 @@ impl fmt::Display for ExprKind {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Case {
     pub when: Expr,
     pub then: Expr,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BinOp {
-    Add,
+    Plus,
     Sub,
     Mul,
     Div,
@@ -116,7 +116,7 @@ pub enum BinOp {
 impl fmt::Display for BinOp {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match &self {
-            BinOp::Add => write!(f, "+"),
+            BinOp::Plus => write!(f, "+"),
             BinOp::Sub => write!(f, "-"),
             BinOp::Mul => write!(f, "*"),
             BinOp::Div => write!(f, "/"),

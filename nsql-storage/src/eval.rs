@@ -161,6 +161,7 @@ static_assert_eq!(mem::size_of::<ExprOp>(), 32);
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Archive, Serialize, Deserialize)]
 pub enum BinOp {
     Eq,
+    Plus,
 }
 
 impl ExprOp<Box<dyn ScalarFunction>> {
@@ -181,6 +182,10 @@ impl ExprOp<Box<dyn ScalarFunction>> {
                 let lhs = stack.pop().unwrap();
                 match op {
                     BinOp::Eq => Value::Bool(lhs == rhs),
+                    BinOp::Plus => match (lhs, rhs) {
+                        (Value::Int32(lhs), Value::Int32(rhs)) => Value::Int32(lhs + rhs),
+                        _ => unimplemented!(),
+                    },
                 }
             }
             ExprOp::IfNeJmp { offset } => {

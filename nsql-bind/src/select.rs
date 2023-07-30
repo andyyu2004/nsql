@@ -1,19 +1,28 @@
+use ir::visit::Visitor;
+
 use crate::*;
 
 pub(crate) struct SelectBinder<'a, 'env, S> {
     binder: &'a Binder<'env, S>,
+    group_by: Box<[ir::Expr]>,
     aggregates: Vec<(Function, Box<[ir::Expr]>)>,
-    unaggregated_columns: Vec<ir::QPath>,
+    unaggregated_exprs: Vec<ir::Expr>,
 }
 
 pub struct SelectBindOutput {
     pub aggregates: Box<[(Function, Box<[ir::Expr]>)]>,
     pub projection: Box<[ir::Expr]>,
+    pub group_by: Box<[ir::Expr]>,
 }
 
 impl<'a, 'env, S: StorageEngine> SelectBinder<'a, 'env, S> {
-    pub fn new(binder: &'a Binder<'env, S>) -> Self {
-        Self { binder, aggregates: Default::default(), unaggregated_columns: Default::default() }
+    pub fn new(binder: &'a Binder<'env, S>, group_by: Box<[ir::Expr]>) -> Self {
+        Self {
+            binder,
+            group_by,
+            aggregates: Default::default(),
+            unaggregated_exprs: Default::default(),
+        }
     }
 
     pub fn bind(
@@ -29,14 +38,19 @@ impl<'a, 'env, S: StorageEngine> SelectBinder<'a, 'env, S> {
             .collect::<Result<Box<_>>>()?;
 
         let aggregates = self.aggregates.into_boxed_slice();
-        if !aggregates.is_empty() {
-            ensure!(
-                self.unaggregated_columns.is_empty(),
-                "column `{}` must appear in the GROUP BY clause or be used in an aggregate function",
-                self.unaggregated_columns[0]
-            );
+
+        // We pick the last unaggregated expression to report an error on as it will be the largest
+        // expression and hopefully the most useful to the user.
+        if !aggregates.is_empty() || !self.group_by.is_empty() {
+            if let Some(unaggregated) = self.unaggregated_exprs.last() {
+                bail!(
+                    "expression `{}` must appear in the GROUP BY clause or be used in an aggregate function",
+                    unaggregated,
+                )
+            }
         }
-        Ok(SelectBindOutput { aggregates, projection })
+
+        Ok(SelectBindOutput { aggregates, projection, group_by: self.group_by })
     }
 
     fn bind_select_item(
@@ -69,12 +83,10 @@ impl<'a, 'env, S: StorageEngine> SelectBinder<'a, 'env, S> {
                 let kind = match function.kind() {
                     FunctionKind::Function => ir::ExprKind::FunctionCall { function, args },
                     FunctionKind::Aggregate => {
-                        let idx = self.aggregates.len();
+                        // the first N columns are the group by columns followed by the aggregate columns
+                        let idx = self.group_by.len() + self.aggregates.len();
                         self.aggregates.push((function, args));
-                        // FIXME need to add column to scope
-                        // create a column reference to the aggregate column that will be added
                         ir::ExprKind::ColumnRef {
-                            // FIXME check for alias
                             qpath: QPath::new("", expr.to_string()),
                             index: TupleIndex::new(idx),
                         }
@@ -84,9 +96,23 @@ impl<'a, 'env, S: StorageEngine> SelectBinder<'a, 'env, S> {
                 Ok(ir::Expr { ty, kind })
             }
             _ => {
+                /// Visitor to find all column references in an expression that are not in the group by
+                struct UnaggregatedColumnRefVisitor;
+
+                impl Visitor for UnaggregatedColumnRefVisitor {
+                    fn visit_expr(&mut self, expr: &ir::Expr) -> bool {
+                        matches!(expr.kind, ir::ExprKind::ColumnRef { .. }) || self.walk_expr(expr)
+                    }
+                }
+
                 let expr = self.binder.bind_expr(tx, scope, expr)?;
-                if let ir::ExprKind::ColumnRef { qpath, .. } = &expr.kind {
-                    self.unaggregated_columns.push(qpath.clone());
+
+                // if the select expression `expr` contains a column reference and `expr` is not
+                // contained in the group by clause, then add it to the list of unaggregated expressionss
+                if UnaggregatedColumnRefVisitor.visit_expr(&expr)
+                    && !self.group_by.iter().any(|g| g == &expr)
+                {
+                    self.unaggregated_exprs.push(expr.clone());
                 }
                 Ok(expr)
             }

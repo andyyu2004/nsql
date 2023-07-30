@@ -45,6 +45,7 @@ impl Compiler {
                 self.build(*rhs);
                 let op = match op {
                     ir::BinOp::Eq => BinOp::Eq,
+                    ir::BinOp::Plus => BinOp::Plus,
                     _ => todo!(),
                 };
                 self.emit(ExprOp::BinOp { op });

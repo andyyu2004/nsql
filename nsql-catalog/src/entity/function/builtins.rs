@@ -17,16 +17,16 @@ pub(crate) fn get_scalar_function(oid: Oid<Function>) -> Option<ScalarFunction> 
     })
 }
 
-pub(crate) fn get_aggregate_function(oid: Oid<Function>) -> Option<AggregateFunction> {
+pub(crate) fn get_aggregate_function(oid: Oid<Function>) -> Option<AggregateFunctionInstance> {
     Some(match oid {
-        Function::SUM_INT => AggregateFunction {
+        Function::SUM_INT => AggregateFunctionInstance {
             state: Value::Int32(0),
             update: |state, next| match next {
                 Value::Int32(n) => Value::Int32(state.cast_non_null::<i32>().unwrap() + n),
                 _ => panic!(),
             },
         },
-        Function::PRODUCT_INT => AggregateFunction {
+        Function::PRODUCT_INT => AggregateFunctionInstance {
             state: Value::Int32(1),
             update: |state, next| match next {
                 Value::Int32(n) => Value::Int32(state.cast_non_null::<i32>().unwrap() * n),

@@ -1,6 +1,6 @@
 use std::mem;
 
-use nsql_catalog::{AggregateFunction, Function};
+use nsql_catalog::{AggregateFunctionInstance, Function};
 use nsql_storage_engine::fallible_iterator;
 use parking_lot::Mutex;
 
@@ -10,7 +10,7 @@ use super::*;
 pub struct PhysicalUngroupedAggregate<'env, 'txn, S, M> {
     schema: Schema,
     functions: Box<[(Function, ExecutableExpr)]>,
-    aggregate_functions: Mutex<Vec<AggregateFunction>>,
+    aggregate_functions: Mutex<Vec<AggregateFunctionInstance>>,
     children: [Arc<dyn PhysicalNode<'env, 'txn, S, M>>; 1],
 }
 
@@ -25,7 +25,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
         Arc::new(Self {
             schema,
             aggregate_functions: Mutex::new(
-                functions.iter().map(|(f, _args)| f.get_aggregate_function()).collect(),
+                functions.iter().map(|(f, _args)| f.get_aggregate_instance()).collect(),
             ),
             functions,
             children: [source],

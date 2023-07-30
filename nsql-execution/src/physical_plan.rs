@@ -23,7 +23,7 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use ir::Plan;
-use nsql_catalog::Catalog;
+use nsql_catalog::{Catalog, Function};
 use nsql_core::{LogicalType, Schema};
 use nsql_storage::eval::{ExecutableExpr, ExecutableTupleExpr};
 use nsql_storage_engine::{StorageEngine, Transaction};
@@ -198,23 +198,12 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalPlanner<'env, S> {
                 f(self, tx, rhs)?,
             ),
             Plan::Aggregate { functions, source, schema, group_by } if group_by.is_empty() => {
-                let functions = functions
-                    .into_vec()
-                    .into_iter()
-                    .map(|(f, args)| {
-                        assert_eq!(
-                            args.len(),
-                            1,
-                            "only one argument allowed for aggregate functions for now"
-                        );
-                        let arg = self.compile_expr(args[0].clone());
-                        Ok((f, arg))
-                    })
-                    .collect::<Result<Box<_>>>()?;
+                let functions = self.compile_aggregate_functions(functions.to_vec());
                 PhysicalUngroupedAggregate::plan(schema, functions, f(self, tx, source)?)
             }
             Plan::Aggregate { functions, source, schema, group_by } => PhysicalHashAggregate::plan(
                 schema,
+                self.compile_aggregate_functions(functions.to_vec()),
                 f(self, tx, source)?,
                 self.compile_exprs(group_by),
             ),
@@ -230,6 +219,24 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalPlanner<'env, S> {
         };
 
         Ok(plan)
+    }
+
+    fn compile_aggregate_functions(
+        &mut self,
+        functions: impl IntoIterator<Item = (Function, Box<[ir::Expr]>)>,
+    ) -> Box<[(Function, ExecutableExpr)]> {
+        functions
+            .into_iter()
+            .map(|(f, args)| {
+                assert_eq!(
+                    args.len(),
+                    1,
+                    "only one argument allowed for aggregate functions for now"
+                );
+                let arg = self.compile_expr(args[0].clone());
+                (f, arg)
+            })
+            .collect::<Box<_>>()
     }
 
     fn compile_values(&mut self, values: ir::Values) -> Box<[ExecutableTupleExpr]> {

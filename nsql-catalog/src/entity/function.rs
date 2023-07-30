@@ -10,12 +10,12 @@ mod builtins;
 pub type ScalarFunction = fn(Box<[Value]>) -> Value;
 
 #[derive(Debug)]
-pub struct AggregateFunction {
+pub struct AggregateFunctionInstance {
     state: Value,
     update: fn(Value, Value) -> Value,
 }
 
-impl AggregateFunction {
+impl AggregateFunctionInstance {
     #[inline]
     pub fn update(&mut self, value: Value) {
         self.state = (self.update)(self.state.clone(), value);
@@ -116,7 +116,7 @@ impl Function {
     }
 
     #[inline]
-    pub fn get_aggregate_function(&self) -> AggregateFunction {
+    pub fn get_aggregate_instance(&self) -> AggregateFunctionInstance {
         if let Some(f) = builtins::get_aggregate_function(self.oid) {
             return f;
         }
