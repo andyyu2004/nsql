@@ -9,7 +9,7 @@ use std::str::FromStr;
 pub use anyhow::Error;
 use anyhow::{anyhow, bail, ensure};
 use ir::expr::EvalNotConst;
-use ir::{Decimal, Path, TransactionMode, TupleIndex};
+use ir::{Decimal, Path, QPath, TransactionMode, TupleIndex};
 use itertools::Itertools;
 use nsql_catalog::{
     Catalog, ColumnIndex, CreateColumnInfo, CreateNamespaceInfo, Function, FunctionKind, Namespace,
@@ -21,6 +21,7 @@ use nsql_storage_engine::{StorageEngine, Transaction};
 
 use self::scope::Scope;
 use self::select::SelectBinder;
+use crate::select::SelectBindOutput;
 
 pub struct Binder<'env, S> {
     catalog: Catalog<'env, S>,
@@ -201,7 +202,10 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                                     ir::Expr {
                                         ty: source_schema[i].clone(),
                                         kind: ir::ExprKind::ColumnRef {
-                                            path: Path::Unqualified("".into()),
+                                            qpath: QPath::new(
+                                                table.to_string().as_ref(),
+                                                column.name(),
+                                            ),
                                             index: TupleIndex::new(i),
                                         },
                                     },
@@ -489,8 +493,8 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
 
     fn bind_namespace(&self, tx: &dyn Transaction<'env, S>, path: &Path) -> Result<Oid<Namespace>> {
         match path {
-            Path::Qualified { prefix, .. } => match prefix.as_ref() {
-                Path::Qualified { .. } => not_implemented!("qualified schemas"),
+            Path::Qualified(QPath { prefix, .. }) => match prefix.as_ref() {
+                Path::Qualified(QPath { .. }) => not_implemented!("qualified schemas"),
                 Path::Unqualified(name) => {
                     let ns = self
                         .catalog
@@ -502,10 +506,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
             },
             Path::Unqualified(name) => self.bind_namespace(
                 tx,
-                &Path::Qualified {
-                    prefix: Box::new(Path::Unqualified(MAIN_SCHEMA.into())),
-                    name: name.clone(),
-                },
+                &Path::qualified(Path::Unqualified(MAIN_SCHEMA.into()), name.clone()),
             ),
         }
     }
@@ -519,14 +520,11 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
         match path {
             Path::Unqualified(name) => self.bind_namespaced_entity::<T>(
                 tx,
-                &Path::Qualified {
-                    prefix: Box::new(Path::Unqualified(MAIN_SCHEMA.into())),
-                    name: name.clone(),
-                },
+                &Path::qualified(Path::Unqualified(MAIN_SCHEMA.into()), name.clone()),
                 mk_search_key,
             ),
-            Path::Qualified { prefix, name } => match prefix.as_ref() {
-                Path::Qualified { .. } => not_implemented!("qualified schemas"),
+            Path::Qualified(QPath { prefix, name }) => match prefix.as_ref() {
+                Path::Qualified(QPath { .. }) => not_implemented!("qualified schemas"),
                 Path::Unqualified(schema) => {
                     let namespace = self
                         .catalog
@@ -551,10 +549,9 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
         match name {
             [] => unreachable!("empty name?"),
             [name] => Ok(Path::Unqualified(self.lower_name(name))),
-            [prefix @ .., name] => Ok(Path::Qualified {
-                prefix: Box::new(self.lower_path(prefix)?),
-                name: self.lower_name(name),
-            }),
+            [prefix @ .., name] => {
+                Ok(Path::qualified(self.lower_path(prefix)?, self.lower_name(name)))
+            }
         }
     }
 
@@ -669,7 +666,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
         }
 
         let binder = SelectBinder::new(self);
-        let (aggregates, projection) = binder.bind(tx, &scope, projection)?;
+        let SelectBindOutput { aggregates, projection } = binder.bind(tx, &scope, projection)?;
 
         if !aggregates.is_empty() {
             source = source.aggregate(aggregates, Box::new([]));
@@ -861,7 +858,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
 
                 let excludes = excludes
                     .iter()
-                    .map(|ident| self.bind_ident(scope, ident).map(|(_ty, index)| index))
+                    .map(|ident| self.bind_ident(scope, ident).map(|(_qpath, _ty, index)| index))
                     .collect::<Result<Vec<_>, _>>()?;
 
                 let exprs = scope.column_refs(&excludes).collect::<Vec<_>>();
@@ -938,7 +935,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
         &self,
         scope: &Scope<S>,
         ident: &ast::Ident,
-    ) -> Result<(LogicalType, ir::TupleIndex)> {
+    ) -> Result<(QPath, LogicalType, ir::TupleIndex)> {
         scope.lookup_column(&Path::Unqualified(ident.value.clone().into()))
     }
 
@@ -995,13 +992,13 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
         let (ty, kind) = match expr {
             ast::Expr::Value(literal) => self.bind_value_expr(literal),
             ast::Expr::Identifier(ident) => {
-                let (ty, index) = self.bind_ident(scope, ident)?;
-                (ty, ir::ExprKind::ColumnRef { path: Path::unqualified(&ident.value), index })
+                let (qpath, ty, index) = self.bind_ident(scope, ident)?;
+                (ty, ir::ExprKind::ColumnRef { qpath, index })
             }
             ast::Expr::CompoundIdentifier(ident) => {
                 let path = self.lower_path(ident)?;
-                let (ty, index) = scope.lookup_column(&path)?;
-                (ty, ir::ExprKind::ColumnRef { path, index })
+                let (qpath, ty, index) = scope.lookup_column(&path)?;
+                (ty, ir::ExprKind::ColumnRef { qpath, index })
             }
             ast::Expr::BinaryOp { left, op, right } => {
                 let lhs = self.bind_expr(tx, scope, left)?;

@@ -30,8 +30,8 @@ fn test_explain() -> nsql::Result<()> {
         "EXPLAIN UPDATE t SET b = true WHERE b",
         expect![[r#"
             update t
-              projection (id, true)
-                filter b
+              projection (t.id, true)
+                filter t.b
                   scan t (id, b)
         "#]],
     )?;
@@ -48,8 +48,8 @@ fn test_explain() -> nsql::Result<()> {
                   metapipeline #1
                     pipeline #1
                       update t
-                      projection (id, true)
-                      filter b
+                      projection (t.id, true)
+                      filter t.b
                       scan t (id, b)
         "#]],
     )?;

@@ -3,11 +3,17 @@ use crate::*;
 pub(crate) struct SelectBinder<'a, 'env, S> {
     binder: &'a Binder<'env, S>,
     aggregates: Vec<(Function, Box<[ir::Expr]>)>,
+    unaggregated_columns: Vec<ir::QPath>,
+}
+
+pub struct SelectBindOutput {
+    pub aggregates: Box<[(Function, Box<[ir::Expr]>)]>,
+    pub projection: Box<[ir::Expr]>,
 }
 
 impl<'a, 'env, S: StorageEngine> SelectBinder<'a, 'env, S> {
     pub fn new(binder: &'a Binder<'env, S>) -> Self {
-        Self { binder, aggregates: Default::default() }
+        Self { binder, aggregates: Default::default(), unaggregated_columns: Default::default() }
     }
 
     pub fn bind(
@@ -15,13 +21,22 @@ impl<'a, 'env, S: StorageEngine> SelectBinder<'a, 'env, S> {
         tx: &dyn Transaction<'env, S>,
         scope: &Scope<S>,
         items: &[ast::SelectItem],
-    ) -> Result<(Box<[(Function, Box<[ir::Expr]>)]>, Box<[ir::Expr]>)> {
-        let items = items
+    ) -> Result<SelectBindOutput> {
+        let projection = items
             .iter()
             .map(|item| self.bind_select_item(tx, scope, item))
             .flatten_ok()
             .collect::<Result<Box<_>>>()?;
-        Ok((self.aggregates.into_boxed_slice(), items))
+
+        let aggregates = self.aggregates.into_boxed_slice();
+        if !aggregates.is_empty() {
+            ensure!(
+                self.unaggregated_columns.is_empty(),
+                "column `{}` must appear in the GROUP BY clause or be used in an aggregate function",
+                self.unaggregated_columns[0]
+            );
+        }
+        Ok(SelectBindOutput { aggregates, projection })
     }
 
     fn bind_select_item(
@@ -60,7 +75,7 @@ impl<'a, 'env, S: StorageEngine> SelectBinder<'a, 'env, S> {
                         // create a column reference to the aggregate column that will be added
                         ir::ExprKind::ColumnRef {
                             // FIXME check for alias
-                            path: Path::unqualified(expr.to_string()),
+                            qpath: QPath::new("", expr.to_string()),
                             index: TupleIndex::new(idx),
                         }
                     }
@@ -68,7 +83,13 @@ impl<'a, 'env, S: StorageEngine> SelectBinder<'a, 'env, S> {
 
                 Ok(ir::Expr { ty, kind })
             }
-            _ => self.binder.bind_expr(tx, scope, expr),
+            _ => {
+                let expr = self.binder.bind_expr(tx, scope, expr)?;
+                if let ir::ExprKind::ColumnRef { qpath, .. } = &expr.kind {
+                    self.unaggregated_columns.push(qpath.clone());
+                }
+                Ok(expr)
+            }
         }
     }
 }

@@ -102,9 +102,17 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Explain<'env
         &self,
         _catalog: Catalog<'_, S>,
         _tx: &dyn Transaction<'_, S>,
-        f: &mut fmt::Formatter<'_>,
+        fmt: &mut fmt::Formatter<'_>,
     ) -> explain::Result {
-        write!(f, "ungrouped aggregate")?;
+        write!(
+            fmt,
+            "ungrouped aggregate ({})",
+            self.functions
+                .iter()
+                .map(|(f, args)| format!("{}({})", f.name(), args))
+                .collect::<Vec<_>>()
+                .join(", ")
+        )?;
         Ok(())
     }
 }

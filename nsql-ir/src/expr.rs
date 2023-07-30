@@ -10,7 +10,7 @@ use nsql_core::{LogicalType, Name};
 use nsql_storage::tuple::TupleIndex;
 use nsql_storage::value::Value;
 
-use crate::Path;
+use crate::QPath;
 
 #[derive(Debug, Clone)]
 pub struct Expr {
@@ -48,8 +48,8 @@ pub enum ExprKind {
         rhs: Box<Expr>,
     },
     ColumnRef {
-        /// A display path for the column (for pretty printing etc)
-        path: Path,
+        /// A qualified display path for the column (for pretty printing etc)
+        qpath: QPath,
         /// An index into the tuple the expression is evaluated against
         index: TupleIndex,
     },
@@ -68,7 +68,7 @@ impl fmt::Display for ExprKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match &self {
             ExprKind::Literal(value) => write!(f, "{value}"),
-            ExprKind::ColumnRef { path: display_path, .. } => write!(f, "{display_path}"),
+            ExprKind::ColumnRef { qpath: display_path, .. } => write!(f, "{display_path}"),
             ExprKind::BinOp { op, lhs, rhs } => write!(f, "({lhs} {op} {rhs})"),
             ExprKind::Array(exprs) => write!(f, "[{}]", exprs.iter().format(", ")),
             ExprKind::FunctionCall { function, args } => {

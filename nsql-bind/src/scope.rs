@@ -1,6 +1,7 @@
 use std::marker::PhantomData;
 
 use anyhow::bail;
+use ir::QPath;
 use nsql_catalog::{Column, SystemEntity, Table};
 use nsql_core::{LogicalType, Name, Oid};
 use nsql_storage_engine::{StorageEngine, Transaction};
@@ -12,7 +13,7 @@ use crate::{Binder, Path, Result, TableAlias};
 pub(crate) struct Scope<S> {
     // FIXME tables need to store more info than this
     tables: rpds::HashTrieMap<Path, ()>,
-    bound_columns: rpds::Vector<(Path, LogicalType)>,
+    bound_columns: rpds::Vector<(QPath, LogicalType)>,
     marker: std::marker::PhantomData<S>,
 }
 
@@ -39,9 +40,9 @@ impl<S: StorageEngine> Scope<S> {
             .map(|expr| match &expr.kind {
                 // FIXME this is missing the alias case right? need a test case
                 // ir::ExprKind::Alias {..}
-                ir::ExprKind::ColumnRef { path, .. } => (path.clone(), expr.ty.clone()),
+                ir::ExprKind::ColumnRef { qpath, .. } => (qpath.clone(), expr.ty.clone()),
                 // the generated column name is a string representation of the expression
-                _ => (Path::unqualified(expr.to_string()), expr.ty.clone()),
+                _ => (QPath::new("unknowntabletodo", expr.to_string()), expr.ty.clone()),
             })
             .collect();
 
@@ -102,34 +103,36 @@ impl<S: StorageEngine> Scope<S> {
             };
 
             bound_columns
-                .push_back_mut((Path::qualified(table_path.clone(), name), column.logical_type()));
+                .push_back_mut((QPath::new(table_path.clone(), name), column.logical_type()));
         }
 
         Ok(Self { tables: self.tables.insert(table_path, ()), bound_columns, marker: PhantomData })
     }
 
-    pub fn lookup_column(&self, path: &Path) -> Result<(LogicalType, ir::TupleIndex)> {
+    pub fn lookup_column(&self, path: &Path) -> Result<(QPath, LogicalType, ir::TupleIndex)> {
         match path {
-            Path::Qualified { .. } => {
+            Path::Qualified(qpath) => {
                 let idx = self
                     .bound_columns
                     .iter()
-                    .position(|(p, _)| p == path)
+                    .position(|(p, _)| p == qpath)
                     .ok_or_else(|| unbound!(Column, path))?;
 
-                let (_, ty) = &self.bound_columns[idx];
-                Ok((ty.clone(), ir::TupleIndex::new(idx)))
+                let (qpath, ty) = &self.bound_columns[idx];
+                Ok((qpath.clone(), ty.clone(), ir::TupleIndex::new(idx)))
             }
             Path::Unqualified(column_name) => {
                 match &self
                     .bound_columns
                     .iter()
                     .enumerate()
-                    .filter(|(_, (p, _))| &p.name() == column_name)
+                    .filter(|(_, (p, _))| &p.name == column_name)
                     .collect::<Vec<_>>()[..]
                 {
                     [] => Err(unbound!(Column, path)),
-                    [(idx, (_, ty))] => Ok((ty.clone(), ir::TupleIndex::new(*idx))),
+                    [(idx, (qpath, ty))] => {
+                        Ok((qpath.clone(), ty.clone(), ir::TupleIndex::new(*idx)))
+                    }
                     matches => {
                         bail!(
                             "column `{}` is ambiguous, it could refer to any one of {}",
@@ -153,7 +156,7 @@ impl<S: StorageEngine> Scope<S> {
         for (i, expr) in values[0].iter().enumerate() {
             // default column names are col1, col2, etc.
             let name = Name::from(format!("col{}", i + 1));
-            bound_columns.push_back_mut((Path::Unqualified(name), expr.ty.clone()));
+            bound_columns.push_back_mut((QPath::new("values", name), expr.ty.clone()));
         }
 
         Self { tables: self.tables.clone(), bound_columns, marker: PhantomData }
@@ -167,7 +170,7 @@ impl<S: StorageEngine> Scope<S> {
 
         Self {
             tables: self.tables.clone(),
-            bound_columns: self.bound_columns.push_back((Path::Unqualified("unnest".into()), ty)),
+            bound_columns: self.bound_columns.push_back((QPath::new("", "unnest"), ty)),
             marker: PhantomData,
         }
     }
@@ -184,7 +187,7 @@ impl<S: StorageEngine> Scope<S> {
             .filter(|(idx, _)| !exclude.contains(idx))
             .map(move |(index, (path, ty))| ir::Expr {
                 ty: ty.clone(),
-                kind: ir::ExprKind::ColumnRef { path: path.clone(), index },
+                kind: ir::ExprKind::ColumnRef { qpath: path.clone(), index },
             })
     }
 
@@ -199,12 +202,10 @@ impl<S: StorageEngine> Scope<S> {
         }
 
         let mut columns = rpds::Vector::new();
-        for (i, (path, ty)) in self.bound_columns.iter().enumerate() {
+        for (i, (qpath, ty)) in self.bound_columns.iter().enumerate() {
             let path = match alias.columns.get(i) {
-                Some(name) => {
-                    Path::qualified(Path::Unqualified(alias.table_name.clone()), name.clone())
-                }
-                None => path.clone(),
+                Some(name) => QPath::new(alias.table_name.clone(), name.clone()),
+                None => qpath.clone(),
             };
 
             if self.bound_columns.iter().any(|(p, _)| p == &path) {

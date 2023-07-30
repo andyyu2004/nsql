@@ -347,14 +347,53 @@ pub enum ExplainMode {
 }
 
 #[derive(Clone, PartialEq, Eq, Hash)]
+pub struct QPath {
+    pub prefix: Box<Path>,
+    pub name: Name,
+}
+
+impl QPath {
+    #[inline]
+    pub fn new(prefix: impl Into<Path>, name: impl Into<Name>) -> Self {
+        Self { prefix: Box::new(prefix.into()), name: name.into() }
+    }
+}
+
+impl fmt::Debug for QPath {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{self}")
+    }
+}
+
+impl fmt::Display for QPath {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}.{}", self.prefix, self.name)
+    }
+}
+
+#[derive(Clone, PartialEq, Eq, Hash)]
 pub enum Path {
-    Qualified { prefix: Box<Path>, name: Name },
+    Qualified(QPath),
     Unqualified(Name),
+}
+
+impl From<&str> for Path {
+    #[inline]
+    fn from(s: &str) -> Self {
+        Path::Unqualified(s.into())
+    }
+}
+
+impl From<Name> for Path {
+    #[inline]
+    fn from(s: Name) -> Self {
+        Path::Unqualified(s)
+    }
 }
 
 impl Path {
     pub fn qualified(prefix: Path, name: Name) -> Path {
-        Path::Qualified { prefix: Box::new(prefix), name }
+        Path::Qualified(QPath { prefix: Box::new(prefix), name })
     }
 
     pub fn unqualified(name: impl Into<Name>) -> Path {
@@ -363,14 +402,14 @@ impl Path {
 
     pub fn prefix(&self) -> Option<&Path> {
         match self {
-            Path::Qualified { prefix, .. } => Some(prefix),
+            Path::Qualified(QPath { prefix, .. }) => Some(prefix),
             Path::Unqualified { .. } => None,
         }
     }
 
     pub fn name(&self) -> Name {
         match self {
-            Path::Qualified { name, .. } => name.as_str().into(),
+            Path::Qualified(QPath { name, .. }) => name.as_str().into(),
             Path::Unqualified(name) => name.as_str().into(),
         }
     }
@@ -385,7 +424,7 @@ impl fmt::Debug for Path {
 impl fmt::Display for Path {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Path::Qualified { prefix, name: object } => write!(f, "{prefix}.{object}"),
+            Path::Qualified(qpath) => write!(f, "{qpath}"),
             Path::Unqualified(name) => write!(f, "{name}"),
         }
     }

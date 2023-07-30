@@ -7,3 +7,13 @@ query I
 SELECT sum(x), product(x) FROM (VALUES(1), (2)) AS t(x);
 ----
 3 2
+
+query error
+SELECT x, sum(x) FROM (VALUES(1), (2)) AS t(x);
+----
+column `t.x` must appear in the GROUP BY clause or be used in an aggregate function
+
+query II
+SELECT 42, sum(x) FROM (VALUES(1), (2)) AS t(x);
+----
+42 3
