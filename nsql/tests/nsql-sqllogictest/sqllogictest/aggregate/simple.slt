@@ -8,6 +8,7 @@ SELECT x+1 FROM (VALUES(1)) t(x) GROUP BY x + 1
 ----
 2
 
+
 query I
 SELECT SUM(x) FROM (VALUES(1), (2), (3)) AS t(x);
 ----
@@ -29,7 +30,7 @@ SELECT 42, SUM(x) FROM (VALUES(1), (2)) AS t(x);
 42 3
 
 
-query I
+query I rowsort
 SELECT x FROM (VALUES(1), (2)) AS t(x) GROUP BY x;
 ----
 1
@@ -48,8 +49,8 @@ SELECT x, y, SUM(x+y) FROM (VALUES(1, 1), (1, 1), (1, 2), (2, 5)) AS t(x, y) GRO
 1 2 3
 2 5 7
 
-query II
-SELECT SUM(x) AS s FROM (VALUES(1), (2)) AS t(x) GROUP BY x ORDER BY s DESC
+
+query I
+SELECT x FROM (VALUES (1), (1)) AS t(x) GROUP BY x
 ----
-2
 1

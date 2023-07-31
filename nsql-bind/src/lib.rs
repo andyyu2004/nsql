@@ -567,21 +567,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
         not_implemented!(fetch.is_some());
         not_implemented!(!locks.is_empty());
 
-        let (scope, mut table_expr) = self.bind_table_expr(tx, scope, body)?;
-
-        if !order_by.is_empty() {
-            let order_by = order_by
-                .iter()
-                .map(|item| {
-                    let ast::OrderByExpr { expr, asc, nulls_first } = &item;
-                    // only nulls first is implemented
-                    not_implemented!(!nulls_first.unwrap_or(true));
-                    let expr = self.bind_expr(tx, &scope, expr)?;
-                    Ok(ir::OrderExpr { expr, asc: asc.unwrap_or(true) })
-                })
-                .collect::<Result<Vec<_>>>()?;
-            table_expr = table_expr.order_by(order_by);
-        }
+        let (scope, mut table_expr) = self.bind_table_expr(tx, scope, body, order_by)?;
 
         if let Some(limit) = limit {
             // LIMIT is currently not allowed to reference any columns
@@ -603,18 +589,26 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
         tx: &dyn Transaction<'env, S>,
         scope: &Scope<S>,
         body: &ast::SetExpr,
+        order_by: &[ast::OrderByExpr],
     ) -> Result<(Scope<S>, Box<ir::Plan>)> {
         let (scope, expr) = match body {
-            ast::SetExpr::Select(sel) => self.bind_select(tx, scope, sel)?,
-            ast::SetExpr::Query(_) => todo!(),
-            ast::SetExpr::SetOperation { .. } => todo!(),
+            ast::SetExpr::Select(sel) => self.bind_select(tx, scope, sel, order_by)?,
+            // FIXME we have to pass down order by into `bind_select` otherwise the projection
+            // occurs before the order by which doesn't make sense (the order by won't have access to the required scope)
+            // However, it also doesn't make sense to pass in the order_by for the following cases :/
             ast::SetExpr::Values(values) => {
+                assert!(order_by.is_empty());
                 let (scope, values) = self.bind_values(tx, scope, values)?;
                 (scope, Box::new(ir::Plan::values(values)))
             }
-            ast::SetExpr::Insert(_) => todo!(),
-            ast::SetExpr::Table(_) => todo!(),
-            ast::SetExpr::Update(_) => todo!(),
+            ast::SetExpr::Query(_)
+            | ast::SetExpr::SetOperation { .. }
+            | ast::SetExpr::Insert(_)
+            | ast::SetExpr::Table(_)
+            | ast::SetExpr::Update(_) => {
+                assert!(order_by.is_empty());
+                todo!()
+            }
         };
 
         Ok((scope, expr))
@@ -625,6 +619,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
         tx: &dyn Transaction<'env, S>,
         scope: &Scope<S>,
         select: &ast::Select,
+        order_by: &[ast::OrderByExpr],
     ) -> Result<(Scope<S>, Box<ir::Plan>)> {
         let ast::Select {
             distinct,
@@ -673,11 +668,37 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
         let SelectBindOutput { aggregates, projection, group_by } =
             binder.bind(tx, &scope, projection)?;
 
-        if !aggregates.is_empty() {
-            source = source.aggregate(aggregates, group_by);
-        }
+        source = source.aggregate(aggregates, group_by);
+
+        let order_by = self.bind_order_by(tx, &scope, order_by)?;
+        source = source.order_by(order_by);
 
         Ok((scope.project(&projection), source.project(projection)))
+    }
+
+    fn bind_order_by(
+        &self,
+        tx: &dyn Transaction<'env, S>,
+        scope: &Scope<S>,
+        order_by: &[ast::OrderByExpr],
+    ) -> Result<Box<[ir::OrderExpr]>> {
+        order_by
+            .iter()
+            .map(|item| self.bind_order_by_expr(tx, scope, item))
+            .collect::<Result<Box<_>>>()
+    }
+
+    fn bind_order_by_expr(
+        &self,
+        tx: &dyn Transaction<'env, S>,
+        scope: &Scope<S>,
+        expr: &ast::OrderByExpr,
+    ) -> Result<ir::OrderExpr> {
+        let ast::OrderByExpr { expr, asc, nulls_first } = expr;
+        // only nulls first is implemented
+        not_implemented!(!nulls_first.unwrap_or(true));
+        let expr = self.bind_expr(tx, scope, expr)?;
+        Ok(ir::OrderExpr { expr, asc: asc.unwrap_or(true) })
     }
 
     fn bind_joint_tables(

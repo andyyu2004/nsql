@@ -10,6 +10,7 @@ use super::unbound;
 use crate::{Binder, Path, Result, TableAlias};
 
 #[derive(Debug)]
+// FIXME remove S parameter no longer required
 pub(crate) struct Scope<S> {
     // FIXME tables need to store more info than this
     tables: rpds::HashTrieMap<Path, ()>,

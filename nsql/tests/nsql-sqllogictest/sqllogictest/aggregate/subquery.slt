@@ -1,0 +1,4 @@
+query I
+SELECT * FROM (SELECT x FROM (VALUES (1), (1)) AS t(x) GROUP BY x)
+----
+1

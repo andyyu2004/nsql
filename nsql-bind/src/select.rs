@@ -97,9 +97,9 @@ impl<'a, 'env, S: StorageEngine> SelectBinder<'a, 'env, S> {
             }
             _ => {
                 /// Visitor to find all column references in an expression that are not in the group by
-                struct UnaggregatedColumnRefVisitor;
+                struct ColumnRefVisitor;
 
-                impl Visitor for UnaggregatedColumnRefVisitor {
+                impl Visitor for ColumnRefVisitor {
                     fn visit_expr(&mut self, expr: &ir::Expr) -> bool {
                         matches!(expr.kind, ir::ExprKind::ColumnRef { .. }) || self.walk_expr(expr)
                     }
@@ -109,11 +109,24 @@ impl<'a, 'env, S: StorageEngine> SelectBinder<'a, 'env, S> {
 
                 // if the select expression `expr` contains a column reference and `expr` is not
                 // contained in the group by clause, then add it to the list of unaggregated expressionss
-                if UnaggregatedColumnRefVisitor.visit_expr(&expr)
-                    && !self.group_by.iter().any(|g| g == &expr)
-                {
-                    self.unaggregated_exprs.push(expr.clone());
+                let expr_contains_column_ref = ColumnRefVisitor.visit_expr(&expr);
+                if expr_contains_column_ref {
+                    if let Some(i) = self.group_by.iter().position(|g| g == &expr) {
+                        // if the expression is in the group by clause, then replace it with a column reference to it
+                        // (reminder: first G values are group by columns, followed by N aggregate columns)
+                        let g = &self.group_by[i];
+                        return Ok(ir::Expr {
+                            ty: g.ty.clone(),
+                            kind: ir::ExprKind::ColumnRef {
+                                qpath: QPath::new("", g.to_string()),
+                                index: TupleIndex::new(i),
+                            },
+                        });
+                    } else {
+                        self.unaggregated_exprs.push(expr.clone());
+                    }
                 }
+
                 Ok(expr)
             }
         }

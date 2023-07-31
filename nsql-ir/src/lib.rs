@@ -304,6 +304,10 @@ impl Plan {
         functions: Box<[(Function, Box<[Expr]>)]>,
         group_by: Box<[Expr]>,
     ) -> Box<Self> {
+        if functions.is_empty() && group_by.is_empty() {
+            return self;
+        }
+
         // The aggregate plan returns all the columns used in the group by clause followed by the aggregate values
         let schema = group_by
             .iter()
@@ -320,7 +324,12 @@ impl Plan {
 
     #[inline]
     pub fn order_by(self: Box<Self>, order: impl Into<Box<[OrderExpr]>>) -> Box<Plan> {
-        Box::new(Plan::Order { source: self, order: order.into() })
+        let order = order.into();
+        if order.is_empty() {
+            return self;
+        }
+
+        Box::new(Plan::Order { source: self, order })
     }
 
     pub fn join(self: Box<Self>, join: Join, rhs: Box<Plan>) -> Box<Plan> {
