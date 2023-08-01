@@ -97,8 +97,8 @@ impl Compiler {
                     .backpatch(self);
 
                 // the else branch is optional, and defaults to null
-                match *else_result {
-                    Some(else_result) => self.build(else_result),
+                match else_result {
+                    Some(else_result) => self.build(*else_result),
                     None => self.emit(ExprOp::Push(ir::Value::Null)),
                 }
 

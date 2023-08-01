@@ -26,6 +26,12 @@ impl rkyv::Archive for Name {
 }
 
 impl Name {
+    /// The string is expected to be lowercase
+    #[inline]
+    pub const fn new_inline(s: &str) -> Self {
+        Self { name: SmolStr::new_inline(s) }
+    }
+
     #[inline]
     pub fn as_str(&self) -> &str {
         self.name.as_str()

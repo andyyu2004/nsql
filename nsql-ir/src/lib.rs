@@ -2,6 +2,7 @@
 #![deny(rust_2018_idioms)]
 
 pub mod expr;
+pub mod fold;
 pub mod visit;
 use std::{fmt, mem};
 
@@ -254,6 +255,16 @@ impl<E: fmt::Display> fmt::Display for JoinConstraint<E> {
 pub struct OrderExpr<E = Expr> {
     pub expr: E,
     pub asc: bool,
+}
+
+impl fmt::Display for OrderExpr {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.expr)?;
+        if !self.asc {
+            write!(f, " DESC")?;
+        }
+        Ok(())
+    }
 }
 
 impl Plan {

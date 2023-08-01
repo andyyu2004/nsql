@@ -1,4 +1,5 @@
 #![deny(rust_2018_idioms)]
+#![feature(if_let_guard)]
 
 mod scope;
 mod select;
@@ -990,11 +991,12 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
         Ok((function, args))
     }
 
-    fn bind_expr(
+    fn walk_expr(
         &self,
         tx: &dyn Transaction<'env, S>,
         scope: &Scope<S>,
         expr: &ast::Expr,
+        mut f: impl FnMut(&ast::Expr) -> Result<ir::Expr>,
     ) -> Result<ir::Expr> {
         let (ty, kind) = match expr {
             ast::Expr::Value(literal) => self.bind_value_expr(literal),
@@ -1008,7 +1010,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                 (ty, ir::ExprKind::ColumnRef { qpath, index })
             }
             ast::Expr::UnaryOp { op, expr } => {
-                let expr = self.bind_expr(tx, scope, expr)?;
+                let expr = f(expr)?;
                 let (ty, op) = match op {
                     ast::UnaryOperator::Plus => todo!(),
                     ast::UnaryOperator::Minus => {
@@ -1031,8 +1033,8 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                 (ty, ir::ExprKind::UnaryOp { op, expr: Box::new(expr) })
             }
             ast::Expr::BinaryOp { left, op, right } => {
-                let lhs = self.bind_expr(tx, scope, left)?;
-                let rhs = self.bind_expr(tx, scope, right)?;
+                let lhs = f(left)?;
+                let rhs = f(right)?;
                 let (ty, op) = match op {
                     ast::BinaryOperator::Eq => {
                         ensure!(
@@ -1096,14 +1098,14 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                     // default array type to `Int` if it is empty
                     [] => LogicalType::Int32,
                     // otherwise, we can get the type from the first element
-                    [first, ..] => self.bind_expr(tx, scope, first)?.ty,
+                    [first, ..] => f(first)?.ty,
                 };
 
                 let exprs = array
                     .elem
                     .iter()
                     .map(|e| {
-                        let expr = self.bind_expr(tx, scope, e)?;
+                        let expr = f(e)?;
                         // FIXME this isn't going to work with `NULLs` in the array
                         ensure!(
                             expr.ty == ty,
@@ -1134,7 +1136,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                 assert!(!conditions.is_empty());
 
                 let scrutinee = match operand {
-                    Some(scrutinee) => self.bind_expr(tx, scope, scrutinee)?,
+                    Some(scrutinee) => f(scrutinee)?,
                     // if there is no scrutinee, we can just use a literal `true` to compare each branch against
                     None => ir::Expr {
                         ty: LogicalType::Bool,
@@ -1146,7 +1148,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                     .iter()
                     .zip(results)
                     .map(|(when, then)| {
-                        let when = self.bind_expr(tx, scope, when)?;
+                        let when = f(when)?;
                         ensure!(
                             when.ty == scrutinee.ty,
                             "case condition must match type of scrutinee, expected `{}`, got `{}`",
@@ -1154,19 +1156,17 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                             when.ty
                         );
 
-                        let then = self.bind_expr(tx, scope, then)?;
+                        let then = f(then)?;
                         Ok(ir::Case { when, then })
                     })
                     .collect::<Result<Box<_>, _>>()?;
 
-                let else_result = else_result
-                    .as_ref()
-                    .map(|r| self.bind_expr(tx, scope, r))
-                    .transpose()
-                    .map(Box::new)?;
+                let else_result = else_result.as_ref().map(|r| f(r).map(Box::new)).transpose()?;
 
                 let result_type = cases[0].then.ty.clone();
-                for expr in cases.iter().map(|case| &case.then).chain(else_result.iter()) {
+                for expr in
+                    cases.iter().map(|case| &case.then).chain(else_result.iter().map(AsRef::as_ref))
+                {
                     ensure!(
                         expr.ty == result_type,
                         "all case results must have the same type, expected `{}`, got `{}`",
@@ -1184,6 +1184,15 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
         };
 
         Ok(ir::Expr { ty, kind })
+    }
+
+    fn bind_expr(
+        &self,
+        tx: &dyn Transaction<'env, S>,
+        scope: &Scope<S>,
+        expr: &ast::Expr,
+    ) -> Result<ir::Expr> {
+        self.walk_expr(tx, scope, expr, |expr| self.bind_expr(tx, scope, expr))
     }
 
     fn bind_value_expr(&self, value: &ast::Value) -> (LogicalType, ir::ExprKind) {

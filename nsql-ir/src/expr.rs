@@ -20,10 +20,10 @@ pub struct Expr {
 
 impl Expr {
     #[inline]
-    pub fn alias(&self, alias: impl AsRef<str>) -> Expr {
+    pub fn alias(self, alias: impl AsRef<str>) -> Expr {
         Expr {
             ty: self.ty.clone(),
-            kind: ExprKind::Alias { expr: Box::new(self.clone()), alias: alias.as_ref().into() },
+            kind: ExprKind::Alias { expr: Box::new(self), alias: alias.as_ref().into() },
         }
     }
 }
@@ -64,7 +64,7 @@ pub enum ExprKind {
     Case {
         scrutinee: Box<Expr>,
         cases: Box<[Case]>,
-        else_result: Box<Option<Expr>>,
+        else_result: Option<Box<Expr>>,
     },
 }
 
@@ -101,7 +101,7 @@ pub struct Case {
     pub then: Expr,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum UnaryOp {
     Neg,
 }
@@ -114,7 +114,7 @@ impl fmt::Display for UnaryOp {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum BinOp {
     Plus,
     Sub,

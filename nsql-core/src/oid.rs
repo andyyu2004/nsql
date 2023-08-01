@@ -43,7 +43,7 @@ impl<T: ?Sized> Copy for Oid<T> {}
 
 impl<T: ?Sized> Clone for Oid<T> {
     fn clone(&self) -> Self {
-        Self { oid: self.oid, marker: self.marker }
+        *self
     }
 }
 

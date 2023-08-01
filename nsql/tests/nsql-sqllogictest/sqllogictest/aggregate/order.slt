@@ -34,13 +34,20 @@ SELECT x, SUM(y) FROM (VALUES(1, 10), (1, -2), (2, 3)) AS t(x, y) GROUP BY x ORD
 2 3
 
 query I
-SELECT SUM(x) FROM (VALUES(1), (2)) AS t(x) GROUP BY x ORDER BY -SUM(x)
+SELECT -SUM(x) FROM (VALUES(1), (2)) AS t(x) GROUP BY x ORDER BY SUM(x)
 ----
-2
-1
+-1
+-2
 
 query I
 SELECT -SUM(x) FROM (VALUES(1), (2)) AS t(x) GROUP BY x ORDER BY -SUM(x)
 ----
 -2
 -1
+
+query I
+SELECT SUM(x) FROM (VALUES(1), (2)) AS t(x) GROUP BY x ORDER BY -SUM(x)
+----
+2
+1
+

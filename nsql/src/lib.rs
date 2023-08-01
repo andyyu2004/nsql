@@ -15,7 +15,8 @@ use nsql_opt::optimize_in_place;
 pub use nsql_redb::RedbStorageEngine;
 pub use nsql_storage::tuple::Tuple;
 use nsql_storage::Storage;
-use nsql_storage_engine::{ReadOrWriteTransaction, StorageEngine, WriteTransaction};
+pub use nsql_storage_engine::StorageEngine;
+use nsql_storage_engine::{ReadOrWriteTransaction, WriteTransaction};
 
 pub type Result<T, E = anyhow::Error> = std::result::Result<T, E>;
 
