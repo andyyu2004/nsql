@@ -99,6 +99,31 @@ impl<'a, 'env, S: StorageEngine> SelectBinder<'a, 'env, S> {
         expr: &ast::Expr,
     ) -> Result<ir::Expr> {
         match expr {
+            // BIG FIXME this needs to be a general recursive thing for all expression not just
+            // unary operators. Hacking to pass the tests for now
+            ast::Expr::UnaryOp { op, expr } => {
+                let expr = self.bind_maybe_aggregate_expr(tx, scope, expr)?;
+                let (ty, op) = match op {
+                    ast::UnaryOperator::Plus => todo!(),
+                    ast::UnaryOperator::Minus => {
+                        ensure!(
+                            matches!(expr.ty, LogicalType::Int32),
+                            "cannot negate value of type {}",
+                            expr.ty
+                        );
+                        (LogicalType::Int32, ir::UnaryOp::Neg)
+                    }
+                    ast::UnaryOperator::Not => todo!(),
+                    ast::UnaryOperator::PGBitwiseNot => todo!(),
+                    ast::UnaryOperator::PGSquareRoot => todo!(),
+                    ast::UnaryOperator::PGCubeRoot => todo!(),
+                    ast::UnaryOperator::PGPostfixFactorial => todo!(),
+                    ast::UnaryOperator::PGPrefixFactorial => todo!(),
+                    ast::UnaryOperator::PGAbs => todo!(),
+                };
+
+                Ok(ir::Expr { ty, kind: ir::ExprKind::UnaryOp { op, expr: Box::new(expr) } })
+            }
             ast::Expr::Function(f) => {
                 let (function, args) = self.binder.bind_function(tx, scope, f)?;
                 let ty = function.return_type();

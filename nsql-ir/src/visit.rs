@@ -1,4 +1,6 @@
 use crate::{Expr, ExprKind, Join, JoinConstraint, Plan};
+// FIXME returning ControlFlow is probably better than using bool these days, also lets the visitor
+// carry a value on break which is convenient (can also use `?` for ergonomics)
 
 /// A trait for walking a plan and its expressions.
 /// The `visit_*` methods are called when the walker encounters the corresponding node and are
@@ -7,6 +9,7 @@ use crate::{Expr, ExprKind, Join, JoinConstraint, Plan};
 /// generally should not be overriden.
 pub trait Visitor {
     /// Any transformation must be type-preserving
+
     #[inline]
     fn visit_plan(&mut self, plan: &Plan) -> bool {
         self.walk_plan(plan)
