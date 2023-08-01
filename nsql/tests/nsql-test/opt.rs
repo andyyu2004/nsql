@@ -1,1 +1,2 @@
+mod aggregate_deduplication;
 mod identity_projection_removal;

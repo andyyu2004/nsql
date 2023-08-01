@@ -12,7 +12,7 @@ use nsql_storage::value::Value;
 
 use crate::QPath;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Expr {
     pub ty: LogicalType,
     pub kind: ExprKind,
@@ -34,7 +34,7 @@ impl fmt::Display for Expr {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ExprKind {
     Literal(Value),
     Array(Box<[Expr]>),
@@ -95,13 +95,13 @@ impl fmt::Display for ExprKind {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Case {
     pub when: Expr,
     pub then: Expr,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum UnaryOp {
     Neg,
 }
@@ -114,7 +114,7 @@ impl fmt::Display for UnaryOp {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum BinOp {
     Plus,
     Sub,

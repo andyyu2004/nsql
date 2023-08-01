@@ -1,3 +1,4 @@
+use indexmap::IndexSet;
 use ir::visit::Visitor;
 
 use crate::*;
@@ -5,7 +6,7 @@ use crate::*;
 pub(crate) struct SelectBinder<'a, 'env, S> {
     binder: &'a Binder<'env, S>,
     group_by: Box<[ir::Expr]>,
-    aggregates: Vec<(Function, Box<[ir::Expr]>)>,
+    aggregates: IndexSet<(Function, Box<[ir::Expr]>)>,
     unaggregated_exprs: Vec<ir::Expr>,
 }
 
@@ -44,7 +45,7 @@ impl<'a, 'env, S: StorageEngine> SelectBinder<'a, 'env, S> {
             .map(|expr| self.bind_order_by_expr(tx, scope, expr))
             .collect::<Result<Box<_>>>()?;
 
-        let aggregates = self.aggregates.into_boxed_slice();
+        let aggregates = self.aggregates.into_iter().collect::<Box<_>>();
 
         // We pick the last unaggregated expression to report an error on as it will be the largest
         // expression and hopefully the most useful to the user.
@@ -130,13 +131,11 @@ impl<'a, 'env, S: StorageEngine> SelectBinder<'a, 'env, S> {
                 let kind = match function.kind() {
                     FunctionKind::Function => ir::ExprKind::FunctionCall { function, args },
                     FunctionKind::Aggregate => {
-                        // FIXME deduplicate the aggregate expressions
-                        // the first N columns are the group by columns followed by the aggregate columns
-                        let idx = self.group_by.len() + self.aggregates.len();
-                        self.aggregates.push((function, args));
+                        let (idx, _exists) = self.aggregates.insert_full((function, args));
                         ir::ExprKind::ColumnRef {
                             qpath: QPath::new("", expr.to_string()),
-                            index: TupleIndex::new(idx),
+                            // the first N columns are the group by columns followed by the aggregate columns
+                            index: TupleIndex::new(self.group_by.len() + idx),
                         }
                     }
                 };
