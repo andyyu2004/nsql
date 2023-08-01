@@ -13,6 +13,7 @@ pub struct SelectBindOutput {
     pub aggregates: Box<[(Function, Box<[ir::Expr]>)]>,
     pub projection: Box<[ir::Expr]>,
     pub group_by: Box<[ir::Expr]>,
+    pub order_by: Box<[ir::OrderExpr]>,
 }
 
 impl<'a, 'env, S: StorageEngine> SelectBinder<'a, 'env, S> {
@@ -30,11 +31,17 @@ impl<'a, 'env, S: StorageEngine> SelectBinder<'a, 'env, S> {
         tx: &dyn Transaction<'env, S>,
         scope: &Scope<S>,
         items: &[ast::SelectItem],
+        order_by: &[ast::OrderByExpr],
     ) -> Result<SelectBindOutput> {
         let projection = items
             .iter()
             .map(|item| self.bind_select_item(tx, scope, item))
             .flatten_ok()
+            .collect::<Result<Box<_>>>()?;
+
+        let order_by = order_by
+            .iter()
+            .map(|expr| self.bind_order_by_expr(tx, scope, expr))
             .collect::<Result<Box<_>>>()?;
 
         let aggregates = self.aggregates.into_boxed_slice();
@@ -50,7 +57,20 @@ impl<'a, 'env, S: StorageEngine> SelectBinder<'a, 'env, S> {
             }
         }
 
-        Ok(SelectBindOutput { aggregates, projection, group_by: self.group_by })
+        Ok(SelectBindOutput { aggregates, projection, order_by, group_by: self.group_by })
+    }
+
+    fn bind_order_by_expr(
+        &mut self,
+        tx: &dyn Transaction<'env, S>,
+        scope: &Scope<S>,
+        order_expr: &ast::OrderByExpr,
+    ) -> Result<ir::OrderExpr> {
+        not_implemented!(!order_expr.nulls_first.unwrap_or(true));
+        Ok(ir::OrderExpr {
+            expr: self.bind_maybe_aggregate_expr(tx, scope, &order_expr.expr)?,
+            asc: order_expr.asc.unwrap_or(true),
+        })
     }
 
     fn bind_select_item(
@@ -60,9 +80,11 @@ impl<'a, 'env, S: StorageEngine> SelectBinder<'a, 'env, S> {
         item: &ast::SelectItem,
     ) -> Result<Vec<ir::Expr>> {
         let expr = match item {
-            ast::SelectItem::UnnamedExpr(expr) => self.bind_select_expr(tx, scope, expr)?,
+            ast::SelectItem::UnnamedExpr(expr) => {
+                self.bind_maybe_aggregate_expr(tx, scope, expr)?
+            }
             ast::SelectItem::ExprWithAlias { expr, alias } => {
-                self.bind_select_expr(tx, scope, expr)?.alias(&alias.value)
+                self.bind_maybe_aggregate_expr(tx, scope, expr)?.alias(&alias.value)
             }
             _ => return self.binder.bind_select_item(tx, scope, item),
         };
@@ -70,7 +92,7 @@ impl<'a, 'env, S: StorageEngine> SelectBinder<'a, 'env, S> {
         Ok(vec![expr])
     }
 
-    fn bind_select_expr(
+    fn bind_maybe_aggregate_expr(
         &mut self,
         tx: &dyn Transaction<'env, S>,
         scope: &Scope<S>,
@@ -83,6 +105,7 @@ impl<'a, 'env, S: StorageEngine> SelectBinder<'a, 'env, S> {
                 let kind = match function.kind() {
                     FunctionKind::Function => ir::ExprKind::FunctionCall { function, args },
                     FunctionKind::Aggregate => {
+                        // FIXME deduplicate the aggregate expressions
                         // the first N columns are the group by columns followed by the aggregate columns
                         let idx = self.group_by.len() + self.aggregates.len();
                         self.aggregates.push((function, args));

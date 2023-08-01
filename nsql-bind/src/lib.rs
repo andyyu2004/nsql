@@ -38,6 +38,8 @@ macro_rules! not_implemented {
     };
 }
 
+use not_implemented;
+
 macro_rules! unbound {
     ($ty:ty, $path: expr) => {
         anyhow::anyhow!("{} `{}` not in scope", <$ty>::desc(), $path.clone())
@@ -667,40 +669,16 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
             .collect::<Result<Box<_>>>()?;
 
         let binder = SelectBinder::new(self, group_by);
-        let SelectBindOutput { aggregates, projection, group_by } =
-            binder.bind(tx, &scope, projection)?;
+        // FIXME order by stuff needs to be processed in here too?
+        // can probably deal with the alias in order by problem there too
+        let SelectBindOutput { aggregates, projection, group_by, order_by } =
+            binder.bind(tx, &scope, projection, order_by)?;
 
         source = source.aggregate(aggregates, group_by);
 
-        let order_by = self.bind_order_by(tx, &scope, order_by)?;
         source = source.order_by(order_by);
 
         Ok((scope.project(&projection), source.project(projection)))
-    }
-
-    fn bind_order_by(
-        &self,
-        tx: &dyn Transaction<'env, S>,
-        scope: &Scope<S>,
-        order_by: &[ast::OrderByExpr],
-    ) -> Result<Box<[ir::OrderExpr]>> {
-        order_by
-            .iter()
-            .map(|item| self.bind_order_by_expr(tx, scope, item))
-            .collect::<Result<Box<_>>>()
-    }
-
-    fn bind_order_by_expr(
-        &self,
-        tx: &dyn Transaction<'env, S>,
-        scope: &Scope<S>,
-        expr: &ast::OrderByExpr,
-    ) -> Result<ir::OrderExpr> {
-        let ast::OrderByExpr { expr, asc, nulls_first } = expr;
-        // only nulls first is implemented
-        not_implemented!(!nulls_first.unwrap_or(true));
-        let expr = self.bind_expr(tx, scope, expr)?;
-        Ok(ir::OrderExpr { expr, asc: asc.unwrap_or(true) })
     }
 
     fn bind_joint_tables(
