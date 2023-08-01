@@ -8,4 +8,4 @@ argh = "0.1.10"
 nsql = { path = "../nsql" }
 nu-ansi-term = "0.49.0"
 reedline = "0.22.0"
-tabled = { version = "0.12.0", default-features = false, features = ["std"] }
+tabled = { version = "0.13.0", default-features = false, features = ["std"] }

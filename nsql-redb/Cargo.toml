@@ -5,4 +5,4 @@ edition = "2021"
 
 [dependencies]
 nsql-storage-engine = { path = "../nsql-storage-engine" }
-redb = "0.20.0"
+redb = "1"

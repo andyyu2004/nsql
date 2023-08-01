@@ -68,6 +68,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
         let scope = &Scope::default();
         let plan = match stmt {
             ast::Statement::CreateTable {
+                strict,
                 or_replace,
                 temporary,
                 external,
@@ -94,6 +95,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                 transient,
                 order_by,
             } => {
+                not_implemented!(*strict);
                 not_implemented!(*or_replace);
                 not_implemented!(*temporary);
                 not_implemented!(*external);
@@ -804,11 +806,12 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                 (scope.merge(&subquery_scope)?, subquery)
             }
             ast::TableFactor::TableFunction { .. } => todo!(),
-            ast::TableFactor::UNNEST { alias, array_expr, with_offset, with_offset_alias } => {
+            ast::TableFactor::UNNEST { alias, array_exprs, with_offset, with_offset_alias } => {
                 not_implemented!(*with_offset);
                 not_implemented!(with_offset_alias.is_some());
+                not_implemented!(array_exprs.len() != 1);
 
-                let expr = self.bind_expr(tx, scope, array_expr)?;
+                let expr = self.bind_expr(tx, scope, &array_exprs[0])?;
                 ensure!(
                     matches!(expr.ty, LogicalType::Array(_)),
                     "UNNEST expression must be an array, got {}",
