@@ -18,7 +18,7 @@ pub fn bench_insert(c: &mut Criterion) {
 }
 
 #[criterion]
-pub fn bench_insert(c: &mut Criterion) {
+pub fn bench_nested_loop_cross_join(c: &mut Criterion) {
     run(
         c,
         "nested loop cross join",
