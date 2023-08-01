@@ -1007,6 +1007,29 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                 let (qpath, ty, index) = scope.lookup_column(&path)?;
                 (ty, ir::ExprKind::ColumnRef { qpath, index })
             }
+            ast::Expr::UnaryOp { op, expr } => {
+                let expr = self.bind_expr(tx, scope, expr)?;
+                let (ty, op) = match op {
+                    ast::UnaryOperator::Plus => todo!(),
+                    ast::UnaryOperator::Minus => {
+                        ensure!(
+                            matches!(expr.ty, LogicalType::Int32),
+                            "cannot negate value of type {}",
+                            expr.ty
+                        );
+                        (LogicalType::Int32, ir::UnaryOp::Neg)
+                    }
+                    ast::UnaryOperator::Not => todo!(),
+                    ast::UnaryOperator::PGBitwiseNot => todo!(),
+                    ast::UnaryOperator::PGSquareRoot => todo!(),
+                    ast::UnaryOperator::PGCubeRoot => todo!(),
+                    ast::UnaryOperator::PGPostfixFactorial => todo!(),
+                    ast::UnaryOperator::PGPrefixFactorial => todo!(),
+                    ast::UnaryOperator::PGAbs => todo!(),
+                };
+
+                (ty, ir::ExprKind::UnaryOp { op, expr: Box::new(expr) })
+            }
             ast::Expr::BinaryOp { left, op, right } => {
                 let lhs = self.bind_expr(tx, scope, left)?;
                 let rhs = self.bind_expr(tx, scope, right)?;

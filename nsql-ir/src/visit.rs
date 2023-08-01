@@ -95,6 +95,7 @@ pub trait Visitor {
                         .as_ref()
                         .map_or(false, |else_result| self.visit_expr(else_result))
             }
+            ExprKind::UnaryOp { op: _, expr } => self.visit_expr(expr),
         }
     }
 }
@@ -199,6 +200,7 @@ pub trait VisitorMut {
                     self.visit_expr_mut(else_result);
                 }
             }
+            ExprKind::UnaryOp { op: _, expr } => self.visit_expr_mut(expr),
         }
     }
 }

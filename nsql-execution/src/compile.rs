@@ -1,7 +1,7 @@
 use std::mem;
 
 use nsql_storage::eval::{
-    BinOp, ExecutableExpr, ExecutableExprOp, ExecutableTupleExpr, Expr, ExprOp, TupleExpr,
+    BinOp, ExecutableExpr, ExecutableExprOp, ExecutableTupleExpr, Expr, ExprOp, TupleExpr, UnaryOp,
 };
 
 #[derive(Default, Debug)]
@@ -40,6 +40,13 @@ impl Compiler {
                 self.emit(ExprOp::MkArray { len });
             }
             ir::ExprKind::Alias { expr, .. } => self.build(*expr),
+            ir::ExprKind::UnaryOp { op, expr } => {
+                self.build(*expr);
+                let op = match op {
+                    ir::UnaryOp::Neg => UnaryOp::Neg,
+                };
+                self.emit(ExprOp::UnaryOp(op));
+            }
             ir::ExprKind::BinOp { op, lhs, rhs } => {
                 self.build(*lhs);
                 self.build(*rhs);
@@ -48,7 +55,7 @@ impl Compiler {
                     ir::BinOp::Plus => BinOp::Plus,
                     _ => todo!(),
                 };
-                self.emit(ExprOp::BinOp { op });
+                self.emit(ExprOp::BinOp(op));
             }
             ir::ExprKind::ColumnRef { index, .. } => self.ops.push(ExprOp::Project { index }),
             ir::ExprKind::FunctionCall { function, args } => {

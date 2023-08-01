@@ -37,6 +37,15 @@ impl Expr {
                 .map(Value::Array),
             ExprKind::Alias { expr, .. } => expr.const_eval(),
             ExprKind::FunctionCall { .. } | ExprKind::Case { .. } => Err(EvalNotConst),
+            ExprKind::UnaryOp { op, expr } => {
+                let val = expr.const_eval()?;
+                match op {
+                    crate::UnaryOp::Neg => match val {
+                        Value::Int32(i) => Ok(Value::Int32(-i)),
+                        _ => todo!(),
+                    },
+                }
+            }
         }
     }
 }

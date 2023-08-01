@@ -9,7 +9,19 @@
 
 # allow aggregate function in ORDER BY
 query I
-SELECT SUM(x) AS s FROM (VALUES(1), (2)) AS t(x) GROUP BY x ORDER BY SUM(x) DESC
+SELECT SUM(x) FROM (VALUES(1), (2)) AS t(x) GROUP BY x ORDER BY SUM(x) DESC
+----
+2
+1
+
+query I
+SELECT SUM(x) FROM (VALUES(1), (2)) AS t(x) GROUP BY x ORDER BY SUM(x)
+----
+1
+2
+
+query I
+SELECT SUM(x) FROM (VALUES(1), (2)) AS t(x) GROUP BY x ORDER BY SUM(-x)
 ----
 2
 1

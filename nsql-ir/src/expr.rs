@@ -42,6 +42,10 @@ pub enum ExprKind {
         alias: Name,
         expr: Box<Expr>,
     },
+    UnaryOp {
+        op: UnaryOp,
+        expr: Box<Expr>,
+    },
     BinOp {
         op: BinOp,
         lhs: Box<Expr>,
@@ -86,6 +90,7 @@ impl fmt::Display for ExprKind {
                 }
                 write!(f, "END")
             }
+            ExprKind::UnaryOp { op, expr } => write!(f, "{op}{expr}"),
         }
     }
 }
@@ -94,6 +99,19 @@ impl fmt::Display for ExprKind {
 pub struct Case {
     pub when: Expr,
     pub then: Expr,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum UnaryOp {
+    Neg,
+}
+
+impl fmt::Display for UnaryOp {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match &self {
+            UnaryOp::Neg => write!(f, "-"),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
