@@ -413,7 +413,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
     fn bind_assignments(
         &self,
         tx: &dyn Transaction<'env, S>,
-        scope: &Scope<S>,
+        scope: &Scope,
         table: Oid<Table>,
         assignments: &[ast::Assignment],
     ) -> Result<Box<[ir::Expr]>> {
@@ -563,9 +563,9 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
     fn bind_query(
         &self,
         tx: &dyn Transaction<'env, S>,
-        scope: &Scope<S>,
+        scope: &Scope,
         query: &ast::Query,
-    ) -> Result<(Scope<S>, Box<ir::Plan>)> {
+    ) -> Result<(Scope, Box<ir::Plan>)> {
         let ast::Query { with, body, order_by, limit, offset, fetch, locks } = query;
         not_implemented!(with.is_some());
         not_implemented!(offset.is_some());
@@ -592,10 +592,10 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
     fn bind_table_expr(
         &self,
         tx: &dyn Transaction<'env, S>,
-        scope: &Scope<S>,
+        scope: &Scope,
         body: &ast::SetExpr,
         order_by: &[ast::OrderByExpr],
-    ) -> Result<(Scope<S>, Box<ir::Plan>)> {
+    ) -> Result<(Scope, Box<ir::Plan>)> {
         let (scope, expr) = match body {
             ast::SetExpr::Select(sel) => self.bind_select(tx, scope, sel, order_by)?,
             // FIXME we have to pass down order by into `bind_select` otherwise the projection
@@ -622,10 +622,10 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
     fn bind_select(
         &self,
         tx: &dyn Transaction<'env, S>,
-        scope: &Scope<S>,
+        scope: &Scope,
         select: &ast::Select,
         order_by: &[ast::OrderByExpr],
-    ) -> Result<(Scope<S>, Box<ir::Plan>)> {
+    ) -> Result<(Scope, Box<ir::Plan>)> {
         let ast::Select {
             distinct,
             projection,
@@ -672,7 +672,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
         let binder = SelectBinder::new(self, group_by);
         // FIXME order by stuff needs to be processed in here too?
         // can probably deal with the alias in order by problem there too
-        let SelectBindOutput { aggregates, projection, group_by, order_by } =
+        let (scope, SelectBindOutput { aggregates, projection, group_by, order_by }) =
             binder.bind(tx, &scope, projection, order_by)?;
 
         source = source.aggregate(aggregates, group_by);
@@ -685,9 +685,9 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
     fn bind_joint_tables(
         &self,
         tx: &dyn Transaction<'env, S>,
-        scope: &Scope<S>,
+        scope: &Scope,
         tables: &ast::TableWithJoins,
-    ) -> Result<(Scope<S>, Box<ir::Plan>)> {
+    ) -> Result<(Scope, Box<ir::Plan>)> {
         let (mut scope, mut plan) = self.bind_table_factor(tx, scope, &tables.relation)?;
 
         for join in &tables.joins {
@@ -700,10 +700,10 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
     fn bind_join(
         &self,
         tx: &dyn Transaction<'env, S>,
-        scope: &Scope<S>,
+        scope: &Scope,
         lhs: Box<ir::Plan>,
         join: &ast::Join,
-    ) -> Result<(Scope<S>, Box<ir::Plan>)> {
+    ) -> Result<(Scope, Box<ir::Plan>)> {
         // FIXME don't think the `rhs` should have access to the scope of the lhs
         let (scope, rhs) = self.bind_table_factor(tx, scope, &join.relation)?;
         match &join.join_operator {
@@ -739,7 +739,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
     fn bind_join_constraint(
         &self,
         tx: &dyn Transaction<'env, S>,
-        scope: &Scope<S>,
+        scope: &Scope,
         constraint: &ast::JoinConstraint,
     ) -> Result<ir::JoinConstraint> {
         match &constraint {
@@ -761,9 +761,9 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
     fn bind_table_factor(
         &self,
         tx: &dyn Transaction<'env, S>,
-        scope: &Scope<S>,
+        scope: &Scope,
         table: &ast::TableFactor,
-    ) -> Result<(Scope<S>, Box<ir::Plan>)> {
+    ) -> Result<(Scope, Box<ir::Plan>)> {
         let (scope, table_expr) = match table {
             ast::TableFactor::Table { name, alias, args, with_hints } => {
                 not_implemented!(args.is_some());
@@ -791,13 +791,8 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                 not_implemented!(array_exprs.len() != 1);
 
                 let expr = self.bind_expr(tx, scope, &array_exprs[0])?;
-                ensure!(
-                    matches!(expr.ty, LogicalType::Array(_)),
-                    "UNNEST expression must be an array, got {}",
-                    expr.ty,
-                );
 
-                let mut scope = scope.bind_unnest(&expr);
+                let mut scope = scope.bind_unnest(&expr)?;
 
                 if let Some(alias) = alias {
                     scope = scope.alias(self.lower_table_alias(alias))?;
@@ -815,10 +810,10 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
     fn bind_table(
         &self,
         tx: &dyn Transaction<'env, S>,
-        scope: &Scope<S>,
+        scope: &Scope,
         table_name: &ast::ObjectName,
         alias: Option<&ast::TableAlias>,
-    ) -> Result<(Scope<S>, Oid<Table>)> {
+    ) -> Result<(Scope, Oid<Table>)> {
         let alias = alias.map(|alias| self.lower_table_alias(alias));
         let table_name = self.lower_path(&table_name.0)?;
         let table = self.bind_namespaced_entity::<Table>(tx, &table_name, Name::clone)?;
@@ -840,7 +835,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
     fn bind_select_item(
         &self,
         tx: &dyn Transaction<'env, S>,
-        scope: &Scope<S>,
+        scope: &Scope,
         item: &ast::SelectItem,
     ) -> Result<Vec<ir::Expr>> {
         let expr = match item {
@@ -884,9 +879,9 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
     fn bind_values(
         &self,
         tx: &dyn Transaction<'env, S>,
-        scope: &Scope<S>,
+        scope: &Scope,
         values: &ast::Values,
-    ) -> Result<(Scope<S>, ir::Values)> {
+    ) -> Result<(Scope, ir::Values)> {
         assert!(!values.rows.is_empty(), "values can't be empty");
 
         let expected_cols = values.rows[0].len();
@@ -915,7 +910,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
     fn bind_row(
         &self,
         tx: &dyn Transaction<'env, S>,
-        scope: &Scope<S>,
+        scope: &Scope,
         row: &[ast::Expr],
     ) -> Result<Box<[ir::Expr]>> {
         row.iter().map(|expr| self.bind_expr(tx, scope, expr)).collect()
@@ -924,7 +919,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
     fn bind_predicate(
         &self,
         tx: &dyn Transaction<'env, S>,
-        scope: &Scope<S>,
+        scope: &Scope,
         predicate: &ast::Expr,
     ) -> Result<ir::Expr> {
         let predicate = self.bind_expr(tx, scope, predicate)?;
@@ -941,7 +936,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
 
     fn bind_ident(
         &self,
-        scope: &Scope<S>,
+        scope: &Scope,
         ident: &ast::Ident,
     ) -> Result<(QPath, LogicalType, ir::TupleIndex)> {
         scope.lookup_column(&Path::Unqualified(ident.value.clone().into()))
@@ -950,7 +945,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
     fn bind_function(
         &self,
         tx: &dyn Transaction<'env, S>,
-        scope: &Scope<S>,
+        scope: &Scope,
         f: &ast::Function,
     ) -> Result<(Function, Box<[ir::Expr]>)> {
         let ast::Function { name, args, over, distinct, special, order_by } = f;
@@ -994,7 +989,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
     fn walk_expr(
         &self,
         tx: &dyn Transaction<'env, S>,
-        scope: &Scope<S>,
+        scope: &Scope,
         expr: &ast::Expr,
         mut f: impl FnMut(&ast::Expr) -> Result<ir::Expr>,
     ) -> Result<ir::Expr> {
@@ -1189,7 +1184,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
     fn bind_expr(
         &self,
         tx: &dyn Transaction<'env, S>,
-        scope: &Scope<S>,
+        scope: &Scope,
         expr: &ast::Expr,
     ) -> Result<ir::Expr> {
         self.walk_expr(tx, scope, expr, |expr| self.bind_expr(tx, scope, expr))

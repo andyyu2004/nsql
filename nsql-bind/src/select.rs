@@ -26,10 +26,10 @@ impl<'a, 'env, S: StorageEngine> SelectBinder<'a, 'env, S> {
     pub fn bind(
         mut self,
         tx: &dyn Transaction<'env, S>,
-        scope: &Scope<S>,
+        scope: &Scope,
         items: &[ast::SelectItem],
         order_by: &[ast::OrderByExpr],
-    ) -> Result<SelectBindOutput> {
+    ) -> Result<(Scope, SelectBindOutput)> {
         let projection = items
             .iter()
             .map(|item| self.bind_select_item(tx, scope, item))
@@ -49,7 +49,10 @@ impl<'a, 'env, S: StorageEngine> SelectBinder<'a, 'env, S> {
 
         let aggregates = self.aggregates.into_iter().collect::<Box<_>>();
 
-        Ok(SelectBindOutput { aggregates, projection, order_by, group_by: self.group_by })
+        Ok((
+            scope.clone(),
+            SelectBindOutput { aggregates, projection, order_by, group_by: self.group_by },
+        ))
     }
 
     // effectively the aggregate plan only exposes values of the group by clauses and the aggregate functions.
@@ -123,7 +126,7 @@ impl<'a, 'env, S: StorageEngine> SelectBinder<'a, 'env, S> {
     fn bind_order_by_expr(
         &mut self,
         tx: &dyn Transaction<'env, S>,
-        scope: &Scope<S>,
+        scope: &Scope,
         order_expr: &ast::OrderByExpr,
     ) -> Result<ir::OrderExpr> {
         not_implemented!(!order_expr.nulls_first.unwrap_or(true));
@@ -136,7 +139,7 @@ impl<'a, 'env, S: StorageEngine> SelectBinder<'a, 'env, S> {
     fn bind_select_item(
         &mut self,
         tx: &dyn Transaction<'env, S>,
-        scope: &Scope<S>,
+        scope: &Scope,
         item: &ast::SelectItem,
     ) -> Result<Vec<ir::Expr>> {
         let expr = match item {
@@ -155,7 +158,7 @@ impl<'a, 'env, S: StorageEngine> SelectBinder<'a, 'env, S> {
     fn bind_expr(
         &mut self,
         tx: &dyn Transaction<'env, S>,
-        scope: &Scope<S>,
+        scope: &Scope,
         expr: &ast::Expr,
     ) -> Result<ir::Expr> {
         self.binder
@@ -165,7 +168,7 @@ impl<'a, 'env, S: StorageEngine> SelectBinder<'a, 'env, S> {
     fn bind_maybe_aggregate_expr(
         &mut self,
         tx: &dyn Transaction<'env, S>,
-        scope: &Scope<S>,
+        scope: &Scope,
         expr: &ast::Expr,
     ) -> Result<ir::Expr> {
         match expr {

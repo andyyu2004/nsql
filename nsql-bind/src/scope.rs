@@ -1,6 +1,4 @@
-use std::marker::PhantomData;
-
-use anyhow::bail;
+use anyhow::{bail, ensure};
 use ir::QPath;
 use nsql_catalog::{Column, SystemEntity, Table};
 use nsql_core::{LogicalType, Name, Oid};
@@ -9,32 +7,20 @@ use nsql_storage_engine::{StorageEngine, Transaction};
 use super::unbound;
 use crate::{Binder, Path, Result, TableAlias};
 
-#[derive(Debug)]
-// FIXME remove S parameter no longer required
-pub(crate) struct Scope<S> {
+#[derive(Debug, Default)]
+pub(crate) struct Scope {
     // FIXME tables need to store more info than this
     tables: rpds::HashTrieMap<Path, ()>,
     bound_columns: rpds::Vector<(QPath, LogicalType)>,
-    marker: std::marker::PhantomData<S>,
 }
 
-impl<S> Clone for Scope<S> {
+impl Clone for Scope {
     fn clone(&self) -> Self {
-        Self {
-            tables: self.tables.clone(),
-            bound_columns: self.bound_columns.clone(),
-            marker: PhantomData,
-        }
+        Self { tables: self.tables.clone(), bound_columns: self.bound_columns.clone() }
     }
 }
 
-impl<S> Default for Scope<S> {
-    fn default() -> Self {
-        Self { tables: Default::default(), bound_columns: Default::default(), marker: PhantomData }
-    }
-}
-
-impl<S: StorageEngine> Scope<S> {
+impl Scope {
     pub fn project(&self, projection: &[ir::Expr]) -> Self {
         let bound_columns = projection
             .iter()
@@ -47,7 +33,7 @@ impl<S: StorageEngine> Scope<S> {
             })
             .collect();
 
-        Self { bound_columns, tables: Default::default(), marker: PhantomData }
+        Self { bound_columns, tables: Default::default() }
     }
 
     pub fn merge(&self, other: &Self) -> Result<Self> {
@@ -61,19 +47,19 @@ impl<S: StorageEngine> Scope<S> {
             bound_columns.push_back_mut((path.clone(), ty.clone()));
         }
 
-        Ok(Self { tables, bound_columns, marker: PhantomData })
+        Ok(Self { tables, bound_columns })
     }
 
     /// Insert a table and its columns to the scope
     #[tracing::instrument(skip(self, tx, binder))]
-    pub fn bind_table<'env>(
+    pub fn bind_table<'env, S: StorageEngine>(
         &self,
         binder: &Binder<'env, S>,
         tx: &dyn Transaction<'env, S>,
         table_path: Path,
         table: Oid<Table>,
         alias: Option<&TableAlias>,
-    ) -> Result<Scope<S>> {
+    ) -> Result<Scope> {
         tracing::debug!("binding table");
         let mut bound_columns = self.bound_columns.clone();
 
@@ -107,7 +93,7 @@ impl<S: StorageEngine> Scope<S> {
                 .push_back_mut((QPath::new(table_path.clone(), name), column.logical_type()));
         }
 
-        Ok(Self { tables: self.tables.insert(table_path, ()), bound_columns, marker: PhantomData })
+        Ok(Self { tables: self.tables.insert(table_path, ()), bound_columns })
     }
 
     pub fn lookup_column(&self, path: &Path) -> Result<(QPath, LogicalType, ir::TupleIndex)> {
@@ -151,7 +137,7 @@ impl<S: StorageEngine> Scope<S> {
     }
 
     #[tracing::instrument(skip(self))]
-    pub fn bind_values(&self, values: &ir::Values) -> Scope<S> {
+    pub fn bind_values(&self, values: &ir::Values) -> Scope {
         let mut bound_columns = self.bound_columns.clone();
 
         for (i, expr) in values[0].iter().enumerate() {
@@ -160,20 +146,25 @@ impl<S: StorageEngine> Scope<S> {
             bound_columns.push_back_mut((QPath::new("values", name), expr.ty.clone()));
         }
 
-        Self { tables: self.tables.clone(), bound_columns, marker: PhantomData }
+        Self { tables: self.tables.clone(), bound_columns }
     }
 
-    pub fn bind_unnest(&self, expr: &ir::Expr) -> Scope<S> {
+    pub fn bind_unnest(&self, expr: &ir::Expr) -> Result<Scope> {
+        ensure!(
+            matches!(expr.ty, LogicalType::Array(_)),
+            "UNNEST expression must be an array, got {}",
+            expr.ty,
+        );
+
         let ty = match &expr.ty {
             LogicalType::Array(element_type) => *element_type.clone(),
-            _ => panic!("unnest expression must be an array"),
+            _ => unreachable!(),
         };
 
-        Self {
+        Ok(Self {
             tables: self.tables.clone(),
             bound_columns: self.bound_columns.push_back((QPath::new("", "unnest"), ty)),
-            marker: PhantomData,
-        }
+        })
     }
 
     /// Returns an iterator over the columns in the scope exposed as `Expr`s
@@ -219,7 +210,6 @@ impl<S: StorageEngine> Scope<S> {
         Ok(Scope {
             tables: self.tables.insert(Path::Unqualified(alias.table_name), ()),
             bound_columns: columns,
-            marker: PhantomData,
         })
     }
 }
