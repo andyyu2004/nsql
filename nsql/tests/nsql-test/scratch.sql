@@ -1,4 +1,0 @@
--- SELECT -SUM(x) FROM ( VALUES (1), (2)) AS t (x) GROUP BY x ORDER BY SUM(x);
--- SELECT x FROM (VALUES(1, 10), (1, -2), (2, 3)) AS t(x, y) GROUP BY x ORDER BY PRODUCT(y);
--- SELECT x+1 FROM (VALUES(1)) t(x) GROUP BY x + 1
--- SELECT x, SUM(x) FROM (VALUES(1), (2)) AS t(x);

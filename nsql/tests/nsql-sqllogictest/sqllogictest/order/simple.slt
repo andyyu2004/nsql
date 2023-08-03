@@ -1,8 +1,15 @@
-    statement ok
+statement ok
 CREATE TABLE t(x INT PRIMARY KEY, y INT);
 
 statement ok
 INSERT INTO t(x, y) VALUES (1, 2), (3, 4), (5, 6), (7, 3), (8, 3);
+
+query I
+SELECT x FROM (VALUES (1, 10), (2, -2), (3, 3)) AS t(x, y) ORDER BY y;
+----
+2
+3
+1
 
 query II
 SELECT * FROM t ORDER BY y, x
@@ -26,3 +33,16 @@ query error
 SELECT * FROM t ORDER BY z DESC
 ----
 column `z` not in scope
+
+# can access alias in order by
+query I
+SELECT x AS s FROM (VALUES(1), (2)) AS t(x) ORDER BY s
+----
+1
+2
+
+query I
+SELECT x AS s FROM (VALUES(1), (2)) AS t(x) ORDER BY s, x
+----
+1
+2

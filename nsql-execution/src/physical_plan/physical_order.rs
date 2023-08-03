@@ -1,5 +1,6 @@
 use std::{cmp, mem};
 
+use itertools::Itertools;
 use nsql_storage_engine::fallible_iterator;
 use parking_lot::RwLock;
 use rayon::prelude::*;
@@ -108,7 +109,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Explain<'env
         _tx: &dyn Transaction<'_, S>,
         f: &mut fmt::Formatter<'_>,
     ) -> explain::Result {
-        write!(f, "order")?;
+        write!(f, "order by ({})", self.ordering.iter().format(","))?;
         Ok(())
     }
 }

@@ -257,7 +257,7 @@ pub struct OrderExpr<E = Expr> {
     pub asc: bool,
 }
 
-impl fmt::Display for OrderExpr {
+impl<E: fmt::Display> fmt::Display for OrderExpr<E> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.expr)?;
         if !self.asc {

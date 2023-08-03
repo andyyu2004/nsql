@@ -26,6 +26,15 @@ impl Expr {
             kind: ExprKind::Alias { expr: Box::new(self), alias: alias.as_ref().into() },
         }
     }
+
+    /// Generates a column name for the expression.
+    /// This is generally just the pretty-printed expression, but may be overridden by an alias
+    pub fn name(&self) -> String {
+        match &self.kind {
+            ExprKind::Alias { alias, .. } => alias.to_string(),
+            _ => self.to_string(),
+        }
+    }
 }
 
 impl fmt::Display for Expr {
@@ -72,13 +81,13 @@ impl fmt::Display for ExprKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match &self {
             ExprKind::Literal(value) => write!(f, "{value}"),
-            ExprKind::ColumnRef { qpath, .. } => write!(f, "{qpath}"),
+            ExprKind::ColumnRef { qpath, index: _ } => write!(f, "{qpath}"),
             ExprKind::BinOp { op, lhs, rhs } => write!(f, "{lhs} {op} {rhs}"),
             ExprKind::Array(exprs) => write!(f, "[{}]", exprs.iter().format(", ")),
             ExprKind::FunctionCall { function, args } => {
                 write!(f, "{}({})", function.name(), args.iter().format(", "))
             }
-            ExprKind::Alias { alias, expr: _ } => write!(f, "{alias}"),
+            ExprKind::Alias { alias, expr } => write!(f, r#"({expr} AS "{alias}")"#),
             ExprKind::Case { scrutinee, cases, else_result } => {
                 write!(f, "CASE {scrutinee} ")?;
                 for case in cases.iter() {

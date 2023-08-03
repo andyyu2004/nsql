@@ -38,11 +38,12 @@ impl Scope {
         let columns = projection
             .iter()
             .map(|expr| match &expr.kind {
-                // FIXME this is missing the alias case right? need a test case
-                // ir::ExprKind::Alias {..}
+                ir::ExprKind::Alias { alias, .. } => {
+                    (QPath::new("", Name::clone(alias)), expr.ty.clone())
+                }
                 ir::ExprKind::ColumnRef { qpath, .. } => (qpath.clone(), expr.ty.clone()),
                 // the generated column name is a string representation of the expression
-                _ => (QPath::new("unknowntabletodo", expr.to_string()), expr.ty.clone()),
+                _ => (QPath::new("unknowntabletodo", expr.name()), expr.ty.clone()),
             })
             .collect();
 

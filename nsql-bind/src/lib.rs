@@ -22,7 +22,6 @@ use nsql_storage_engine::{StorageEngine, Transaction};
 
 use self::scope::Scope;
 use self::select::SelectBinder;
-use crate::select::SelectBindOutput;
 
 pub struct Binder<'env, S> {
     catalog: Catalog<'env, S>,
@@ -669,17 +668,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
             .map(|expr| self.bind_expr(tx, &scope, expr))
             .collect::<Result<Box<_>>>()?;
 
-        let binder = SelectBinder::new(self, group_by);
-        // FIXME order by stuff needs to be processed in here too?
-        // can probably deal with the alias in order by problem there too
-        let (scope, SelectBindOutput { aggregates, projection, group_by, order_by }) =
-            binder.bind(tx, &scope, projection, order_by)?;
-
-        source = source.aggregate(aggregates, group_by);
-
-        source = source.order_by(order_by);
-
-        Ok((scope.project(&projection), source.project(projection)))
+        SelectBinder::new(self, group_by).bind(tx, &scope, source, projection, order_by)
     }
 
     fn bind_joint_tables(

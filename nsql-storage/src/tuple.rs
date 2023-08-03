@@ -213,6 +213,12 @@ impl TupleIndex {
     }
 }
 
+impl fmt::Display for TupleIndex {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
 #[derive(Debug)]
 pub enum FromTupleError {
     TooManyValues,

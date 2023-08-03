@@ -1,15 +1,20 @@
-# FIXME allow referencing alias in ORDER BY
-# the way to implement this is probably to do the order by after the projection
-# but extend the projection to include any required columns of the order by expressions
-# query II
-# SELECT SUM(x) AS s FROM (VALUES(1), (2)) AS t(x) GROUP BY x ORDER BY s DESC
-# ----
-# 2
-# 1
+# allows referencing alias in ORDER BY
+query II
+SELECT SUM(x) AS s FROM (VALUES(1), (2)) AS t(x) GROUP BY x ORDER BY s DESC
+----
+2
+1
 
 # allow aggregate function in ORDER BY
 query I
 SELECT SUM(x) FROM (VALUES(1), (2)) AS t(x) GROUP BY x ORDER BY SUM(x) DESC
+----
+2
+1
+
+# allow expression containing aggregate function in ORDER BY
+query I
+SELECT SUM(x) FROM (VALUES(1), (2)) AS t(x) GROUP BY x ORDER BY -SUM(x)
 ----
 2
 1
