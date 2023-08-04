@@ -700,32 +700,30 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
     fn bind_join(
         &self,
         tx: &dyn Transaction<'env, S>,
-        scope: &Scope,
+        lhs_scope: &Scope,
         lhs: Box<ir::Plan>,
         join: &ast::Join,
     ) -> Result<(Scope, Box<ir::Plan>)> {
-        // FIXME don't think the `rhs` should have access to the scope of the lhs
-        let (scope, rhs) = self.bind_table_factor(tx, scope, &join.relation)?;
-        match &join.join_operator {
-            ast::JoinOperator::CrossJoin => {
-                let plan = lhs.join(ir::Join::Cross, rhs);
-                Ok((scope, plan))
-            }
+        let (rhs_scope, rhs) = self.bind_table_factor(tx, &Scope::default(), &join.relation)?;
+
+        let scope = lhs_scope.join(&rhs_scope);
+        let plan = match &join.join_operator {
+            ast::JoinOperator::CrossJoin => lhs.join(ir::Join::Cross, rhs),
             ast::JoinOperator::Inner(constraint) => {
                 let constraint = self.bind_join_constraint(tx, &scope, constraint)?;
-                Ok((scope, lhs.join(ir::Join::Inner(constraint), rhs)))
+                lhs.join(ir::Join::Inner(constraint), rhs)
             }
             ast::JoinOperator::LeftOuter(constraint) => {
                 let constraint = self.bind_join_constraint(tx, &scope, constraint)?;
-                Ok((scope, lhs.join(ir::Join::Left(constraint), rhs)))
+                lhs.join(ir::Join::Left(constraint), rhs)
             }
             ast::JoinOperator::RightOuter(constraint) => {
                 let constraint = self.bind_join_constraint(tx, &scope, constraint)?;
-                Ok((scope, lhs.join(ir::Join::Right(constraint), rhs)))
+                lhs.join(ir::Join::Right(constraint), rhs)
             }
             ast::JoinOperator::FullOuter(constraint) => {
                 let constraint = self.bind_join_constraint(tx, &scope, constraint)?;
-                Ok((scope, lhs.join(ir::Join::Full(constraint), rhs)))
+                lhs.join(ir::Join::Full(constraint), rhs)
             }
             ast::JoinOperator::LeftSemi(_)
             | ast::JoinOperator::RightSemi(_)
@@ -733,7 +731,9 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
             | ast::JoinOperator::RightAnti(_)
             | ast::JoinOperator::CrossApply
             | ast::JoinOperator::OuterApply => not_implemented!("unsupported join type"),
-        }
+        };
+
+        Ok((scope, plan))
     }
 
     fn bind_join_constraint(
@@ -776,13 +776,12 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                 not_implemented!(*lateral);
 
                 // subqueries get a fresh empty scope
-                let (mut subquery_scope, subquery) =
-                    self.bind_query(tx, &Scope::default(), subquery)?;
+                let (mut scope, subquery) = self.bind_query(tx, &Scope::default(), subquery)?;
                 if let Some(alias) = alias {
-                    subquery_scope = subquery_scope.alias(self.lower_table_alias(alias))?;
+                    scope = scope.alias(self.lower_table_alias(alias))?;
                 }
 
-                (scope.merge(&subquery_scope)?, subquery)
+                (scope, subquery)
             }
             ast::TableFactor::TableFunction { .. } => todo!(),
             ast::TableFactor::UNNEST { alias, array_exprs, with_offset, with_offset_alias } => {

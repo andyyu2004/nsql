@@ -49,15 +49,6 @@ impl Scope {
         Self { columns }
     }
 
-    pub fn merge(&self, other: &Self) -> Result<Self> {
-        let mut columns = self.columns.clone();
-        for (path, ty) in other.columns.iter() {
-            columns.push_back_mut((path.clone(), ty.clone()));
-        }
-
-        Ok(Self { columns })
-    }
-
     /// Insert a table and its columns to the scope
     #[tracing::instrument(skip(self, tx, binder))]
     pub fn bind_table<'env, S: StorageEngine>(
@@ -185,6 +176,15 @@ impl Scope {
                 ty: ty.clone(),
                 kind: ir::ExprKind::ColumnRef { qpath: path.clone(), index },
             })
+    }
+
+    pub fn join(&self, other: &Self) -> Self {
+        let mut columns = self.columns.clone();
+        for (path, ty) in other.columns.iter() {
+            columns.push_back_mut((path.clone(), ty.clone()));
+        }
+
+        Self { columns }
     }
 
     pub fn alias(&self, alias: TableAlias) -> Result<Self> {
