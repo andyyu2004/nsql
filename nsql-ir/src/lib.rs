@@ -343,6 +343,7 @@ impl Plan {
         Box::new(Plan::Order { source: self, order })
     }
 
+    #[inline]
     pub fn join(self: Box<Self>, join: Join, rhs: Box<Plan>) -> Box<Plan> {
         let schema = self.schema().iter().chain(rhs.schema()).cloned().collect();
         Box::new(Plan::Join { schema, join, lhs: self, rhs })
@@ -380,6 +381,10 @@ impl QPath {
     #[inline]
     pub fn new(prefix: impl Into<Path>, name: impl Into<Name>) -> Self {
         Self { prefix: Box::new(prefix.into()), name: name.into() }
+    }
+
+    pub fn components(&self) -> impl Iterator<Item = Name> + '_ {
+        self.prefix.components().chain(std::iter::once(Name::clone(&self.name)))
     }
 }
 
@@ -435,6 +440,13 @@ impl Path {
         match self {
             Path::Qualified(QPath { name, .. }) => name.as_str().into(),
             Path::Unqualified(name) => name.as_str().into(),
+        }
+    }
+
+    pub fn components(&self) -> Box<dyn Iterator<Item = Name> + '_> {
+        match self {
+            Path::Qualified(qpath) => Box::new(qpath.components()),
+            Path::Unqualified(name) => Box::new(std::iter::once(Name::clone(name))),
         }
     }
 }
