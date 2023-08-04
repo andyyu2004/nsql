@@ -5,9 +5,9 @@ pub trait ExprFolder {
     fn fold_expr(&mut self, expr: Expr) -> Expr;
 
     #[allow(clippy::boxed_local)]
-    fn fold_expr_boxed(&mut self, expr: Box<Expr>) -> Box<Expr> {
-        // this can probably be optimized to not allocate a new box
-        Box::new(self.fold_expr(*expr))
+    fn fold_expr_boxed(&mut self, mut boxed_expr: Box<Expr>) -> Box<Expr> {
+        *boxed_expr = self.fold_expr(mem::replace(&mut *boxed_expr, Expr::NULL));
+        boxed_expr
     }
 }
 
