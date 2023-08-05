@@ -27,9 +27,19 @@ pub trait Folder {
 
 pub trait PlanFold: Sized {
     fn fold_with(self, folder: &mut impl Folder) -> Self;
+
+    #[inline]
+    fn super_fold_with(self, folder: &mut impl Folder) -> Self {
+        self.fold_with(folder)
+    }
 }
 
 impl PlanFold for Plan {
+    #[inline]
+    fn super_fold_with(self, folder: &mut impl Folder) -> Self {
+        folder.fold_plan(self)
+    }
+
     fn fold_with(self, folder: &mut impl Folder) -> Self {
         match self {
             Plan::Show(_)
