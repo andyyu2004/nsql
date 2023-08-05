@@ -9,6 +9,7 @@ use mimalloc::MiMalloc;
 use nsql_bind::Binder;
 use nsql_catalog::Catalog;
 pub use nsql_core::LogicalType;
+use nsql_execution::config::SessionConfig;
 use nsql_execution::{ExecutionContext, PhysicalPlanner, TransactionContext, TransactionState};
 pub use nsql_lmdb::LmdbStorageEngine;
 use nsql_opt::optimize;
@@ -80,22 +81,19 @@ pub struct Connection<S: StorageEngine> {
 
 pub struct SessionContext<'env, S: StorageEngine> {
     current_tx: ArcSwapOption<ReadOrWriteTransaction<'env, S>>,
+    config: SessionConfig,
 }
 
 impl<S: StorageEngine> Default for SessionContext<'_, S> {
     #[inline]
     fn default() -> Self {
-        Self { current_tx: ArcSwapOption::default() }
+        Self { current_tx: ArcSwapOption::default(), config: SessionConfig::default() }
     }
 }
 
 impl<'env, S: StorageEngine> nsql_execution::SessionContext for SessionContext<'env, S> {
-    fn get(&self, name: nsql_core::Name) -> Option<nsql_storage::value::Value> {
-        None
-    }
-
-    fn set(&self, name: nsql_core::Name, value: nsql_storage::value::Value) {
-        unimplemented!()
+    fn config(&self) -> &SessionConfig {
+        &self.config
     }
 }
 

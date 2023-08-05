@@ -377,12 +377,8 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
             ast::Statement::Explain { describe_alias: _, analyze, verbose, statement, format } => {
                 not_implemented!(*analyze);
                 not_implemented!(format.is_some());
-                // FIXME use a session variable to decide how to print the plan rather than verbosity
-                let kind = match verbose {
-                    false => ir::ExplainMode::Physical,
-                    true => ir::ExplainMode::Pipeline,
-                };
-                ir::Plan::Explain(kind, self.bind(tx, statement)?)
+                not_implemented!(*verbose);
+                ir::Plan::Explain(self.bind(tx, statement)?)
             }
             ast::Statement::SetVariable { local, hivevar, variable, value } => {
                 not_implemented!(*hivevar);

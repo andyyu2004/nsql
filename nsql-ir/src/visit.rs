@@ -49,7 +49,7 @@ pub trait Visitor {
                     || order.iter().any(|order_expr| self.visit_expr(&order_expr.expr))
             }
             Plan::Empty => false,
-            Plan::Explain(_, plan) => self.visit_plan(plan),
+            Plan::Explain(plan) => self.visit_plan(plan),
             Plan::Insert { table: _, source, returning, schema: _ } => {
                 self.visit_plan(source)
                     || returning.as_ref().map_or(false, |returning| self.visit_exprs(returning))

@@ -58,7 +58,7 @@ use crate::{
 };
 
 pub struct PhysicalPlanner<'env, S> {
-    catalog: Catalog<'env, S>,
+    _catalog: Catalog<'env, S>,
     compiler: Compiler,
 }
 
@@ -72,8 +72,8 @@ impl<'env, 'txn, S, M> PhysicalPlan<'env, 'txn, S, M> {
 }
 
 impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalPlanner<'env, S> {
-    pub fn new(catalog: Catalog<'env, S>) -> Self {
-        Self { catalog, compiler: Default::default() }
+    pub fn new(_catalog: Catalog<'env, S>) -> Self {
+        Self { _catalog, compiler: Default::default() }
     }
 
     #[inline]
@@ -129,23 +129,10 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalPlanner<'env, S> {
 
     fn explain_plan<M: ExecutionMode<'env, S>>(
         &self,
-        tx: &dyn Transaction<'env, S>,
-        kind: ir::ExplainMode,
-        plan: Arc<dyn PhysicalNode<'env, 'txn, S, M>>,
+        logical_plan: Box<ir::Plan>,
+        physical_plan: Arc<dyn PhysicalNode<'env, 'txn, S, M>>,
     ) -> Result<Arc<dyn PhysicalNode<'env, 'txn, S, M>>> {
-        let stringified = match kind {
-            ir::ExplainMode::Physical => {
-                explain::display(self.catalog, tx, &explain::explain(Arc::clone(&plan))).to_string()
-            }
-            ir::ExplainMode::Pipeline => {
-                let sink = Arc::new(OutputSink::default());
-                let pipeline = crate::build_pipelines(sink, PhysicalPlan(Arc::clone(&plan)));
-                explain::display(self.catalog, tx, &explain::explain_pipeline(&pipeline))
-                    .to_string()
-            }
-        };
-
-        Ok(PhysicalExplain::plan(stringified, plan))
+        Ok(PhysicalExplain::plan(logical_plan, physical_plan))
     }
 
     #[allow(clippy::boxed_local)]
@@ -175,9 +162,9 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalPlanner<'env, S> {
                 PhysicalTableScan::plan(projected_schema, table, projection)
             }
             Plan::Show(object_type) => PhysicalShow::plan(object_type),
-            Plan::Explain(kind, plan) => {
-                let plan = f(self, tx, plan)?;
-                return self.explain_plan(tx, kind, plan);
+            Plan::Explain(logical_plan) => {
+                let physical_plan = f(self, tx, logical_plan.clone())?;
+                return self.explain_plan(logical_plan, physical_plan);
             }
             Plan::Values { schema, values } => {
                 PhysicalValues::plan(schema, self.compile_values(values))

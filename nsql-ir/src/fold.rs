@@ -86,7 +86,7 @@ impl PlanFold for Plan {
                 order: order.into_vec().into_iter().map(|e| e.fold_with(folder)).collect(),
             },
             Plan::Empty => Plan::Empty,
-            Plan::Explain(mode, plan) => Plan::Explain(mode, folder.fold_boxed_plan(plan)),
+            Plan::Explain(plan) => Plan::Explain(folder.fold_boxed_plan(plan)),
             Plan::Insert { table, source, returning, schema } => Plan::Insert {
                 table,
                 source: folder.fold_boxed_plan(source),

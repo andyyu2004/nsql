@@ -17,6 +17,13 @@ impl<T: fmt::Debug + AtomicEnumType> fmt::Debug for AtomicEnum<T> {
     }
 }
 
+impl<T: AtomicEnumType + Default> Default for AtomicEnum<T> {
+    #[inline]
+    fn default() -> Self {
+        Self::new(T::default())
+    }
+}
+
 impl<T: AtomicEnumType> AtomicEnum<T> {
     #[inline]
     pub fn new(value: T) -> Self {

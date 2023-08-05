@@ -26,7 +26,7 @@ pub fn check_explain<'a>(
 #[test]
 fn test_explain() -> nsql::Result<()> {
     check_explain(
-        ["CREATE TABLE t (id int PRIMARY KEY, b boolean)"],
+        ["SET LOCAL explain_output = 'pipeline'", "CREATE TABLE t (id int PRIMARY KEY, b boolean)"],
         "EXPLAIN UPDATE t SET b = true WHERE b",
         expect![[r#"
             update t
@@ -38,7 +38,7 @@ fn test_explain() -> nsql::Result<()> {
 
     check_explain(
         ["CREATE TABLE t (id int PRIMARY KEY, b boolean)"],
-        "EXPLAIN VERBOSE UPDATE t SET b = true WHERE b",
+        "EXPLAIN UPDATE t SET b = true WHERE b",
         expect![[r#"
             metapipeline #0
               pipeline #0

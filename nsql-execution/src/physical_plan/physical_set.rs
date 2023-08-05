@@ -30,8 +30,11 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
     ) -> ExecutionResult<TupleStream<'txn>> {
         let scx = ecx.scx();
         match self.scope {
-            ir::VariableScope::Global => anyhow::bail!("global variables are not supported yet"),
-            ir::VariableScope::Local => scx.set(Name::clone(&self.name), self.value.clone()),
+            // TODO we should store global configuration in the catalog
+            ir::VariableScope::Global => {
+                anyhow::bail!("global variables are not supported yet (use `SET LOCAL x = y`)")
+            }
+            ir::VariableScope::Local => scx.config().set(self.name.as_str(), self.value.clone())?,
         }
         Ok(Box::new(fallible_iterator::once(Tuple::empty())))
     }

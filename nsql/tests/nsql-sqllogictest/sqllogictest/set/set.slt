@@ -1,2 +1,21 @@
+statement error
+SET LOCAL explain_output = 'bad';
+----
+invalid value for explain output, must be one of `physical`, `pipeline`, `logical`, or `all`
+
+statement error
+SET LOCAL explain_output = 42;
+----
+value for `explain_output` must be of type text
+
 statement ok
-SET LOCAL x = 'y';
+SET LOCAL explain_output = 'all';
+
+statement ok
+SET LOCAL explain_output = 'logical';
+
+statement ok
+SET LOCAL explain_output = 'physical';
+
+statement ok
+SET LOCAL explain_output = 'pipeline';

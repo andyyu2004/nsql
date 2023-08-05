@@ -162,7 +162,7 @@ pub enum Plan {
         order: Box<[OrderExpr]>,
     },
     Empty,
-    Explain(ExplainMode, Box<Plan>),
+    Explain(Box<Plan>),
     Insert {
         table: Oid<Table>,
         source: Box<Plan>,
@@ -196,13 +196,13 @@ impl Plan {
             },
             // even though `explain` doesn't execute the plan, the planning stage currently
             // still checks we have a write transaction available
-            Plan::Explain(_, inner) => inner.required_transaction_mode(),
             Plan::Show(..) | Plan::TableScan { .. } => TransactionMode::ReadOnly,
             Plan::Limit { source, .. }
             | Plan::Aggregate { source, .. }
             | Plan::Order { source, .. }
             | Plan::Projection { source, .. }
             | Plan::Filter { source, .. } => source.required_transaction_mode(),
+            Plan::Explain(inner) => inner.required_transaction_mode(),
             Plan::Empty | Plan::Unnest { .. } | Plan::Values { .. } => TransactionMode::ReadOnly,
             Plan::Join { lhs, rhs, .. } => {
                 lhs.required_transaction_mode().max(rhs.required_transaction_mode())
@@ -214,7 +214,7 @@ impl Plan {
 
 struct PlanFormatter<'p> {
     plan: &'p Plan,
-    indent: usize,
+    _indent: usize,
 }
 
 impl fmt::Display for PlanFormatter<'_> {
@@ -269,13 +269,35 @@ impl fmt::Display for PlanFormatter<'_> {
                 }
                 writeln!(f, ")")
             }
-            Plan::Join { schema: _, join, lhs, rhs } => todo!(),
-            Plan::Limit { source, limit } => todo!(),
-            Plan::Order { source, order } => todo!(),
-            Plan::Empty => todo!(),
-            Plan::Explain(_, _) => todo!(),
-            Plan::Insert { table, source, returning, schema } => todo!(),
-            Plan::Update { table, source, returning, schema } => todo!(),
+            Plan::Join { schema: _, join, lhs, rhs } => {
+                write!(f, "join ({})", join)?;
+                writeln!(f, "  {lhs}")?;
+                writeln!(f, "  {rhs}")
+            }
+            Plan::Limit { source, limit } => {
+                write!(f, "limit ({})", limit)?;
+                writeln!(f, "  {source}")
+            }
+            Plan::Order { source, order } => {
+                write!(f, "order ({})", order.iter().format(","))?;
+                writeln!(f, "  {source}")
+            }
+            Plan::Empty => write!(f, "empty"),
+            Plan::Explain(..) => unreachable!("explaining an explain"),
+            Plan::Insert { table, source, returning, schema: _ } => {
+                write!(f, "INSERT INTO {table}")?;
+                if let Some(returning) = returning {
+                    write!(f, " RETURNING ({})", returning.iter().format(","))?;
+                }
+                writeln!(f, "  {source}")
+            }
+            Plan::Update { table, source, returning, schema: _ } => {
+                write!(f, "UPDATE {table} SET", table = table)?;
+                if let Some(returning) = returning {
+                    write!(f, " RETURNING ({})", returning.iter().format(","))?;
+                }
+                writeln!(f, "  {source}")
+            }
             Plan::SetVariable { name, value, scope } => write!(f, "SET {scope} {name} = {value}"),
         }
     }
@@ -283,7 +305,7 @@ impl fmt::Display for PlanFormatter<'_> {
 
 impl fmt::Display for Plan {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        PlanFormatter { plan: self, indent: 0 }.fmt(f)
+        PlanFormatter { plan: self, _indent: 0 }.fmt(f)
     }
 }
 
@@ -466,14 +488,6 @@ impl Plan {
         let projected_schema = projection.iter().map(|expr| expr.ty.clone()).collect();
         Box::new(Plan::Projection { source: self, projection, projected_schema })
     }
-}
-
-#[derive(Debug, Clone)]
-pub enum ExplainMode {
-    /// Show the physical query plan
-    Physical,
-    /// Show the pipelines
-    Pipeline,
 }
 
 #[derive(Clone, PartialEq, Eq, Hash)]

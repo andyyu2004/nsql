@@ -3,6 +3,7 @@
 #![feature(once_cell_try)]
 
 mod compile;
+pub mod config;
 mod executor;
 mod physical_plan;
 mod pipeline;
@@ -12,10 +13,9 @@ use std::sync::atomic::{self, AtomicBool};
 use std::sync::Arc;
 
 pub use anyhow::Error;
-use ir::Value;
 use nsql_arena::Idx;
 use nsql_catalog::Catalog;
-use nsql_core::{LogicalType, Name};
+use nsql_core::LogicalType;
 use nsql_storage::tuple::Tuple;
 use nsql_storage_engine::{
     ExecutionMode, FallibleIterator, ReadWriteExecutionMode, ReadonlyExecutionMode, StorageEngine,
@@ -24,6 +24,7 @@ use nsql_storage_engine::{
 use nsql_util::atomic::AtomicEnum;
 pub use physical_plan::PhysicalPlanner;
 
+use self::config::SessionConfig;
 pub use self::executor::{execute, execute_write};
 use self::physical_plan::{explain, Explain, PhysicalPlan};
 use self::pipeline::{
@@ -155,8 +156,7 @@ trait PhysicalSink<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>
 }
 
 pub trait SessionContext {
-    fn get(&self, name: Name) -> Option<Value>;
-    fn set(&self, name: Name, value: Value);
+    fn config(&self) -> &SessionConfig;
 }
 
 pub struct TransactionContext<'env, S: StorageEngine, M: ExecutionMode<'env, S>> {
