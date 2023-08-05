@@ -24,7 +24,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
 {
     fn source(
         self: Arc<Self>,
-        _ecx: &'txn ExecutionContext<'env, S, M>,
+        _ecx: &'txn ExecutionContext<'_, 'env, S, M>,
     ) -> ExecutionResult<TupleStream<'txn>> {
         let values = match self.expr.execute(&Tuple::empty()) {
             Value::Array(values) => values,

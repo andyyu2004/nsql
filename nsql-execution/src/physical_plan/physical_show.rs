@@ -57,7 +57,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
 {
     fn source(
         self: Arc<Self>,
-        ecx: &'txn ExecutionContext<'env, S, M>,
+        ecx: &'txn ExecutionContext<'_, 'env, S, M>,
     ) -> ExecutionResult<TupleStream<'txn>> {
         let tx: M::TransactionRef<'txn> = ecx.tx();
         let tx: &'txn dyn Transaction<'env, S> = tx.dyn_ref();

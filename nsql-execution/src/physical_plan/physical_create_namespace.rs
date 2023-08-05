@@ -63,7 +63,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSource<'env, 'txn, S, ReadWrite
 {
     fn source(
         self: Arc<Self>,
-        ecx: &'txn ExecutionContext<'env, S, ReadWriteExecutionMode>,
+        ecx: &'txn ExecutionContext<'_, 'env, S, ReadWriteExecutionMode>,
     ) -> ExecutionResult<TupleStream<'txn>> {
         let catalog = ecx.catalog();
         let tx = ecx.tx();

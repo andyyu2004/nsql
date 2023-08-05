@@ -30,7 +30,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
 {
     fn source(
         self: Arc<Self>,
-        _ecx: &'txn ExecutionContext<'env, S, M>,
+        _ecx: &'txn ExecutionContext<'_, 'env, S, M>,
     ) -> ExecutionResult<TupleStream<'txn>> {
         let tuples = mem::take(&mut *self.tuples.write());
         Ok(Box::new(fallible_iterator::convert(tuples.into_iter().map(Ok))))
@@ -40,12 +40,16 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSink<'env, 'txn, S, M>
     for PhysicalOrder<'env, 'txn, S, M>
 {
-    fn sink(&self, _ecx: &'txn ExecutionContext<'env, S, M>, tuple: Tuple) -> ExecutionResult<()> {
+    fn sink(
+        &self,
+        _ecx: &'txn ExecutionContext<'_, 'env, S, M>,
+        tuple: Tuple,
+    ) -> ExecutionResult<()> {
         self.tuples.write().push(tuple);
         Ok(())
     }
 
-    fn finalize(&self, _ecx: &'txn ExecutionContext<'env, S, M>) -> ExecutionResult<()> {
+    fn finalize(&self, _ecx: &'txn ExecutionContext<'_, 'env, S, M>) -> ExecutionResult<()> {
         // sort tuples when the sink is finalized
         let tuples: &mut [Tuple] = &mut self.tuples.write();
         let ordering = &self.ordering;

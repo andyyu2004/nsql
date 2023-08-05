@@ -106,7 +106,7 @@ impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalOperator<'
 {
     fn execute(
         &self,
-        _ecx: &'txn ExecutionContext<'env, S, M>,
+        _ecx: &'txn ExecutionContext<'_, 'env, S, M>,
         lhs_tuple: Tuple,
     ) -> ExecutionResult<OperatorState<Tuple>> {
         let rhs_tuples = self.rhs_tuples.get().expect("probing before build is finished");
@@ -175,12 +175,16 @@ impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalOperator<'
 impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSink<'env, 'txn, S, M>
     for PhysicalNestedLoopJoin<'env, 'txn, S, M>
 {
-    fn sink(&self, _ecx: &'txn ExecutionContext<'env, S, M>, tuple: Tuple) -> ExecutionResult<()> {
+    fn sink(
+        &self,
+        _ecx: &'txn ExecutionContext<'_, 'env, S, M>,
+        tuple: Tuple,
+    ) -> ExecutionResult<()> {
         self.rhs_tuples_build.lock().push(tuple);
         Ok(())
     }
 
-    fn finalize(&self, _ecx: &'txn ExecutionContext<'env, S, M>) -> ExecutionResult<()> {
+    fn finalize(&self, _ecx: &'txn ExecutionContext<'_, 'env, S, M>) -> ExecutionResult<()> {
         self.rhs_tuples
             .set(mem::take(&mut self.rhs_tuples_build.lock()))
             .expect("finalize called twice");
@@ -193,7 +197,7 @@ impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSource<'en
 {
     fn source(
         self: Arc<Self>,
-        _ecx: &'txn ExecutionContext<'env, S, M>,
+        _ecx: &'txn ExecutionContext<'_, 'env, S, M>,
     ) -> ExecutionResult<TupleStream<'txn>> {
         todo!()
     }

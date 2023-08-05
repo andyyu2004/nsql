@@ -123,7 +123,7 @@ trait PhysicalOperator<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env
 {
     fn execute(
         &self,
-        ecx: &'txn ExecutionContext<'env, S, M>,
+        ecx: &'txn ExecutionContext<'_, 'env, S, M>,
         input: T,
     ) -> ExecutionResult<OperatorState<T>>;
 }
@@ -136,16 +136,20 @@ trait PhysicalSource<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, 
     /// Return the next chunk from the source. An empty chunk indicates that the source is exhausted.
     fn source(
         self: Arc<Self>,
-        ecx: &'txn ExecutionContext<'env, S, M>,
+        ecx: &'txn ExecutionContext<'_, 'env, S, M>,
     ) -> ExecutionResult<TupleStream<'txn>>;
 }
 
 trait PhysicalSink<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>:
     PhysicalSource<'env, 'txn, S, M>
 {
-    fn sink(&self, ecx: &'txn ExecutionContext<'env, S, M>, tuple: Tuple) -> ExecutionResult<()>;
+    fn sink(
+        &self,
+        ecx: &'txn ExecutionContext<'_, 'env, S, M>,
+        tuple: Tuple,
+    ) -> ExecutionResult<()>;
 
-    fn finalize(&self, _ecx: &'txn ExecutionContext<'env, S, M>) -> ExecutionResult<()> {
+    fn finalize(&self, _ecx: &'txn ExecutionContext<'_, 'env, S, M>) -> ExecutionResult<()> {
         Ok(())
     }
 }
@@ -212,13 +216,13 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> TransactionC
     }
 }
 
-pub struct ExecutionContext<'env, S: StorageEngine, M: ExecutionMode<'env, S>> {
+pub struct ExecutionContext<'a, 'env, S: StorageEngine, M: ExecutionMode<'env, S>> {
     catalog: Catalog<'env, S>,
     tcx: TransactionContext<'env, S, M>,
-    scx: Arc<dyn SessionContext + 'env>,
+    scx: &'a (dyn SessionContext + 'a),
 }
 
-impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> ExecutionContext<'env, S, M> {
+impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> ExecutionContext<'_, 'env, S, M> {
     #[inline]
     pub fn take_txn(self) -> (bool, TransactionState, M::Transaction) {
         let tx = self.tcx;
@@ -226,19 +230,19 @@ impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> ExecutionContext<'env, S
     }
 }
 
-impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> ExecutionContext<'env, S, M> {
+impl<'a, 'env, S: StorageEngine, M: ExecutionMode<'env, S>> ExecutionContext<'a, 'env, S, M> {
     #[inline]
     pub fn new(
         catalog: Catalog<'env, S>,
         tcx: TransactionContext<'env, S, M>,
-        scx: Arc<dyn SessionContext + 'env>,
+        scx: &'a (dyn SessionContext + 'a),
     ) -> Self {
         Self { catalog, tcx, scx }
     }
 
     #[inline]
-    pub fn scx(&self) -> &dyn SessionContext {
-        self.scx.as_ref()
+    pub fn scx(&self) -> &(dyn SessionContext + '_) {
+        self.scx
     }
 
     #[inline]

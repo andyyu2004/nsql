@@ -25,7 +25,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
 {
     fn execute(
         &self,
-        _ecx: &'txn ExecutionContext<'env, S, M>,
+        _ecx: &'txn ExecutionContext<'_, 'env, S, M>,
         input: Tuple,
     ) -> ExecutionResult<OperatorState<Tuple>> {
         if self.yielded.fetch_add(1, atomic::Ordering::AcqRel) >= self.limit {

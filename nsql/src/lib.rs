@@ -60,8 +60,8 @@ impl<S: StorageEngine> Nsql<S> {
     }
 
     #[inline]
-    pub fn connect<'any>(&self) -> (Connection<S>, ConnectionState<'any, S>) {
-        (Connection { db: self.clone() }, ConnectionState::default())
+    pub fn connect<'any>(&self) -> (Connection<S>, SessionContext<'any, S>) {
+        (Connection { db: self.clone() }, Default::default())
     }
 
     #[inline]
@@ -78,34 +78,34 @@ pub struct Connection<S: StorageEngine> {
     db: Nsql<S>,
 }
 
-pub struct ConnectionState<'env, S: StorageEngine> {
+pub struct SessionContext<'env, S: StorageEngine> {
     current_tx: ArcSwapOption<ReadOrWriteTransaction<'env, S>>,
 }
 
-impl<S: StorageEngine> Default for ConnectionState<'_, S> {
+impl<S: StorageEngine> Default for SessionContext<'_, S> {
     #[inline]
     fn default() -> Self {
         Self { current_tx: ArcSwapOption::default() }
     }
 }
 
+impl<'env, S: StorageEngine> nsql_execution::SessionContext for SessionContext<'env, S> {
+    fn get(&self, name: nsql_core::Name) -> Option<nsql_storage::value::Value> {
+        None
+    }
+
+    fn set(&self, name: nsql_core::Name, value: nsql_storage::value::Value) {
+        unimplemented!()
+    }
+}
+
 impl<S: StorageEngine> Connection<S> {
     pub fn query<'env>(
         &'env self,
-        state: &ConnectionState<'env, S>,
+        state: &SessionContext<'env, S>,
         query: &str,
     ) -> Result<MaterializedQueryOutput> {
-        let tx = state.current_tx.swap(None).map(|tx| {
-            Arc::into_inner(tx).expect("unexpected outstanding references to transaction")
-        });
-
-        let (tx, output) = self.db.shared.query(tx, query)?;
-
-        // `tx` was not committed or aborted (including autocommits), so we need to put it back
-        if let Some(tx) = tx {
-            // if the transaction is still active, it must be the case that it's not an auto-commit
-            state.current_tx.store(Some(Arc::new(tx)));
-        }
+        let output = self.db.shared.query(state, query)?;
 
         Ok(output)
     }
@@ -114,17 +114,21 @@ impl<S: StorageEngine> Connection<S> {
 impl<S: StorageEngine> Shared<S> {
     fn query<'env>(
         &'env self,
-        tx: Option<ReadOrWriteTransaction<'env, S>>,
+        state: &SessionContext<'env, S>,
         query: &str,
-    ) -> Result<(Option<ReadOrWriteTransaction<'env, S>>, MaterializedQueryOutput)> {
+    ) -> Result<MaterializedQueryOutput> {
         let statements = nsql_parse::parse_statements(query)?;
         if statements.is_empty() {
-            return Ok((tx, MaterializedQueryOutput { types: vec![], tuples: vec![] }));
+            return Ok(MaterializedQueryOutput { types: vec![], tuples: vec![] });
         }
 
         if statements.len() > 1 {
             todo!("multiple statements");
         }
+
+        let tx = state.current_tx.swap(None).map(|tx| {
+            Arc::into_inner(tx).expect("unexpected outstanding references to transaction")
+        });
 
         let storage = self.storage.storage();
         let catalog = Catalog::open(storage);
@@ -152,27 +156,12 @@ impl<S: StorageEngine> Shared<S> {
 
         let mut planner = PhysicalPlanner::new(catalog);
 
-        struct SessionContext;
-
-        impl nsql_execution::SessionContext for SessionContext {
-            fn get(&self, name: nsql_core::Name) -> Option<nsql_storage::value::Value> {
-                todo!()
-            }
-
-            fn set(&self, name: nsql_core::Name, value: nsql_storage::value::Value) {
-                todo!()
-            }
-        }
-
         let (tx, tuples) = match tx {
             ReadOrWriteTransaction::Read(tx) => {
                 tracing::info!("executing readonly query");
                 let physical_plan = planner.plan(&tx, plan)?;
-                let ecx = ExecutionContext::new(
-                    catalog,
-                    TransactionContext::new(tx, auto_commit),
-                    Arc::new(SessionContext),
-                );
+                let ecx =
+                    ExecutionContext::new(catalog, TransactionContext::new(tx, auto_commit), state);
                 let tuples = nsql_execution::execute(&ecx, physical_plan)?;
                 let (auto_commit, state, tx) = ecx.take_txn();
                 if auto_commit || !matches!(state, TransactionState::Active) {
@@ -185,11 +174,8 @@ impl<S: StorageEngine> Shared<S> {
             ReadOrWriteTransaction::Write(tx) => {
                 tracing::info!("executing write query");
                 let physical_plan = planner.plan_write(&tx, plan)?;
-                let ecx = ExecutionContext::new(
-                    catalog,
-                    TransactionContext::new(tx, auto_commit),
-                    Arc::new(SessionContext),
-                );
+                let ecx =
+                    ExecutionContext::new(catalog, TransactionContext::new(tx, auto_commit), state);
                 let tuples = match nsql_execution::execute_write(&ecx, physical_plan) {
                     Ok(tuples) => tuples,
                     Err(err) => {
@@ -200,17 +186,15 @@ impl<S: StorageEngine> Shared<S> {
                     }
                 };
 
-                let (auto_commit, state, tx) = ecx.take_txn();
-                match state {
+                let (auto_commit, tx_state, tx) = ecx.take_txn();
+                match tx_state {
                     TransactionState::Active if auto_commit => {
                         tracing::info!("auto-committing write transaction");
                         tx.commit()?;
                     }
                     TransactionState::Active => {
-                        return Ok((
-                            Some(ReadOrWriteTransaction::Write(tx)),
-                            MaterializedQueryOutput { types: vec![], tuples },
-                        ));
+                        state.current_tx.store(Some(Arc::new(ReadOrWriteTransaction::Write(tx))));
+                        return Ok(MaterializedQueryOutput { types: vec![], tuples });
                     }
                     TransactionState::Committed => {
                         tracing::info!("committing write transaction");
@@ -226,7 +210,13 @@ impl<S: StorageEngine> Shared<S> {
             }
         };
 
+        // `tx` was not committed or aborted (including autocommits), so we need to put it back
+        if let Some(tx) = tx {
+            // if the transaction is still active, it must be the case that it's not an auto-commit
+            state.current_tx.store(Some(Arc::new(tx)));
+        }
+
         // FIXME need to get the types
-        Ok((tx, MaterializedQueryOutput { types: vec![], tuples }))
+        Ok(MaterializedQueryOutput { types: vec![], tuples })
     }
 }

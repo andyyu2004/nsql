@@ -40,7 +40,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
 {
     fn source(
         self: Arc<Self>,
-        _ecx: &'txn ExecutionContext<'env, S, M>,
+        _ecx: &'txn ExecutionContext<'_, 'env, S, M>,
     ) -> ExecutionResult<TupleStream<'txn>> {
         let mut output = vec![];
         for entry in self.output_groups.iter() {
@@ -58,7 +58,11 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSink<'env, 'txn, S, M>
     for PhysicalHashAggregate<'env, 'txn, S, M>
 {
-    fn sink(&self, _ecx: &'txn ExecutionContext<'env, S, M>, tuple: Tuple) -> ExecutionResult<()> {
+    fn sink(
+        &self,
+        _ecx: &'txn ExecutionContext<'_, 'env, S, M>,
+        tuple: Tuple,
+    ) -> ExecutionResult<()> {
         let group = self.group_expr.execute(&tuple);
         let functions = self.output_groups.entry(group).or_insert_with(|| {
             Mutex::new(self.functions.iter().map(|(f, _expr)| f.get_aggregate_instance()).collect())

@@ -37,7 +37,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
     #[tracing::instrument(skip(self, ecx))]
     fn source(
         self: Arc<Self>,
-        ecx: &'txn ExecutionContext<'env, S, M>,
+        ecx: &'txn ExecutionContext<'_, 'env, S, M>,
     ) -> ExecutionResult<TupleStream<'txn>> {
         let tx = ecx.tx();
         let catalog = ecx.catalog();

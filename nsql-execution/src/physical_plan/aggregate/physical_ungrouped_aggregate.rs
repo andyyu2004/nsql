@@ -38,7 +38,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
 {
     fn source(
         self: Arc<Self>,
-        _ecx: &'txn ExecutionContext<'env, S, M>,
+        _ecx: &'txn ExecutionContext<'_, 'env, S, M>,
     ) -> ExecutionResult<TupleStream<'txn>> {
         let values = mem::take(&mut *self.aggregate_functions.lock())
             .into_iter()
@@ -51,7 +51,11 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSink<'env, 'txn, S, M>
     for PhysicalUngroupedAggregate<'env, 'txn, S, M>
 {
-    fn sink(&self, _ecx: &'txn ExecutionContext<'env, S, M>, tuple: Tuple) -> ExecutionResult<()> {
+    fn sink(
+        &self,
+        _ecx: &'txn ExecutionContext<'_, 'env, S, M>,
+        tuple: Tuple,
+    ) -> ExecutionResult<()> {
         let mut aggregate_functions = self.aggregate_functions.lock();
         for (state, (_f, expr)) in aggregate_functions.iter_mut().zip(&self.functions[..]) {
             let v = expr.execute(&tuple);

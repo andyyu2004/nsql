@@ -69,7 +69,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
 {
     fn source(
         self: Arc<Self>,
-        _ecx: &'txn ExecutionContext<'env, S, M>,
+        _ecx: &'txn ExecutionContext<'_, 'env, S, M>,
     ) -> ExecutionResult<TupleStream<'txn>> {
         let plan = self.stringified_plan.take().expect("should not be called again");
         Ok(Box::new(fallible_iterator::once(Tuple::from(vec![Value::Text(plan)]))))

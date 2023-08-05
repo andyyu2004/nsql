@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 use std::error::Error;
 use std::path::Path;
 
-use nsql::{Connection, ConnectionState, Nsql};
+use nsql::{Connection, Nsql, SessionContext};
 use nsql_core::LogicalType;
 use nsql_lmdb::LmdbStorageEngine;
 use nsql_redb::RedbStorageEngine;
@@ -74,7 +74,7 @@ impl ColumnType for TypeWrapper {
 
 pub struct TestDb<S: StorageEngine> {
     db: Nsql<S>,
-    connections: BTreeMap<Option<String>, (Connection<S>, ConnectionState<'static, S>)>,
+    connections: BTreeMap<Option<String>, (Connection<S>, SessionContext<'static, S>)>,
 }
 
 impl<S: StorageEngine> TestDb<S> {

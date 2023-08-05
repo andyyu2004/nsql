@@ -70,7 +70,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSource<'env, 'txn, S, ReadWrite
 {
     fn source(
         self: Arc<Self>,
-        ecx: &'txn ExecutionContext<'env, S, ReadWriteExecutionMode>,
+        ecx: &'txn ExecutionContext<'_, 'env, S, ReadWriteExecutionMode>,
     ) -> ExecutionResult<TupleStream<'txn>> {
         tracing::debug!(name = %self.info.name, "physical create table");
         assert!(!self.info.columns.is_empty());
