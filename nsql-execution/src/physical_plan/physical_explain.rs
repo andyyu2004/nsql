@@ -74,15 +74,13 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
         let physical_plan = &self.children[0];
 
         let physical_explain =
-            explain::display(catalog, &tx, &explain::explain(Arc::clone(physical_plan)))
-                .to_string();
+            PhysicalPlan(Arc::clone(physical_plan)).display(catalog, &tx).to_string();
 
         let pipeline = crate::build_pipelines(
             Arc::new(OutputSink::default()),
             PhysicalPlan(Arc::clone(physical_plan)),
         );
-        let pipeline_explain =
-            explain::display(catalog, &tx, &explain::explain_pipeline(&pipeline)).to_string();
+        let pipeline_explain = pipeline.display(catalog, &tx).to_string();
 
         let logical_explain = self.logical_plan.to_string();
 

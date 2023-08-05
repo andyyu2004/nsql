@@ -5,6 +5,7 @@ use nsql_arena::Idx;
 use nsql_catalog::Catalog;
 use nsql_storage_engine::{StorageEngine, Transaction};
 
+use super::PhysicalPlan;
 use crate::pipeline::MetaPipeline;
 use crate::{ExecutionMode, PhysicalNode, RootPipeline};
 
@@ -17,17 +18,20 @@ pub trait Explain<'env, S: StorageEngine> {
         tx: &dyn Transaction<'env, S>,
         f: &mut fmt::Formatter<'_>,
     ) -> Result;
+
+    fn display<'a>(
+        &'a self,
+        catalog: Catalog<'env, S>,
+        tx: &'a dyn Transaction<'env, S>,
+    ) -> Display<'a, 'env, S>
+    where
+        Self: Sized,
+    {
+        Display { catalog, tx, explain: self, marker: std::marker::PhantomData }
+    }
 }
 
-pub(crate) fn display<'a, 'env: 'a, S: StorageEngine>(
-    catalog: Catalog<'env, S>,
-    tx: &'a dyn Transaction<'env, S>,
-    explain: &'a dyn Explain<'env, S>,
-) -> Display<'a, 'env, S> {
-    Display { catalog, tx, explain, marker: std::marker::PhantomData }
-}
-
-pub(crate) struct Display<'a, 'env, S: StorageEngine> {
+pub struct Display<'a, 'env, S: StorageEngine> {
     catalog: Catalog<'env, S>,
     tx: &'a dyn Transaction<'env, S>,
     explain: &'a dyn Explain<'env, S>,
@@ -40,13 +44,20 @@ impl<'a, 'env, S: StorageEngine> fmt::Display for Display<'a, 'env, S> {
     }
 }
 
-pub(crate) fn explain_pipeline<'a, 'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
-    root_pipeline: &'a RootPipeline<'env, 'txn, S, M>,
-) -> RootPipelineExplainer<'a, 'env, 'txn, S, M> {
-    RootPipelineExplainer { root_pipeline }
+impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Explain<'env, S>
+    for RootPipeline<'env, 'txn, S, M>
+{
+    fn explain(
+        &self,
+        catalog: Catalog<'env, S>,
+        tx: &dyn Transaction<'env, S>,
+        f: &mut fmt::Formatter<'_>,
+    ) -> Result {
+        RootPipelineExplainer { root_pipeline: self }.explain(catalog, tx, f)
+    }
 }
 
-pub struct RootPipelineExplainer<'a, 'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> {
+struct RootPipelineExplainer<'a, 'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> {
     root_pipeline: &'a RootPipeline<'env, 'txn, S, M>,
 }
 
@@ -119,10 +130,17 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Explain<'env
     }
 }
 
-pub(crate) fn explain<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
-    node: Arc<dyn PhysicalNode<'env, 'txn, S, M> + 'txn>,
-) -> PhysicalNodeExplainer<'env, 'txn, S, M> {
-    PhysicalNodeExplainer { node, indent: 0 }
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Explain<'env, S>
+    for PhysicalPlan<'env, 'txn, S, M>
+{
+    fn explain(
+        &self,
+        catalog: Catalog<'env, S>,
+        tx: &dyn Transaction<'env, S>,
+        f: &mut fmt::Formatter<'_>,
+    ) -> Result {
+        PhysicalNodeExplainer { node: self.root(), indent: 0 }.explain(catalog, tx, f)
+    }
 }
 
 pub struct PhysicalNodeExplainer<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> {
