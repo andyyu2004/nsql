@@ -1335,6 +1335,7 @@ dependencies = [
  "nsql-core",
  "nsql-storage",
  "nsql-storage-engine",
+ "nsql-util",
 ]
 
 [[package]]

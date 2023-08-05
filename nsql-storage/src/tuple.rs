@@ -94,7 +94,7 @@ impl Tuple {
 
     #[inline]
     pub fn project_archived(values: &[&Archived<Value>], projection: &[TupleIndex]) -> Tuple {
-        projection.iter().map(|&idx| nsql_rkyv::deserialize(values[idx.0])).collect()
+        projection.iter().map(|&idx| nsql_rkyv::deserialize(values[idx.as_usize()])).collect()
     }
 
     #[inline]
@@ -124,7 +124,7 @@ impl Tuple {
 impl ArchivedTuple {
     #[inline]
     pub fn project(&self, projection: &[TupleIndex]) -> Tuple {
-        projection.iter().map(|&idx| nsql_rkyv::deserialize(&self.values[idx.0])).collect()
+        projection.iter().map(|&idx| nsql_rkyv::deserialize(&self.values[idx.as_usize()])).collect()
     }
 }
 
@@ -175,7 +175,7 @@ impl Index<TupleIndex> for Tuple {
 
     #[inline]
     fn index(&self, index: TupleIndex) -> &Self::Output {
-        &self.values[index.0]
+        &self.values[index.as_usize()]
     }
 }
 
@@ -198,18 +198,18 @@ impl IndexMut<usize> for Tuple {
 #[derive(
     Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Copy, Archive, Serialize, Deserialize,
 )]
-pub struct TupleIndex(usize);
+pub struct TupleIndex(u16);
 
 impl TupleIndex {
     #[inline]
-    pub fn new(idx: usize) -> Self {
+    pub fn new(idx: u16) -> Self {
         Self(idx)
     }
 
     // FIXME ideally we don't want to expose this as we're unwrapping the abstraction
     #[inline]
     pub fn as_usize(&self) -> usize {
-        self.0
+        self.0 as usize
     }
 }
 

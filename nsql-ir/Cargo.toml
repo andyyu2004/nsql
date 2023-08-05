@@ -8,4 +8,5 @@ itertools = "0.11.0"
 nsql-catalog = { path = "../nsql-catalog" }
 nsql-core = { path = "../nsql-core" }
 nsql-storage = { path = "../nsql-storage" }
+nsql-util = { path = "../nsql-util" }
 nsql-storage-engine = { version = "0.1.0", path = "../nsql-storage-engine" }

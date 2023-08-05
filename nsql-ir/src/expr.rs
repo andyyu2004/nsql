@@ -1,7 +1,7 @@
 mod const_eval;
 
-use std::fmt;
 use std::ops::Deref;
+use std::{fmt, mem};
 
 pub use const_eval::EvalNotConst;
 use itertools::Itertools;
@@ -9,6 +9,7 @@ use nsql_catalog::Function;
 use nsql_core::{LogicalType, Name};
 use nsql_storage::tuple::TupleIndex;
 use nsql_storage::value::Value;
+use nsql_util::static_assert_eq;
 
 use crate::QPath;
 
@@ -46,6 +47,9 @@ impl fmt::Display for Expr {
     }
 }
 
+// This is just for awareness of the size of the enum
+static_assert_eq!(mem::size_of::<ExprKind>(), 40);
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ExprKind {
     Literal(Value),
@@ -70,7 +74,7 @@ pub enum ExprKind {
         index: TupleIndex,
     },
     FunctionCall {
-        function: Function,
+        function: Box<Function>,
         args: Box<[Expr]>,
     },
     Case {
