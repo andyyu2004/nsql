@@ -7,8 +7,13 @@ pub trait Folder {
 
     #[inline]
     fn fold_boxed_plan(&mut self, mut boxed_plan: Box<Plan>) -> Box<Plan> {
-        *boxed_plan = self.fold_plan(mem::replace(&mut *boxed_plan, Plan::Empty));
+        self.fold_plan_in_place(&mut boxed_plan);
         boxed_plan
+    }
+
+    #[inline]
+    fn fold_plan_in_place(&mut self, boxed_plan: &mut Plan) {
+        *boxed_plan = self.fold_plan(mem::replace(&mut *boxed_plan, Plan::Empty));
     }
 
     /// Replace an expression, this must be type preserving.
@@ -19,9 +24,22 @@ pub trait Folder {
 
     /// Convenience method for folding a boxed expression, implement `fold_expr` not this
     #[inline]
-    fn fold_expr_boxed(&mut self, mut boxed_expr: Box<Expr>) -> Box<Expr> {
-        *boxed_expr = self.fold_expr(mem::replace(&mut *boxed_expr, Expr::NULL));
+    fn fold_boxed_expr(&mut self, mut boxed_expr: Box<Expr>) -> Box<Expr> {
+        self.fold_expr_in_place(&mut boxed_expr);
         boxed_expr
+    }
+
+    #[inline]
+    fn fold_expr_in_place(&mut self, boxed_expr: &mut Expr) {
+        *boxed_expr = self.fold_expr(mem::replace(&mut *boxed_expr, Expr::NULL));
+    }
+
+    #[inline]
+    fn fold_exprs(&mut self, mut exprs: Box<[Expr]>) -> Box<[Expr]> {
+        for expr in &mut exprs[..] {
+            self.fold_expr_in_place(expr);
+        }
+        exprs
     }
 }
 
@@ -100,17 +118,13 @@ impl PlanFold for Plan {
             Plan::Insert { table, source, returning, schema } => Plan::Insert {
                 table,
                 source: folder.fold_boxed_plan(source),
-                returning: returning.map(|exprs| {
-                    exprs.into_vec().into_iter().map(|e| folder.fold_expr(e)).collect()
-                }),
+                returning: returning.map(|exprs| folder.fold_exprs(exprs)),
                 schema,
             },
             Plan::Update { table, source, returning, schema } => Plan::Update {
                 table,
                 source: folder.fold_boxed_plan(source),
-                returning: returning.map(|exprs| {
-                    exprs.into_vec().into_iter().map(|e| folder.fold_expr(e)).collect()
-                }),
+                returning: returning.map(|exprs| folder.fold_exprs(exprs)),
                 schema,
             },
             Plan::Aggregate { source, functions, group_by, schema } => Plan::Aggregate {
@@ -118,11 +132,9 @@ impl PlanFold for Plan {
                 functions: functions
                     .into_vec()
                     .into_iter()
-                    .map(|(f, args)| {
-                        (f, args.into_vec().into_iter().map(|e| folder.fold_expr(e)).collect())
-                    })
+                    .map(|(f, args)| (f, folder.fold_exprs(args)))
                     .collect(),
-                group_by: group_by.into_vec().into_iter().map(|e| folder.fold_expr(e)).collect(),
+                group_by: folder.fold_exprs(group_by),
                 schema,
             },
         }
@@ -153,26 +165,23 @@ impl ExprFold for Expr {
         let kind = match self.kind {
             ExprKind::Literal(lit) => ExprKind::Literal(lit),
             ExprKind::ColumnRef { qpath, index } => ExprKind::ColumnRef { qpath, index },
-            ExprKind::Array(exprs) => ExprKind::Array(
-                exprs.into_vec().into_iter().map(|expr| folder.fold_expr(expr)).collect(),
-            ),
+            ExprKind::Array(exprs) => ExprKind::Array(folder.fold_exprs(exprs)),
             ExprKind::Alias { alias, expr } => {
-                ExprKind::Alias { alias: alias.clone(), expr: folder.fold_expr_boxed(expr) }
+                ExprKind::Alias { alias: alias.clone(), expr: folder.fold_boxed_expr(expr) }
             }
             ExprKind::UnaryOp { op, expr } => {
-                ExprKind::UnaryOp { op, expr: folder.fold_expr_boxed(expr) }
+                ExprKind::UnaryOp { op, expr: folder.fold_boxed_expr(expr) }
             }
             ExprKind::BinOp { op, lhs, rhs } => ExprKind::BinOp {
                 op,
-                lhs: folder.fold_expr_boxed(lhs),
-                rhs: folder.fold_expr_boxed(rhs),
+                lhs: folder.fold_boxed_expr(lhs),
+                rhs: folder.fold_boxed_expr(rhs),
             },
-            ExprKind::FunctionCall { function, args } => ExprKind::FunctionCall {
-                function: function.clone(),
-                args: args.into_vec().into_iter().map(|expr| folder.fold_expr(expr)).collect(),
-            },
+            ExprKind::FunctionCall { function, args } => {
+                ExprKind::FunctionCall { function: function.clone(), args: folder.fold_exprs(args) }
+            }
             ExprKind::Case { scrutinee, cases, else_result } => ExprKind::Case {
-                scrutinee: folder.fold_expr_boxed(scrutinee),
+                scrutinee: folder.fold_boxed_expr(scrutinee),
                 cases: cases
                     .into_vec()
                     .into_iter()
@@ -181,7 +190,7 @@ impl ExprFold for Expr {
                         then: folder.fold_expr(case.then),
                     })
                     .collect(),
-                else_result: else_result.map(|expr| folder.fold_expr_boxed(expr)),
+                else_result: else_result.map(|expr| folder.fold_boxed_expr(expr)),
             },
         };
 
