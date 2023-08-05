@@ -384,7 +384,26 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                 };
                 ir::Plan::Explain(kind, self.bind(tx, statement)?)
             }
-            ast::Statement::SetVariable { local: _, hivevar: _, variable: _, value: _ } => todo!(),
+            ast::Statement::SetVariable { local, hivevar, variable, value } => {
+                not_implemented!(*hivevar);
+                not_implemented!(variable.0.len() > 1);
+                not_implemented!(value.len() > 1);
+
+                let name = variable.0[0].value.as_str().into();
+                let expr = self.bind_expr(tx, scope, &value[0])?;
+                let value = match expr.const_eval() {
+                    Ok(value) => value,
+                    Err(EvalNotConst) => bail!("variable value must be a constant"),
+                };
+
+                ir::Plan::SetVariable {
+                    name,
+                    value,
+                    scope: local
+                        .then_some(ir::VariableScope::Local)
+                        .unwrap_or(ir::VariableScope::Global),
+                }
+            }
             _ => unimplemented!("unimplemented statement: {:?}", stmt),
         };
 

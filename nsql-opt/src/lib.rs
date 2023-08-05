@@ -8,7 +8,6 @@ struct RemoveIdentityProjections;
 
 impl Folder for RemoveIdentityProjections {
     fn fold_plan(&mut self, plan: ir::Plan) -> ir::Plan {
-        eprintln!("{plan}");
         if let ir::Plan::Projection { source, projection, projected_schema } = plan {
             let is_identity_projection = source.schema().len() == projection.len()
                 && projection.iter().enumerate().all(|(i, expr)| match &expr.kind {

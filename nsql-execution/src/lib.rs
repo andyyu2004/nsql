@@ -12,9 +12,10 @@ use std::sync::atomic::{self, AtomicBool};
 use std::sync::Arc;
 
 pub use anyhow::Error;
+use ir::Value;
 use nsql_arena::Idx;
 use nsql_catalog::Catalog;
-use nsql_core::LogicalType;
+use nsql_core::{LogicalType, Name};
 use nsql_storage::tuple::Tuple;
 use nsql_storage_engine::{
     ExecutionMode, FallibleIterator, ReadWriteExecutionMode, ReadonlyExecutionMode, StorageEngine,
@@ -149,6 +150,11 @@ trait PhysicalSink<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>
     }
 }
 
+pub trait SessionContext {
+    fn get(&self, name: Name) -> Option<Value>;
+    fn set(&self, name: Name, value: Value);
+}
+
 pub struct TransactionContext<'env, S: StorageEngine, M: ExecutionMode<'env, S>> {
     tx: M::Transaction,
     auto_commit: AtomicBool,
@@ -209,6 +215,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> TransactionC
 pub struct ExecutionContext<'env, S: StorageEngine, M: ExecutionMode<'env, S>> {
     catalog: Catalog<'env, S>,
     tcx: TransactionContext<'env, S, M>,
+    scx: Arc<dyn SessionContext + 'env>,
 }
 
 impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> ExecutionContext<'env, S, M> {
@@ -221,8 +228,17 @@ impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> ExecutionContext<'env, S
 
 impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> ExecutionContext<'env, S, M> {
     #[inline]
-    pub fn new(catalog: Catalog<'env, S>, tcx: TransactionContext<'env, S, M>) -> Self {
-        Self { catalog, tcx }
+    pub fn new(
+        catalog: Catalog<'env, S>,
+        tcx: TransactionContext<'env, S, M>,
+        scx: Arc<dyn SessionContext + 'env>,
+    ) -> Self {
+        Self { catalog, tcx, scx }
+    }
+
+    #[inline]
+    pub fn scx(&self) -> &dyn SessionContext {
+        self.scx.as_ref()
     }
 
     #[inline]

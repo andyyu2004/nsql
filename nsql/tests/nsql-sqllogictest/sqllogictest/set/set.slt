@@ -1,0 +1,2 @@
+statement ok
+SET LOCAL x = 'y';

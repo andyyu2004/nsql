@@ -11,6 +11,7 @@ mod physical_insert;
 mod physical_limit;
 mod physical_order;
 mod physical_projection;
+mod physical_set;
 mod physical_show;
 mod physical_table_scan;
 mod physical_transaction;
@@ -41,6 +42,7 @@ use self::physical_insert::PhysicalInsert;
 use self::physical_limit::PhysicalLimit;
 use self::physical_order::PhysicalOrder;
 use self::physical_projection::PhysicalProjection;
+use self::physical_set::PhysicalSet;
 use self::physical_show::PhysicalShow;
 use self::physical_table_scan::PhysicalTableScan;
 use self::physical_transaction::PhysicalTransaction;
@@ -168,6 +170,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalPlanner<'env, S> {
     ) -> Result<Arc<dyn PhysicalNode<'env, 'txn, S, M>>> {
         let plan = match *plan {
             Plan::Transaction(kind) => PhysicalTransaction::plan(kind),
+            Plan::SetVariable { name, value, scope } => PhysicalSet::plan(name, value, scope),
             Plan::TableScan { table, projection, projected_schema } => {
                 PhysicalTableScan::plan(projected_schema, table, projection)
             }

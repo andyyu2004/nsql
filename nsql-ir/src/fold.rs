@@ -36,7 +36,9 @@ impl PlanFold for Plan {
             | Plan::Drop(_)
             | Plan::Transaction(_)
             | Plan::CreateNamespace(_)
+            | Plan::SetVariable { name: _, value: _, scope: _ }
             | Plan::CreateTable(_) => self,
+
             // maybe can incorporate an expression folder in here too?
             Plan::TableScan { table, projection, projected_schema } => {
                 Plan::TableScan { table, projection, projected_schema }

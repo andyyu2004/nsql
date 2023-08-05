@@ -90,6 +90,21 @@ impl fmt::Debug for EntityRef {
     }
 }
 
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum VariableScope {
+    Local,
+    Global,
+}
+
+impl fmt::Display for VariableScope {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Local => write!(f, "LOCAL"),
+            Self::Global => write!(f, "GLOBAL"),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum Plan {
     Show(ObjectType),
@@ -97,6 +112,11 @@ pub enum Plan {
     Transaction(TransactionStmt),
     CreateNamespace(CreateNamespaceInfo),
     CreateTable(CreateTableInfo),
+    SetVariable {
+        name: Name,
+        value: Value,
+        scope: VariableScope,
+    },
     Aggregate {
         /// aggregate functions (and it's args) to apply
         functions: Box<[(Function, Box<[Expr]>)]>,
@@ -187,6 +207,7 @@ impl Plan {
             Plan::Join { lhs, rhs, .. } => {
                 lhs.required_transaction_mode().max(rhs.required_transaction_mode())
             }
+            Plan::SetVariable { .. } => TransactionMode::ReadOnly,
         }
     }
 }
@@ -255,6 +276,7 @@ impl fmt::Display for PlanFormatter<'_> {
             Plan::Explain(_, _) => todo!(),
             Plan::Insert { table, source, returning, schema } => todo!(),
             Plan::Update { table, source, returning, schema } => todo!(),
+            Plan::SetVariable { name, value, scope } => write!(f, "SET {scope} {name} = {value}"),
         }
     }
 }
@@ -369,6 +391,7 @@ impl Plan {
             | Plan::Transaction(..)
             | Plan::CreateNamespace(..)
             | Plan::CreateTable(..)
+            | Plan::SetVariable { .. }
             | Plan::Explain(..) => todo!("not sure if these cases will ever be hit"),
         }
     }

@@ -22,6 +22,7 @@ pub trait Visitor {
             Plan::Transaction(_tx) => false,
             Plan::CreateNamespace(_info) => false,
             Plan::CreateTable(_info) => false,
+            Plan::SetVariable { .. } => false,
             Plan::TableScan { table: _, projection: _, projected_schema: _ } => false,
             Plan::Projection { source, projection, projected_schema: _ } => {
                 self.visit_plan(source) || self.visit_exprs(projection)

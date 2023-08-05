@@ -152,11 +152,27 @@ impl<S: StorageEngine> Shared<S> {
 
         let mut planner = PhysicalPlanner::new(catalog);
 
+        struct SessionContext;
+
+        impl nsql_execution::SessionContext for SessionContext {
+            fn get(&self, name: nsql_core::Name) -> Option<nsql_storage::value::Value> {
+                todo!()
+            }
+
+            fn set(&self, name: nsql_core::Name, value: nsql_storage::value::Value) {
+                todo!()
+            }
+        }
+
         let (tx, tuples) = match tx {
             ReadOrWriteTransaction::Read(tx) => {
                 tracing::info!("executing readonly query");
                 let physical_plan = planner.plan(&tx, plan)?;
-                let ecx = ExecutionContext::new(catalog, TransactionContext::new(tx, auto_commit));
+                let ecx = ExecutionContext::new(
+                    catalog,
+                    TransactionContext::new(tx, auto_commit),
+                    Arc::new(SessionContext),
+                );
                 let tuples = nsql_execution::execute(&ecx, physical_plan)?;
                 let (auto_commit, state, tx) = ecx.take_txn();
                 if auto_commit || !matches!(state, TransactionState::Active) {
@@ -169,7 +185,11 @@ impl<S: StorageEngine> Shared<S> {
             ReadOrWriteTransaction::Write(tx) => {
                 tracing::info!("executing write query");
                 let physical_plan = planner.plan_write(&tx, plan)?;
-                let ecx = ExecutionContext::new(catalog, TransactionContext::new(tx, auto_commit));
+                let ecx = ExecutionContext::new(
+                    catalog,
+                    TransactionContext::new(tx, auto_commit),
+                    Arc::new(SessionContext),
+                );
                 let tuples = match nsql_execution::execute_write(&ecx, physical_plan) {
                     Ok(tuples) => tuples,
                     Err(err) => {
