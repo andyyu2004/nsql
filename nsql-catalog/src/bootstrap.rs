@@ -331,9 +331,7 @@ impl BootstrapInfo {
                             Expr::new(
                                 name,
                                 [
-                                    ExprOp::Project {
-                                        index: TupleIndex::new(target_idx.try_into().unwrap()),
-                                    },
+                                    ExprOp::Project { index: TupleIndex::new(target_idx) },
                                     ExprOp::Return,
                                 ],
                             )

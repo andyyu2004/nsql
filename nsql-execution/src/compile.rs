@@ -62,7 +62,7 @@ impl Compiler {
                 for arg in args.into_vec() {
                     self.build(arg);
                 }
-                self.emit(ExprOp::Call { function: Box::new(function) });
+                self.emit(ExprOp::Call { function });
             }
             ir::ExprKind::Case { scrutinee, cases, else_result } => {
                 debug_assert!(!cases.is_empty());

@@ -10,7 +10,7 @@ use crate::*;
 pub(crate) struct SelectBinder<'a, 'env, S> {
     binder: &'a Binder<'env, S>,
     group_by: Box<[ir::Expr]>,
-    aggregates: IndexSet<(Function, Box<[ir::Expr]>)>,
+    aggregates: IndexSet<(Box<Function>, Box<[ir::Expr]>)>,
 }
 
 impl<'a, 'env, S: StorageEngine> SelectBinder<'a, 'env, S> {

@@ -950,7 +950,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
         tx: &dyn Transaction<'env, S>,
         scope: &Scope,
         f: &ast::Function,
-    ) -> Result<(Function, Box<[ir::Expr]>)> {
+    ) -> Result<(Box<Function>, Box<[ir::Expr]>)> {
         let ast::Function { name, args, over, distinct, special, order_by } = f;
         not_implemented!(over.is_some());
         not_implemented!(*distinct);
@@ -985,7 +985,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
             (name.clone(), arg_types.into())
         })?;
 
-        let function = self.catalog.get::<Function>(tx, function)?;
+        let function = Box::new(self.catalog.get::<Function>(tx, function)?);
         Ok((function, args))
     }
 

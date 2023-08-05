@@ -202,8 +202,8 @@ pub struct TupleIndex(u16);
 
 impl TupleIndex {
     #[inline]
-    pub fn new(idx: u16) -> Self {
-        Self(idx)
+    pub fn new(idx: usize) -> Self {
+        Self(idx.try_into().unwrap())
     }
 
     // FIXME ideally we don't want to expose this as we're unwrapping the abstraction

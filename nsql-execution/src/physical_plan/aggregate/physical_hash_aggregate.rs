@@ -10,7 +10,7 @@ use super::*;
 #[derive(Debug)]
 pub struct PhysicalHashAggregate<'env, 'txn, S, M> {
     schema: Schema,
-    functions: Box<[(Function, ExecutableExpr)]>,
+    functions: Box<[(Box<Function>, ExecutableExpr)]>,
     children: [Arc<dyn PhysicalNode<'env, 'txn, S, M>>; 1],
     group_expr: ExecutableTupleExpr,
     output_groups: DashMap<Tuple, Mutex<Vec<AggregateFunctionInstance>>>,
@@ -21,7 +21,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
 {
     pub(crate) fn plan(
         schema: Schema,
-        functions: Box<[(Function, ExecutableExpr)]>,
+        functions: Box<[(Box<Function>, ExecutableExpr)]>,
         source: Arc<dyn PhysicalNode<'env, 'txn, S, M>>,
         group_expr: ExecutableTupleExpr,
     ) -> Arc<dyn PhysicalNode<'env, 'txn, S, M>> {

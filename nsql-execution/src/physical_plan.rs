@@ -213,8 +213,8 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalPlanner<'env, S> {
 
     fn compile_aggregate_functions(
         &mut self,
-        functions: impl IntoIterator<Item = (Function, Box<[ir::Expr]>)>,
-    ) -> Box<[(Function, ExecutableExpr)]> {
+        functions: impl IntoIterator<Item = (Box<Function>, Box<[ir::Expr]>)>,
+    ) -> Box<[(Box<Function>, ExecutableExpr)]> {
         functions
             .into_iter()
             .map(|(f, args)| {

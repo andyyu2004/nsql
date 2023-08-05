@@ -6,9 +6,7 @@ pub mod visit;
 use std::{fmt, mem};
 
 use itertools::Itertools;
-use nsql_catalog::{
-    ColumnIndex, CreateColumnInfo, CreateNamespaceInfo, Function, Namespace, Table,
-};
+use nsql_catalog::{ColumnIndex, CreateColumnInfo, CreateNamespaceInfo, Namespace, Table};
 use nsql_core::{LogicalType, Name, Oid, Schema};
 pub use nsql_storage::tuple::TupleIndex;
 pub use nsql_storage::value::{Decimal, Value};
@@ -118,8 +116,7 @@ pub enum Plan {
         scope: VariableScope,
     },
     Aggregate {
-        /// aggregate functions (and it's args) to apply
-        functions: Box<[(Function, Box<[Expr]>)]>,
+        functions: Box<[FunctionCall]>,
         source: Box<Plan>,
         group_by: Box<[Expr]>,
         schema: Schema,
@@ -439,7 +436,7 @@ impl Plan {
 
     pub fn aggregate(
         self: Box<Self>,
-        functions: Box<[(Function, Box<[Expr]>)]>,
+        functions: Box<[FunctionCall]>,
         group_by: Box<[Expr]>,
     ) -> Box<Self> {
         if functions.is_empty() && group_by.is_empty() {

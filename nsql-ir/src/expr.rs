@@ -84,6 +84,8 @@ pub enum ExprKind {
     },
 }
 
+pub type FunctionCall<E = Expr> = (Box<Function>, Box<[E]>);
+
 impl fmt::Display for ExprKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match &self {
