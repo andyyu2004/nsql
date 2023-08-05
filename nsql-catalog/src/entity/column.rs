@@ -1,3 +1,5 @@
+use std::fmt;
+
 use super::*;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, FromTuple, IntoTuple)]
@@ -50,6 +52,12 @@ impl Column {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ColumnIndex {
     index: u8,
+}
+
+impl fmt::Display for ColumnIndex {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.index)
+    }
 }
 
 impl FromValue for ColumnIndex {

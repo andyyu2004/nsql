@@ -3,7 +3,7 @@ use std::fmt;
 use std::ops::ControlFlow;
 
 use indexmap::IndexSet;
-use ir::fold::{ExprFold, ExprFolder};
+use ir::fold::{ExprFold, Folder};
 
 use crate::*;
 
@@ -129,7 +129,7 @@ impl<'a, 'env, S: StorageEngine> SelectBinder<'a, 'env, S> {
             contains_column_ref: bool,
         }
 
-        impl ExprFolder for ExprReplacer<'_> {
+        impl Folder for ExprReplacer<'_> {
             fn fold_expr(&mut self, expr: ir::Expr) -> ir::Expr {
                 const AGGREGATE_TABLE_NAME: Path = Path::Unqualified(Name::new_inline("agg"));
                 self.contains_column_ref |= matches!(expr.kind, ir::ExprKind::ColumnRef { .. });

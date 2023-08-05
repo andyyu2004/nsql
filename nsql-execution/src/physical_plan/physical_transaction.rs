@@ -5,12 +5,12 @@ use super::*;
 
 #[derive(Debug)]
 pub struct PhysicalTransaction {
-    kind: ir::TransactionStmtKind,
+    kind: ir::TransactionStmt,
 }
 
 impl PhysicalTransaction {
     pub(crate) fn plan<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
-        kind: ir::TransactionStmtKind,
+        kind: ir::TransactionStmt,
     ) -> Arc<dyn PhysicalNode<'env, 'txn, S, M>> {
         Arc::new(Self { kind })
     }
@@ -58,21 +58,21 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
     ) -> ExecutionResult<TupleStream<'txn>> {
         let tx = ecx.tcx();
         match self.kind {
-            ir::TransactionStmtKind::Begin(_) => {
+            ir::TransactionStmt::Begin(_) => {
                 if tx.auto_commit() {
                     tx.unset_auto_commit();
                 } else {
                     bail!("nested transactions are not supported")
                 }
             }
-            ir::TransactionStmtKind::Commit => {
+            ir::TransactionStmt::Commit => {
                 if tx.auto_commit() {
                     bail!("cannot commit outside of a transaction")
                 } else {
                     tx.commit();
                 }
             }
-            ir::TransactionStmtKind::Abort => {
+            ir::TransactionStmt::Abort => {
                 if tx.auto_commit() {
                     bail!("cannot rollback outside of a transaction")
                 } else {
@@ -93,9 +93,9 @@ impl<S: StorageEngine> Explain<'_, S> for PhysicalTransaction {
         f: &mut fmt::Formatter<'_>,
     ) -> explain::Result {
         match self.kind {
-            ir::TransactionStmtKind::Begin(mode) => write!(f, "begin transaction {}", mode)?,
-            ir::TransactionStmtKind::Commit => write!(f, "commit")?,
-            ir::TransactionStmtKind::Abort => write!(f, "rollback")?,
+            ir::TransactionStmt::Begin(mode) => write!(f, "begin transaction {}", mode)?,
+            ir::TransactionStmt::Commit => write!(f, "commit")?,
+            ir::TransactionStmt::Abort => write!(f, "rollback")?,
         }
         Ok(())
     }

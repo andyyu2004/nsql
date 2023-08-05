@@ -1,4 +1,3 @@
-#![feature(anonymous_lifetime_in_impl_trait)]
 #![deny(rust_2018_idioms)]
 
 pub mod expr;
@@ -6,6 +5,7 @@ pub mod fold;
 pub mod visit;
 use std::{fmt, mem};
 
+use itertools::Itertools;
 use nsql_catalog::{
     ColumnIndex, CreateColumnInfo, CreateNamespaceInfo, Function, Namespace, Table,
 };
@@ -48,10 +48,20 @@ impl fmt::Display for TransactionMode {
 }
 
 #[derive(Debug, Clone)]
-pub enum TransactionStmtKind {
+pub enum TransactionStmt {
     Begin(TransactionMode),
     Commit,
     Abort,
+}
+
+impl fmt::Display for TransactionStmt {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            TransactionStmt::Begin(mode) => write!(f, "BEGIN {mode}"),
+            TransactionStmt::Commit => write!(f, "COMMIT"),
+            TransactionStmt::Abort => write!(f, "ABORT"),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -84,7 +94,7 @@ impl fmt::Debug for EntityRef {
 pub enum Plan {
     Show(ObjectType),
     Drop(Vec<EntityRef>),
-    Transaction(TransactionStmtKind),
+    Transaction(TransactionStmt),
     CreateNamespace(CreateNamespaceInfo),
     CreateTable(CreateTableInfo),
     Aggregate {
@@ -161,10 +171,8 @@ impl Plan {
             | Plan::Update { .. }
             | Plan::Insert { .. } => TransactionMode::ReadWrite,
             Plan::Transaction(kind) => match kind {
-                TransactionStmtKind::Begin(mode) => *mode,
-                TransactionStmtKind::Commit | TransactionStmtKind::Abort => {
-                    TransactionMode::ReadOnly
-                }
+                TransactionStmt::Begin(mode) => *mode,
+                TransactionStmt::Commit | TransactionStmt::Abort => TransactionMode::ReadOnly,
             },
             // even though `explain` doesn't execute the plan, the planning stage currently
             // still checks we have a write transaction available
@@ -180,6 +188,80 @@ impl Plan {
                 lhs.required_transaction_mode().max(rhs.required_transaction_mode())
             }
         }
+    }
+}
+
+struct PlanFormatter<'p> {
+    plan: &'p Plan,
+    indent: usize,
+}
+
+impl fmt::Display for PlanFormatter<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.plan {
+            Plan::Show(kind) => write!(f, "SHOW {kind}"),
+            Plan::Drop(_refs) => write!(f, "DROP"),
+            Plan::Transaction(tx) => write!(f, "{tx}"),
+            Plan::CreateNamespace(ns) => {
+                write!(f, "CREATE NAMESPACE ")?;
+                if ns.if_not_exists {
+                    write!(f, "IF NOT EXISTS ")?;
+                }
+                write!(f, "{}", ns.name)
+            }
+            Plan::CreateTable(table) => {
+                write!(f, "CREATE TABLE {}.{}", table.namespace, table.name)
+            }
+            Plan::Aggregate { functions, source, group_by, schema: _ } => {
+                write!(
+                    f,
+                    "aggregate ({}) by {}",
+                    functions
+                        .iter()
+                        .map(|(f, args)| format!("{}({})", f.name(), args.iter().format(",")))
+                        .collect::<Vec<_>>()
+                        .join(","),
+                    group_by.iter().format(",")
+                )?;
+                writeln!(f, "  {source}")
+            }
+            Plan::TableScan { table, projection, projected_schema: _ } => {
+                write!(f, "table scan {}", table)?;
+                if let Some(projection) = projection {
+                    write!(f, "({})", projection.iter().format(","))?;
+                }
+                Ok(())
+            }
+            Plan::Projection { source, projection, projected_schema: _ } => {
+                write!(f, "projection ({})", projection.iter().format(","))?;
+                writeln!(f, "  {source}")
+            }
+            Plan::Filter { source, predicate } => {
+                write!(f, "filter ({})", predicate)?;
+                writeln!(f, "  {source}")
+            }
+            Plan::Unnest { schema: _, expr } => write!(f, "UNNEST ({})", expr),
+            Plan::Values { values, schema: _ } => {
+                write!(f, "VALUES (",)?;
+                for row in &values[..] {
+                    write!(f, "({})", row.iter().format(","))?;
+                }
+                writeln!(f, ")")
+            }
+            Plan::Join { schema: _, join, lhs, rhs } => todo!(),
+            Plan::Limit { source, limit } => todo!(),
+            Plan::Order { source, order } => todo!(),
+            Plan::Empty => todo!(),
+            Plan::Explain(_, _) => todo!(),
+            Plan::Insert { table, source, returning, schema } => todo!(),
+            Plan::Update { table, source, returning, schema } => todo!(),
+        }
+    }
+}
+
+impl fmt::Display for Plan {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        PlanFormatter { plan: self, indent: 0 }.fmt(f)
     }
 }
 

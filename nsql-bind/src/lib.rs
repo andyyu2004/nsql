@@ -282,15 +282,15 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                     }
                     _ => not_implemented!("multiple transaction modes"),
                 }
-                ir::Plan::Transaction(ir::TransactionStmtKind::Begin(mode))
+                ir::Plan::Transaction(ir::TransactionStmt::Begin(mode))
             }
             ast::Statement::Rollback { chain } => {
                 not_implemented!(*chain);
-                ir::Plan::Transaction(ir::TransactionStmtKind::Abort)
+                ir::Plan::Transaction(ir::TransactionStmt::Abort)
             }
             ast::Statement::Commit { chain } => {
                 not_implemented!(*chain);
-                ir::Plan::Transaction(ir::TransactionStmtKind::Commit)
+                ir::Plan::Transaction(ir::TransactionStmt::Commit)
             }
             ast::Statement::ShowTables { extended, full, db_name, filter } => {
                 not_implemented!(*extended);
