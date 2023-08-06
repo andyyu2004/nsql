@@ -60,6 +60,8 @@ impl<S: StorageEngine> Nsql<S> {
         Ok(Self::new(Shared { storage: Storage::new(S::open(path)?) }))
     }
 
+    // FIXME can't find a way to get lifetimes to checkout without separating the connection and state.
+    // Ideally we'd have the connection hold the state.
     #[inline]
     pub fn connect<'any>(&self) -> (Connection<S>, SessionContext<'any, S>) {
         (Connection { db: self.clone() }, Default::default())
@@ -92,6 +94,7 @@ impl<S: StorageEngine> Default for SessionContext<'_, S> {
 }
 
 impl<'env, S: StorageEngine> nsql_execution::SessionContext for SessionContext<'env, S> {
+    #[inline]
     fn config(&self) -> &SessionConfig {
         &self.config
     }
