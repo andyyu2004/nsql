@@ -96,6 +96,7 @@ impl fmt::Display for ExprKind {
             ExprKind::FunctionCall { function, args } => {
                 write!(f, "{}({})", function.name(), args.iter().format(", "))
             }
+            ExprKind::Alias { alias, expr } if alias.is_empty() => write!(f, "{expr}"),
             ExprKind::Alias { alias, expr } => write!(f, r#"({expr} AS "{alias}")"#),
             ExprKind::Case { scrutinee, cases, else_result } => {
                 write!(f, "CASE {scrutinee} ")?;

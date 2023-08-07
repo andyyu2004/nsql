@@ -664,7 +664,6 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
         not_implemented!(!cluster_by.is_empty());
         not_implemented!(!distribute_by.is_empty());
         not_implemented!(!sort_by.is_empty());
-        not_implemented!(having.is_some());
         not_implemented!(qualify.is_some());
 
         let (scope, mut source) = match &from[..] {
@@ -683,7 +682,14 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
             .map(|expr| self.bind_expr(tx, &scope, expr))
             .collect::<Result<Box<_>>>()?;
 
-        SelectBinder::new(self, group_by).bind(tx, &scope, source, projection, order_by)
+        SelectBinder::new(self, group_by).bind(
+            tx,
+            &scope,
+            source,
+            projection,
+            order_by,
+            having.as_ref(),
+        )
     }
 
     fn bind_joint_tables(

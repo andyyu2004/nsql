@@ -1,7 +1,7 @@
 query error
 SELECT x+2 FROM (VALUES(1)) AS t(x) GROUP BY x + 1
 ----
-expression `t.x \+ 2` must appear in the GROUP BY clause or be used in an aggregate function
+expression `t.x` must appear in the GROUP BY clause or be used in an aggregate function
 
 query I
 SELECT x+1 FROM (VALUES(1)) t(x) GROUP BY x + 1

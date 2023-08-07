@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::fmt;
 use std::ops::ControlFlow;
 
@@ -25,26 +24,27 @@ impl<'a, 'env, S: StorageEngine> SelectBinder<'a, 'env, S> {
         source: Box<ir::Plan>,
         items: &[ast::SelectItem],
         order_by: &[ast::OrderByExpr],
+        having: Option<&ast::Expr>,
     ) -> Result<(Scope, Box<ir::Plan>)> {
-        // contains the expressions that may be required for the order by clause
-        let mut order_by_extra_exprs = vec![];
-        let mut order_by_index_to_tuple_index = HashMap::new();
+        // contains any additional expressions that are required to evaluate the order_by, or having clauses
+        let mut bound_extra_exprs = vec![];
+        let mut extra_exprs = IndexSet::new();
+
         // if the order by expression contains a column reference,
         // then we need to add the expression to the projection to make any potential aliases available
-        for (i, order_expr) in order_by.iter().enumerate() {
-            if let ControlFlow::Break(()) = ast::visit_expressions(order_expr, |expr| match expr {
+        for expr in order_by.iter().map(|order_expr| &order_expr.expr).chain(having) {
+            if let ControlFlow::Break(()) = ast::visit_expressions(expr, |expr| match expr {
                 ast::Expr::Identifier { .. } | ast::Expr::CompoundIdentifier { .. } => {
                     ControlFlow::Break(())
                 }
                 _ => ControlFlow::Continue(()),
             }) {
-                // We add any order expressions that we can successfully bind to the pre-projection.
+                // We add any expressions that we can successfully bind to the pre-projection.
                 // The bind may fail either because it tries to reference an alias or is otherwise bad.
-                if let Ok(expr) = self.bind_maybe_aggregate_expr(tx, scope, &order_expr.expr) {
-                    // alias to make it unnameable to avoid name clashes
-                    let k = order_by_extra_exprs.len();
-                    order_by_extra_exprs.push(expr.alias(""));
-                    assert!(order_by_index_to_tuple_index.insert(i, k).is_none());
+                if let Ok(bound_expr) = self.bind_maybe_aggregate_expr(tx, scope, expr) {
+                    // alias to make it unnameable to avoid name clashes and thus artificial `ambiguous reference to column` errors
+                    bound_extra_exprs.push(bound_expr.alias(""));
+                    extra_exprs.insert(expr.clone());
                 }
             }
         }
@@ -59,7 +59,7 @@ impl<'a, 'env, S: StorageEngine> SelectBinder<'a, 'env, S> {
 
         let pre_projection = pre_projection
             .into_iter()
-            .chain(order_by_extra_exprs)
+            .chain(bound_extra_exprs)
             .map(|expr| self.check_unaggregated(expr))
             .collect::<Result<Box<_>>>()?;
 
@@ -67,8 +67,7 @@ impl<'a, 'env, S: StorageEngine> SelectBinder<'a, 'env, S> {
 
         let order_by = order_by
             .iter()
-            .enumerate()
-            .map(|(i, order_expr)| match order_by_index_to_tuple_index.get(&i) {
+            .map(|order_expr| match extra_exprs.get_index_of(&order_expr.expr) {
                 // if the order_by was not added to the pre-projection, we bind it normally
                 None => self.bind_order_by_expr(tx, &scope, order_expr),
                 // otherwise we bind it to the corresponding column in the pre-projection
@@ -89,8 +88,6 @@ impl<'a, 'env, S: StorageEngine> SelectBinder<'a, 'env, S> {
             })
             .collect::<Result<Box<_>>>()?;
 
-        let aggregates = self.aggregates.into_iter().collect::<Box<_>>();
-
         // we add another projection that removes extra columns that we added for the order_by
         let post_projection = (0..original_projection_len)
             .map(|i| {
@@ -105,13 +102,42 @@ impl<'a, 'env, S: StorageEngine> SelectBinder<'a, 'env, S> {
             })
             .collect::<Vec<_>>();
 
+        let having = having
+            .map(|expr| {
+                let expr = match extra_exprs.get_index_of(expr) {
+                    Some(k) => {
+                        let target_index = original_projection_len + k;
+                        let target_expr = &pre_projection[target_index];
+                        ir::Expr {
+                            ty: target_expr.ty.clone(),
+                            kind: ir::ExprKind::ColumnRef {
+                                qpath: QPath::new("", target_expr.to_string()),
+                                index: TupleIndex::new(target_index),
+                            },
+                        }
+                    }
+                    None => self.bind_maybe_aggregate_expr(tx, &scope, expr)?,
+                };
+                ensure!(
+                    matches!(expr.ty, LogicalType::Bool | LogicalType::Null),
+                    "HAVING clause must be of type bool, found {}",
+                    expr.ty
+                );
+                Ok(expr)
+            })
+            .transpose()?;
+
         let scope = scope.project(&post_projection);
 
-        let plan = source
-            .aggregate(aggregates, self.group_by)
-            .project(pre_projection)
-            .order_by(order_by)
-            .project(post_projection);
+        let aggregates = self.aggregates.into_iter().collect::<Box<_>>();
+        let mut plan =
+            source.aggregate(aggregates, self.group_by).project(pre_projection).order_by(order_by);
+
+        if let Some(having) = having {
+            plan = plan.filter(having);
+        }
+
+        plan = plan.project(post_projection);
 
         Ok((scope, plan))
     }
@@ -126,13 +152,12 @@ impl<'a, 'env, S: StorageEngine> SelectBinder<'a, 'env, S> {
         struct ExprReplacer<'a> {
             group_by: &'a [ir::Expr],
             found_match: bool,
-            contains_column_ref: bool,
+            unaggregated_column_ref_expr: Option<ir::Expr>,
         }
 
         impl Folder for ExprReplacer<'_> {
             fn fold_expr(&mut self, expr: ir::Expr) -> ir::Expr {
                 const AGGREGATE_TABLE_NAME: Path = Path::Unqualified(Name::new_inline("agg"));
-                self.contains_column_ref |= matches!(expr.kind, ir::ExprKind::ColumnRef { .. });
 
                 match &expr.kind {
                     ir::ExprKind::ColumnRef { qpath, .. }
@@ -155,7 +180,9 @@ impl<'a, 'env, S: StorageEngine> SelectBinder<'a, 'env, S> {
                                     index: TupleIndex::new(i),
                                 },
                             };
-                        };
+                        } else if let ir::ExprKind::ColumnRef { .. } = expr.kind {
+                            self.unaggregated_column_ref_expr = Some(expr.clone());
+                        }
 
                         // otherwise, recurse and process subexpressions
                         expr.fold_with(self)
@@ -167,20 +194,22 @@ impl<'a, 'env, S: StorageEngine> SelectBinder<'a, 'env, S> {
         let mut folder = ExprReplacer {
             group_by: &self.group_by,
             found_match: false,
-            contains_column_ref: false,
+            unaggregated_column_ref_expr: None,
         };
 
         let expr = expr.super_fold_with(&mut folder);
 
         // if the select expression `expr` contains a column reference and `expr` is not
         // a super-expression of any aggregate, then we have a problem
-        if folder.found_match || !folder.contains_column_ref {
-            Ok(expr)
-        } else {
-            bail!(
-                "expression `{}` must appear in the GROUP BY clause or be used in an aggregate function",
-                expr
-            )
+        match folder.unaggregated_column_ref_expr {
+            // if there is an unaggregated column reference, then report an error
+            Some(col_expr) if !folder.found_match => {
+                bail!(
+                    "expression `{}` must appear in the GROUP BY clause or be used in an aggregate function",
+                    col_expr
+                )
+            }
+            _ => Ok(expr),
         }
     }
 
