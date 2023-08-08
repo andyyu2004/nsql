@@ -1130,9 +1130,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                     FunctionKind::Function => {
                         (return_type, ir::ExprKind::FunctionCall { function, args })
                     }
-                    FunctionKind::Aggregate => {
-                        not_implemented!("aggregate function call in this position")
-                    }
+                    FunctionKind::Aggregate => bail!("aggregate not allowed here"),
                 }
             }
             ast::Expr::Case { operand, conditions, results, else_result } => {

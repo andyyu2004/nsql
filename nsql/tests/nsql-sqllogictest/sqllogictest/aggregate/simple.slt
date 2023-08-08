@@ -1,3 +1,14 @@
+# FIXME we should have a slightly better error message for these two
+query error
+SELECT x FROM (VALUES(1)) AS t(x) GROUP BY SUM(x)
+----
+aggregate not allowed here
+
+query error
+SELECT x FROM (VALUES(1)) AS t(x) WHERE SUM(x) = 2
+----
+aggregate not allowed here
+
 query error
 SELECT x+2 FROM (VALUES(1)) AS t(x) GROUP BY x + 1
 ----
@@ -8,14 +19,13 @@ SELECT x+1 FROM (VALUES(1)) t(x) GROUP BY x + 1
 ----
 2
 
-
 query I
 SELECT SUM(x) FROM (VALUES(1), (2), (3)) AS t(x);
 ----
 6
 
 query I
-SELECT SUM(x), product(x) FROM (VALUES(1), (2)) AS t(x);
+SELECT SUM(x), PRODUCT(x) FROM (VALUES(1), (2)) AS t(x);
 ----
 3 2
 

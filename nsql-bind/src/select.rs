@@ -205,8 +205,7 @@ impl<'a, 'env, S: StorageEngine> SelectBinder<'a, 'env, S> {
             // if there is an unaggregated column reference, then report an error
             Some(col_expr) if !folder.found_match => {
                 bail!(
-                    "expression `{}` must appear in the GROUP BY clause or be used in an aggregate function",
-                    col_expr
+                    "expression `{col_expr}` must appear in the GROUP BY clause or be used in an aggregate function",
                 )
             }
             _ => Ok(expr),
