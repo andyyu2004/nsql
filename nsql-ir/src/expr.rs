@@ -11,7 +11,7 @@ use nsql_storage::tuple::TupleIndex;
 use nsql_storage::value::Value;
 use nsql_util::static_assert_eq;
 
-use crate::QPath;
+use crate::{Plan, QPath};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Expr {
@@ -82,6 +82,7 @@ pub enum ExprKind {
         cases: Box<[Case]>,
         else_result: Option<Box<Expr>>,
     },
+    Subquery(Box<Plan>),
 }
 
 pub type FunctionCall<E = Expr> = (Box<Function>, Box<[E]>);
@@ -110,6 +111,7 @@ impl fmt::Display for ExprKind {
                 write!(f, "END")
             }
             ExprKind::UnaryOp { op, expr } => write!(f, "{op}{expr}"),
+            ExprKind::Subquery(_plan) => write!(f, "<subquery>"),
         }
     }
 }
@@ -170,7 +172,7 @@ impl fmt::Display for BinOp {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Values(Box<[Box<[Expr]>]>);
 
 impl Values {

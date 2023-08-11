@@ -1,5 +1,7 @@
 query error
 SELECT x FROM (VALUES (1)) AS t(x) WHERE x = (SELECT 1, 2)
+---
+subquery expression must return exactly one column, got 2
 
 query I
 SELECT x FROM (VALUES (1)) AS t(x) WHERE x = (SELECT 1)

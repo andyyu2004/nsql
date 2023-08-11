@@ -100,6 +100,7 @@ pub trait Visitor {
                         .map_or(false, |else_result| self.visit_expr(else_result))
             }
             ExprKind::UnaryOp { op: _, expr } => self.visit_expr(expr),
+            ExprKind::Subquery(plan) => self.visit_plan(plan),
         }
     }
 }

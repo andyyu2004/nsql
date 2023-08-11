@@ -88,7 +88,7 @@ impl ColumnIndex {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct CreateColumnInfo {
     pub name: Name,
     /// The index of the column in the table.

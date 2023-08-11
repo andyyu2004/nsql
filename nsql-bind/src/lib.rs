@@ -785,7 +785,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
             ast::TableFactor::Derived { lateral, subquery, alias } => {
                 not_implemented!(*lateral);
 
-                // subqueries get a fresh empty scope
+                // subqueries get a fresh empty scope to prevent correlated subqueries for now
                 let (mut scope, subquery) = self.bind_query(tx, &Scope::default(), subquery)?;
                 if let Some(alias) = alias {
                     scope = scope.alias(self.lower_table_alias(alias))?;
@@ -1132,6 +1132,19 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                     }
                     FunctionKind::Aggregate => bail!("aggregate not allowed here"),
                 }
+            }
+            ast::Expr::Subquery(query) => {
+                // passing empty scope for now to disallow correlated subqueries
+                let (_scope, plan) = self.bind_query(tx, &Scope::default(), query)?;
+                let schema = plan.schema();
+                ensure!(
+                    schema.len() == 1,
+                    "subquery expression must return exactly one column, got {}",
+                    schema.len()
+                );
+
+                let ty = schema[0].clone();
+                (ty, ir::ExprKind::Subquery(plan))
             }
             ast::Expr::Case { operand, conditions, results, else_result } => {
                 assert_eq!(conditions.len(), results.len());

@@ -13,7 +13,7 @@ pub use nsql_storage::value::{Decimal, Value};
 
 pub use self::expr::*;
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Eq, Hash)]
 pub struct CreateTableInfo {
     pub name: Name,
     pub namespace: Oid<Namespace>,
@@ -30,7 +30,7 @@ impl fmt::Debug for CreateTableInfo {
     }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum TransactionMode {
     ReadOnly,
     ReadWrite,
@@ -45,7 +45,7 @@ impl fmt::Display for TransactionMode {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum TransactionStmt {
     Begin(TransactionMode),
     Commit,
@@ -62,7 +62,7 @@ impl fmt::Display for TransactionStmt {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ObjectType {
     Table,
 }
@@ -75,7 +75,7 @@ impl fmt::Display for ObjectType {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Copy, Clone, PartialEq, Eq, Hash)]
 pub enum EntityRef {
     Table(Oid<Table>),
 }
@@ -103,7 +103,7 @@ impl fmt::Display for VariableScope {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Plan {
     Show(ObjectType),
     Drop(Vec<EntityRef>),
@@ -280,7 +280,7 @@ impl fmt::Display for PlanFormatter<'_> {
                 writeln!(f, "  {source}")
             }
             Plan::Empty => write!(f, "empty"),
-            Plan::Explain(..) => unreachable!("explaining an explain"),
+            Plan::Explain(plan) => write!(f, "EXPLAIN {plan}"),
             Plan::Insert { table, source, returning, schema: _ } => {
                 write!(f, "INSERT INTO {table}")?;
                 if let Some(returning) = returning {
@@ -306,7 +306,7 @@ impl fmt::Display for Plan {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Join<E = Expr> {
     Inner(JoinConstraint<E>),
     Left(JoinConstraint<E>),
@@ -349,7 +349,7 @@ impl<E: fmt::Display> fmt::Display for Join<E> {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum JoinConstraint<E = Expr> {
     On(E),
     None,
@@ -374,7 +374,7 @@ impl<E: fmt::Display> fmt::Display for JoinConstraint<E> {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct OrderExpr<E = Expr> {
     pub expr: E,
     pub asc: bool,

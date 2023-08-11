@@ -126,7 +126,7 @@ impl fmt::Display for LogicalType {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Schema {
     types: Box<[LogicalType]>,
 }

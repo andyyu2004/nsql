@@ -74,7 +74,7 @@ impl SystemEntity for Namespace {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct CreateNamespaceInfo {
     pub name: Name,
     pub if_not_exists: bool,

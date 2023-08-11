@@ -1,8 +1,16 @@
 use crate::*;
 
 pub trait Folder {
+    #[inline]
     fn fold_plan(&mut self, plan: Plan) -> Plan {
         plan
+    }
+
+    /// Replace an expression, this must be type preserving.
+    /// Implement this method if you want to replace an expression with a different expression.
+    #[inline]
+    fn fold_expr(&mut self, expr: Expr) -> Expr {
+        expr
     }
 
     #[inline]
@@ -14,12 +22,6 @@ pub trait Folder {
     #[inline]
     fn fold_plan_in_place(&mut self, boxed_plan: &mut Plan) {
         *boxed_plan = self.fold_plan(mem::replace(&mut *boxed_plan, Plan::Empty));
-    }
-
-    /// Replace an expression, this must be type preserving.
-    /// Implement this method if you want to replace an expression with a different expression.
-    fn fold_expr(&mut self, expr: Expr) -> Expr {
-        expr
     }
 
     /// Convenience method for folding a boxed expression, implement `fold_expr` not this
@@ -80,9 +82,10 @@ impl PlanFold for Plan {
                     .collect(),
                 projected_schema,
             },
-            Plan::Filter { source, predicate } => {
-                Plan::Filter { source: folder.fold_boxed_plan(source), predicate }
-            }
+            Plan::Filter { source, predicate } => Plan::Filter {
+                source: folder.fold_boxed_plan(source),
+                predicate: folder.fold_expr(predicate),
+            },
 
             Plan::Unnest { expr, schema } => Plan::Unnest { expr: folder.fold_expr(expr), schema },
             Plan::Values { values, schema } => Plan::Values { values, schema },
@@ -111,7 +114,11 @@ impl PlanFold for Plan {
             }
             Plan::Order { source, order } => Plan::Order {
                 source: folder.fold_boxed_plan(source),
-                order: order.into_vec().into_iter().map(|e| e.fold_with(folder)).collect(),
+                order: order
+                    .into_vec()
+                    .into_iter()
+                    .map(|order_expr| order_expr.fold_with(folder))
+                    .collect(),
             },
             Plan::Empty => Plan::Empty,
             Plan::Explain(plan) => Plan::Explain(folder.fold_boxed_plan(plan)),
@@ -192,6 +199,7 @@ impl ExprFold for Expr {
                     .collect(),
                 else_result: else_result.map(|expr| folder.fold_boxed_expr(expr)),
             },
+            ExprKind::Subquery(plan) => ExprKind::Subquery(folder.fold_boxed_plan(plan)),
         };
 
         Expr { ty: self.ty.clone(), kind }

@@ -28,7 +28,7 @@ impl Expr {
                     BinOp::Or => todo!(),
                 }
             }
-            ExprKind::ColumnRef { .. } => Err(EvalNotConst),
+            ExprKind::Subquery(_) | ExprKind::ColumnRef { .. } => Err(EvalNotConst),
             // we can actually recurse for this case but not necessary for now
             ExprKind::Array(exprs) => exprs
                 .iter()
