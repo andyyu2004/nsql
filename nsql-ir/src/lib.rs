@@ -2,6 +2,7 @@
 
 pub mod expr;
 pub mod fold;
+mod validate;
 pub mod visit;
 use std::{fmt, mem};
 

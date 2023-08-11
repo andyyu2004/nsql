@@ -30,21 +30,22 @@ pub trait Visitor {
                 ControlFlow::Continue(())
             }
             Plan::Projection { source, projection, projected_schema: _ } => {
-                self.visit_exprs(projection)?;
+                self.visit_exprs(source, projection)?;
                 self.visit_plan(source)
             }
             Plan::Filter { source, predicate } => {
-                self.visit_expr(predicate)?;
+                self.visit_expr(source, predicate)?;
                 self.visit_plan(source)
             }
-            Plan::Unnest { expr, schema: _ } => self.visit_expr(expr),
+            // FIXME where is the child of unnest try unnesting a column in a test before continuing with this change
+            Plan::Unnest { expr, schema: _ } => self.visit_expr(Plan::empty(), expr),
             Plan::Values { values: _, schema: _ } => ControlFlow::Continue(()),
             Plan::Join { schema: _, join, lhs, rhs } => {
                 match join {
                     Join::Inner(constraint)
                     | Join::Left(constraint)
                     | Join::Right(constraint)
-                    | Join::Full(constraint) => self.visit_join_constraint(constraint),
+                    | Join::Full(constraint) => self.visit_join_constraint(plan, constraint),
                     Join::Cross => ControlFlow::Continue(()),
                 }?;
                 self.visit_plan(lhs)?;
@@ -53,7 +54,7 @@ pub trait Visitor {
             Plan::Limit { source, limit: _ } => self.visit_plan(source),
             Plan::Order { source, order } => {
                 for order_expr in &order[..] {
-                    self.visit_expr(&order_expr.expr)?;
+                    self.visit_expr(plan, &order_expr.expr)?;
                 }
                 self.visit_plan(source)
             }
@@ -74,7 +75,7 @@ pub trait Visitor {
             Plan::Aggregate { source, functions, group_by, schema: _ } => {
                 for (_f, args) in &functions[..] {
                     for arg in &args[..] {
-                        self.visit_expr(arg)?;
+                        self.visit_expr(plan, arg)?;
                     }
                 }
                 self.visit_exprs(group_by)?;
@@ -83,46 +84,50 @@ pub trait Visitor {
         }
     }
 
-    fn visit_join_constraint(&mut self, constraint: &JoinConstraint) -> ControlFlow<()> {
+    fn visit_join_constraint(
+        &mut self,
+        plan: &Plan,
+        constraint: &JoinConstraint,
+    ) -> ControlFlow<()> {
         match constraint {
-            JoinConstraint::On(expr) => self.visit_expr(expr),
+            JoinConstraint::On(expr) => self.visit_expr(plan, expr),
             JoinConstraint::None => ControlFlow::Continue(()),
         }
     }
 
     #[inline]
-    fn visit_exprs(&mut self, exprs: &[Expr]) -> ControlFlow<()> {
+    fn visit_exprs(&mut self, plan: &Plan, exprs: &[Expr]) -> ControlFlow<()> {
         for expr in exprs {
-            self.visit_expr(expr)?;
+            self.visit_expr(plan, expr)?;
         }
         ControlFlow::Continue(())
     }
 
     #[inline]
-    fn visit_expr(&mut self, expr: &Expr) -> ControlFlow<()> {
-        self.walk_expr(expr)
+    fn visit_expr(&mut self, plan: &Plan, expr: &Expr) -> ControlFlow<()> {
+        self.walk_expr(plan, expr)
     }
 
-    fn walk_expr(&mut self, expr: &Expr) -> ControlFlow<()> {
+    fn walk_expr(&mut self, plan: &Plan, expr: &Expr) -> ControlFlow<()> {
         match &expr.kind {
             ExprKind::Literal(_) => ControlFlow::Continue(()),
             ExprKind::Array(exprs) => self.visit_exprs(exprs),
             ExprKind::BinOp { op: _, lhs, rhs } => {
-                self.visit_expr(lhs)?;
-                self.visit_expr(rhs)
+                self.visit_expr(plan, lhs)?;
+                self.visit_expr(plan, rhs)
             }
             ExprKind::ColumnRef { .. } => ControlFlow::Continue(()),
             ExprKind::FunctionCall { function: _, args } => self.visit_exprs(args),
-            ExprKind::Alias { alias: _, expr } => self.visit_expr(expr),
+            ExprKind::Alias { alias: _, expr } => self.visit_expr(plan, expr),
             ExprKind::Case { scrutinee, cases, else_result } => {
-                self.visit_expr(scrutinee)?;
+                self.visit_expr(plan, scrutinee)?;
                 for case in &cases[..] {
-                    self.visit_expr(&case.when)?;
-                    self.visit_expr(&case.then)?;
+                    self.visit_expr(plan, &case.when)?;
+                    self.visit_expr(plan, &case.then)?;
                 }
 
                 if let Some(else_result) = else_result {
-                    self.visit_expr(else_result)?;
+                    self.visit_expr(plan, else_result)?;
                 }
 
                 ControlFlow::Continue(())
