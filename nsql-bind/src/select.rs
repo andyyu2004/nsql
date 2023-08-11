@@ -156,6 +156,11 @@ impl<'a, 'env, S: StorageEngine> SelectBinder<'a, 'env, S> {
         }
 
         impl Folder for ExprReplacer<'_> {
+            #[inline]
+            fn as_dyn(&mut self) -> &mut dyn Folder {
+                self
+            }
+
             fn fold_expr(&mut self, expr: ir::Expr) -> ir::Expr {
                 const AGGREGATE_TABLE_NAME: Path = Path::Unqualified(Name::new_inline("agg"));
 

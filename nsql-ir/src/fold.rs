@@ -1,16 +1,18 @@
 use crate::*;
 
 pub trait Folder {
+    fn as_dyn(&mut self) -> &mut dyn Folder;
+
     #[inline]
     fn fold_plan(&mut self, plan: Plan) -> Plan {
-        plan
+        plan.fold_with(self.as_dyn())
     }
 
     /// Replace an expression, this must be type preserving.
     /// Implement this method if you want to replace an expression with a different expression.
     #[inline]
     fn fold_expr(&mut self, expr: Expr) -> Expr {
-        expr
+        expr.fold_with(self.as_dyn())
     }
 
     #[inline]
@@ -46,21 +48,21 @@ pub trait Folder {
 }
 
 pub trait PlanFold: Sized {
-    fn fold_with(self, folder: &mut impl Folder) -> Self;
+    fn fold_with(self, folder: &mut dyn Folder) -> Self;
 
     #[inline]
-    fn super_fold_with(self, folder: &mut impl Folder) -> Self {
+    fn super_fold_with(self, folder: &mut dyn Folder) -> Self {
         self.fold_with(folder)
     }
 }
 
 impl PlanFold for Plan {
     #[inline]
-    fn super_fold_with(self, folder: &mut impl Folder) -> Self {
+    fn super_fold_with(self, folder: &mut dyn Folder) -> Self {
         folder.fold_plan(self)
     }
 
-    fn fold_with(self, folder: &mut impl Folder) -> Self {
+    fn fold_with(self, folder: &mut dyn Folder) -> Self {
         match self {
             Plan::Show(_)
             | Plan::Drop(_)
@@ -149,26 +151,26 @@ impl PlanFold for Plan {
 }
 
 pub trait ExprFold: Sized {
-    fn fold_with(self, folder: &mut impl Folder) -> Self;
+    fn fold_with(self, folder: &mut dyn Folder) -> Self;
 
-    fn super_fold_with(self, folder: &mut impl Folder) -> Self {
+    fn super_fold_with(self, folder: &mut dyn Folder) -> Self {
         self.fold_with(folder)
     }
 }
 
 impl ExprFold for OrderExpr {
     #[inline]
-    fn fold_with(self, folder: &mut impl Folder) -> Self {
+    fn fold_with(self, folder: &mut dyn Folder) -> Self {
         Self { expr: folder.fold_expr(self.expr), asc: self.asc }
     }
 }
 
 impl ExprFold for Expr {
-    fn super_fold_with(self, folder: &mut impl Folder) -> Self {
+    fn super_fold_with(self, folder: &mut dyn Folder) -> Self {
         folder.fold_expr(self)
     }
 
-    fn fold_with(self, folder: &mut impl Folder) -> Self {
+    fn fold_with(self, folder: &mut dyn Folder) -> Self {
         let kind = match self.kind {
             ExprKind::Literal(lit) => ExprKind::Literal(lit),
             ExprKind::ColumnRef { qpath, index } => ExprKind::ColumnRef { qpath, index },

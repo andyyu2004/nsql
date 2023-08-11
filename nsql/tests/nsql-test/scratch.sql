@@ -1,0 +1,1 @@
+SELECT x FROM (VALUES (1)) AS t(x) WHERE x = (SELECT 1)

@@ -21,6 +21,11 @@ pub fn optimize(mut plan: Box<ir::Plan>) -> Box<ir::Plan> {
 struct Flattener;
 
 impl Folder for Flattener {
+    #[inline]
+    fn as_dyn(&mut self) -> &mut dyn Folder {
+        self
+    }
+
     fn fold_expr(&mut self, expr: ir::Expr) -> ir::Expr {
         match expr.kind {
             ir::ExprKind::Subquery(plan) => {
@@ -34,6 +39,11 @@ impl Folder for Flattener {
 struct IdentityProjectionRemover;
 
 impl Folder for IdentityProjectionRemover {
+    #[inline]
+    fn as_dyn(&mut self) -> &mut dyn Folder {
+        self
+    }
+
     fn fold_plan(&mut self, plan: ir::Plan) -> ir::Plan {
         fn is_identity_projection(source_schema: &[LogicalType], projection: &[ir::Expr]) -> bool {
             source_schema.len() == projection.len()
