@@ -19,9 +19,21 @@ pub struct Expr {
     pub kind: ExprKind,
 }
 
+// convenient for `mem::take`
+impl Default for Expr {
+    #[inline]
+    fn default() -> Self {
+        Expr::NULL
+    }
+}
+
 impl Expr {
     pub(crate) const NULL: Expr =
         Expr { ty: LogicalType::Null, kind: ExprKind::Literal(Value::Null) };
+
+    pub fn new_column_ref(ty: LogicalType, qpath: QPath, index: TupleIndex) -> Self {
+        Self { ty, kind: ExprKind::ColumnRef { qpath, index } }
+    }
 
     #[inline]
     pub fn alias(self, alias: impl AsRef<str>) -> Expr {

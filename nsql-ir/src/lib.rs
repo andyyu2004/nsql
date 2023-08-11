@@ -103,7 +103,7 @@ impl fmt::Display for VariableScope {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Default, Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Plan {
     Show(ObjectType),
     Drop(Vec<EntityRef>),
@@ -158,6 +158,7 @@ pub enum Plan {
         source: Box<Plan>,
         order: Box<[OrderExpr]>,
     },
+    #[default] // this is convenient for `mem::take`
     Empty,
     Explain(Box<Plan>),
     Insert {
@@ -405,13 +406,13 @@ impl Plan {
             | Plan::Limit { source, .. }
             | Plan::Order { source, .. } => source.schema(),
             Plan::Empty => &[],
-            Plan::Show(..)
-            | Plan::Drop(..)
+            Plan::Show(..) => &[LogicalType::Text],
+            Plan::Explain(..) => &[LogicalType::Text],
+            Plan::Drop(..)
             | Plan::Transaction(..)
             | Plan::CreateNamespace(..)
             | Plan::CreateTable(..)
-            | Plan::SetVariable { .. }
-            | Plan::Explain(..) => todo!("not sure if these cases will ever be hit"),
+            | Plan::SetVariable { .. } => &[],
         }
     }
 

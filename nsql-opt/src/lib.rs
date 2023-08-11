@@ -2,37 +2,73 @@ use ir::fold::{ExprFold, Folder, PlanFold};
 use nsql_core::LogicalType;
 
 pub fn optimize(mut plan: Box<ir::Plan>) -> Box<ir::Plan> {
-    println!("{}", plan);
-    loop {
-        let passes = [&mut IdentityProjectionRemover as &mut dyn Folder, &mut Flattener];
-        let pre_opt_plan = plan.clone();
-        for pass in passes {
-            plan = pass.fold_boxed_plan(plan);
-        }
-
-        if plan == pre_opt_plan {
-            break;
-        }
+    // loop {
+    let passes = [&mut IdentityProjectionRemover as &mut dyn Folder, &mut SubqueryFlattener];
+    // let pre_opt_plan = plan.clone();
+    for pass in passes {
+        plan = pass.fold_boxed_plan(plan);
     }
+
+    // if plan == pre_opt_plan {
+    //     break;
+    // }
+    // }
 
     plan
 }
 
-struct Flattener;
+struct SubqueryFlattener;
 
-impl Folder for Flattener {
+impl Folder for SubqueryFlattener {
     #[inline]
     fn as_dyn(&mut self) -> &mut dyn Folder {
         self
     }
 
-    fn fold_expr(&mut self, expr: ir::Expr) -> ir::Expr {
-        match expr.kind {
-            ir::ExprKind::Subquery(plan) => {
-                todo!()
-            }
-            _ => expr.fold_with(self),
+    fn fold_plan(&mut self, plan: ir::Plan) -> ir::Plan {
+        println!("optimizing: {plan}");
+        #[derive(Debug)]
+        struct Flattener {
+            column_count: usize,
+            #[allow(clippy::vec_box)]
+            subquery_plans: Vec<Box<ir::Plan>>,
         }
+
+        impl Folder for Flattener {
+            fn as_dyn(&mut self) -> &mut dyn Folder {
+                self
+            }
+
+            fn fold_plan(&mut self, plan: ir::Plan) -> ir::Plan {
+                // we only flatten one layer of the plan at a time, we don't recurse here
+                plan
+            }
+
+            fn fold_expr(&mut self, expr: ir::Expr) -> ir::Expr {
+                match expr.kind {
+                    ir::ExprKind::Subquery(subquery_plan) => {
+                        assert_eq!(subquery_plan.schema().len(), 1);
+                        let subquery_plan = subquery_plan.limit(1);
+                        let ty = subquery_plan.schema()[0].clone();
+                        // we will add a new column to the parent plan (via a join) and then reference it
+                        let i = ir::TupleIndex::new(self.column_count);
+                        self.subquery_plans.push(subquery_plan);
+                        ir::Expr::new_column_ref(ty, ir::QPath::new("", "__subquery__"), i)
+                    }
+                    _ => expr.fold_with(self),
+                }
+            }
+        }
+
+        let mut flattener = Flattener { column_count: plan.schema().len(), subquery_plans: vec![] };
+        let mut plan = Box::new(plan.fold_with(&mut flattener));
+        assert!(flattener.subquery_plans.len() <= 1, "multiple subqueries not implemented");
+
+        if let Some(subquery_plan) = flattener.subquery_plans.pop() {
+            plan = plan.join(ir::Join::Cross, subquery_plan)
+        }
+
+        plan.fold_with(self.as_dyn())
     }
 }
 

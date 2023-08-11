@@ -22,8 +22,8 @@ pub trait Folder {
     }
 
     #[inline]
-    fn fold_plan_in_place(&mut self, boxed_plan: &mut Plan) {
-        *boxed_plan = self.fold_plan(mem::replace(&mut *boxed_plan, Plan::Empty));
+    fn fold_plan_in_place(&mut self, plan: &mut Plan) {
+        *plan = self.fold_plan(mem::take(&mut *plan));
     }
 
     /// Convenience method for folding a boxed expression, implement `fold_expr` not this
@@ -34,8 +34,8 @@ pub trait Folder {
     }
 
     #[inline]
-    fn fold_expr_in_place(&mut self, boxed_expr: &mut Expr) {
-        *boxed_expr = self.fold_expr(mem::replace(&mut *boxed_expr, Expr::NULL));
+    fn fold_expr_in_place(&mut self, expr: &mut Expr) {
+        *expr = self.fold_expr(mem::take(&mut *expr));
     }
 
     #[inline]

@@ -18,6 +18,7 @@ pub trait Visitor {
     }
 
     fn walk_plan(&mut self, plan: &Plan) -> ControlFlow<()> {
+        // we must visit the expression before recursing on the plan (i.e. somewhat breadth-first)
         match plan {
             Plan::Show(_typ) => ControlFlow::Continue(()),
             Plan::Drop(_refs) => ControlFlow::Continue(()),
@@ -29,53 +30,55 @@ pub trait Visitor {
                 ControlFlow::Continue(())
             }
             Plan::Projection { source, projection, projected_schema: _ } => {
-                self.visit_plan(source)?;
-                self.visit_exprs(projection)
+                self.visit_exprs(projection)?;
+                self.visit_plan(source)
             }
             Plan::Filter { source, predicate } => {
-                self.visit_plan(source)?;
-                self.visit_expr(predicate)
+                self.visit_expr(predicate)?;
+                self.visit_plan(source)
             }
             Plan::Unnest { expr, schema: _ } => self.visit_expr(expr),
             Plan::Values { values: _, schema: _ } => ControlFlow::Continue(()),
             Plan::Join { schema: _, join, lhs, rhs } => {
-                self.visit_plan(lhs)?;
-                self.visit_plan(rhs)?;
                 match join {
                     Join::Inner(constraint)
                     | Join::Left(constraint)
                     | Join::Right(constraint)
                     | Join::Full(constraint) => self.visit_join_constraint(constraint),
                     Join::Cross => ControlFlow::Continue(()),
-                }
+                }?;
+                self.visit_plan(lhs)?;
+                self.visit_plan(rhs)
             }
             Plan::Limit { source, limit: _ } => self.visit_plan(source),
             Plan::Order { source, order } => {
-                self.visit_plan(source)?;
                 for order_expr in &order[..] {
                     self.visit_expr(&order_expr.expr)?;
                 }
-                ControlFlow::Continue(())
+                self.visit_plan(source)
             }
             Plan::Empty => ControlFlow::Continue(()),
             Plan::Explain(plan) => self.visit_plan(plan),
             Plan::Insert { table: _, source, returning, schema: _ } => {
-                self.visit_plan(source)?;
                 if let Some(returning) = returning {
                     self.visit_exprs(returning)?;
                 }
-                ControlFlow::Continue(())
+                self.visit_plan(source)
             }
             Plan::Update { table: _, source, returning, schema: _ } => {
-                self.visit_plan(source)?;
                 if let Some(returning) = returning {
                     self.visit_exprs(returning)?;
                 }
-                ControlFlow::Continue(())
+                self.visit_plan(source)
             }
-            Plan::Aggregate { source, functions: _, group_by, schema: _ } => {
-                self.visit_plan(source)?;
-                self.visit_exprs(group_by)
+            Plan::Aggregate { source, functions, group_by, schema: _ } => {
+                for (_f, args) in &functions[..] {
+                    for arg in &args[..] {
+                        self.visit_expr(arg)?;
+                    }
+                }
+                self.visit_exprs(group_by)?;
+                self.visit_plan(source)
             }
         }
     }
