@@ -156,12 +156,12 @@ impl SystemEntity for Function {
         TableStorageInfo::new(
             Table::FUNCTION.untyped(),
             vec![
-                ColumnStorageInfo::new(LogicalType::Oid, true),
-                ColumnStorageInfo::new(LogicalType::Byte, false),
-                ColumnStorageInfo::new(LogicalType::Oid, false),
-                ColumnStorageInfo::new(LogicalType::Text, false),
-                ColumnStorageInfo::new(LogicalType::array(LogicalType::Type), true),
-                ColumnStorageInfo::new(LogicalType::Type, false),
+                ColumnStorageInfo::new("oid", LogicalType::Oid, true),
+                ColumnStorageInfo::new("kind", LogicalType::Byte, false),
+                ColumnStorageInfo::new("namespace", LogicalType::Oid, false),
+                ColumnStorageInfo::new("name", LogicalType::Text, false),
+                ColumnStorageInfo::new("args", LogicalType::array(LogicalType::Type), true),
+                ColumnStorageInfo::new("ret", LogicalType::Type, false),
             ],
         )
     }

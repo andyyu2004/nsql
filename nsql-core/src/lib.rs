@@ -16,6 +16,13 @@ pub struct Name {
     name: SmolStr,
 }
 
+impl PartialEq<&str> for Name {
+    #[inline]
+    fn eq(&self, other: &&str) -> bool {
+        self.name.eq_ignore_ascii_case(other)
+    }
+}
+
 impl rkyv::Archive for Name {
     type Archived = rkyv::string::ArchivedString;
     type Resolver = rkyv::string::StringResolver;

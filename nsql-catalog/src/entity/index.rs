@@ -104,10 +104,10 @@ impl SystemEntity for Index {
         TableStorageInfo::new(
             Table::INDEX.untyped(),
             vec![
-                ColumnStorageInfo::new(LogicalType::Oid, true),
-                ColumnStorageInfo::new(LogicalType::Oid, false),
-                ColumnStorageInfo::new(LogicalType::Int64, false),
-                ColumnStorageInfo::new(LogicalType::TupleExpr, false),
+                ColumnStorageInfo::new("table", LogicalType::Oid, true),
+                ColumnStorageInfo::new("target", LogicalType::Oid, false),
+                ColumnStorageInfo::new("kind", LogicalType::Int64, false),
+                ColumnStorageInfo::new("index_expr", LogicalType::TupleExpr, false),
             ],
         )
     }

@@ -262,8 +262,8 @@ fn range_gen_arc<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
 
 #[derive(Debug, Clone)]
 pub struct TableStorageInfo {
-    name: Name,
-    columns: Vec<ColumnStorageInfo>,
+    pub name: Name,
+    pub columns: Vec<ColumnStorageInfo>,
 }
 
 impl TableStorageInfo {
@@ -294,12 +294,13 @@ impl TableStorageInfo {
 
 #[derive(Debug, Clone)]
 pub struct ColumnStorageInfo {
-    logical_type: LogicalType,
-    is_primary_key: bool,
+    pub name: Name,
+    pub logical_type: LogicalType,
+    pub is_primary_key: bool,
 }
 
 impl ColumnStorageInfo {
-    pub fn new(logical_type: LogicalType, is_primary_key: bool) -> Self {
-        Self { logical_type, is_primary_key }
+    pub fn new(name: impl Into<Name>, logical_type: LogicalType, is_primary_key: bool) -> Self {
+        Self { name: name.into(), logical_type, is_primary_key }
     }
 }

@@ -12,8 +12,8 @@ pub struct Column {
 }
 
 impl From<&Column> for ColumnStorageInfo {
-    fn from(val: &Column) -> Self {
-        ColumnStorageInfo::new(val.ty.clone(), val.is_primary_key)
+    fn from(col: &Column) -> Self {
+        ColumnStorageInfo::new(col.name.clone(), col.ty.clone(), col.is_primary_key)
     }
 }
 
@@ -141,11 +141,11 @@ impl SystemEntity for Column {
         TableStorageInfo::new(
             Table::ATTRIBUTE.untyped(),
             vec![
-                ColumnStorageInfo::new(LogicalType::Oid, true),
-                ColumnStorageInfo::new(LogicalType::Int64, true),
-                ColumnStorageInfo::new(LogicalType::Type, false),
-                ColumnStorageInfo::new(LogicalType::Text, false),
-                ColumnStorageInfo::new(LogicalType::Bool, false),
+                ColumnStorageInfo::new("table", LogicalType::Oid, true),
+                ColumnStorageInfo::new("index", LogicalType::Int64, true),
+                ColumnStorageInfo::new("ty", LogicalType::Type, false),
+                ColumnStorageInfo::new("name", LogicalType::Text, false),
+                ColumnStorageInfo::new("is_primary_key", LogicalType::Bool, false),
             ],
         )
     }

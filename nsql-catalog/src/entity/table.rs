@@ -176,9 +176,9 @@ impl SystemEntity for Table {
         TableStorageInfo::new(
             Table::TABLE.untyped(),
             vec![
-                ColumnStorageInfo::new(LogicalType::Oid, true),
-                ColumnStorageInfo::new(LogicalType::Oid, false),
-                ColumnStorageInfo::new(LogicalType::Text, false),
+                ColumnStorageInfo::new("oid", LogicalType::Oid, true),
+                ColumnStorageInfo::new("namespace", LogicalType::Oid, false),
+                ColumnStorageInfo::new("name", LogicalType::Text, false),
             ],
         )
     }

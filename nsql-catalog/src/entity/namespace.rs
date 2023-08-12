@@ -53,8 +53,8 @@ impl SystemEntity for Namespace {
         TableStorageInfo::new(
             Table::NAMESPACE.untyped(),
             vec![
-                ColumnStorageInfo::new(LogicalType::Oid, true),
-                ColumnStorageInfo::new(LogicalType::Text, false),
+                ColumnStorageInfo::new("oid", LogicalType::Oid, true),
+                ColumnStorageInfo::new("name", LogicalType::Text, false),
             ],
         )
     }
