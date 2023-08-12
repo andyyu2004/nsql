@@ -119,8 +119,8 @@ impl PlanFold for Plan {
                     rhs: folder.fold_boxed_plan(rhs),
                 }
             }
-            Plan::Limit { source, limit } => {
-                Plan::Limit { source: folder.fold_boxed_plan(source), limit }
+            Plan::Limit { source, limit, exceeded_message } => {
+                Plan::Limit { source: folder.fold_boxed_plan(source), limit, exceeded_message }
             }
             Plan::Order { source, order } => {
                 let mut source = folder.fold_boxed_plan(source);

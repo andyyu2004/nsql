@@ -7,3 +7,8 @@ query I
 SELECT x FROM (VALUES (1), (2)) AS t(x) WHERE x = (SELECT 1)
 ----
 1
+
+query error
+SELECT x FROM (VALUES (1)) AS t(x) WHERE x = (SELECT * FROM (VALUES (1), (2)))
+----
+subquery used as an expression must return at most one row

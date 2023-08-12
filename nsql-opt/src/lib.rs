@@ -63,7 +63,10 @@ impl Folder for SubqueryFlattener {
                         self.found_subquery |= true;
                         assert_eq!(subquery_plan.schema().len(), 1);
                         // FIXME we should error if the number of rows exceeds one
-                        let subquery_plan = subquery_plan.limit(1);
+                        let subquery_plan = subquery_plan.strict_limit(
+                            1,
+                            "subquery used as an expression must return at most one row",
+                        );
                         let ty = subquery_plan.schema()[0].clone();
 
                         let i = ir::TupleIndex::new(plan.schema().len());

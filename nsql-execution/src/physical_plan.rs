@@ -174,7 +174,9 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalPlanner<'env, S> {
                 f(self, tx, source)?,
                 self.compile_exprs(projection),
             ),
-            Plan::Limit { source, limit } => PhysicalLimit::plan(f(self, tx, source)?, limit),
+            Plan::Limit { source, limit, exceeded_message } => {
+                PhysicalLimit::plan(f(self, tx, source)?, limit, exceeded_message)
+            }
             Plan::Order { source, order } => {
                 PhysicalOrder::plan(f(self, tx, source)?, self.compile_order_exprs(order))
             }

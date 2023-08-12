@@ -1,5 +1,7 @@
 use std::sync::atomic::{self, AtomicU64};
 
+use anyhow::bail;
+
 use super::*;
 
 #[derive(Debug)]
@@ -7,6 +9,7 @@ pub struct PhysicalLimit<'env, 'txn, S, M> {
     children: [Arc<dyn PhysicalNode<'env, 'txn, S, M>>; 1],
     yielded: AtomicU64,
     limit: u64,
+    exceeded_message: Option<&'static str>,
 }
 
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
@@ -15,8 +18,9 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     pub(crate) fn plan(
         source: Arc<dyn PhysicalNode<'env, 'txn, S, M>>,
         limit: u64,
+        exceeded_message: Option<&'static str>,
     ) -> Arc<dyn PhysicalNode<'env, 'txn, S, M>> {
-        Arc::new(Self { children: [source], limit, yielded: AtomicU64::new(0) })
+        Arc::new(Self { children: [source], limit, yielded: AtomicU64::new(0), exceeded_message })
     }
 }
 
@@ -28,7 +32,12 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
         _ecx: &'txn ExecutionContext<'_, 'env, S, M>,
         input: Tuple,
     ) -> ExecutionResult<OperatorState<Tuple>> {
-        if self.yielded.fetch_add(1, atomic::Ordering::AcqRel) >= self.limit {
+        let yielded = self.yielded.fetch_add(1, atomic::Ordering::AcqRel);
+        if yielded >= self.limit {
+            if let Some(msg) = self.exceeded_message {
+                bail!("{msg}");
+            }
+
             return Ok(OperatorState::Done);
         }
 

@@ -51,7 +51,7 @@ pub trait Visitor {
                 self.visit_plan(lhs)?;
                 self.visit_plan(rhs)
             }
-            Plan::Limit { source, limit: _ } => self.visit_plan(source),
+            Plan::Limit { source, limit: _, exceeded_message: _ } => self.visit_plan(source),
             Plan::Order { source, order } => {
                 for order_expr in &order[..] {
                     self.visit_expr(plan, &order_expr.expr)?;

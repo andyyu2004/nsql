@@ -154,6 +154,7 @@ pub enum Plan {
     Limit {
         source: Box<Plan>,
         limit: u64,
+        exceeded_message: Option<&'static str>,
     },
     Order {
         source: Box<Plan>,
@@ -281,7 +282,7 @@ impl fmt::Display for PlanFormatter<'_> {
                 self.child(lhs).fmt(f)?;
                 self.child(rhs).fmt(f)
             }
-            Plan::Limit { source, limit } => {
+            Plan::Limit { source, limit, exceeded_message: _ } => {
                 writeln!(f, "{:indent$}limit ({})", "", limit, indent = self.indent)?;
                 self.child(source).fmt(f)
             }
@@ -469,7 +470,12 @@ impl Plan {
 
     #[inline]
     pub fn limit(self: Box<Self>, limit: u64) -> Box<Self> {
-        Box::new(Plan::Limit { source: self, limit })
+        Box::new(Plan::Limit { source: self, limit, exceeded_message: None })
+    }
+
+    #[inline]
+    pub fn strict_limit(self: Box<Self>, limit: u64, exceeded_message: &'static str) -> Box<Self> {
+        Box::new(Plan::Limit { source: self, limit, exceeded_message: Some(exceeded_message) })
     }
 
     #[inline]
