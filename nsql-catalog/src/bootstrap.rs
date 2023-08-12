@@ -27,6 +27,7 @@ struct BootstrapNamespace {
 struct BootstrapTable {
     oid: Oid<Table>,
     name: &'static str,
+    // FIXME deduplicate between this definition and `T::bootstrap_table_storage_info`
     columns: Vec<BootstrapColumn>,
     indexes: Vec<BootstrapIndex>,
 }
@@ -127,6 +128,10 @@ impl Function {
     pub(crate) const SUM_INT: Oid<Self> = Oid::new(101);
     pub(crate) const PRODUCT_INT: Oid<Self> = Oid::new(102);
     pub(crate) const AVG_INT: Oid<Self> = Oid::new(103);
+
+    pub(crate) const GT_INT: Oid<Self> = Oid::new(104);
+    pub(crate) const GT_FLOAT: Oid<Self> = Oid::new(105);
+    pub(crate) const GT_DEC: Oid<Self> = Oid::new(106);
 }
 
 // FIXME there is still quite a bit of duplicated work between here and `bootstrap_table_storage_info`
@@ -213,13 +218,15 @@ fn bootstrap_info() -> BootstrapInfo {
                 name: "nsql_function",
                 columns: vec![
                     BootstrapColumn { name: "oid", ty: LogicalType::Oid, pk: true },
+                    BootstrapColumn { name: "kind", ty: LogicalType::Byte, pk: false },
                     BootstrapColumn { name: "namespace", ty: LogicalType::Oid, pk: false },
-                    BootstrapColumn { name: "name", ty: LogicalType::Int64, pk: false },
+                    BootstrapColumn { name: "name", ty: LogicalType::Text, pk: false },
                     BootstrapColumn {
                         name: "args",
                         ty: LogicalType::array(LogicalType::Type),
-                        pk: false,
+                        pk: true,
                     },
+                    BootstrapColumn { name: "ret", ty: LogicalType::Type, pk: false },
                 ],
                 indexes: vec![BootstrapIndex {
                     table: Table::FUNCTION_NAME_ARGS_UNIQUE_INDEX,
@@ -233,7 +240,7 @@ fn bootstrap_info() -> BootstrapInfo {
             BootstrapFunction {
                 oid: Function::RANGE2,
                 name: "range",
-                kind: FunctionKind::Function,
+                kind: FunctionKind::Scalar,
                 args: vec![LogicalType::Int64, LogicalType::Int64],
                 ret: LogicalType::array(LogicalType::Int64),
             },
@@ -257,6 +264,27 @@ fn bootstrap_info() -> BootstrapInfo {
                 kind: FunctionKind::Aggregate,
                 args: vec![LogicalType::Int64],
                 ret: LogicalType::Float64,
+            },
+            BootstrapFunction {
+                oid: Function::GT_INT,
+                name: ">",
+                kind: FunctionKind::Scalar,
+                args: vec![LogicalType::Int64, LogicalType::Int64],
+                ret: LogicalType::Bool,
+            },
+            BootstrapFunction {
+                oid: Function::GT_FLOAT,
+                name: ">",
+                kind: FunctionKind::Scalar,
+                args: vec![LogicalType::Float64, LogicalType::Int64],
+                ret: LogicalType::Bool,
+            },
+            BootstrapFunction {
+                oid: Function::GT_DEC,
+                name: ">",
+                kind: FunctionKind::Scalar,
+                args: vec![LogicalType::Decimal, LogicalType::Decimal],
+                ret: LogicalType::Bool,
             },
         ],
     }

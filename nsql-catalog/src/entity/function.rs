@@ -27,7 +27,7 @@ pub struct Function {
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 #[repr(u8)]
 pub enum FunctionKind {
-    Function,
+    Scalar,
     Aggregate, // note: make sure the assertion below is changed if variants are reordered
 }
 
@@ -99,7 +99,7 @@ impl Function {
         // otherwise, we store the bytecode for non-builtin functions
         // let bytecode: Expr = todo!();
 
-        panic!("missing scalar function")
+        panic!("missing scalar function definition")
     }
 
     #[inline]
@@ -160,7 +160,7 @@ impl SystemEntity for Function {
                 ColumnStorageInfo::new(LogicalType::Byte, false),
                 ColumnStorageInfo::new(LogicalType::Oid, false),
                 ColumnStorageInfo::new(LogicalType::Text, false),
-                ColumnStorageInfo::new(LogicalType::array(LogicalType::Type), false),
+                ColumnStorageInfo::new(LogicalType::array(LogicalType::Type), true),
                 ColumnStorageInfo::new(LogicalType::Type, false),
             ],
         )

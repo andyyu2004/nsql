@@ -176,9 +176,9 @@ fn unsplit_tuple(
     let vs = unsafe { rkyv::archived_root::<Vec<Value>>(v) };
     let n = info.columns.len();
     debug_assert_eq!(
-        ks.len() + vs.len(),
         n,
-        "expected {} columns, got {} columns (column_def: {:?})",
+        ks.len() + vs.len(),
+        "expected {} columns, got {} columns (column_def: {:#?})",
         n,
         ks.len() + vs.len(),
         info.columns

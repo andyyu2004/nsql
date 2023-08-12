@@ -1,0 +1,9 @@
+query B
+SELECT 2 > 1
+----
+true
+
+query B
+SELECT 2.0 > 1.0
+----
+true

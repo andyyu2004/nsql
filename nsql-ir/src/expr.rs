@@ -31,8 +31,14 @@ impl Expr {
     pub(crate) const NULL: Expr =
         Expr { ty: LogicalType::Null, kind: ExprKind::Literal(Value::Null) };
 
+    #[inline]
     pub fn new_column_ref(ty: LogicalType, qpath: QPath, index: TupleIndex) -> Self {
         Self { ty, kind: ExprKind::ColumnRef { qpath, index } }
+    }
+
+    #[inline]
+    pub fn ty(&self) -> LogicalType {
+        self.ty.clone()
     }
 
     #[inline]

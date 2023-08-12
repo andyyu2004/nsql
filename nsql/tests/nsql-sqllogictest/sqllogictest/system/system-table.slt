@@ -9,6 +9,9 @@ nsql_catalog
 statement ok
 SELECT * FROM nsql_catalog.nsql_attribute
 
+statement ok
+SELECT * FROM nsql_catalog.nsql_function
+
 query T rowsort
 SELECT * EXCLUDE (oid, namespace) FROM nsql_catalog.nsql_table
 ----

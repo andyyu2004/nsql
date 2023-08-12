@@ -339,6 +339,26 @@ impl FromValue for bool {
     }
 }
 
+impl FromValue for f64 {
+    #[inline]
+    fn from_value(value: Value) -> Result<Self, CastError<Self>> {
+        match value {
+            Value::Float64(i) => Ok(f64::from_bits(i)),
+            _ => Err(CastError { value, phantom: PhantomData }),
+        }
+    }
+}
+
+impl FromValue for Decimal {
+    #[inline]
+    fn from_value(value: Value) -> Result<Self, CastError<Self>> {
+        match value {
+            Value::Decimal(d) => Ok(d),
+            _ => Err(CastError { value, phantom: PhantomData }),
+        }
+    }
+}
+
 impl FromValue for i64 {
     #[inline]
     fn from_value(value: Value) -> Result<Self, CastError<Self>> {

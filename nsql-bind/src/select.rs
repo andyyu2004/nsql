@@ -261,7 +261,7 @@ impl<'a, 'env, S: StorageEngine> SelectBinder<'a, 'env, S> {
                 let (function, args) = self.binder.bind_function(tx, scope, f)?;
                 let ty = function.return_type();
                 let kind = match function.kind() {
-                    FunctionKind::Function => ir::ExprKind::FunctionCall { function, args },
+                    FunctionKind::Scalar => ir::ExprKind::FunctionCall { function, args },
                     FunctionKind::Aggregate => {
                         let (idx, _exists) = self.aggregates.insert_full((function, args));
                         ir::ExprKind::ColumnRef {

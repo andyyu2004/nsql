@@ -41,8 +41,11 @@ macro_rules! not_implemented {
 use not_implemented;
 
 macro_rules! unbound {
-    ($ty:ty, $path: expr) => {
+    ($ty:ty, $path:expr) => {
         anyhow::anyhow!("{} `{}` not in scope", <$ty>::desc(), $path.clone())
+    };
+    ($ty:ty, $path:expr, $key:expr) => {
+        anyhow::anyhow!("{} `{}` not in scope {:?}", <$ty>::desc(), $path.clone(), $key)
     };
 }
 
@@ -553,11 +556,12 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                         .find(self.catalog, tx, None, schema)?
                         .ok_or_else(|| unbound!(Namespace, path))?;
 
+                    let search_key = mk_search_key(name);
                     let entity = self
                         .catalog
                         .system_table::<T>(tx)?
-                        .find(self.catalog, tx, Some(namespace.key()), &mk_search_key(name))?
-                        .ok_or_else(|| unbound!(T, path))?;
+                        .find(self.catalog, tx, Some(namespace.key()), &search_key)?
+                        .ok_or_else(|| unbound!(T, path, search_key))?;
 
                     Ok(entity.key())
                 }
@@ -1069,7 +1073,21 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                     // ast::BinaryOperator::Multiply => ir::BinOp::Mul,
                     // ast::BinaryOperator::Divide => ir::BinOp::Div,
                     // ast::BinaryOperator::Modulo => ir::BinOp::Mod,
-                    // ast::BinaryOperator::Gt => ir::BinOp::Gt,
+                    ast::BinaryOperator::Gt => {
+                        let function = self.bind_namespaced_entity::<Function>(
+                            tx,
+                            &Path::unqualified(">"),
+                            |name| (name.clone(), vec![lhs.ty.clone(), rhs.ty.clone()].into()),
+                        )?;
+                        let function = Box::new(self.catalog.get::<Function>(tx, function)?);
+                        return Ok(ir::Expr {
+                            ty: function.return_type(),
+                            kind: ir::ExprKind::FunctionCall {
+                                function,
+                                args: vec![lhs, rhs].into(),
+                            },
+                        });
+                    }
                     // ast::BinaryOperator::Lt => ir::BinOp::Lt,
                     // ast::BinaryOperator::GtEq => ir::BinOp::Ge,
                     // ast::BinaryOperator::LtEq => ir::BinOp::Le,
@@ -1129,7 +1147,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                 let (function, args) = self.bind_function(tx, scope, f)?;
                 let return_type = function.return_type();
                 match function.kind() {
-                    FunctionKind::Function => {
+                    FunctionKind::Scalar => {
                         (return_type, ir::ExprKind::FunctionCall { function, args })
                     }
                     FunctionKind::Aggregate => bail!("aggregate not allowed here"),

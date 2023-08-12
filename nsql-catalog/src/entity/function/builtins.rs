@@ -1,7 +1,19 @@
 use nsql_core::Oid;
-use nsql_storage::value::Value;
+use nsql_storage::value::{Decimal, Value};
 
 use super::*;
+
+macro_rules! comparison {
+    ($op:tt: $ty:ty) => {
+        |mut args| {
+            assert_eq!(args.len(), 2);
+            let a: $ty = args[0].take().cast_non_null().unwrap();
+            let b: $ty = args[1].take().cast_non_null().unwrap();
+            Value::Bool(a $op b)
+        }
+    };
+
+}
 
 pub(crate) fn get_scalar_function(oid: Oid<Function>) -> Option<ScalarFunction> {
     Some(match oid {
@@ -11,6 +23,9 @@ pub(crate) fn get_scalar_function(oid: Oid<Function>) -> Option<ScalarFunction> 
             let end: i64 = args[1].take().cast_non_null().unwrap();
             Value::Array((start..end).map(Value::Int64).collect())
         },
+        Function::GT_INT => comparison!(> : i64),
+        Function::GT_FLOAT => comparison!(> : f64),
+        Function::GT_DEC => comparison!(> : Decimal),
         _ => return None,
     })
 }
