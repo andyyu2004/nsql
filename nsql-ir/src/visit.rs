@@ -38,7 +38,7 @@ pub trait Visitor {
                 self.visit_plan(source)
             }
             // FIXME where is the child of unnest try unnesting a column in a test before continuing with this change
-            Plan::Unnest { expr, schema: _ } => self.visit_expr(Plan::empty(), expr),
+            Plan::Unnest { expr, schema: _ } => self.visit_expr(&Plan::Empty, expr),
             Plan::Values { values: _, schema: _ } => ControlFlow::Continue(()),
             Plan::Join { schema: _, join, lhs, rhs } => {
                 match join {
@@ -62,13 +62,13 @@ pub trait Visitor {
             Plan::Explain(plan) => self.visit_plan(plan),
             Plan::Insert { table: _, source, returning, schema: _ } => {
                 if let Some(returning) = returning {
-                    self.visit_exprs(returning)?;
+                    self.visit_exprs(source, returning)?;
                 }
                 self.visit_plan(source)
             }
             Plan::Update { table: _, source, returning, schema: _ } => {
                 if let Some(returning) = returning {
-                    self.visit_exprs(returning)?;
+                    self.visit_exprs(source, returning)?;
                 }
                 self.visit_plan(source)
             }
@@ -78,7 +78,7 @@ pub trait Visitor {
                         self.visit_expr(plan, arg)?;
                     }
                 }
-                self.visit_exprs(group_by)?;
+                self.visit_exprs(source, group_by)?;
                 self.visit_plan(source)
             }
         }
@@ -111,13 +111,13 @@ pub trait Visitor {
     fn walk_expr(&mut self, plan: &Plan, expr: &Expr) -> ControlFlow<()> {
         match &expr.kind {
             ExprKind::Literal(_) => ControlFlow::Continue(()),
-            ExprKind::Array(exprs) => self.visit_exprs(exprs),
+            ExprKind::Array(exprs) => self.visit_exprs(plan, exprs),
             ExprKind::BinOp { op: _, lhs, rhs } => {
                 self.visit_expr(plan, lhs)?;
                 self.visit_expr(plan, rhs)
             }
             ExprKind::ColumnRef { .. } => ControlFlow::Continue(()),
-            ExprKind::FunctionCall { function: _, args } => self.visit_exprs(args),
+            ExprKind::FunctionCall { function: _, args } => self.visit_exprs(plan, args),
             ExprKind::Alias { alias: _, expr } => self.visit_expr(plan, expr),
             ExprKind::Case { scrutinee, cases, else_result } => {
                 self.visit_expr(plan, scrutinee)?;
@@ -132,7 +132,7 @@ pub trait Visitor {
 
                 ControlFlow::Continue(())
             }
-            ExprKind::UnaryOp { op: _, expr } => self.visit_expr(expr),
+            ExprKind::UnaryOp { op: _, expr } => self.visit_expr(plan, expr),
             ExprKind::Subquery(plan) => self.visit_plan(plan),
         }
     }

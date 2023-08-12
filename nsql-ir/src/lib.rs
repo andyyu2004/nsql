@@ -76,7 +76,7 @@ impl fmt::Display for ObjectType {
     }
 }
 
-#[derive(Copy, Clone, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub enum EntityRef {
     Table(Oid<Table>),
 }
@@ -104,7 +104,7 @@ impl fmt::Display for VariableScope {
     }
 }
 
-#[derive(Default, Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
 pub enum Plan {
     Show(ObjectType),
     Drop(Vec<EntityRef>),
@@ -159,7 +159,7 @@ pub enum Plan {
         source: Box<Plan>,
         order: Box<[OrderExpr]>,
     },
-    #[default] // this is convenient for `mem::take`
+    #[default]
     Empty,
     Explain(Box<Plan>),
     Insert {
@@ -213,7 +213,13 @@ impl Plan {
 
 struct PlanFormatter<'p> {
     plan: &'p Plan,
-    _indent: usize,
+    indent: usize,
+}
+
+impl<'p> PlanFormatter<'p> {
+    fn child(&self, plan: &'p Plan) -> Self {
+        Self { plan, indent: self.indent + 2 }
+    }
 }
 
 impl fmt::Display for PlanFormatter<'_> {
@@ -253,33 +259,41 @@ impl fmt::Display for PlanFormatter<'_> {
                 Ok(())
             }
             Plan::Projection { source, projection, projected_schema: _ } => {
-                write!(f, "projection ({})", projection.iter().format(","))?;
-                writeln!(f, "  {source}")
+                writeln!(
+                    f,
+                    "{:indent$}projection ({})",
+                    "",
+                    projection.iter().format(","),
+                    indent = self.indent
+                )?;
+                self.child(source).fmt(f)
             }
             Plan::Filter { source, predicate } => {
-                write!(f, "filter ({})", predicate)?;
-                writeln!(f, "  {source}")
+                writeln!(f, "{:indent$}filter ({})", "", predicate, indent = self.indent)?;
+                self.child(source).fmt(f)
             }
             Plan::Unnest { schema: _, expr } => write!(f, "UNNEST ({})", expr),
-            Plan::Values { values, schema: _ } => {
-                write!(f, "VALUES (",)?;
-                for row in &values[..] {
-                    write!(f, "({})", row.iter().format(","))?;
-                }
-                writeln!(f, ")")
+            Plan::Values { values: _, schema: _ } => {
+                writeln!(f, "{:indent$}VALUES", "", indent = self.indent)
             }
             Plan::Join { schema: _, join, lhs, rhs } => {
-                write!(f, "join ({})", join)?;
-                writeln!(f, "  {lhs}")?;
-                writeln!(f, "  {rhs}")
+                writeln!(f, "{:indent$}join ({})", "", join, indent = self.indent)?;
+                self.child(lhs).fmt(f)?;
+                self.child(rhs).fmt(f)
             }
             Plan::Limit { source, limit } => {
-                write!(f, "limit ({})", limit)?;
-                writeln!(f, "  {source}")
+                writeln!(f, "{:indent$}limit ({})", "", limit, indent = self.indent)?;
+                self.child(source).fmt(f)
             }
             Plan::Order { source, order } => {
-                write!(f, "order ({})", order.iter().format(","))?;
-                writeln!(f, "  {source}")
+                write!(
+                    f,
+                    "{:indent$}order ({})",
+                    "",
+                    order.iter().format(","),
+                    indent = self.indent
+                )?;
+                self.child(source).fmt(f)
             }
             Plan::Empty => write!(f, "empty"),
             Plan::Explain(plan) => write!(f, "EXPLAIN {plan}"),
@@ -304,7 +318,7 @@ impl fmt::Display for PlanFormatter<'_> {
 
 impl fmt::Display for Plan {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        PlanFormatter { plan: self, _indent: 0 }.fmt(f)
+        PlanFormatter { plan: self, indent: 0 }.fmt(f)
     }
 }
 
@@ -406,10 +420,9 @@ impl Plan {
             Plan::Filter { source, .. }
             | Plan::Limit { source, .. }
             | Plan::Order { source, .. } => source.schema(),
-            Plan::Empty => &[],
-            Plan::Show(..) => &[LogicalType::Text],
-            Plan::Explain(..) => &[LogicalType::Text],
-            Plan::Drop(..)
+            Plan::Show(..) | Plan::Explain(..) => &[LogicalType::Text],
+            Plan::Empty
+            | Plan::Drop(..)
             | Plan::Transaction(..)
             | Plan::CreateNamespace(..)
             | Plan::CreateTable(..)

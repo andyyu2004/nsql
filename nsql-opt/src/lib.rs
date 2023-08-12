@@ -1,12 +1,21 @@
 use ir::fold::{ExprFold, Folder, PlanFold};
 use nsql_core::LogicalType;
 
+trait Pass: Folder {
+    fn name(&self) -> &'static str;
+}
+
 pub fn optimize(mut plan: Box<ir::Plan>) -> Box<ir::Plan> {
+    plan.validate().unwrap_or_else(|err| panic!("invalid plan passed to optimizer: {err}"));
+
     // loop {
-    let passes = [&mut IdentityProjectionRemover as &mut dyn Folder, &mut SubqueryFlattener];
+    let passes = [&mut IdentityProjectionRemover as &mut dyn Pass, &mut SubqueryFlattener];
     // let pre_opt_plan = plan.clone();
     for pass in passes {
         plan = pass.fold_boxed_plan(plan);
+        println!("plan after pass `{}`:\n{plan}", pass.name());
+        plan.validate()
+            .unwrap_or_else(|err| panic!("invalid plan after pass `{}`: {err}", pass.name()));
     }
 
     // if plan == pre_opt_plan {
@@ -19,6 +28,12 @@ pub fn optimize(mut plan: Box<ir::Plan>) -> Box<ir::Plan> {
 
 struct SubqueryFlattener;
 
+impl Pass for SubqueryFlattener {
+    fn name(&self) -> &'static str {
+        "subquery flattening"
+    }
+}
+
 impl Folder for SubqueryFlattener {
     #[inline]
     fn as_dyn(&mut self) -> &mut dyn Folder {
@@ -26,7 +41,6 @@ impl Folder for SubqueryFlattener {
     }
 
     fn fold_plan(&mut self, plan: ir::Plan) -> ir::Plan {
-        println!("optimizing: {plan}");
         #[derive(Debug)]
         struct Flattener {
             column_count: usize,
@@ -73,6 +87,12 @@ impl Folder for SubqueryFlattener {
 }
 
 struct IdentityProjectionRemover;
+
+impl Pass for IdentityProjectionRemover {
+    fn name(&self) -> &'static str {
+        "identity projection removal"
+    }
+}
 
 impl Folder for IdentityProjectionRemover {
     #[inline]
