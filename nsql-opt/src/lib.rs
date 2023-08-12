@@ -89,8 +89,7 @@ impl Folder for SubqueryFlattener {
         // then recurse
         let plan = plan.fold_with(self.as_dyn());
 
-        if flattener.found_subquery {
-            assert_eq!(plan.schema().len(), original_plan_columns + 1);
+        if flattener.found_subquery && plan.schema().len() > original_plan_columns {
             // if the flattener added a column, we need to project it away
             *Box::new(plan).project_leftmost_k(original_plan_columns)
         } else {

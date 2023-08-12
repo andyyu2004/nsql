@@ -620,8 +620,8 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                 let (scope, values) = self.bind_values(tx, scope, values)?;
                 (scope, Box::new(ir::Plan::values(values)))
             }
-            ast::SetExpr::Query(_)
-            | ast::SetExpr::SetOperation { .. }
+            ast::SetExpr::Query(query) => self.bind_query(tx, scope, query)?,
+            ast::SetExpr::SetOperation { .. }
             | ast::SetExpr::Insert(_)
             | ast::SetExpr::Table(_)
             | ast::SetExpr::Update(_) => {
