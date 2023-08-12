@@ -11,6 +11,19 @@ use crate::{
     Table, MAIN_SCHEMA,
 };
 
+macro_rules! mk_consts {
+    ([$count:expr] $name:ident) => {
+        pub(crate) const $name: Oid<Self> = Oid::new($count);
+    };
+    ([$count:expr] $name:ident, $($rest:ident),*) => {
+        pub(crate) const $name: Oid<Self> = Oid::new($count);
+        mk_consts!([$count + 1u64] $($rest),*);
+    };
+    ($($name:ident),*) => {
+        mk_consts!([0u64] $($name),*);
+    };
+}
+
 struct BootstrapFunction {
     oid: Oid<Function>,
     name: &'static str,
@@ -103,35 +116,28 @@ pub(crate) fn bootstrap<'env, S: StorageEngine>(
 }
 
 impl Table {
-    pub(crate) const NAMESPACE: Oid<Self> = Oid::new(100);
-    pub(crate) const TABLE: Oid<Self> = Oid::new(101);
-    pub(crate) const ATTRIBUTE: Oid<Self> = Oid::new(102);
-    pub(crate) const TYPE: Oid<Self> = Oid::new(103);
-    pub(crate) const INDEX: Oid<Self> = Oid::new(104);
-    pub(crate) const FUNCTION: Oid<Self> = Oid::new(105);
-
-    pub(crate) const NAMESPACE_NAME_UNIQUE_INDEX: Oid<Self> = Oid::new(205);
-    pub(crate) const TABLE_NAME_UNIQUE_INDEX: Oid<Self> = Oid::new(206);
-    pub(crate) const ATTRIBUTE_NAME_UNIQUE_INDEX: Oid<Self> = Oid::new(207);
-    pub(crate) const TYPE_NAME_UNIQUE_INDEX: Oid<Self> = Oid::new(208);
-    pub(crate) const FUNCTION_NAME_ARGS_UNIQUE_INDEX: Oid<Self> = Oid::new(209);
+    mk_consts![
+        NAMESPACE,
+        TABLE,
+        ATTRIBUTE,
+        TYPE,
+        INDEX,
+        FUNCTION,
+        NAMESPACE_NAME_UNIQUE_INDEX,
+        TABLE_NAME_UNIQUE_INDEX,
+        ATTRIBUTE_NAME_UNIQUE_INDEX,
+        TYPE_NAME_UNIQUE_INDEX,
+        FUNCTION_NAME_ARGS_UNIQUE_INDEX
+    ];
 }
 
 impl Namespace {
-    pub const MAIN: Oid<Self> = Oid::new(101);
-
-    pub(crate) const CATALOG: Oid<Self> = Oid::new(100);
+    pub(crate) const CATALOG: Oid<Self> = Oid::new(0);
+    pub const MAIN: Oid<Self> = Oid::new(1);
 }
 
 impl Function {
-    pub(crate) const RANGE2: Oid<Self> = Oid::new(100);
-    pub(crate) const SUM_INT: Oid<Self> = Oid::new(101);
-    pub(crate) const PRODUCT_INT: Oid<Self> = Oid::new(102);
-    pub(crate) const AVG_INT: Oid<Self> = Oid::new(103);
-
-    pub(crate) const GT_INT: Oid<Self> = Oid::new(104);
-    pub(crate) const GT_FLOAT: Oid<Self> = Oid::new(105);
-    pub(crate) const GT_DEC: Oid<Self> = Oid::new(106);
+    mk_consts![RANGE2, SUM_INT, PRODUCT_INT, AVG_INT, GT_INT, GT_FLOAT, GT_DEC];
 }
 
 // FIXME there is still quite a bit of duplicated work between here and `bootstrap_table_storage_info`
