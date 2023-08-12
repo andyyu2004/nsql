@@ -161,7 +161,7 @@ impl<'a, 'env, S: StorageEngine> SelectBinder<'a, 'env, S> {
                 self
             }
 
-            fn fold_expr(&mut self, expr: ir::Expr) -> ir::Expr {
+            fn fold_expr(&mut self, plan: &mut ir::Plan, expr: ir::Expr) -> ir::Expr {
                 const AGGREGATE_TABLE_NAME: Path = Path::Unqualified(Name::new_inline("agg"));
 
                 match &expr.kind {
@@ -190,7 +190,7 @@ impl<'a, 'env, S: StorageEngine> SelectBinder<'a, 'env, S> {
                         }
 
                         // otherwise, recurse and process subexpressions
-                        expr.fold_with(self)
+                        expr.fold_with(self, plan)
                     }
                 }
             }
@@ -202,7 +202,8 @@ impl<'a, 'env, S: StorageEngine> SelectBinder<'a, 'env, S> {
             unaggregated_column_ref_expr: None,
         };
 
-        let expr = expr.super_fold_with(&mut folder);
+        // this folder doesn't require the plan, so we just pass in an empty plan
+        let expr = expr.super_fold_with(&mut folder, &mut ir::Plan::Empty);
 
         // if the select expression `expr` contains a column reference and `expr` is not
         // a super-expression of any aggregate, then we have a problem

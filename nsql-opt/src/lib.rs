@@ -1,3 +1,5 @@
+use std::mem;
+
 use ir::fold::{ExprFold, Folder, PlanFold};
 use nsql_core::LogicalType;
 
@@ -8,20 +10,19 @@ trait Pass: Folder {
 pub fn optimize(mut plan: Box<ir::Plan>) -> Box<ir::Plan> {
     plan.validate().unwrap_or_else(|err| panic!("invalid plan passed to optimizer: {err}"));
 
-    // loop {
-    let passes = [&mut IdentityProjectionRemover as &mut dyn Pass, &mut SubqueryFlattener];
-    // let pre_opt_plan = plan.clone();
-    for pass in passes {
-        plan = pass.fold_boxed_plan(plan);
-        println!("plan after pass `{}`:\n{plan}", pass.name());
-        plan.validate()
-            .unwrap_or_else(|err| panic!("invalid plan after pass `{}`: {err}", pass.name()));
-    }
+    loop {
+        let passes = [&mut IdentityProjectionRemover as &mut dyn Pass, &mut SubqueryFlattener];
+        let pre_opt_plan = plan.clone();
+        for pass in passes {
+            plan = pass.fold_boxed_plan(plan);
+            plan.validate()
+                .unwrap_or_else(|err| panic!("invalid plan after pass `{}`: {err}", pass.name()));
+        }
 
-    // if plan == pre_opt_plan {
-    //     break;
-    // }
-    // }
+        if plan == pre_opt_plan {
+            break;
+        }
+    }
 
     plan
 }
@@ -43,9 +44,7 @@ impl Folder for SubqueryFlattener {
     fn fold_plan(&mut self, plan: ir::Plan) -> ir::Plan {
         #[derive(Debug)]
         struct Flattener {
-            column_count: usize,
-            #[allow(clippy::vec_box)]
-            subquery_plans: Vec<Box<ir::Plan>>,
+            found_subquery: bool,
         }
 
         impl Folder for Flattener {
@@ -58,31 +57,42 @@ impl Folder for SubqueryFlattener {
                 plan
             }
 
-            fn fold_expr(&mut self, expr: ir::Expr) -> ir::Expr {
+            fn fold_expr(&mut self, plan: &mut ir::Plan, expr: ir::Expr) -> ir::Expr {
                 match expr.kind {
                     ir::ExprKind::Subquery(subquery_plan) => {
+                        self.found_subquery |= true;
                         assert_eq!(subquery_plan.schema().len(), 1);
+                        // FIXME we should error if the number of rows exceeds one
                         let subquery_plan = subquery_plan.limit(1);
                         let ty = subquery_plan.schema()[0].clone();
-                        // we will add a new column to the parent plan (via a join) and then reference it
-                        let i = ir::TupleIndex::new(self.column_count);
-                        self.subquery_plans.push(subquery_plan);
+
+                        let i = ir::TupleIndex::new(plan.schema().len());
+                        // Replace the parent plan with a join of the former parent plan and the subquery plan.
+                        // This will add a new column to the parent plan's schema, which we will then reference
+                        *plan = *Box::new(mem::take(plan)).join(ir::Join::Cross, subquery_plan);
+
                         ir::Expr::new_column_ref(ty, ir::QPath::new("", "__subquery__"), i)
                     }
-                    _ => expr.fold_with(self),
+                    _ => expr.fold_with(self, plan),
                 }
             }
         }
 
-        let mut flattener = Flattener { column_count: plan.schema().len(), subquery_plans: vec![] };
-        let mut plan = Box::new(plan.fold_with(&mut flattener));
-        assert!(flattener.subquery_plans.len() <= 1, "multiple subqueries not implemented");
+        let original_plan_columns = plan.schema().len();
+        let mut flattener = Flattener { found_subquery: false };
+        // apply the flattener to one layer of the plan
+        let plan = plan.fold_with(&mut flattener);
 
-        if let Some(subquery_plan) = flattener.subquery_plans.pop() {
-            plan = plan.join(ir::Join::Cross, subquery_plan)
+        // then recurse
+        let plan = plan.fold_with(self.as_dyn());
+
+        if flattener.found_subquery {
+            assert_eq!(plan.schema().len(), original_plan_columns + 1);
+            // if the flattener added a column, we need to project it away
+            *Box::new(plan).project_leftmost_k(original_plan_columns)
+        } else {
+            plan
         }
-
-        plan.fold_with(self.as_dyn())
     }
 }
 

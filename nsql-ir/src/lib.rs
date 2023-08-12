@@ -468,12 +468,12 @@ impl Plan {
     }
 
     #[inline]
-    pub fn limit(self: Box<Self>, limit: u64) -> Box<Plan> {
+    pub fn limit(self: Box<Self>, limit: u64) -> Box<Self> {
         Box::new(Plan::Limit { source: self, limit })
     }
 
     #[inline]
-    pub fn order_by(self: Box<Self>, order: impl Into<Box<[OrderExpr]>>) -> Box<Plan> {
+    pub fn order_by(self: Box<Self>, order: impl Into<Box<[OrderExpr]>>) -> Box<Self> {
         let order = order.into();
         if order.is_empty() {
             return self;
@@ -483,22 +483,39 @@ impl Plan {
     }
 
     #[inline]
-    pub fn join(self: Box<Self>, join: Join, rhs: Box<Plan>) -> Box<Plan> {
+    pub fn join(self: Box<Self>, join: Join, rhs: Box<Self>) -> Box<Self> {
         let schema = self.schema().iter().chain(rhs.schema()).cloned().collect();
         Box::new(Plan::Join { schema, join, lhs: self, rhs })
     }
 
     #[inline]
-    pub fn filter(self: Box<Self>, predicate: Expr) -> Box<Plan> {
+    pub fn filter(self: Box<Self>, predicate: Expr) -> Box<Self> {
         assert!(matches!(predicate.ty, LogicalType::Bool | LogicalType::Null));
         Box::new(Plan::Filter { source: self, predicate })
     }
 
     #[inline]
-    pub fn project(self: Box<Self>, projection: impl Into<Box<[Expr]>>) -> Box<Plan> {
+    pub fn project(self: Box<Self>, projection: impl Into<Box<[Expr]>>) -> Box<Self> {
         let projection = projection.into();
         let projected_schema = projection.iter().map(|expr| expr.ty.clone()).collect();
         Box::new(Plan::Projection { source: self, projection, projected_schema })
+    }
+
+    /// Create a projection that projects the first `k` columns of the plan
+    #[inline]
+    pub fn project_leftmost_k(self: Box<Self>, k: usize) -> Box<Self> {
+        let schema = self.schema();
+        assert!(k <= schema.len(), "k must be less than or equal to the number of columns");
+        let projection = (0..k)
+            .map(|i| Expr {
+                ty: schema[i].clone(),
+                kind: ExprKind::ColumnRef {
+                    qpath: QPath::new("", format!("{i}")),
+                    index: TupleIndex::new(i),
+                },
+            })
+            .collect::<Box<_>>();
+        self.project(projection)
     }
 }
 
