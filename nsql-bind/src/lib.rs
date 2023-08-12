@@ -502,7 +502,9 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
 
     fn lower_ty(&self, ty: &ast::DataType) -> Result<LogicalType> {
         match ty {
-            ast::DataType::Int(width) if width.is_none() => Ok(LogicalType::Int32),
+            ast::DataType::Int(width) | ast::DataType::Integer(width) if width.is_none() => {
+                Ok(LogicalType::Int64)
+            }
             ast::DataType::Text => Ok(LogicalType::Text),
             ast::DataType::Bytea => Ok(LogicalType::Bytea),
             ast::DataType::Boolean => Ok(LogicalType::Bool),
@@ -1019,11 +1021,11 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                     ast::UnaryOperator::Plus => todo!(),
                     ast::UnaryOperator::Minus => {
                         ensure!(
-                            matches!(expr.ty, LogicalType::Int32),
+                            matches!(expr.ty, LogicalType::Int64),
                             "cannot negate value of type {}",
                             expr.ty
                         );
-                        (LogicalType::Int32, ir::UnaryOp::Neg)
+                        (LogicalType::Int64, ir::UnaryOp::Neg)
                     }
                     ast::UnaryOperator::Not => todo!(),
                     ast::UnaryOperator::PGBitwiseNot => todo!(),
@@ -1057,11 +1059,11 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                             rhs.ty
                         );
                         ensure!(
-                            matches!(lhs.ty, LogicalType::Int32),
+                            matches!(lhs.ty, LogicalType::Int64),
                             "cannot add value of type {}",
                             lhs.ty,
                         );
-                        (LogicalType::Int32, ir::BinOp::Plus)
+                        (LogicalType::Int64, ir::BinOp::Plus)
                     }
                     // ast::BinaryOperator::Minus => ir::BinOp::Sub,
                     // ast::BinaryOperator::Multiply => ir::BinOp::Mul,
@@ -1100,7 +1102,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                 // Keep this in sync with `Value::ty`
                 let ty = match &array.elem[..] {
                     // default array type to `Int` if it is empty
-                    [] => LogicalType::Int32,
+                    [] => LogicalType::Int64,
                     // otherwise, we can get the type from the first element
                     [first, ..] => f(first)?.ty,
                 };
@@ -1218,8 +1220,8 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
     fn bind_value(&self, val: &ast::Value) -> ir::Value {
         match val {
             ast::Value::Number(n, b) => {
-                if let Ok(i) = n.parse::<i32>() {
-                    return ir::Value::Int32(i);
+                if let Ok(i) = n.parse::<i64>() {
+                    return ir::Value::Int64(i);
                 }
 
                 assert!(!b, "what does this bool mean?");

@@ -53,7 +53,7 @@ impl IntoTuple for Index {
         Tuple::from([
             Value::Oid(self.table.untyped()),
             Value::Oid(self.target.untyped()),
-            Value::Int32(self.kind as i32),
+            Value::Int64(self.kind as i64),
             self.index_expr.into(),
         ])
     }
@@ -106,7 +106,7 @@ impl SystemEntity for Index {
             vec![
                 ColumnStorageInfo::new(LogicalType::Oid, true),
                 ColumnStorageInfo::new(LogicalType::Oid, false),
-                ColumnStorageInfo::new(LogicalType::Int32, false),
+                ColumnStorageInfo::new(LogicalType::Int64, false),
                 ColumnStorageInfo::new(LogicalType::TupleExpr, false),
             ],
         )

@@ -41,7 +41,7 @@ impl Expr {
                 let val = expr.const_eval()?;
                 match op {
                     crate::UnaryOp::Neg => match val {
-                        Value::Int32(i) => Ok(Value::Int32(-i)),
+                        Value::Int64(i) => Ok(Value::Int64(-i)),
                         _ => todo!(),
                     },
                 }

@@ -66,7 +66,8 @@ impl<T> Error for CastError<T> {}
 pub enum Value {
     Null,
     Byte(u8),
-    Int32(i32),
+    Int64(i64),
+    Float64(u64),
     Oid(UntypedOid),
     Bool(bool),
     Decimal(Decimal),
@@ -171,7 +172,14 @@ impl From<bool> for Value {
 impl From<i32> for Value {
     #[inline]
     fn from(v: i32) -> Self {
-        Self::Int32(v)
+        Self::Int64(v as i64)
+    }
+}
+
+impl From<i64> for Value {
+    #[inline]
+    fn from(v: i64) -> Self {
+        Self::Int64(v)
     }
 }
 
@@ -233,7 +241,7 @@ impl Value {
     pub fn logical_type(&self) -> LogicalType {
         match self {
             Value::Null => LogicalType::Null,
-            Value::Int32(_) => LogicalType::Int32,
+            Value::Int64(_) => LogicalType::Int64,
             Value::Bool(_) => LogicalType::Bool,
             Value::Decimal(_) => LogicalType::Decimal,
             Value::Text(_) => LogicalType::Text,
@@ -241,12 +249,13 @@ impl Value {
             Value::Bytea(_) => LogicalType::Bytea,
             // Keep this in sync with binder logic
             Value::Array(values) => LogicalType::array(match &values[..] {
-                [] => LogicalType::Int32,
+                [] => LogicalType::Int64,
                 [first, ..] => first.logical_type(),
             }),
             Value::Type(_) => LogicalType::Type,
             Value::TupleExpr(_) => LogicalType::TupleExpr,
             Value::Byte(_) => LogicalType::Byte,
+            Value::Float64(_) => LogicalType::Float64,
         }
     }
 }
@@ -259,13 +268,14 @@ impl fmt::Display for Value {
             Value::Bool(b) => write!(f, "{b}"),
             Value::Decimal(d) => write!(f, "{d}"),
             Value::Text(s) => write!(f, "{s}"),
-            Value::Int32(i) => write!(f, "{i}"),
+            Value::Int64(i) => write!(f, "{i}"),
             Value::Oid(oid) => write!(f, "{oid}"),
             Value::Byte(byte) => write!(f, "{byte:x}"),
             Value::Bytea(bytes) => write!(f, "{bytes:x?}"),
             Value::Array(values) => write!(f, "[{}]", values.iter().format(", ")),
             Value::Type(ty) => write!(f, "{ty}"),
             Value::TupleExpr(_expr) => write!(f, "<tuple-expr>"),
+            Value::Float64(d) => write!(f, "{}", f64::from_bits(*d)),
         }
     }
 }
@@ -302,7 +312,7 @@ impl FromValue for u64 {
     fn from_value(value: Value) -> Result<Self, CastError<Self>> {
         match value {
             Value::Bool(b) => Ok(b as u64),
-            Value::Int32(i) => Ok(i as u64),
+            Value::Int64(i) => Ok(i as u64),
             Value::Decimal(d) => d.to_u64().ok_or_else(|| CastError::new(value)),
             _ => Err(CastError { value, phantom: PhantomData }),
         }
@@ -329,11 +339,21 @@ impl FromValue for bool {
     }
 }
 
+impl FromValue for i64 {
+    #[inline]
+    fn from_value(value: Value) -> Result<Self, CastError<Self>> {
+        match value {
+            Value::Int64(i) => Ok(i),
+            _ => Err(CastError { value, phantom: PhantomData }),
+        }
+    }
+}
+
 impl FromValue for i32 {
     #[inline]
     fn from_value(value: Value) -> Result<Self, CastError<Self>> {
         match value {
-            Value::Int32(i) => Ok(i),
+            Value::Int64(i) => Ok(i as i32),
             _ => Err(CastError { value, phantom: PhantomData }),
         }
     }
@@ -343,7 +363,7 @@ impl FromValue for i8 {
     #[inline]
     fn from_value(value: Value) -> Result<Self, CastError<Self>> {
         match value {
-            Value::Int32(i) => Ok(i as i8),
+            Value::Int64(i) => Ok(i as i8),
             _ => Err(CastError { value, phantom: PhantomData }),
         }
     }
@@ -353,7 +373,7 @@ impl FromValue for u8 {
     #[inline]
     fn from_value(value: Value) -> Result<Self, CastError<Self>> {
         match value {
-            Value::Int32(i) => Ok(i as u8),
+            Value::Int64(i) => Ok(i as u8),
             _ => Err(CastError { value, phantom: PhantomData }),
         }
     }

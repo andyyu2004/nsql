@@ -45,11 +45,11 @@ pub struct TypeWrapper(LogicalType);
 impl ColumnType for TypeWrapper {
     fn from_char(value: char) -> Option<Self> {
         let ty = match value {
-            'I' => LogicalType::Int32,
+            'I' => LogicalType::Int64,
             'B' => LogicalType::Bool,
             'D' => LogicalType::Decimal,
             'T' => LogicalType::Text,
-            'A' => LogicalType::Array(Box::new(LogicalType::Int32)),
+            'A' => LogicalType::Array(Box::new(LogicalType::Int64)),
             _ => return None,
         };
         Some(TypeWrapper(ty))
@@ -57,7 +57,8 @@ impl ColumnType for TypeWrapper {
 
     fn to_char(&self) -> char {
         match self.0 {
-            LogicalType::Int32 => 'I',
+            LogicalType::Int64 => 'I',
+            LogicalType::Float64 => 'F',
             LogicalType::Bool => 'B',
             LogicalType::Decimal => 'D',
             LogicalType::Text => 'T',

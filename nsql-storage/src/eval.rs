@@ -187,7 +187,7 @@ impl ExprOp<Box<dyn ScalarFunction>> {
                 let value = stack.pop().unwrap();
                 match op {
                     UnaryOp::Neg => match value {
-                        Value::Int32(value) => Value::Int32(-value),
+                        Value::Int64(value) => Value::Int64(-value),
                         _ => unimplemented!(),
                     },
                 }
@@ -198,7 +198,7 @@ impl ExprOp<Box<dyn ScalarFunction>> {
                 match op {
                     BinOp::Eq => Value::Bool(lhs == rhs),
                     BinOp::Plus => match (lhs, rhs) {
-                        (Value::Int32(lhs), Value::Int32(rhs)) => Value::Int32(lhs + rhs),
+                        (Value::Int64(lhs), Value::Int64(rhs)) => Value::Int64(lhs + rhs),
                         _ => unimplemented!(),
                     },
                 }

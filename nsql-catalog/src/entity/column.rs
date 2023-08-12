@@ -71,7 +71,7 @@ impl FromValue for ColumnIndex {
 impl From<ColumnIndex> for Value {
     #[inline]
     fn from(val: ColumnIndex) -> Self {
-        Value::Int32(val.index as i32)
+        Value::Int64(val.index as i64)
     }
 }
 
@@ -142,7 +142,7 @@ impl SystemEntity for Column {
             Table::ATTRIBUTE.untyped(),
             vec![
                 ColumnStorageInfo::new(LogicalType::Oid, true),
-                ColumnStorageInfo::new(LogicalType::Int32, true),
+                ColumnStorageInfo::new(LogicalType::Int64, true),
                 ColumnStorageInfo::new(LogicalType::Type, false),
                 ColumnStorageInfo::new(LogicalType::Text, false),
                 ColumnStorageInfo::new(LogicalType::Bool, false),

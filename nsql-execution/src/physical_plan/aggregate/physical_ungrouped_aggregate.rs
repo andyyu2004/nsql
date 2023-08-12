@@ -10,7 +10,7 @@ use super::*;
 pub struct PhysicalUngroupedAggregate<'env, 'txn, S, M> {
     schema: Schema,
     functions: Box<[(Box<Function>, ExecutableExpr)]>,
-    aggregate_functions: Mutex<Vec<AggregateFunctionInstance>>,
+    aggregate_functions: Mutex<Vec<Box<dyn AggregateFunctionInstance>>>,
     children: [Arc<dyn PhysicalNode<'env, 'txn, S, M>>; 1],
 }
 

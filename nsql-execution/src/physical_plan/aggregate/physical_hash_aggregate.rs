@@ -13,7 +13,7 @@ pub struct PhysicalHashAggregate<'env, 'txn, S, M> {
     functions: Box<[(Box<Function>, ExecutableExpr)]>,
     children: [Arc<dyn PhysicalNode<'env, 'txn, S, M>>; 1],
     group_expr: ExecutableTupleExpr,
-    output_groups: DashMap<Tuple, Mutex<Vec<AggregateFunctionInstance>>>,
+    output_groups: DashMap<Tuple, Mutex<Vec<Box<dyn AggregateFunctionInstance>>>>,
 }
 
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>

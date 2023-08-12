@@ -1,4 +1,4 @@
-use std::mem;
+use std::{fmt, mem};
 
 use nsql_core::UntypedOid;
 
@@ -9,22 +9,9 @@ mod builtins;
 
 pub type ScalarFunction = fn(Box<[Value]>) -> Value;
 
-#[derive(Debug)]
-pub struct AggregateFunctionInstance {
-    state: Value,
-    update: fn(Value, Value) -> Value,
-}
-
-impl AggregateFunctionInstance {
-    #[inline]
-    pub fn update(&mut self, value: Value) {
-        self.state = (self.update)(self.state.clone(), value);
-    }
-
-    #[inline]
-    pub fn finalize(self) -> Value {
-        self.state
-    }
+pub trait AggregateFunctionInstance: fmt::Debug {
+    fn update(&mut self, value: Value);
+    fn finalize(self: Box<Self>) -> Value;
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, FromTuple, IntoTuple)]
@@ -116,7 +103,7 @@ impl Function {
     }
 
     #[inline]
-    pub fn get_aggregate_instance(&self) -> AggregateFunctionInstance {
+    pub fn get_aggregate_instance(&self) -> Box<dyn AggregateFunctionInstance> {
         if let Some(f) = builtins::get_aggregate_function(self.oid) {
             return f;
         }

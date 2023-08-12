@@ -126,6 +126,7 @@ impl Function {
     pub(crate) const RANGE2: Oid<Self> = Oid::new(100);
     pub(crate) const SUM_INT: Oid<Self> = Oid::new(101);
     pub(crate) const PRODUCT_INT: Oid<Self> = Oid::new(102);
+    pub(crate) const AVG_INT: Oid<Self> = Oid::new(103);
 }
 
 // FIXME there is still quite a bit of duplicated work between here and `bootstrap_table_storage_info`
@@ -170,7 +171,7 @@ fn bootstrap_info() -> BootstrapInfo {
                 name: "nsql_attribute",
                 columns: vec![
                     BootstrapColumn { name: "table", ty: LogicalType::Oid, pk: true },
-                    BootstrapColumn { name: "index", ty: LogicalType::Int32, pk: true },
+                    BootstrapColumn { name: "index", ty: LogicalType::Int64, pk: true },
                     BootstrapColumn { name: "ty", ty: LogicalType::Type, pk: false },
                     BootstrapColumn { name: "name", ty: LogicalType::Text, pk: false },
                     BootstrapColumn { name: "is_primary_key", ty: LogicalType::Bool, pk: false },
@@ -202,7 +203,7 @@ fn bootstrap_info() -> BootstrapInfo {
                 columns: vec![
                     BootstrapColumn { name: "table", ty: LogicalType::Oid, pk: true },
                     BootstrapColumn { name: "target", ty: LogicalType::Oid, pk: false },
-                    BootstrapColumn { name: "kind", ty: LogicalType::Int32, pk: false },
+                    BootstrapColumn { name: "kind", ty: LogicalType::Int64, pk: false },
                     BootstrapColumn { name: "index_expr", ty: LogicalType::TupleExpr, pk: false },
                 ],
                 indexes: vec![],
@@ -213,7 +214,7 @@ fn bootstrap_info() -> BootstrapInfo {
                 columns: vec![
                     BootstrapColumn { name: "oid", ty: LogicalType::Oid, pk: true },
                     BootstrapColumn { name: "namespace", ty: LogicalType::Oid, pk: false },
-                    BootstrapColumn { name: "name", ty: LogicalType::Int32, pk: false },
+                    BootstrapColumn { name: "name", ty: LogicalType::Int64, pk: false },
                     BootstrapColumn {
                         name: "args",
                         ty: LogicalType::array(LogicalType::Type),
@@ -233,22 +234,29 @@ fn bootstrap_info() -> BootstrapInfo {
                 oid: Function::RANGE2,
                 name: "range",
                 kind: FunctionKind::Function,
-                args: vec![LogicalType::Int32, LogicalType::Int32],
-                ret: LogicalType::array(LogicalType::Int32),
+                args: vec![LogicalType::Int64, LogicalType::Int64],
+                ret: LogicalType::array(LogicalType::Int64),
             },
             BootstrapFunction {
                 oid: Function::SUM_INT,
                 name: "sum",
                 kind: FunctionKind::Aggregate,
-                args: vec![LogicalType::Int32],
-                ret: LogicalType::Int32,
+                args: vec![LogicalType::Int64],
+                ret: LogicalType::Int64,
             },
             BootstrapFunction {
                 oid: Function::PRODUCT_INT,
                 name: "product",
                 kind: FunctionKind::Aggregate,
-                args: vec![LogicalType::Int32],
-                ret: LogicalType::Int32,
+                args: vec![LogicalType::Int64],
+                ret: LogicalType::Int64,
+            },
+            BootstrapFunction {
+                oid: Function::AVG_INT,
+                name: "avg",
+                kind: FunctionKind::Aggregate,
+                args: vec![LogicalType::Int64],
+                ret: LogicalType::Float64,
             },
         ],
     }
