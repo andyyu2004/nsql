@@ -7,6 +7,7 @@ macro_rules! comparison {
     ($op:tt: $ty:ty) => {
         |mut args| {
             assert_eq!(args.len(), 2);
+            // FIXME need to handle nulls
             let a: $ty = args[0].take().cast_non_null().unwrap();
             let b: $ty = args[1].take().cast_non_null().unwrap();
             Value::Bool(a $op b)
@@ -26,6 +27,40 @@ pub(crate) fn get_scalar_function(oid: Oid<Function>) -> Option<ScalarFunction> 
         Function::GT_INT => comparison!(> : i64),
         Function::GT_FLOAT => comparison!(> : f64),
         Function::GT_DEC => comparison!(> : Decimal),
+        Function::ARRAY_ELEMENT => |mut args| {
+            assert_eq!(args.len(), 2);
+            let array = match args[0].take() {
+                Value::Array(xs) => xs,
+                _ => panic!("expected array"),
+            };
+
+            // one-indexed
+            let index: Option<i64> = args[1].take().cast().unwrap();
+            match index {
+                None => Value::Null,
+                Some(index) => {
+                    if index <= 0 || index as usize > array.len() {
+                        return Value::Null;
+                    }
+
+                    array[index as usize - 1].clone()
+                }
+            }
+        },
+        Function::ARRAY_POSITION => |mut args| {
+            assert_eq!(args.len(), 2);
+            let array = match args[0].take() {
+                Value::Array(xs) => xs,
+                _ => panic!("expected array"),
+            };
+
+            // one-indexed
+            let target = args[1].take();
+            match array.iter().position(|v| v == &target) {
+                Some(index) => Value::Int64(index as i64 + 1),
+                None => Value::Null,
+            }
+        },
         _ => return None,
     })
 }

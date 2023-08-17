@@ -128,7 +128,17 @@ impl Namespace {
 }
 
 impl Function {
-    mk_consts![RANGE2, SUM_INT, PRODUCT_INT, AVG_INT, GT_INT, GT_FLOAT, GT_DEC];
+    mk_consts![
+        RANGE2,
+        SUM_INT,
+        PRODUCT_INT,
+        AVG_INT,
+        GT_INT,
+        GT_FLOAT,
+        GT_DEC,
+        ARRAY_ELEMENT,
+        ARRAY_POSITION
+    ];
 }
 
 // FIXME there is still quite a bit of duplicated work between here and `bootstrap_table_storage_info`
@@ -239,6 +249,20 @@ fn bootstrap_info() -> BootstrapInfo {
                 kind: FunctionKind::Scalar,
                 args: vec![LogicalType::Decimal, LogicalType::Decimal],
                 ret: LogicalType::Bool,
+            },
+            BootstrapFunction {
+                oid: Function::ARRAY_ELEMENT,
+                name: "array_element",
+                kind: FunctionKind::Scalar,
+                args: vec![LogicalType::array(LogicalType::Any), LogicalType::Int64],
+                ret: LogicalType::Any,
+            },
+            BootstrapFunction {
+                oid: Function::ARRAY_POSITION,
+                name: "array_position",
+                kind: FunctionKind::Scalar,
+                args: vec![LogicalType::array(LogicalType::Any), LogicalType::Any],
+                ret: LogicalType::Int64,
             },
         ],
     }

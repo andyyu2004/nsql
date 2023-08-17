@@ -25,7 +25,7 @@ pub use self::entity::function::{
 pub use self::entity::index::{Index, IndexKind};
 pub use self::entity::namespace::{CreateNamespaceInfo, Namespace};
 pub use self::entity::table::{CreateTableInfo, Table};
-use self::system_table::SystemTableView;
+pub use self::system_table::SystemTableView;
 
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 

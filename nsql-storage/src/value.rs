@@ -286,6 +286,13 @@ pub trait FromValue: Sized {
     fn from_value(value: Value) -> Result<Self, CastError<Self>>;
 }
 
+impl FromValue for Value {
+    #[inline]
+    fn from_value(value: Self) -> Result<Self, CastError<Self>> {
+        Ok(value)
+    }
+}
+
 impl<V: FromValue> FromValue for Box<[V]> {
     #[inline]
     fn from_value(value: Value) -> Result<Self, CastError<Self>> {

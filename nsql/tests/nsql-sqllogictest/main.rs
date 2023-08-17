@@ -69,6 +69,7 @@ impl ColumnType for TypeWrapper {
             LogicalType::TupleExpr => todo!(),
             LogicalType::Byte => todo!(),
             LogicalType::Array(_) => 'A',
+            LogicalType::Any => unreachable!(),
         }
     }
 }

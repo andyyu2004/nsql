@@ -86,6 +86,11 @@ impl Function {
     }
 
     #[inline]
+    pub fn args(&self) -> &[LogicalType] {
+        &self.args
+    }
+
+    #[inline]
     pub fn return_type(&self) -> LogicalType {
         self.ret.clone()
     }
@@ -99,7 +104,7 @@ impl Function {
         // otherwise, we store the bytecode for non-builtin functions
         // let bytecode: Expr = todo!();
 
-        panic!("missing scalar function definition")
+        panic!("missing scalar function definition for oid {}", self.oid)
     }
 
     #[inline]
@@ -117,7 +122,7 @@ impl SystemEntity for Function {
 
     type Key = Oid<Self>;
 
-    type SearchKey = (Name, Box<[LogicalType]>);
+    type SearchKey = Name;
 
     #[inline]
     fn key(&self) -> Self::Key {
@@ -126,7 +131,7 @@ impl SystemEntity for Function {
 
     #[inline]
     fn search_key(&self) -> Self::SearchKey {
-        (self.name(), self.args.clone())
+        self.name()
     }
 
     #[inline]

@@ -1,6 +1,8 @@
 #![deny(rust_2018_idioms)]
+#![feature(try_blocks)]
 #![feature(if_let_guard)]
 
+mod function;
 mod scope;
 mod select;
 
@@ -14,11 +16,11 @@ use ir::{Decimal, Path, QPath, TransactionMode, TupleIndex};
 use itertools::Itertools;
 use nsql_catalog::{
     Catalog, ColumnIndex, CreateColumnInfo, CreateNamespaceInfo, Function, FunctionKind, Namespace,
-    SystemEntity, Table, MAIN_SCHEMA,
+    SystemEntity, SystemTableView, Table, MAIN_SCHEMA,
 };
 use nsql_core::{LogicalType, Name, Oid, Schema};
 use nsql_parse::ast;
-use nsql_storage_engine::{StorageEngine, Transaction};
+use nsql_storage_engine::{FallibleIterator, ReadonlyExecutionMode, StorageEngine, Transaction};
 
 use self::scope::Scope;
 use self::select::SelectBinder;
@@ -317,8 +319,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                     .iter()
                     .map(|name| match object_type {
                         ast::ObjectType::Table => {
-                            let table =
-                                self.bind_namespaced_entity::<Table>(tx, name, Name::clone)?;
+                            let table = self.bind_namespaced_entity::<Table>(tx, name)?;
                             Ok(ir::EntityRef::Table(table))
                         }
                         ast::ObjectType::View => todo!(),
@@ -535,17 +536,15 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
         }
     }
 
-    fn bind_namespaced_entity<T: SystemEntity<Parent = Namespace>>(
+    fn get_namespaced_entity_view<'txn, T: SystemEntity<Parent = Namespace>>(
         &self,
-        tx: &dyn Transaction<'env, S>,
+        tx: &'txn dyn Transaction<'env, S>,
         path: &Path,
-        mk_search_key: impl FnOnce(&Name) -> T::SearchKey,
-    ) -> Result<T::Key> {
+    ) -> Result<(SystemTableView<'env, 'txn, S, ReadonlyExecutionMode, T>, Namespace, Name)> {
         match path {
-            Path::Unqualified(name) => self.bind_namespaced_entity::<T>(
+            Path::Unqualified(name) => self.get_namespaced_entity_view::<T>(
                 tx,
                 &Path::qualified(Path::Unqualified(MAIN_SCHEMA.into()), name.clone()),
-                mk_search_key,
             ),
             Path::Qualified(QPath { prefix, name }) => match prefix.as_ref() {
                 Path::Qualified(QPath { .. }) => not_implemented!("qualified schemas"),
@@ -556,17 +555,24 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                         .find(self.catalog, tx, None, schema)?
                         .ok_or_else(|| unbound!(Namespace, path))?;
 
-                    let search_key = mk_search_key(name);
-                    let entity = self
-                        .catalog
-                        .system_table::<T>(tx)?
-                        .find(self.catalog, tx, Some(namespace.key()), &search_key)?
-                        .ok_or_else(|| unbound!(T, path, search_key))?;
-
-                    Ok(entity.key())
+                    Ok((self.catalog.system_table::<T>(tx)?, namespace, name.clone()))
                 }
             },
         }
+    }
+
+    /// bind an entity that lives within a namespace and whose name uniquely identifies it within the namespace
+    fn bind_namespaced_entity<T: SystemEntity<Parent = Namespace, SearchKey = Name>>(
+        &self,
+        tx: &dyn Transaction<'env, S>,
+        path: &Path,
+    ) -> Result<T::Key> {
+        let (table, namespace, name) = self.get_namespaced_entity_view::<T>(tx, path)?;
+        let entity = table
+            .find(self.catalog, tx, Some(namespace.key()), &name)?
+            .ok_or_else(|| unbound!(T, path, name))?;
+
+        Ok(entity.key())
     }
 
     fn lower_path(&self, name: &[ast::Ident]) -> Result<Path> {
@@ -831,7 +837,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
     ) -> Result<(Scope, Oid<Table>)> {
         let alias = alias.map(|alias| self.lower_table_alias(alias));
         let table_name = self.lower_path(&table_name.0)?;
-        let table = self.bind_namespaced_entity::<Table>(tx, &table_name, Name::clone)?;
+        let table = self.bind_namespaced_entity::<Table>(tx, &table_name)?;
 
         Ok((scope.bind_table(self, tx, table_name, table, alias.as_ref())?, table))
     }
@@ -962,7 +968,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
         tx: &dyn Transaction<'env, S>,
         scope: &Scope,
         f: &ast::Function,
-    ) -> Result<(Box<Function>, Box<[ir::Expr]>)> {
+    ) -> Result<(ir::MonoFunction, Box<[ir::Expr]>)> {
         let ast::Function { name, args, over, distinct, special, order_by } = f;
         not_implemented!(over.is_some());
         not_implemented!(*distinct);
@@ -989,16 +995,38 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
 
         let args =
             args.iter().map(|arg| self.bind_expr(tx, scope, arg)).collect::<Result<Box<_>, _>>()?;
-
-        let arg_types = args.iter().map(|arg| arg.ty.clone()).collect::<Vec<_>>();
-
+        let arg_types = args.iter().map(|arg| arg.ty.clone()).collect::<Box<_>>();
         let path = self.lower_path(&name.0)?;
-        let function = self.bind_namespaced_entity::<Function>(tx, &path, |name| {
-            (name.clone(), arg_types.into())
+        let function = self.resolve_function(tx, &path, &arg_types)?;
+        Ok((function, args))
+    }
+
+    fn resolve_function(
+        &self,
+        tx: &dyn Transaction<'env, S>,
+        path: &Path,
+        args: &[LogicalType],
+    ) -> Result<ir::MonoFunction> {
+        let (table, namespace, name) = self.get_namespaced_entity_view::<Function>(tx, path)?;
+        let mut candidates = table
+            .scan()?
+            .filter(|f| {
+                Ok(f.parent_oid(self.catalog, tx)?.unwrap() == namespace.key() && f.name() == name)
+            })
+            .peekable();
+
+        if candidates.peek()?.is_none() {
+            return Err(unbound!(Function, path));
+        }
+
+        let function = self.resolve_candidate_functions(candidates, args)?.ok_or_else(|| {
+            anyhow!(
+                "no `{path}` function overload matches argument types ({})",
+                args.iter().format(", ")
+            )
         })?;
 
-        let function = Box::new(self.catalog.get::<Function>(tx, function)?);
-        Ok((function, args))
+        Ok(function)
     }
 
     fn walk_expr(
@@ -1074,12 +1102,11 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                     // ast::BinaryOperator::Divide => ir::BinOp::Div,
                     // ast::BinaryOperator::Modulo => ir::BinOp::Mod,
                     ast::BinaryOperator::Gt => {
-                        let function = self.bind_namespaced_entity::<Function>(
+                        let function = self.resolve_function(
                             tx,
                             &Path::unqualified(">"),
-                            |name| (name.clone(), vec![lhs.ty.clone(), rhs.ty.clone()].into()),
+                            &[lhs.ty(), rhs.ty()],
                         )?;
-                        let function = Box::new(self.catalog.get::<Function>(tx, function)?);
                         return Ok(ir::Expr {
                             ty: function.return_type(),
                             kind: ir::ExprKind::FunctionCall {

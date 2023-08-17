@@ -1,0 +1,26 @@
+query I
+SELECT array_element([2, 3, 4], 2)
+----
+3
+
+query I
+SELECT array_position([100, 101, 102], 100)
+----
+1
+
+query T
+SELECT array_position(['hi', 'hello'], 'hello')
+----
+2
+
+query error
+SELECT array_position(['hi', 'hello'], 100)
+----
+no `array_position` function overload matches argument types \(\[text\], int\)
+
+query error
+SELECT array_position([100, 101, 102], 'bad')
+----
+no `array_position` function overload matches argument types \(\[int\], text\)
+
+

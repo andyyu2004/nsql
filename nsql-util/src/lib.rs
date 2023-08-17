@@ -12,6 +12,6 @@ macro_rules! static_assert {
 #[macro_export]
 macro_rules! static_assert_eq {
     ($lhs:expr, $rhs:expr) => {
-        const _: [(); $lhs as usize] = [(); $rhs as usize];
+        const _: [(); $rhs as usize] = [(); $lhs as usize];
     };
 }

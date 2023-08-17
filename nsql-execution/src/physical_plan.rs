@@ -24,7 +24,7 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use ir::Plan;
-use nsql_catalog::{Catalog, Function};
+use nsql_catalog::Catalog;
 use nsql_core::{LogicalType, Schema};
 use nsql_storage::eval::{ExecutableExpr, ExecutableTupleExpr};
 use nsql_storage_engine::{StorageEngine, Transaction};
@@ -215,8 +215,8 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalPlanner<'env, S> {
 
     fn compile_aggregate_functions(
         &mut self,
-        functions: impl IntoIterator<Item = (Box<Function>, Box<[ir::Expr]>)>,
-    ) -> Box<[(Box<Function>, ExecutableExpr)]> {
+        functions: impl IntoIterator<Item = (ir::MonoFunction, Box<[ir::Expr]>)>,
+    ) -> Box<[(ir::MonoFunction, ExecutableExpr)]> {
         functions
             .into_iter()
             .map(|(f, args)| {

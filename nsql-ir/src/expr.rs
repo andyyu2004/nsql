@@ -92,7 +92,7 @@ pub enum ExprKind {
         index: TupleIndex,
     },
     FunctionCall {
-        function: Box<Function>,
+        function: MonoFunction,
         args: Box<[Expr]>,
     },
     Case {
@@ -103,7 +103,36 @@ pub enum ExprKind {
     Subquery(Box<Plan>),
 }
 
-pub type FunctionCall<E = Expr> = (Box<Function>, Box<[E]>);
+pub type FunctionCall<E = Expr> = (MonoFunction, Box<[E]>);
+
+/// A function that has been "monomorphized", i.e. all ANY types have been replaced with a concrete type
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct MonoFunction(Box<(Function, Box<[LogicalType]>, LogicalType)>);
+
+impl MonoFunction {
+    pub fn new(function: Function, args: Box<[LogicalType]>, return_type: LogicalType) -> Self {
+        Self(Box::new((function, args, return_type)))
+    }
+
+    #[inline]
+    pub fn function(&self) -> Function {
+        self.0.0.clone()
+    }
+
+    #[inline]
+    pub fn return_type(&self) -> LogicalType {
+        self.0.2.clone()
+    }
+}
+
+impl Deref for MonoFunction {
+    type Target = Function;
+
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        &self.0.0
+    }
+}
 
 impl fmt::Display for ExprKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

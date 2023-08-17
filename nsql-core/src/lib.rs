@@ -1,14 +1,15 @@
 #![deny(rust_2018_idioms)]
 
 mod oid;
+pub mod ty;
 
 use std::borrow::Borrow;
 use std::fmt;
 use std::ops::Deref;
 
 pub use oid::{Oid, UntypedOid};
-use rkyv::{Archive, Deserialize, Serialize};
 use smol_str::SmolStr;
+pub use ty::{LogicalType, Schema};
 
 /// Lowercase name of a catalog entry (for case insensitive lookup)
 #[derive(Clone, PartialEq, Eq, Hash)]
@@ -83,108 +84,5 @@ where
 impl Borrow<str> for Name {
     fn borrow(&self) -> &str {
         self.name.as_ref()
-    }
-}
-
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Hash, Archive, Serialize, Deserialize)]
-#[archive(bound(serialize = "__S: rkyv::ser::ScratchSpace + rkyv::ser::Serializer"))]
-pub enum LogicalType {
-    Null,
-    Byte,
-    Bool,
-    Int64,
-    Float64,
-    Decimal,
-    Text,
-    Oid,
-    Bytea,
-    Type,
-    TupleExpr,
-    Array(#[omit_bounds] Box<LogicalType>),
-}
-
-impl LogicalType {
-    #[inline]
-    pub fn array(inner: LogicalType) -> Self {
-        LogicalType::Array(Box::new(inner))
-    }
-
-    // HACK to workaround null type equality for now
-    #[inline]
-    pub fn is_subtype_of(&self, supertype: &Self) -> bool {
-        if matches!(self, LogicalType::Null) { true } else { self == supertype }
-    }
-}
-
-impl fmt::Display for LogicalType {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            LogicalType::Bool => write!(f, "boolean"),
-            LogicalType::Byte => write!(f, "byte"),
-            LogicalType::Int64 => write!(f, "int"),
-            LogicalType::Float64 => write!(f, "double"),
-            LogicalType::Decimal => write!(f, "decimal"),
-            LogicalType::Text => write!(f, "text"),
-            LogicalType::Null => write!(f, "null"),
-            LogicalType::Oid => write!(f, "oid"),
-            LogicalType::Bytea => write!(f, "bytea"),
-            LogicalType::Type => write!(f, "type"),
-            LogicalType::TupleExpr => write!(f, "tuple"),
-            LogicalType::Array(element) => write!(f, "[{element}]"),
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Schema {
-    types: Box<[LogicalType]>,
-}
-
-impl Schema {
-    #[inline]
-    pub fn new(types: impl Into<Box<[LogicalType]>>) -> Self {
-        Self { types: types.into() }
-    }
-
-    #[inline]
-    pub fn empty() -> Self {
-        Self::new([])
-    }
-
-    #[inline]
-    pub fn is_empty(&self) -> bool {
-        self.types.is_empty()
-    }
-
-    #[inline]
-    pub fn len(&self) -> usize {
-        self.types.len()
-    }
-
-    #[inline]
-    pub fn types(&self) -> &[LogicalType] {
-        &self.types
-    }
-
-    #[inline]
-    pub fn is_subtype_of(&self, supertype: &[LogicalType]) -> bool {
-        self.types.len() == supertype.len()
-            && self.types.iter().zip(supertype.iter()).all(|(a, b)| a.is_subtype_of(b))
-    }
-}
-
-impl Deref for Schema {
-    type Target = [LogicalType];
-
-    #[inline]
-    fn deref(&self) -> &Self::Target {
-        &self.types
-    }
-}
-
-impl FromIterator<LogicalType> for Schema {
-    #[inline]
-    fn from_iter<T: IntoIterator<Item = LogicalType>>(iter: T) -> Self {
-        Self { types: iter.into_iter().collect::<Vec<_>>().into_boxed_slice() }
     }
 }
