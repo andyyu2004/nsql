@@ -41,7 +41,7 @@ pub enum IndexKind {
 impl FromValue for IndexKind {
     #[inline]
     fn from_value(value: Value) -> Result<Self, CastError<Self>> {
-        let kind = value.cast_non_null::<u8>().map_err(CastError::cast)?;
+        let kind = value.cast::<u8>().map_err(CastError::cast)?;
         assert!(kind < IndexKind::__Last as u8);
         Ok(unsafe { std::mem::transmute(kind) })
     }

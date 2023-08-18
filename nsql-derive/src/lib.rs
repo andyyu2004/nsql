@@ -23,7 +23,7 @@ pub fn derive_from_tuple(input: TokenStream) -> TokenStream {
             fn from_values(mut values: impl Iterator<Item = Value>) -> Result<Self, FromTupleError> {
                 Ok(Self {
                     #(
-                        #field_name: values.next().ok_or(FromTupleError::NotEnoughValues)?.cast_non_null()?,
+                        #field_name: values.next().ok_or(FromTupleError::NotEnoughValues)?.cast()?,
                     )*
                 })
             }

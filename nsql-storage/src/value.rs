@@ -215,26 +215,13 @@ impl Value {
     }
 
     #[inline]
-    pub fn cast<T: FromValue>(self) -> Result<Option<T>, CastError<T>> {
-        if self.is_null() {
-            return Ok(None);
-        }
-
-        self.cast_non_null().map(Some)
+    pub fn cast<T: FromValue>(self) -> Result<T, CastError<T>> {
+        T::from_value(self)
     }
 
     #[inline]
     pub fn is_null(&self) -> bool {
         matches!(self, Value::Null)
-    }
-
-    #[inline]
-    pub fn cast_non_null<T: FromValue>(self) -> Result<T, CastError<T>> {
-        if self.is_null() {
-            return Err(CastError::new(self));
-        }
-
-        T::from_value(self)
     }
 
     #[inline]
@@ -290,6 +277,16 @@ impl FromValue for Value {
     #[inline]
     fn from_value(value: Self) -> Result<Self, CastError<Self>> {
         Ok(value)
+    }
+}
+
+impl<V: FromValue> FromValue for Option<V> {
+    #[inline]
+    fn from_value(value: Value) -> Result<Self, CastError<Self>> {
+        match value {
+            Value::Null => Ok(None),
+            value => V::from_value(value).map(Some).map_err(CastError::cast),
+        }
     }
 }
 

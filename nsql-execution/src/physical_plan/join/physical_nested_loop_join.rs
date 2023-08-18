@@ -147,7 +147,7 @@ impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalOperator<'
             | ir::Join::Full(constraint) => {
                 let keep = match constraint {
                     ir::JoinConstraint::On(predicate) => {
-                        predicate.execute(&joint_tuple).cast_non_null::<bool>()?
+                        predicate.execute(&joint_tuple).cast::<bool>()?
                     }
                     ir::JoinConstraint::None => true,
                 };

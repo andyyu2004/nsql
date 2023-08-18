@@ -63,7 +63,7 @@ impl fmt::Display for ColumnIndex {
 impl FromValue for ColumnIndex {
     #[inline]
     fn from_value(value: Value) -> Result<Self, CastError<Self>> {
-        let index = value.cast_non_null::<u8>().map_err(CastError::cast)?;
+        let index = value.cast::<u8>().map_err(CastError::cast)?;
         Ok(Self { index })
     }
 }

@@ -8,8 +8,8 @@ macro_rules! comparison {
         |mut args| {
             assert_eq!(args.len(), 2);
             // FIXME need to handle nulls
-            let a: $ty = args[0].take().cast_non_null().unwrap();
-            let b: $ty = args[1].take().cast_non_null().unwrap();
+            let a: $ty = args[0].take().cast().unwrap();
+            let b: $ty = args[1].take().cast().unwrap();
             Value::Bool(a $op b)
         }
     };
@@ -20,8 +20,8 @@ pub(crate) fn get_scalar_function(oid: Oid<Function>) -> Option<ScalarFunction> 
     Some(match oid {
         Function::RANGE2 => |mut args| {
             assert_eq!(args.len(), 2);
-            let start: i64 = args[0].take().cast_non_null().unwrap();
-            let end: i64 = args[1].take().cast_non_null().unwrap();
+            let start: i64 = args[0].take().cast().unwrap();
+            let end: i64 = args[1].take().cast().unwrap();
             Value::Array((start..end).map(Value::Int64).collect())
         },
         Function::GT_INT => comparison!(> : i64),

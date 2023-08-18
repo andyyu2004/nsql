@@ -606,7 +606,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
             let limit = limit_expr
                 .const_eval()
                 .map_err(|EvalNotConst| anyhow!("LIMIT expression must be constant"))?
-                .cast()?
+                .cast::<Option<u64>>()?
                 // if the limit is `NULL` we treat is as unlimited (i.e. `u64::MAX`)
                 .unwrap_or(u64::MAX);
             table_expr = table_expr.limit(limit);
