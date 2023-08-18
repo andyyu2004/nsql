@@ -1,5 +1,32 @@
 query A
-SELECT [1,2,3]
+SELECT [1, 2, 3]
 ----
 [1, 2, 3]
+
+
+query A
+SELECT [NULL, 2, 3]
+----
+[NULL, 2, 3]
+
+query A
+SELECT [1, NULL, 3]
+----
+[1, NULL, 3]
+
+query A
+SELECT [1, 2, NULL]
+----
+[1, 2, NULL]
+
+query A
+SELECT [NULL, NULL]
+----
+[NULL, NULL]
+
+query A
+SELECT []
+----
+[]
+
 

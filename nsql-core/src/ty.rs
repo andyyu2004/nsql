@@ -37,7 +37,7 @@ impl LogicalType {
     // HACK to workaround null type equality for now
     #[inline]
     pub fn is_subtype_of(&self, supertype: &Self) -> bool {
-        if matches!(self, LogicalType::Null) { true } else { self == supertype }
+        matches!(self, LogicalType::Null) || self == supertype
     }
 
     #[must_use]

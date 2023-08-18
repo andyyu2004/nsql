@@ -1144,30 +1144,29 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                 (ty, ir::ExprKind::BinOp { op, lhs: Box::new(lhs), rhs: Box::new(rhs) })
             }
             ast::Expr::Array(array) => {
-                // Keep this in sync with `Value::ty`
-                let ty = match &array.elem[..] {
-                    // default array type to `Int` if it is empty
-                    [] => LogicalType::Int64,
-                    // otherwise, we can get the type from the first element
-                    [first, ..] => f(first)?.ty,
-                };
-
+                let mut expected_ty = None;
                 let exprs = array
                     .elem
                     .iter()
                     .map(|e| {
                         let expr = f(e)?;
-                        // FIXME this isn't going to work with `NULLs` in the array
-                        ensure!(
-                            expr.ty == ty,
-                            "cannot create array of type {} with element of type {}",
-                            ty,
-                            expr.ty
-                        );
+                        if let Some(expected) = &expected_ty {
+                            ensure!(
+                                &expr.ty.is_subtype_of(expected),
+                                "cannot create array of type {} with element of type {}",
+                                expected,
+                                expr.ty
+                            );
+                        } else if !expr.ty.is_null() {
+                            expected_ty = Some(expr.ty.clone());
+                        }
+
                         Ok(expr)
                     })
                     .collect::<Result<Box<_>, _>>()?;
 
+                // default type to `Int64` if there are no non-null elements
+                let ty = expected_ty.unwrap_or(LogicalType::Int64);
                 (LogicalType::Array(Box::new(ty)), ir::ExprKind::Array(exprs))
             }
             ast::Expr::Function(f) => {

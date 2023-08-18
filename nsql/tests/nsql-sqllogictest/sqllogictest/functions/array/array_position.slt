@@ -1,0 +1,29 @@
+# query I
+# SELECT array_position([1, 2, 3], 1);
+# ----
+# 1
+#
+# query I
+# SELECT array_position([1, 2, 3], 4);
+# ----
+# NULL
+#
+# query I
+# SELECT array_position([1, 2, 3], NULL);
+# ----
+# NULL
+
+query I
+SELECT array_position([NULL, 2, 3], NULL);
+----
+1
+
+# query I
+# SELECT array_position([NULL, 2, 3], NULL);
+# ----
+# 1
+
+# query I
+# SELECT array_position(NULL, NULL);
+# ----
+# NULL

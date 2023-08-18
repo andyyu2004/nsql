@@ -8,9 +8,12 @@ macro_rules! comparison {
         |mut args| {
             assert_eq!(args.len(), 2);
             // FIXME need to handle nulls
-            let a: $ty = args[0].take().cast().unwrap();
-            let b: $ty = args[1].take().cast().unwrap();
-            Value::Bool(a $op b)
+            let a: Option<$ty> = args[0].take().cast().unwrap();
+            let b: Option<$ty> = args[1].take().cast().unwrap();
+            match (a, b) {
+                (Some(a), Some(b)) => Value::Bool(a $op b),
+                _  => Value::Null,
+            }
         }
     };
 
@@ -20,9 +23,12 @@ pub(crate) fn get_scalar_function(oid: Oid<Function>) -> Option<ScalarFunction> 
     Some(match oid {
         Function::RANGE2 => |mut args| {
             assert_eq!(args.len(), 2);
-            let start: i64 = args[0].take().cast().unwrap();
-            let end: i64 = args[1].take().cast().unwrap();
-            Value::Array((start..end).map(Value::Int64).collect())
+            let start: Option<i64> = args[0].take().cast().unwrap();
+            let end: Option<i64> = args[1].take().cast().unwrap();
+            match (start, end) {
+                (Some(start), Some(end)) => Value::Array((start..end).map(Value::Int64).collect()),
+                _ => Value::Null,
+            }
         },
         Function::GT_INT => comparison!(> : i64),
         Function::GT_FLOAT => comparison!(> : f64),
@@ -51,6 +57,7 @@ pub(crate) fn get_scalar_function(oid: Oid<Function>) -> Option<ScalarFunction> 
             assert_eq!(args.len(), 2);
             let array = match args[0].take() {
                 Value::Array(xs) => xs,
+                Value::Null => return Value::Null,
                 _ => panic!("expected array"),
             };
 

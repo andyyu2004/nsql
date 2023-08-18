@@ -234,11 +234,14 @@ impl Value {
             Value::Text(_) => LogicalType::Text,
             Value::Oid(_) => LogicalType::Oid,
             Value::Bytea(_) => LogicalType::Bytea,
-            // Keep this in sync with binder logic
-            Value::Array(values) => LogicalType::array(match &values[..] {
-                [] => LogicalType::Int64,
-                [first, ..] => first.logical_type(),
-            }),
+            // Keep this in sync with binder logic (i.e. inferred type of array is the type of the first element with non-null type or int64)
+            Value::Array(values) => LogicalType::array(
+                values
+                    .iter()
+                    .find(|val| !matches!(val, Value::Null))
+                    .map(|val| val.logical_type())
+                    .unwrap_or(LogicalType::Int64),
+            ),
             Value::Type(_) => LogicalType::Type,
             Value::TupleExpr(_) => LogicalType::TupleExpr,
             Value::Byte(_) => LogicalType::Byte,

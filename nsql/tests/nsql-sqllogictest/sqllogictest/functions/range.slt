@@ -1,0 +1,20 @@
+query A
+SELECT range(2, 5);
+----
+[2, 3, 4]
+
+query A
+SELECT range(NULL, 5);
+----
+NULL
+
+
+query A
+SELECT range(NULL, NULL);
+----
+NULL
+
+query A
+SELECT range(4, NULL);
+----
+NULL
