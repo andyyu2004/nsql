@@ -56,10 +56,9 @@ pub trait Visitor {
             QueryPlan::Values { values: _, schema: _ } => ControlFlow::Continue(()),
             QueryPlan::Join { schema: _, join, lhs, rhs } => {
                 match join {
-                    Join::Inner(constraint)
-                    | Join::Left(constraint)
-                    | Join::Right(constraint)
-                    | Join::Full(constraint) => self.visit_join_constraint(plan, constraint),
+                    Join::Constrained(_kind, constraint) => {
+                        self.visit_join_constraint(plan, constraint)
+                    }
                     Join::Cross => ControlFlow::Continue(()),
                 }?;
                 self.visit_query_plan(lhs)?;

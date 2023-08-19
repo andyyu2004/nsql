@@ -349,32 +349,57 @@ impl fmt::Display for Plan {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum JoinKind {
+    Inner,
+    Left,
+    Right,
+    Full,
+}
+
+impl JoinKind {
+    #[inline]
+    pub fn is_left(&self) -> bool {
+        matches!(self, JoinKind::Left | JoinKind::Full)
+    }
+
+    #[inline]
+    pub fn is_right(&self) -> bool {
+        matches!(self, JoinKind::Right | JoinKind::Full)
+    }
+}
+
+impl fmt::Display for JoinKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            JoinKind::Inner => write!(f, "INNER"),
+            JoinKind::Left => write!(f, "LEFT"),
+            JoinKind::Right => write!(f, "RIGHT"),
+            JoinKind::Full => write!(f, "FULL"),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Join<E = Expr> {
-    Inner(JoinConstraint<E>),
-    Left(JoinConstraint<E>),
-    Right(JoinConstraint<E>),
-    Full(JoinConstraint<E>),
+    Constrained(JoinKind, JoinConstraint<E>),
     Cross,
 }
 
 impl<E> Join<E> {
     #[inline]
     pub fn is_left(&self) -> bool {
-        matches!(self, Join::Left(_) | Join::Full(_))
+        matches!(self,Join::Constrained(kind, _) if kind.is_left())
     }
 
     #[inline]
     pub fn is_right(&self) -> bool {
-        matches!(self, Join::Right(_) | Join::Full(_))
+        matches!(self,Join::Constrained(kind, _) if kind.is_right())
     }
 
     pub fn map<X>(self, f: impl FnOnce(E) -> X) -> Join<X> {
         match self {
-            Join::Inner(constraint) => Join::Inner(constraint.map(f)),
-            Join::Left(constraint) => Join::Left(constraint.map(f)),
-            Join::Right(constraint) => Join::Right(constraint.map(f)),
-            Join::Full(constraint) => Join::Full(constraint.map(f)),
             Join::Cross => Join::Cross,
+            Join::Constrained(kind, constraint) => Join::Constrained(kind, constraint.map(f)),
         }
     }
 }
@@ -382,10 +407,7 @@ impl<E> Join<E> {
 impl<E: fmt::Display> fmt::Display for Join<E> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Join::Inner(constraint) => write!(f, "INNER JOIN{}", constraint),
-            Join::Left(constraint) => write!(f, "LEFT JOIN{}", constraint),
-            Join::Full(constraint) => write!(f, "FULL JOIN{}", constraint),
-            Join::Right(constraint) => write!(f, "RIGHT JOIN{}", constraint),
+            Join::Constrained(kind, constraint) => write!(f, "{kind} JOIN {constraint}"),
             Join::Cross => write!(f, "CROSS JOIN"),
         }
     }
@@ -408,7 +430,7 @@ impl<E> JoinConstraint<E> {
 impl<E: fmt::Display> fmt::Display for JoinConstraint<E> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            JoinConstraint::On(expr) => write!(f, " ON {}", expr),
+            JoinConstraint::On(expr) => write!(f, "ON {}", expr),
         }
     }
 }

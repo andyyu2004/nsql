@@ -736,20 +736,20 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                 ast::JoinConstraint::None => lhs.join(ir::Join::Cross, rhs),
                 _ => {
                     let constraint = self.bind_join_constraint(tx, &scope, constraint)?;
-                    lhs.join(ir::Join::Inner(constraint), rhs)
+                    lhs.join(ir::Join::Constrained(ir::JoinKind::Inner, constraint), rhs)
                 }
             },
             ast::JoinOperator::LeftOuter(constraint) => {
                 let constraint = self.bind_join_constraint(tx, &scope, constraint)?;
-                lhs.join(ir::Join::Left(constraint), rhs)
+                lhs.join(ir::Join::Constrained(ir::JoinKind::Left, constraint), rhs)
             }
             ast::JoinOperator::RightOuter(constraint) => {
                 let constraint = self.bind_join_constraint(tx, &scope, constraint)?;
-                lhs.join(ir::Join::Right(constraint), rhs)
+                lhs.join(ir::Join::Constrained(ir::JoinKind::Right, constraint), rhs)
             }
             ast::JoinOperator::FullOuter(constraint) => {
                 let constraint = self.bind_join_constraint(tx, &scope, constraint)?;
-                lhs.join(ir::Join::Full(constraint), rhs)
+                lhs.join(ir::Join::Constrained(ir::JoinKind::Full, constraint), rhs)
             }
             ast::JoinOperator::LeftSemi(_)
             | ast::JoinOperator::RightSemi(_)

@@ -105,18 +105,17 @@ impl PlanFold for QueryPlan {
             }
             QueryPlan::Values { values, schema } => QueryPlan::Values { values, schema },
             QueryPlan::Join { schema, join, lhs, rhs } => {
-                let mut fold_join_constraint = |constraint| match constraint {
-                    JoinConstraint::On(expr) => {
-                        // FIXME: not sure how to pass the plan here
-                        JoinConstraint::On(folder.fold_expr(&mut QueryPlan::Empty, expr))
-                    }
-                };
                 let join = match join {
-                    Join::Inner(constraint) => Join::Inner(fold_join_constraint(constraint)),
-                    Join::Left(constraint) => Join::Left(fold_join_constraint(constraint)),
-                    Join::Right(constraint) => Join::Right(fold_join_constraint(constraint)),
-                    Join::Full(constraint) => Join::Full(fold_join_constraint(constraint)),
                     Join::Cross => Join::Cross,
+                    Join::Constrained(kind, constraint) => Join::Constrained(
+                        kind,
+                        match constraint {
+                            JoinConstraint::On(expr) => JoinConstraint::On(
+                                // FIXME: not sure how to pass the plan here
+                                folder.fold_expr(&mut QueryPlan::Empty, expr),
+                            ),
+                        },
+                    ),
                 };
 
                 QueryPlan::Join {

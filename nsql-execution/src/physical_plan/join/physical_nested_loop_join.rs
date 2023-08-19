@@ -141,10 +141,7 @@ impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalOperator<'
         let joint_tuple = lhs_tuple.join(rhs_tuple);
 
         match &self.join {
-            ir::Join::Inner(constraint)
-            | ir::Join::Left(constraint)
-            | ir::Join::Right(constraint)
-            | ir::Join::Full(constraint) => {
+            ir::Join::Constrained(_kind, constraint) => {
                 let keep = match constraint {
                     ir::JoinConstraint::On(predicate) => {
                         predicate.execute(&joint_tuple).cast::<bool>()?
@@ -166,6 +163,10 @@ impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalOperator<'
                     Ok(OperatorState::Again(None))
                 }
             }
+            // ir::Join::Inner(constraint)
+            // | ir::Join::Left(constraint)
+            // | ir::Join::Right(constraint)
+            // | ir::Join::Full(constraint) => {
             ir::Join::Cross => Ok(OperatorState::Again(Some(joint_tuple))),
         }
     }
