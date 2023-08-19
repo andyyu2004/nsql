@@ -7,10 +7,12 @@ impl Table {
         ATTRIBUTE,
         INDEX,
         FUNCTION,
+        OPERATOR,
         NAMESPACE_NAME_UNIQUE_INDEX,
         TABLE_NAME_UNIQUE_INDEX,
         ATTRIBUTE_NAME_UNIQUE_INDEX,
-        FUNCTION_NAME_ARGS_UNIQUE_INDEX
+        FUNCTION_NAME_ARGS_UNIQUE_INDEX,
+        OPERATOR_NAME_LEFT_RIGHT_UNIQUE_INDEX
     ];
 }
 
@@ -78,6 +80,17 @@ pub(super) fn bootstrap_data() -> Box<[BootstrapTable]> {
                 name: "nsql_function_namespace_name_args_index",
                 kind: IndexKind::Unique,
                 column_names: vec!["namespace", "name", "args"],
+            }],
+        },
+        BootstrapTable {
+            oid: Table::OPERATOR,
+            name: "nsql_operator",
+            columns: Operator::bootstrap_table_storage_info().columns,
+            indexes: vec![BootstrapIndex {
+                table: Table::OPERATOR_NAME_LEFT_RIGHT_UNIQUE_INDEX,
+                name: "nsql_operator_namespace_name_l_r_index",
+                kind: IndexKind::Unique,
+                column_names: vec!["namespace", "name", "left", "right"],
             }],
         },
     ]

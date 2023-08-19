@@ -1113,6 +1113,11 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                             &Path::unqualified(">"),
                             &[lhs.ty(), rhs.ty()],
                         )?;
+                        // idea, have the concept similar to traits including supertraits and default methods.
+                        // see if it's implementable as a system table. We need one equivalent to Eq, Ord, Add and all these basic operations
+                        // maybe it's similar to postgres operator classes
+                        // we don't need sql level syntax for this for now.
+                        // name ideas, operator class and operator instance?
                         return Ok(ir::Expr {
                             ty: function.return_type(),
                             kind: ir::ExprKind::FunctionCall {

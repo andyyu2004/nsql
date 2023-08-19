@@ -6,10 +6,11 @@ use nsql_storage::value::{CastError, FromValue, Value};
 use nsql_storage::{ColumnStorageInfo, TableStorageInfo};
 use nsql_storage_engine::{StorageEngine, Transaction};
 
-use crate::{Catalog, Name, Oid, SystemEntity, Table};
+use crate::{Catalog, Name, Namespace, Oid, SystemEntity, Table};
 
 pub(crate) mod column;
 pub(crate) mod function;
 pub(crate) mod index;
 pub(crate) mod namespace;
+pub(crate) mod operator;
 pub(crate) mod table;

@@ -1,6 +1,9 @@
 mod function;
 mod namespace;
+mod operator;
 mod table;
+
+use std::collections::HashMap;
 
 use anyhow::bail;
 use nsql_core::{LogicalType, UntypedOid};
@@ -11,11 +14,11 @@ use nsql_storage_engine::{ReadWriteExecutionMode, StorageEngine, Transaction};
 
 use self::function::BootstrapFunction;
 use self::namespace::BootstrapNamespace;
+use self::operator::BootstrapOperator;
 use self::table::BootstrapTable;
-use crate::entity::function::FunctionKind;
 use crate::{
-    Column, ColumnIndex, Function, Index, IndexKind, Namespace, Oid, SystemEntity, SystemTableView,
-    Table, MAIN_SCHEMA,
+    Column, ColumnIndex, Function, Index, IndexKind, Namespace, Oid, Operator, OperatorKind,
+    SystemEntity, SystemTableView, Table, MAIN_SCHEMA,
 };
 
 macro_rules! mk_consts {
@@ -53,7 +56,7 @@ pub(crate) fn bootstrap<'env, S: StorageEngine>(
 
     let catalog = &BootstrapFunctionCatalog;
 
-    let (mut namespaces, mut tables, mut columns, mut indexes, mut functions) =
+    let (mut namespaces, mut tables, mut columns, mut indexes, mut functions, mut operators) =
         bootstrap_info().desugar();
 
     let mut namespace_table =
@@ -87,6 +90,11 @@ pub(crate) fn bootstrap<'env, S: StorageEngine>(
         SystemTableView::<S, ReadWriteExecutionMode, Function>::new_bootstrap(storage, tx)?;
     functions.try_for_each(|function| functions_table.insert(catalog, tx, function))?;
 
+    tracing::debug!("bootstrapping operators");
+    let mut operators_table =
+        SystemTableView::<S, ReadWriteExecutionMode, Operator>::new_bootstrap(storage, tx)?;
+    operators.try_for_each(|operator| operators_table.insert(catalog, tx, operator))?;
+
     Ok(())
 }
 
@@ -95,6 +103,7 @@ fn bootstrap_info() -> BootstrapData {
         namespaces: namespace::bootstrap_data(),
         tables: table::bootstrap_data(),
         functions: function::bootstrap_data(),
+        operators: operator::bootstrap_data(),
     }
 }
 
@@ -102,6 +111,7 @@ struct BootstrapData {
     namespaces: Box<[BootstrapNamespace]>,
     tables: Box<[BootstrapTable]>,
     functions: Box<[BootstrapFunction]>,
+    operators: Box<[BootstrapOperator]>,
 }
 
 impl BootstrapData {
@@ -113,6 +123,7 @@ impl BootstrapData {
         impl Iterator<Item = Column>,
         impl Iterator<Item = Index>,
         impl Iterator<Item = Function>,
+        impl Iterator<Item = Operator>,
     ) {
         let namespaces = self
             .namespaces
@@ -120,14 +131,65 @@ impl BootstrapData {
             .into_iter()
             .map(|ns| Namespace { oid: ns.oid, name: ns.name.into() });
 
-        let functions = self.functions.into_vec().into_iter().map(|f| Function {
-            oid: f.oid,
-            namespace: Namespace::MAIN,
-            name: f.name.into(),
-            args: f.args.into_boxed_slice(),
-            ret: f.ret,
-            kind: f.kind,
-        });
+        let mut functions_map = HashMap::with_capacity(self.functions.len());
+
+        let functions = self
+            .functions
+            .into_vec()
+            .into_iter()
+            .map(|f| {
+                let f = Function {
+                    oid: f.oid,
+                    namespace: Namespace::MAIN,
+                    name: f.name.into(),
+                    args: f.args.into_boxed_slice(),
+                    ret: f.ret,
+                    kind: f.kind,
+                };
+                assert!(functions_map.insert(f.oid, f.clone()).is_none());
+                f
+            })
+            .collect::<Vec<_>>();
+
+        let operators = self
+            .operators
+            .into_vec()
+            .into_iter()
+            .map(|op| {
+                let f = &functions_map[&op.function];
+                let output = f.return_type();
+                let (left, right) = match op.kind {
+                    OperatorKind::Prefix => {
+                        assert_eq!(
+                            f.args().len(),
+                            1,
+                            "function of prefix operator should take 1 argument"
+                        );
+                        (LogicalType::Null, f.args()[0].clone())
+                    }
+                    OperatorKind::Infix => {
+                        assert_eq!(
+                            f.args().len(),
+                            2,
+                            "function of binary operator should take 2 arguments"
+                        );
+                        let args = f.args();
+                        (args[0].clone(), args[1].clone())
+                    }
+                };
+
+                Operator {
+                    oid: op.oid,
+                    kind: op.kind,
+                    namespace: Namespace::CATALOG,
+                    function: op.function,
+                    name: op.name.into(),
+                    left,
+                    right,
+                    output,
+                }
+            })
+            .collect::<Vec<_>>();
 
         let mut tables = vec![];
         let mut columns = vec![];
@@ -211,6 +273,7 @@ impl BootstrapData {
             columns.into_iter(),
             indexes.into_iter(),
             functions.into_iter(),
+            operators.into_iter(),
         )
     }
 }

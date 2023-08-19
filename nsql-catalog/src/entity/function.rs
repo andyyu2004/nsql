@@ -3,7 +3,6 @@ use std::{fmt, mem};
 use nsql_core::UntypedOid;
 
 use super::*;
-use crate::Namespace;
 
 mod builtins;
 
@@ -163,7 +162,7 @@ impl SystemEntity for Function {
             vec![
                 ColumnStorageInfo::new("oid", LogicalType::Oid, true),
                 ColumnStorageInfo::new("kind", LogicalType::Byte, false),
-                ColumnStorageInfo::new("namespace", LogicalType::Oid, false),
+                ColumnStorageInfo::new("namespace", LogicalType::Oid, true),
                 ColumnStorageInfo::new("name", LogicalType::Text, false),
                 ColumnStorageInfo::new("args", LogicalType::array(LogicalType::Type), true),
                 ColumnStorageInfo::new("ret", LogicalType::Type, false),

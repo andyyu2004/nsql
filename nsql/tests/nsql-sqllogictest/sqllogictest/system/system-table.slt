@@ -4,13 +4,17 @@ SELECT * EXCLUDE (oid) FROM nsql_catalog.nsql_namespace
 main
 nsql_catalog
 
-# this one is a bit messy, so we don't check it's output
-# it is almost certaintly correct if the other queries don't fail
 statement ok
 SELECT * FROM nsql_catalog.nsql_attribute
 
 statement ok
 SELECT * FROM nsql_catalog.nsql_function
+
+statement ok
+SELECT * FROM nsql_catalog.nsql_operator
+
+statement ok
+SELECT * FROM nsql_catalog.nsql_index
 
 query T rowsort
 SELECT * EXCLUDE (oid, namespace) FROM nsql_catalog.nsql_table
@@ -22,8 +26,8 @@ nsql_function_namespace_name_args_index
 nsql_index
 nsql_namespace
 nsql_namespace_name_index
+nsql_operator
+nsql_operator_namespace_name_l_r_index
 nsql_table
 nsql_table_namespace_name_index
 
-statement ok
-SELECT * FROM nsql_catalog.nsql_index

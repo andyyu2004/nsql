@@ -1,4 +1,5 @@
 use super::*;
+use crate::FunctionKind;
 
 pub(super) struct BootstrapFunction {
     pub oid: Oid<Function>,

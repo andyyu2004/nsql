@@ -24,6 +24,7 @@ pub use self::entity::function::{
 };
 pub use self::entity::index::{Index, IndexKind};
 pub use self::entity::namespace::{CreateNamespaceInfo, Namespace};
+pub use self::entity::operator::{Operator, OperatorKind};
 pub use self::entity::table::{CreateTableInfo, Table};
 pub use self::system_table::SystemTableView;
 
