@@ -110,7 +110,6 @@ impl PlanFold for QueryPlan {
                         // FIXME: not sure how to pass the plan here
                         JoinConstraint::On(folder.fold_expr(&mut QueryPlan::Empty, expr))
                     }
-                    JoinConstraint::None => JoinConstraint::None,
                 };
                 let join = match join {
                     Join::Inner(constraint) => Join::Inner(fold_join_constraint(constraint)),

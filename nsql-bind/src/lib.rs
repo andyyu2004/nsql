@@ -731,10 +731,14 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
         let scope = lhs_scope.join(&rhs_scope);
         let plan = match &join.join_operator {
             ast::JoinOperator::CrossJoin => lhs.join(ir::Join::Cross, rhs),
-            ast::JoinOperator::Inner(constraint) => {
-                let constraint = self.bind_join_constraint(tx, &scope, constraint)?;
-                lhs.join(ir::Join::Inner(constraint), rhs)
-            }
+            ast::JoinOperator::Inner(constraint) => match constraint {
+                // an inner join without a join constraint is the same as a cross join
+                ast::JoinConstraint::None => lhs.join(ir::Join::Cross, rhs),
+                _ => {
+                    let constraint = self.bind_join_constraint(tx, &scope, constraint)?;
+                    lhs.join(ir::Join::Inner(constraint), rhs)
+                }
+            },
             ast::JoinOperator::LeftOuter(constraint) => {
                 let constraint = self.bind_join_constraint(tx, &scope, constraint)?;
                 lhs.join(ir::Join::Left(constraint), rhs)
@@ -773,7 +777,9 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                 );
                 Ok(ir::JoinConstraint::On(predicate))
             }
-            ast::JoinConstraint::None => Ok(ir::JoinConstraint::None),
+            ast::JoinConstraint::None => {
+                bail!("must provide a join constraint for non-inner joins")
+            }
             ast::JoinConstraint::Using(_) | ast::JoinConstraint::Natural => {
                 not_implemented!("only `on` joins are currently supported")
             }

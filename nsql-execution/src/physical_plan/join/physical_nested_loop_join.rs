@@ -149,7 +149,6 @@ impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalOperator<'
                     ir::JoinConstraint::On(predicate) => {
                         predicate.execute(&joint_tuple).cast::<bool>()?
                     }
-                    ir::JoinConstraint::None => true,
                 };
 
                 if keep {

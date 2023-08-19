@@ -106,7 +106,6 @@ pub trait Visitor {
     ) -> ControlFlow<()> {
         match constraint {
             JoinConstraint::On(expr) => self.visit_expr(plan, expr),
-            JoinConstraint::None => ControlFlow::Continue(()),
         }
     }
 

@@ -394,7 +394,6 @@ impl<E: fmt::Display> fmt::Display for Join<E> {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum JoinConstraint<E = Expr> {
     On(E),
-    None,
 }
 
 impl<E> JoinConstraint<E> {
@@ -402,7 +401,6 @@ impl<E> JoinConstraint<E> {
     pub fn map<X>(self, f: impl FnOnce(E) -> X) -> JoinConstraint<X> {
         match self {
             JoinConstraint::On(expr) => JoinConstraint::On(f(expr)),
-            JoinConstraint::None => JoinConstraint::None,
         }
     }
 }
@@ -411,7 +409,6 @@ impl<E: fmt::Display> fmt::Display for JoinConstraint<E> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             JoinConstraint::On(expr) => write!(f, " ON {}", expr),
-            JoinConstraint::None => Ok(()),
         }
     }
 }
