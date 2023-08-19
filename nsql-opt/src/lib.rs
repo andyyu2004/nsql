@@ -7,7 +7,20 @@ trait Pass: Folder {
     fn name(&self) -> &'static str;
 }
 
-pub fn optimize(mut plan: Box<ir::Plan>) -> Box<ir::Plan> {
+pub fn optimize(plan: Box<ir::Plan>) -> Box<ir::Plan> {
+    match *plan {
+        ir::Plan::Show(_)
+        | ir::Plan::Drop(_)
+        | ir::Plan::Transaction(_)
+        | ir::Plan::CreateNamespace(_)
+        | ir::Plan::CreateTable(_)
+        | ir::Plan::SetVariable { .. } => plan,
+        ir::Plan::Explain(query) => Box::new(ir::Plan::Explain(optimize(query))),
+        ir::Plan::Query(query) => Box::new(ir::Plan::Query(optimize_query(query))),
+    }
+}
+
+fn optimize_query(mut plan: Box<ir::QueryPlan>) -> Box<ir::QueryPlan> {
     plan.validate().unwrap_or_else(|err| panic!("invalid plan passed to optimizer: {err}"));
 
     loop {
@@ -41,7 +54,7 @@ impl Folder for SubqueryFlattener {
         self
     }
 
-    fn fold_plan(&mut self, plan: ir::Plan) -> ir::Plan {
+    fn fold_plan(&mut self, plan: ir::QueryPlan) -> ir::QueryPlan {
         #[derive(Debug)]
         struct Flattener {
             found_subquery: bool,
@@ -52,12 +65,12 @@ impl Folder for SubqueryFlattener {
                 self
             }
 
-            fn fold_plan(&mut self, plan: ir::Plan) -> ir::Plan {
+            fn fold_plan(&mut self, plan: ir::QueryPlan) -> ir::QueryPlan {
                 // we only flatten one layer of the plan at a time, we don't recurse here
                 plan
             }
 
-            fn fold_expr(&mut self, plan: &mut ir::Plan, expr: ir::Expr) -> ir::Expr {
+            fn fold_expr(&mut self, plan: &mut ir::QueryPlan, expr: ir::Expr) -> ir::Expr {
                 match expr.kind {
                     ir::ExprKind::Subquery(subquery_plan) => {
                         self.found_subquery |= true;
@@ -112,7 +125,7 @@ impl Folder for IdentityProjectionRemover {
         self
     }
 
-    fn fold_plan(&mut self, plan: ir::Plan) -> ir::Plan {
+    fn fold_plan(&mut self, plan: ir::QueryPlan) -> ir::QueryPlan {
         fn is_identity_projection(source_schema: &[LogicalType], projection: &[ir::Expr]) -> bool {
             source_schema.len() == projection.len()
                 && projection.iter().enumerate().all(|(i, expr)| match &expr.kind {
@@ -121,11 +134,11 @@ impl Folder for IdentityProjectionRemover {
                 })
         }
 
-        if let ir::Plan::Projection { source, projection, projected_schema } = plan {
+        if let ir::QueryPlan::Projection { source, projection, projected_schema } = plan {
             if is_identity_projection(source.schema(), &projection) {
                 source.super_fold_with(self)
             } else {
-                ir::Plan::Projection {
+                ir::QueryPlan::Projection {
                     source: self.fold_boxed_plan(source),
                     projection,
                     projected_schema,

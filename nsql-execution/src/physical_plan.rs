@@ -23,7 +23,6 @@ use std::fmt;
 use std::sync::Arc;
 
 use anyhow::Result;
-use ir::Plan;
 use nsql_catalog::Catalog;
 use nsql_core::{LogicalType, Schema};
 use nsql_storage::eval::{ExecutableExpr, ExecutableTupleExpr};
@@ -80,28 +79,51 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalPlanner<'env, S> {
     pub fn plan(
         &mut self,
         tx: &dyn Transaction<'env, S>,
-        plan: Box<Plan>,
+        plan: Box<ir::Plan>,
     ) -> Result<PhysicalPlan<'env, 'txn, S, ReadonlyExecutionMode>> {
         self.plan_node(tx, plan).map(PhysicalPlan)
+    }
+
+    #[allow(clippy::boxed_local)]
+    fn plan_node<M: ExecutionMode<'env, S>>(
+        &mut self,
+        tx: &dyn Transaction<'env, S>,
+        plan: Box<ir::Plan>,
+    ) -> Result<Arc<dyn PhysicalNode<'env, 'txn, S, M>>> {
+        let plan = match *plan {
+            ir::Plan::Transaction(kind) => PhysicalTransaction::plan(kind),
+            ir::Plan::SetVariable { name, value, scope } => PhysicalSet::plan(name, value, scope),
+            ir::Plan::Show(object_type) => PhysicalShow::plan(object_type),
+            ir::Plan::Explain(logical_plan) => {
+                let physical_plan = self.plan_node(tx, logical_plan.clone())?;
+                return self.explain_plan(logical_plan, physical_plan);
+            }
+            ir::Plan::Drop(_) | ir::Plan::CreateNamespace(_) | ir::Plan::CreateTable(_) => {
+                unreachable!("write plans should go through plan_write_node, got plan {:?}", plan)
+            }
+            ir::Plan::Query(query) => self.plan_query_node(tx, query)?,
+        };
+
+        Ok(plan)
     }
 
     #[inline]
     pub fn plan_write(
         &mut self,
         tx: &dyn Transaction<'env, S>,
-        plan: Box<Plan>,
+        plan: Box<ir::Plan>,
     ) -> Result<PhysicalPlan<'env, 'txn, S, ReadWriteExecutionMode>> {
         self.plan_write_node(tx, plan).map(PhysicalPlan)
     }
 
-    fn plan_write_node(
+    fn plan_write_query_node(
         &mut self,
         tx: &dyn Transaction<'env, S>,
-        plan: Box<Plan>,
+        plan: Box<ir::QueryPlan>,
     ) -> Result<Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode>>> {
         let plan = match *plan {
-            Plan::Update { table, source, returning, schema } => {
-                let source = self.plan_write_node(tx, source)?;
+            ir::QueryPlan::Update { table, source, returning, schema } => {
+                let source = self.plan_write_query_node(tx, source)?;
                 PhysicalUpdate::plan(
                     schema,
                     table,
@@ -109,8 +131,8 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalPlanner<'env, S> {
                     returning.map(|e| self.compile_exprs(e)),
                 )
             }
-            Plan::Insert { table, source, returning, schema } => {
-                let source = self.plan_write_node(tx, source)?;
+            ir::QueryPlan::Insert { table, source, returning, schema } => {
+                let source = self.plan_write_query_node(tx, source)?;
                 PhysicalInsert::plan(
                     schema,
                     table,
@@ -118,10 +140,27 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalPlanner<'env, S> {
                     returning.map(|exprs| self.compile_exprs(exprs)),
                 )
             }
-            Plan::CreateTable(info) => PhysicalCreateTable::plan(info),
-            Plan::CreateNamespace(info) => PhysicalCreateNamespace::plan(info),
-            Plan::Drop(refs) => PhysicalDrop::plan(refs),
-            _ => return self.fold_plan(tx, plan, Self::plan_write_node),
+            _ => return self.fold_query_plan(tx, plan, Self::plan_write_query_node),
+        };
+
+        Ok(plan)
+    }
+
+    fn plan_write_node(
+        &mut self,
+        tx: &dyn Transaction<'env, S>,
+        plan: Box<ir::Plan>,
+    ) -> Result<Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode>>> {
+        let plan = match *plan {
+            ir::Plan::CreateTable(info) => PhysicalCreateTable::plan(info),
+            ir::Plan::CreateNamespace(info) => PhysicalCreateNamespace::plan(info),
+            ir::Plan::Drop(refs) => PhysicalDrop::plan(refs),
+            ir::Plan::Query(query) => self.plan_write_query_node(tx, query)?,
+            ir::Plan::Explain(logical_plan) => {
+                let physical_plan = self.plan_write_node(tx, logical_plan.clone())?;
+                return self.explain_plan(logical_plan, physical_plan);
+            }
+            _ => self.plan_node(tx, plan)?,
         };
 
         Ok(plan)
@@ -136,77 +175,77 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalPlanner<'env, S> {
     }
 
     #[allow(clippy::boxed_local)]
-    fn plan_node<M: ExecutionMode<'env, S>>(
+    fn plan_query_node<M: ExecutionMode<'env, S>>(
         &mut self,
         tx: &dyn Transaction<'env, S>,
-        plan: Box<Plan>,
+        plan: Box<ir::QueryPlan>,
     ) -> Result<Arc<dyn PhysicalNode<'env, 'txn, S, M>>> {
-        self.fold_plan(tx, plan, Self::plan_node)
+        self.fold_query_plan(tx, plan, Self::plan_query_node)
     }
 
     #[allow(clippy::boxed_local)]
-    fn fold_plan<M: ExecutionMode<'env, S>>(
+    fn fold_query_plan<M: ExecutionMode<'env, S>>(
         &mut self,
         tx: &dyn Transaction<'env, S>,
-        plan: Box<Plan>,
+        plan: Box<ir::QueryPlan>,
         mut f: impl FnMut(
             &mut Self,
             &dyn Transaction<'env, S>,
-            Box<Plan>,
+            Box<ir::QueryPlan>,
         ) -> Result<Arc<dyn PhysicalNode<'env, 'txn, S, M>>>,
     ) -> Result<Arc<dyn PhysicalNode<'env, 'txn, S, M>>> {
         let plan = match *plan {
-            Plan::Transaction(kind) => PhysicalTransaction::plan(kind),
-            Plan::SetVariable { name, value, scope } => PhysicalSet::plan(name, value, scope),
-            Plan::TableScan { table, projection, projected_schema } => {
+            ir::QueryPlan::TableScan { table, projection, projected_schema } => {
                 PhysicalTableScan::plan(projected_schema, table, projection)
             }
-            Plan::Show(object_type) => PhysicalShow::plan(object_type),
-            Plan::Explain(logical_plan) => {
-                let physical_plan = f(self, tx, logical_plan.clone())?;
-                return self.explain_plan(logical_plan, physical_plan);
-            }
-            Plan::Values { schema, values } => {
+            ir::QueryPlan::Values { schema, values } => {
                 PhysicalValues::plan(schema, self.compile_values(values))
             }
-            Plan::Projection { projected_schema, source, projection } => PhysicalProjection::plan(
-                projected_schema,
-                f(self, tx, source)?,
-                self.compile_exprs(projection),
-            ),
-            Plan::Limit { source, limit, exceeded_message } => {
+            ir::QueryPlan::Projection { projected_schema, source, projection } => {
+                PhysicalProjection::plan(
+                    projected_schema,
+                    f(self, tx, source)?,
+                    self.compile_exprs(projection),
+                )
+            }
+            ir::QueryPlan::Limit { source, limit, exceeded_message } => {
                 PhysicalLimit::plan(f(self, tx, source)?, limit, exceeded_message)
             }
-            Plan::Order { source, order } => {
+            ir::QueryPlan::Order { source, order } => {
                 PhysicalOrder::plan(f(self, tx, source)?, self.compile_order_exprs(order))
             }
-            Plan::Filter { source, predicate } => {
+            ir::QueryPlan::Filter { source, predicate } => {
                 PhysicalFilter::plan(f(self, tx, source)?, self.compile_expr(predicate))
             }
-            Plan::Join { schema, join, lhs, rhs } => PhysicalNestedLoopJoin::plan(
+            ir::QueryPlan::Join { schema, join, lhs, rhs } => PhysicalNestedLoopJoin::plan(
                 schema,
                 join.map(|expr| self.compile_expr(expr)),
                 f(self, tx, lhs)?,
                 f(self, tx, rhs)?,
             ),
-            Plan::Aggregate { functions, source, schema, group_by } if group_by.is_empty() => {
+            ir::QueryPlan::Aggregate { functions, source, schema, group_by }
+                if group_by.is_empty() =>
+            {
                 let functions = self.compile_aggregate_functions(functions.to_vec());
                 PhysicalUngroupedAggregate::plan(schema, functions, f(self, tx, source)?)
             }
-            Plan::Aggregate { functions, source, schema, group_by } => PhysicalHashAggregate::plan(
-                schema,
-                self.compile_aggregate_functions(functions.to_vec()),
-                f(self, tx, source)?,
-                self.compile_exprs(group_by),
-            ),
-            Plan::Unnest { schema, expr } => PhysicalUnnest::plan(schema, self.compile_expr(expr)),
-            Plan::Empty => PhysicalDummyScan::plan(),
-            Plan::CreateTable(_)
-            | Plan::CreateNamespace(_)
-            | Plan::Drop(_)
-            | Plan::Update { .. }
-            | Plan::Insert { .. } => {
-                unreachable!("write plans should go through plan_node_write, got plan {:?}", plan)
+            ir::QueryPlan::Aggregate { functions, source, schema, group_by } => {
+                PhysicalHashAggregate::plan(
+                    schema,
+                    self.compile_aggregate_functions(functions.to_vec()),
+                    f(self, tx, source)?,
+                    self.compile_exprs(group_by),
+                )
+            }
+            ir::QueryPlan::Unnest { schema, expr } => {
+                PhysicalUnnest::plan(schema, self.compile_expr(expr))
+            }
+            ir::QueryPlan::Empty => PhysicalDummyScan::plan(),
+            ir::QueryPlan::Update { .. } | ir::QueryPlan::Insert { .. } => {
+                unreachable!(
+                    "write query plans should go through plan_write_query_node, got plan {:?}",
+                    plan
+                )
             }
         };
 

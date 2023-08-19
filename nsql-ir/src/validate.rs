@@ -4,7 +4,7 @@ use std::ops::ControlFlow;
 use anyhow::anyhow;
 
 use crate::visit::Visitor;
-use crate::{Expr, ExprKind, Plan};
+use crate::{Expr, ExprKind, QueryPlan};
 
 #[derive(Default)]
 struct Validator {
@@ -26,7 +26,7 @@ impl fmt::Display for ValidationError {
 impl std::error::Error for ValidationError {}
 
 impl Visitor for Validator {
-    fn visit_expr(&mut self, plan: &Plan, expr: &Expr) -> ControlFlow<()> {
+    fn visit_expr(&mut self, plan: &QueryPlan, expr: &Expr) -> ControlFlow<()> {
         match &expr.kind {
             ExprKind::ColumnRef { qpath, index } => {
                 if index.as_usize() >= plan.schema().len() {
@@ -43,10 +43,10 @@ impl Visitor for Validator {
     }
 }
 
-impl Plan {
+impl QueryPlan {
     pub fn validate(&self) -> Result<(), ValidationError> {
         let mut validator = Validator::default();
-        validator.visit_plan(self);
+        validator.visit_query_plan(self);
         if validator.errors.is_empty() {
             Ok(())
         } else {

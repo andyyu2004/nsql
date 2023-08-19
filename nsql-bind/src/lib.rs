@@ -269,11 +269,11 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                     None => Schema::empty(),
                 };
 
-                ir::Plan::Insert { table, source, returning, schema }
+                ir::Plan::query(ir::QueryPlan::Insert { table, source, returning, schema })
             }
             ast::Statement::Query(query) => {
                 let (_scope, query) = self.bind_query(tx, scope, query)?;
-                return Ok(query);
+                ir::Plan::Query(query)
             }
             ast::Statement::StartTransaction { modes } => {
                 let mut mode = ir::TransactionMode::ReadWrite;
@@ -376,7 +376,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                     .map(|exprs| exprs.iter().map(|e| e.ty.clone()).collect())
                     .unwrap_or_else(Schema::empty);
 
-                ir::Plan::Update { table, source, returning, schema }
+                ir::Plan::query(ir::QueryPlan::Update { table, source, returning, schema })
             }
             ast::Statement::Explain { describe_alias: _, analyze, verbose, statement, format } => {
                 not_implemented!(*analyze);
@@ -415,7 +415,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
         tx: &dyn Transaction<'env, S>,
         table: Oid<Table>,
         projection: Option<Box<[ColumnIndex]>>,
-    ) -> Result<Box<ir::Plan>> {
+    ) -> Result<Box<ir::QueryPlan>> {
         let columns = self.catalog.get::<Table>(tx, table)?.columns(self.catalog, tx)?;
         let schema = columns.iter().map(|column| column.logical_type()).collect::<Schema>();
         let projected_schema = projection
@@ -425,7 +425,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
             })
             .unwrap_or(schema);
 
-        Ok(Box::new(ir::Plan::TableScan { table, projection, projected_schema }))
+        Ok(Box::new(ir::QueryPlan::TableScan { table, projection, projected_schema }))
     }
 
     fn bind_assignments(
@@ -591,7 +591,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
         tx: &dyn Transaction<'env, S>,
         scope: &Scope,
         query: &ast::Query,
-    ) -> Result<(Scope, Box<ir::Plan>)> {
+    ) -> Result<(Scope, Box<ir::QueryPlan>)> {
         let ast::Query { with, body, order_by, limit, offset, fetch, locks } = query;
         not_implemented!(with.is_some());
         not_implemented!(offset.is_some());
@@ -621,7 +621,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
         scope: &Scope,
         body: &ast::SetExpr,
         order_by: &[ast::OrderByExpr],
-    ) -> Result<(Scope, Box<ir::Plan>)> {
+    ) -> Result<(Scope, Box<ir::QueryPlan>)> {
         let (scope, expr) = match body {
             ast::SetExpr::Select(sel) => self.bind_select(tx, scope, sel, order_by)?,
             // FIXME we have to pass down order by into `bind_select` otherwise the projection
@@ -630,7 +630,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
             ast::SetExpr::Values(values) => {
                 assert!(order_by.is_empty());
                 let (scope, values) = self.bind_values(tx, scope, values)?;
-                (scope, Box::new(ir::Plan::values(values)))
+                (scope, ir::QueryPlan::values(values))
             }
             ast::SetExpr::Query(query) => self.bind_query(tx, scope, query)?,
             ast::SetExpr::SetOperation { .. }
@@ -651,7 +651,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
         scope: &Scope,
         select: &ast::Select,
         order_by: &[ast::OrderByExpr],
-    ) -> Result<(Scope, Box<ir::Plan>)> {
+    ) -> Result<(Scope, Box<ir::QueryPlan>)> {
         let ast::Select {
             distinct,
             projection,
@@ -679,7 +679,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
         not_implemented!(qualify.is_some());
 
         let (scope, mut source) = match &from[..] {
-            [] => (scope.clone(), Box::new(ir::Plan::Empty)),
+            [] => (scope.clone(), Box::new(ir::QueryPlan::Empty)),
             [table] => self.bind_joint_tables(tx, scope, table)?,
             _ => todo!(),
         };
@@ -709,7 +709,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
         tx: &dyn Transaction<'env, S>,
         scope: &Scope,
         tables: &ast::TableWithJoins,
-    ) -> Result<(Scope, Box<ir::Plan>)> {
+    ) -> Result<(Scope, Box<ir::QueryPlan>)> {
         let (mut scope, mut plan) = self.bind_table_factor(tx, scope, &tables.relation)?;
 
         for join in &tables.joins {
@@ -723,9 +723,9 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
         &self,
         tx: &dyn Transaction<'env, S>,
         lhs_scope: &Scope,
-        lhs: Box<ir::Plan>,
+        lhs: Box<ir::QueryPlan>,
         join: &ast::Join,
-    ) -> Result<(Scope, Box<ir::Plan>)> {
+    ) -> Result<(Scope, Box<ir::QueryPlan>)> {
         let (rhs_scope, rhs) = self.bind_table_factor(tx, &Scope::default(), &join.relation)?;
 
         let scope = lhs_scope.join(&rhs_scope);
@@ -785,7 +785,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
         tx: &dyn Transaction<'env, S>,
         scope: &Scope,
         table: &ast::TableFactor,
-    ) -> Result<(Scope, Box<ir::Plan>)> {
+    ) -> Result<(Scope, Box<ir::QueryPlan>)> {
         let (scope, table_expr) = match table {
             ast::TableFactor::Table { name, alias, args, with_hints } => {
                 not_implemented!(args.is_some());
@@ -819,7 +819,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                     scope = scope.alias(self.lower_table_alias(alias))?;
                 }
 
-                (scope, Box::new(ir::Plan::unnest(expr)))
+                (scope, ir::QueryPlan::unnest(expr))
             }
             ast::TableFactor::NestedJoin { .. } => todo!(),
             ast::TableFactor::Pivot { .. } => todo!(),

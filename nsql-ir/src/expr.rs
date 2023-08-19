@@ -11,7 +11,7 @@ use nsql_storage::tuple::TupleIndex;
 use nsql_storage::value::Value;
 use nsql_util::static_assert_eq;
 
-use crate::{Plan, QPath};
+use crate::{QPath, QueryPlan};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Expr {
@@ -100,7 +100,7 @@ pub enum ExprKind {
         cases: Box<[Case]>,
         else_result: Option<Box<Expr>>,
     },
-    Subquery(Box<Plan>),
+    Subquery(Box<QueryPlan>),
 }
 
 pub type FunctionCall<E = Expr> = (MonoFunction, Box<[E]>);

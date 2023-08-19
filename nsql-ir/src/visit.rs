@@ -1,6 +1,6 @@
 use std::ops::ControlFlow;
 
-use crate::{Expr, ExprKind, Join, JoinConstraint, Plan};
+use crate::{Expr, ExprKind, Join, JoinConstraint, Plan, QueryPlan};
 // FIXME returning ControlFlow is probably better than using bool these days, also lets the visitor
 // carry a value on break which is convenient (can also use `?` for ergonomics)
 
@@ -26,21 +26,35 @@ pub trait Visitor {
             Plan::CreateNamespace(_info) => ControlFlow::Continue(()),
             Plan::CreateTable(_info) => ControlFlow::Continue(()),
             Plan::SetVariable { .. } => ControlFlow::Continue(()),
-            Plan::TableScan { table: _, projection: _, projected_schema: _ } => {
+            Plan::Explain(plan) => self.walk_plan(plan),
+            Plan::Query(plan) => self.visit_query_plan(plan),
+        }
+    }
+
+    #[inline]
+    fn visit_query_plan(&mut self, plan: &QueryPlan) -> ControlFlow<()> {
+        self.walk_query_plan(plan)
+    }
+
+    #[inline]
+    fn walk_query_plan(&mut self, plan: &QueryPlan) -> ControlFlow<()> {
+        // we must visit the expression before recursing on the plan (i.e. somewhat breadth-first)
+        match plan {
+            QueryPlan::TableScan { table: _, projection: _, projected_schema: _ } => {
                 ControlFlow::Continue(())
             }
-            Plan::Projection { source, projection, projected_schema: _ } => {
+            QueryPlan::Projection { source, projection, projected_schema: _ } => {
                 self.visit_exprs(source, projection)?;
-                self.visit_plan(source)
+                self.visit_query_plan(source)
             }
-            Plan::Filter { source, predicate } => {
+            QueryPlan::Filter { source, predicate } => {
                 self.visit_expr(source, predicate)?;
-                self.visit_plan(source)
+                self.visit_query_plan(source)
             }
             // FIXME where is the child of unnest try unnesting a column in a test before continuing with this change
-            Plan::Unnest { expr, schema: _ } => self.visit_expr(&Plan::Empty, expr),
-            Plan::Values { values: _, schema: _ } => ControlFlow::Continue(()),
-            Plan::Join { schema: _, join, lhs, rhs } => {
+            QueryPlan::Unnest { expr, schema: _ } => self.visit_expr(&QueryPlan::Empty, expr),
+            QueryPlan::Values { values: _, schema: _ } => ControlFlow::Continue(()),
+            QueryPlan::Join { schema: _, join, lhs, rhs } => {
                 match join {
                     Join::Inner(constraint)
                     | Join::Left(constraint)
@@ -48,45 +62,46 @@ pub trait Visitor {
                     | Join::Full(constraint) => self.visit_join_constraint(plan, constraint),
                     Join::Cross => ControlFlow::Continue(()),
                 }?;
-                self.visit_plan(lhs)?;
-                self.visit_plan(rhs)
+                self.visit_query_plan(lhs)?;
+                self.visit_query_plan(rhs)
             }
-            Plan::Limit { source, limit: _, exceeded_message: _ } => self.visit_plan(source),
-            Plan::Order { source, order } => {
+            QueryPlan::Limit { source, limit: _, exceeded_message: _ } => {
+                self.visit_query_plan(source)
+            }
+            QueryPlan::Order { source, order } => {
                 for order_expr in &order[..] {
                     self.visit_expr(plan, &order_expr.expr)?;
                 }
-                self.visit_plan(source)
+                self.visit_query_plan(source)
             }
-            Plan::Empty => ControlFlow::Continue(()),
-            Plan::Explain(plan) => self.visit_plan(plan),
-            Plan::Insert { table: _, source, returning, schema: _ } => {
+            QueryPlan::Empty => ControlFlow::Continue(()),
+            QueryPlan::Insert { table: _, source, returning, schema: _ } => {
                 if let Some(returning) = returning {
                     self.visit_exprs(source, returning)?;
                 }
-                self.visit_plan(source)
+                self.visit_query_plan(source)
             }
-            Plan::Update { table: _, source, returning, schema: _ } => {
+            QueryPlan::Update { table: _, source, returning, schema: _ } => {
                 if let Some(returning) = returning {
                     self.visit_exprs(source, returning)?;
                 }
-                self.visit_plan(source)
+                self.visit_query_plan(source)
             }
-            Plan::Aggregate { source, functions, group_by, schema: _ } => {
+            QueryPlan::Aggregate { source, functions, group_by, schema: _ } => {
                 for (_f, args) in &functions[..] {
                     for arg in &args[..] {
                         self.visit_expr(plan, arg)?;
                     }
                 }
                 self.visit_exprs(source, group_by)?;
-                self.visit_plan(source)
+                self.visit_query_plan(source)
             }
         }
     }
 
     fn visit_join_constraint(
         &mut self,
-        plan: &Plan,
+        plan: &QueryPlan,
         constraint: &JoinConstraint,
     ) -> ControlFlow<()> {
         match constraint {
@@ -96,7 +111,7 @@ pub trait Visitor {
     }
 
     #[inline]
-    fn visit_exprs(&mut self, plan: &Plan, exprs: &[Expr]) -> ControlFlow<()> {
+    fn visit_exprs(&mut self, plan: &QueryPlan, exprs: &[Expr]) -> ControlFlow<()> {
         for expr in exprs {
             self.visit_expr(plan, expr)?;
         }
@@ -104,11 +119,11 @@ pub trait Visitor {
     }
 
     #[inline]
-    fn visit_expr(&mut self, plan: &Plan, expr: &Expr) -> ControlFlow<()> {
+    fn visit_expr(&mut self, plan: &QueryPlan, expr: &Expr) -> ControlFlow<()> {
         self.walk_expr(plan, expr)
     }
 
-    fn walk_expr(&mut self, plan: &Plan, expr: &Expr) -> ControlFlow<()> {
+    fn walk_expr(&mut self, plan: &QueryPlan, expr: &Expr) -> ControlFlow<()> {
         match &expr.kind {
             ExprKind::Literal(_) => ControlFlow::Continue(()),
             ExprKind::Array(exprs) => self.visit_exprs(plan, exprs),
@@ -133,7 +148,7 @@ pub trait Visitor {
                 ControlFlow::Continue(())
             }
             ExprKind::UnaryOp { op: _, expr } => self.visit_expr(plan, expr),
-            ExprKind::Subquery(plan) => self.visit_plan(plan),
+            ExprKind::Subquery(plan) => self.visit_query_plan(plan),
         }
     }
 }

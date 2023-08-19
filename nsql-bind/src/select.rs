@@ -21,11 +21,11 @@ impl<'a, 'env, S: StorageEngine> SelectBinder<'a, 'env, S> {
         mut self,
         tx: &dyn Transaction<'env, S>,
         scope: &Scope,
-        source: Box<ir::Plan>,
+        source: Box<ir::QueryPlan>,
         items: &[ast::SelectItem],
         order_by: &[ast::OrderByExpr],
         having: Option<&ast::Expr>,
-    ) -> Result<(Scope, Box<ir::Plan>)> {
+    ) -> Result<(Scope, Box<ir::QueryPlan>)> {
         // contains any additional expressions that are required to evaluate the order_by, or having clauses
         let mut bound_extra_exprs = vec![];
         let mut extra_exprs = IndexSet::new();
@@ -161,7 +161,7 @@ impl<'a, 'env, S: StorageEngine> SelectBinder<'a, 'env, S> {
                 self
             }
 
-            fn fold_expr(&mut self, plan: &mut ir::Plan, expr: ir::Expr) -> ir::Expr {
+            fn fold_expr(&mut self, plan: &mut ir::QueryPlan, expr: ir::Expr) -> ir::Expr {
                 const AGGREGATE_TABLE_NAME: Path = Path::Unqualified(Name::new_inline("agg"));
 
                 match &expr.kind {
@@ -203,7 +203,7 @@ impl<'a, 'env, S: StorageEngine> SelectBinder<'a, 'env, S> {
         };
 
         // this folder doesn't require the plan, so we just pass in an empty plan
-        let expr = expr.super_fold_with(&mut folder, &mut ir::Plan::Empty);
+        let expr = expr.super_fold_with(&mut folder, &mut ir::QueryPlan::Empty);
 
         // if the select expression `expr` contains a column reference and `expr` is not
         // a super-expression of any aggregate, then we have a problem

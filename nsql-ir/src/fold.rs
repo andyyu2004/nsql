@@ -4,42 +4,42 @@ pub trait Folder {
     fn as_dyn(&mut self) -> &mut dyn Folder;
 
     #[inline]
-    fn fold_plan(&mut self, plan: Plan) -> Plan {
+    fn fold_plan(&mut self, plan: QueryPlan) -> QueryPlan {
         plan.fold_with(self.as_dyn())
     }
 
     /// Replace an expression, this must be type preserving.
     /// Implement this method if you want to replace an expression with a different expression.
     #[inline]
-    fn fold_expr(&mut self, plan: &mut Plan, expr: Expr) -> Expr {
+    fn fold_expr(&mut self, plan: &mut QueryPlan, expr: Expr) -> Expr {
         expr.fold_with(self.as_dyn(), plan)
     }
 
     #[inline]
-    fn fold_boxed_plan(&mut self, mut boxed_plan: Box<Plan>) -> Box<Plan> {
+    fn fold_boxed_plan(&mut self, mut boxed_plan: Box<QueryPlan>) -> Box<QueryPlan> {
         self.fold_plan_in_place(&mut boxed_plan);
         boxed_plan
     }
 
     #[inline]
-    fn fold_plan_in_place(&mut self, plan: &mut Plan) {
+    fn fold_plan_in_place(&mut self, plan: &mut QueryPlan) {
         *plan = self.fold_plan(mem::take(&mut *plan));
     }
 
     /// Convenience method for folding a boxed expression, implement `fold_expr` not this
     #[inline]
-    fn fold_boxed_expr(&mut self, plan: &mut Plan, mut boxed_expr: Box<Expr>) -> Box<Expr> {
+    fn fold_boxed_expr(&mut self, plan: &mut QueryPlan, mut boxed_expr: Box<Expr>) -> Box<Expr> {
         self.fold_expr_in_place(plan, &mut boxed_expr);
         boxed_expr
     }
 
     #[inline]
-    fn fold_expr_in_place(&mut self, plan: &mut Plan, expr: &mut Expr) {
+    fn fold_expr_in_place(&mut self, plan: &mut QueryPlan, expr: &mut Expr) {
         *expr = self.fold_expr(plan, mem::take(&mut *expr));
     }
 
     #[inline]
-    fn fold_exprs(&mut self, plan: &mut Plan, mut exprs: Box<[Expr]>) -> Box<[Expr]> {
+    fn fold_exprs(&mut self, plan: &mut QueryPlan, mut exprs: Box<[Expr]>) -> Box<[Expr]> {
         for expr in &mut exprs[..] {
             self.fold_expr_in_place(plan, expr);
         }
@@ -57,11 +57,6 @@ pub trait PlanFold: Sized {
 }
 
 impl PlanFold for Plan {
-    #[inline]
-    fn super_fold_with(self, folder: &mut dyn Folder) -> Self {
-        folder.fold_plan(self)
-    }
-
     fn fold_with(self, folder: &mut dyn Folder) -> Self {
         match self {
             Plan::Show(_)
@@ -70,14 +65,27 @@ impl PlanFold for Plan {
             | Plan::CreateNamespace(_)
             | Plan::SetVariable { name: _, value: _, scope: _ }
             | Plan::CreateTable(_) => self,
+            Plan::Explain(query) => Plan::Explain(Box::new(query.super_fold_with(folder))),
+            Plan::Query(query) => Plan::Query(Box::new(query.super_fold_with(folder))),
+        }
+    }
+}
 
+impl PlanFold for QueryPlan {
+    #[inline]
+    fn super_fold_with(self, folder: &mut dyn Folder) -> Self {
+        folder.fold_plan(self)
+    }
+
+    fn fold_with(self, folder: &mut dyn Folder) -> Self {
+        match self {
             // maybe can incorporate an expression folder in here too?
-            Plan::TableScan { table, projection, projected_schema } => {
-                Plan::TableScan { table, projection, projected_schema }
+            QueryPlan::TableScan { table, projection, projected_schema } => {
+                QueryPlan::TableScan { table, projection, projected_schema }
             }
-            Plan::Projection { source, projection, projected_schema } => {
+            QueryPlan::Projection { source, projection, projected_schema } => {
                 let mut source = folder.fold_boxed_plan(source);
-                Plan::Projection {
+                QueryPlan::Projection {
                     projection: projection
                         .into_vec()
                         .into_iter()
@@ -87,20 +95,20 @@ impl PlanFold for Plan {
                     source,
                 }
             }
-            Plan::Filter { source, predicate } => {
+            QueryPlan::Filter { source, predicate } => {
                 let mut source = folder.fold_boxed_plan(source);
-                Plan::Filter { predicate: folder.fold_expr(&mut source, predicate), source }
+                QueryPlan::Filter { predicate: folder.fold_expr(&mut source, predicate), source }
             }
 
-            Plan::Unnest { expr, schema } => {
-                Plan::Unnest { expr: folder.fold_expr(&mut Plan::Empty, expr), schema }
+            QueryPlan::Unnest { expr, schema } => {
+                QueryPlan::Unnest { expr: folder.fold_expr(&mut QueryPlan::Empty, expr), schema }
             }
-            Plan::Values { values, schema } => Plan::Values { values, schema },
-            Plan::Join { schema, join, lhs, rhs } => {
+            QueryPlan::Values { values, schema } => QueryPlan::Values { values, schema },
+            QueryPlan::Join { schema, join, lhs, rhs } => {
                 let mut fold_join_constraint = |constraint| match constraint {
                     JoinConstraint::On(expr) => {
                         // FIXME: not sure how to pass the plan here
-                        JoinConstraint::On(folder.fold_expr(&mut Plan::Empty, expr))
+                        JoinConstraint::On(folder.fold_expr(&mut QueryPlan::Empty, expr))
                     }
                     JoinConstraint::None => JoinConstraint::None,
                 };
@@ -112,19 +120,19 @@ impl PlanFold for Plan {
                     Join::Cross => Join::Cross,
                 };
 
-                Plan::Join {
+                QueryPlan::Join {
                     schema,
                     join,
                     lhs: folder.fold_boxed_plan(lhs),
                     rhs: folder.fold_boxed_plan(rhs),
                 }
             }
-            Plan::Limit { source, limit, exceeded_message } => {
-                Plan::Limit { source: folder.fold_boxed_plan(source), limit, exceeded_message }
+            QueryPlan::Limit { source, limit, exceeded_message } => {
+                QueryPlan::Limit { source: folder.fold_boxed_plan(source), limit, exceeded_message }
             }
-            Plan::Order { source, order } => {
+            QueryPlan::Order { source, order } => {
                 let mut source = folder.fold_boxed_plan(source);
-                Plan::Order {
+                QueryPlan::Order {
                     order: order
                         .into_vec()
                         .into_iter()
@@ -133,29 +141,28 @@ impl PlanFold for Plan {
                     source,
                 }
             }
-            Plan::Empty => Plan::Empty,
-            Plan::Explain(plan) => Plan::Explain(folder.fold_boxed_plan(plan)),
-            Plan::Insert { table, source, returning, schema } => {
+            QueryPlan::Empty => QueryPlan::Empty,
+            QueryPlan::Insert { table, source, returning, schema } => {
                 let mut source = folder.fold_boxed_plan(source);
-                Plan::Insert {
+                QueryPlan::Insert {
                     table,
                     returning: returning.map(|exprs| folder.fold_exprs(&mut source, exprs)),
                     schema,
                     source,
                 }
             }
-            Plan::Update { table, source, returning, schema } => {
+            QueryPlan::Update { table, source, returning, schema } => {
                 let mut source = folder.fold_boxed_plan(source);
-                Plan::Update {
+                QueryPlan::Update {
                     table,
                     returning: returning.map(|exprs| folder.fold_exprs(&mut source, exprs)),
                     source,
                     schema,
                 }
             }
-            Plan::Aggregate { source, functions, group_by, schema } => {
+            QueryPlan::Aggregate { source, functions, group_by, schema } => {
                 let mut source = folder.fold_boxed_plan(source);
-                Plan::Aggregate {
+                QueryPlan::Aggregate {
                     functions: functions
                         .into_vec()
                         .into_iter()
@@ -171,26 +178,26 @@ impl PlanFold for Plan {
 }
 
 pub trait ExprFold: Sized {
-    fn fold_with(self, folder: &mut dyn Folder, plan: &mut Plan) -> Self;
+    fn fold_with(self, folder: &mut dyn Folder, plan: &mut QueryPlan) -> Self;
 
-    fn super_fold_with(self, folder: &mut dyn Folder, plan: &mut Plan) -> Self {
+    fn super_fold_with(self, folder: &mut dyn Folder, plan: &mut QueryPlan) -> Self {
         self.fold_with(folder, plan)
     }
 }
 
 impl ExprFold for OrderExpr {
     #[inline]
-    fn fold_with(self, folder: &mut dyn Folder, plan: &mut Plan) -> Self {
+    fn fold_with(self, folder: &mut dyn Folder, plan: &mut QueryPlan) -> Self {
         Self { expr: folder.fold_expr(plan, self.expr), asc: self.asc }
     }
 }
 
 impl ExprFold for Expr {
-    fn super_fold_with(self, folder: &mut dyn Folder, plan: &mut Plan) -> Self {
+    fn super_fold_with(self, folder: &mut dyn Folder, plan: &mut QueryPlan) -> Self {
         folder.fold_expr(plan, self)
     }
 
-    fn fold_with(self, folder: &mut dyn Folder, plan: &mut Plan) -> Self {
+    fn fold_with(self, folder: &mut dyn Folder, plan: &mut QueryPlan) -> Self {
         let kind = match self.kind {
             ExprKind::Literal(lit) => ExprKind::Literal(lit),
             ExprKind::ColumnRef { qpath, index } => ExprKind::ColumnRef { qpath, index },

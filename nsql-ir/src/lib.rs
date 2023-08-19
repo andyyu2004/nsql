@@ -105,20 +105,12 @@ impl fmt::Display for VariableScope {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
-pub enum Plan {
-    Show(ObjectType),
-    Drop(Vec<EntityRef>),
-    Transaction(TransactionStmt),
-    CreateNamespace(CreateNamespaceInfo),
-    CreateTable(CreateTableInfo),
-    SetVariable {
-        name: Name,
-        value: Value,
-        scope: VariableScope,
-    },
+pub enum QueryPlan {
+    #[default]
+    Empty,
     Aggregate {
         functions: Box<[FunctionCall]>,
-        source: Box<Plan>,
+        source: Box<QueryPlan>,
         group_by: Box<[Expr]>,
         schema: Schema,
     },
@@ -128,12 +120,12 @@ pub enum Plan {
         projected_schema: Schema,
     },
     Projection {
-        source: Box<Plan>,
+        source: Box<QueryPlan>,
         projection: Box<[Expr]>,
         projected_schema: Schema,
     },
     Filter {
-        source: Box<Plan>,
+        source: Box<QueryPlan>,
         predicate: Expr,
     },
     // maybe this can be implemented as a standard table function in the future (change the sqlparser dialect to duckdb if so)
@@ -148,77 +140,102 @@ pub enum Plan {
     Join {
         schema: Schema,
         join: Join,
-        lhs: Box<Plan>,
-        rhs: Box<Plan>,
+        lhs: Box<QueryPlan>,
+        rhs: Box<QueryPlan>,
     },
     Limit {
-        source: Box<Plan>,
+        source: Box<QueryPlan>,
         limit: u64,
         exceeded_message: Option<&'static str>,
     },
     Order {
-        source: Box<Plan>,
+        source: Box<QueryPlan>,
         order: Box<[OrderExpr]>,
     },
-    #[default]
-    Empty,
-    Explain(Box<Plan>),
     Insert {
         table: Oid<Table>,
-        source: Box<Plan>,
+        source: Box<QueryPlan>,
         returning: Option<Box<[Expr]>>,
         schema: Schema,
     },
     Update {
         table: Oid<Table>,
-        source: Box<Plan>,
+        source: Box<QueryPlan>,
         returning: Option<Box<[Expr]>>,
         schema: Schema,
     },
 }
 
+impl QueryPlan {
+    pub fn required_transaction_mode(&self) -> TransactionMode {
+        match self {
+            Self::Update { .. } | Self::Insert { .. } => TransactionMode::ReadWrite,
+            Self::Limit { source, .. }
+            | Self::Aggregate { source, .. }
+            | Self::Order { source, .. }
+            | Self::Projection { source, .. }
+            | Self::Filter { source, .. } => source.required_transaction_mode(),
+            Self::TableScan { .. } | Self::Empty | Self::Unnest { .. } | Self::Values { .. } => {
+                TransactionMode::ReadOnly
+            }
+            Self::Join { lhs, rhs, .. } => {
+                lhs.required_transaction_mode().max(rhs.required_transaction_mode())
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum Plan {
+    Show(ObjectType),
+    Drop(Vec<EntityRef>),
+    Transaction(TransactionStmt),
+    CreateNamespace(CreateNamespaceInfo),
+    CreateTable(CreateTableInfo),
+    SetVariable { name: Name, value: Value, scope: VariableScope },
+    Explain(Box<Plan>),
+    Query(Box<QueryPlan>),
+}
+
+impl Default for Plan {
+    #[inline]
+    fn default() -> Self {
+        Self::Query(Default::default())
+    }
+}
+
 impl Plan {
     #[inline]
     pub fn take(&mut self) -> Self {
-        mem::replace(self, Plan::Empty)
+        mem::take(self)
     }
 
     pub fn required_transaction_mode(&self) -> TransactionMode {
         match self {
-            Plan::Drop(_)
-            | Plan::CreateNamespace(_)
-            | Plan::CreateTable(_)
-            | Plan::Update { .. }
-            | Plan::Insert { .. } => TransactionMode::ReadWrite,
+            Plan::Drop(_) | Plan::CreateNamespace(_) | Plan::CreateTable(_) => {
+                TransactionMode::ReadWrite
+            }
             Plan::Transaction(kind) => match kind {
                 TransactionStmt::Begin(mode) => *mode,
                 TransactionStmt::Commit | TransactionStmt::Abort => TransactionMode::ReadOnly,
             },
+            Plan::Show(..) => TransactionMode::ReadOnly,
+            Plan::SetVariable { .. } => TransactionMode::ReadOnly,
             // even though `explain` doesn't execute the plan, the planning stage currently
             // still checks we have a write transaction available
-            Plan::Show(..) | Plan::TableScan { .. } => TransactionMode::ReadOnly,
-            Plan::Limit { source, .. }
-            | Plan::Aggregate { source, .. }
-            | Plan::Order { source, .. }
-            | Plan::Projection { source, .. }
-            | Plan::Filter { source, .. } => source.required_transaction_mode(),
-            Plan::Explain(inner) => inner.required_transaction_mode(),
-            Plan::Empty | Plan::Unnest { .. } | Plan::Values { .. } => TransactionMode::ReadOnly,
-            Plan::Join { lhs, rhs, .. } => {
-                lhs.required_transaction_mode().max(rhs.required_transaction_mode())
-            }
-            Plan::SetVariable { .. } => TransactionMode::ReadOnly,
+            Plan::Explain(plan) => plan.required_transaction_mode(),
+            Plan::Query(query) => query.required_transaction_mode(),
         }
     }
 }
 
 struct PlanFormatter<'p> {
-    plan: &'p Plan,
+    plan: &'p QueryPlan,
     indent: usize,
 }
 
 impl<'p> PlanFormatter<'p> {
-    fn child(&self, plan: &'p Plan) -> Self {
+    fn child(&self, plan: &'p QueryPlan) -> Self {
         Self { plan, indent: self.indent + 2 }
     }
 }
@@ -226,6 +243,91 @@ impl<'p> PlanFormatter<'p> {
 impl fmt::Display for PlanFormatter<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.plan {
+            QueryPlan::Aggregate { functions, source, group_by, schema: _ } => {
+                write!(
+                    f,
+                    "aggregate ({}) by {}",
+                    functions
+                        .iter()
+                        .map(|(f, args)| format!("{}({})", f.name(), args.iter().format(",")))
+                        .collect::<Vec<_>>()
+                        .join(","),
+                    group_by.iter().format(",")
+                )?;
+                writeln!(f, "  {source}")
+            }
+            QueryPlan::TableScan { table, projection, projected_schema: _ } => {
+                write!(f, "table scan {}", table)?;
+                if let Some(projection) = projection {
+                    write!(f, "({})", projection.iter().format(","))?;
+                }
+                Ok(())
+            }
+            QueryPlan::Projection { source, projection, projected_schema: _ } => {
+                writeln!(
+                    f,
+                    "{:indent$}projection ({})",
+                    "",
+                    projection.iter().format(","),
+                    indent = self.indent
+                )?;
+                self.child(source).fmt(f)
+            }
+            QueryPlan::Filter { source, predicate } => {
+                writeln!(f, "{:indent$}filter ({})", "", predicate, indent = self.indent)?;
+                self.child(source).fmt(f)
+            }
+            QueryPlan::Unnest { schema: _, expr } => write!(f, "UNNEST ({})", expr),
+            QueryPlan::Values { values: _, schema: _ } => {
+                writeln!(f, "{:indent$}VALUES", "", indent = self.indent)
+            }
+            QueryPlan::Join { schema: _, join, lhs, rhs } => {
+                writeln!(f, "{:indent$}join ({})", "", join, indent = self.indent)?;
+                self.child(lhs).fmt(f)?;
+                self.child(rhs).fmt(f)
+            }
+            QueryPlan::Limit { source, limit, exceeded_message: _ } => {
+                writeln!(f, "{:indent$}limit ({})", "", limit, indent = self.indent)?;
+                self.child(source).fmt(f)
+            }
+            QueryPlan::Order { source, order } => {
+                write!(
+                    f,
+                    "{:indent$}order ({})",
+                    "",
+                    order.iter().format(","),
+                    indent = self.indent
+                )?;
+                self.child(source).fmt(f)
+            }
+            QueryPlan::Empty => write!(f, "empty"),
+            QueryPlan::Insert { table, source, returning, schema: _ } => {
+                write!(f, "INSERT INTO {table}")?;
+                if let Some(returning) = returning {
+                    write!(f, " RETURNING ({})", returning.iter().format(","))?;
+                }
+                writeln!(f, "  {source}")
+            }
+            QueryPlan::Update { table, source, returning, schema: _ } => {
+                write!(f, "UPDATE {table} SET", table = table)?;
+                if let Some(returning) = returning {
+                    write!(f, " RETURNING ({})", returning.iter().format(","))?;
+                }
+                writeln!(f, "  {source}")
+            }
+        }
+    }
+}
+
+impl fmt::Display for QueryPlan {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        PlanFormatter { plan: self, indent: 0 }.fmt(f)
+    }
+}
+
+impl fmt::Display for Plan {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
             Plan::Show(kind) => write!(f, "SHOW {kind}"),
             Plan::Drop(_refs) => write!(f, "DROP"),
             Plan::Transaction(tx) => write!(f, "{tx}"),
@@ -239,87 +341,10 @@ impl fmt::Display for PlanFormatter<'_> {
             Plan::CreateTable(table) => {
                 write!(f, "CREATE TABLE {}.{}", table.namespace, table.name)
             }
-            Plan::Aggregate { functions, source, group_by, schema: _ } => {
-                write!(
-                    f,
-                    "aggregate ({}) by {}",
-                    functions
-                        .iter()
-                        .map(|(f, args)| format!("{}({})", f.name(), args.iter().format(",")))
-                        .collect::<Vec<_>>()
-                        .join(","),
-                    group_by.iter().format(",")
-                )?;
-                writeln!(f, "  {source}")
-            }
-            Plan::TableScan { table, projection, projected_schema: _ } => {
-                write!(f, "table scan {}", table)?;
-                if let Some(projection) = projection {
-                    write!(f, "({})", projection.iter().format(","))?;
-                }
-                Ok(())
-            }
-            Plan::Projection { source, projection, projected_schema: _ } => {
-                writeln!(
-                    f,
-                    "{:indent$}projection ({})",
-                    "",
-                    projection.iter().format(","),
-                    indent = self.indent
-                )?;
-                self.child(source).fmt(f)
-            }
-            Plan::Filter { source, predicate } => {
-                writeln!(f, "{:indent$}filter ({})", "", predicate, indent = self.indent)?;
-                self.child(source).fmt(f)
-            }
-            Plan::Unnest { schema: _, expr } => write!(f, "UNNEST ({})", expr),
-            Plan::Values { values: _, schema: _ } => {
-                writeln!(f, "{:indent$}VALUES", "", indent = self.indent)
-            }
-            Plan::Join { schema: _, join, lhs, rhs } => {
-                writeln!(f, "{:indent$}join ({})", "", join, indent = self.indent)?;
-                self.child(lhs).fmt(f)?;
-                self.child(rhs).fmt(f)
-            }
-            Plan::Limit { source, limit, exceeded_message: _ } => {
-                writeln!(f, "{:indent$}limit ({})", "", limit, indent = self.indent)?;
-                self.child(source).fmt(f)
-            }
-            Plan::Order { source, order } => {
-                write!(
-                    f,
-                    "{:indent$}order ({})",
-                    "",
-                    order.iter().format(","),
-                    indent = self.indent
-                )?;
-                self.child(source).fmt(f)
-            }
-            Plan::Empty => write!(f, "empty"),
-            Plan::Explain(plan) => write!(f, "EXPLAIN {plan}"),
-            Plan::Insert { table, source, returning, schema: _ } => {
-                write!(f, "INSERT INTO {table}")?;
-                if let Some(returning) = returning {
-                    write!(f, " RETURNING ({})", returning.iter().format(","))?;
-                }
-                writeln!(f, "  {source}")
-            }
-            Plan::Update { table, source, returning, schema: _ } => {
-                write!(f, "UPDATE {table} SET", table = table)?;
-                if let Some(returning) = returning {
-                    write!(f, " RETURNING ({})", returning.iter().format(","))?;
-                }
-                writeln!(f, "  {source}")
-            }
             Plan::SetVariable { name, value, scope } => write!(f, "SET {scope} {name} = {value}"),
+            Plan::Explain(query) => write!(f, "EXPLAIN {query}"),
+            Plan::Query(query) => write!(f, "{query}"),
         }
-    }
-}
-
-impl fmt::Display for Plan {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        PlanFormatter { plan: self, indent: 0 }.fmt(f)
     }
 }
 
@@ -407,46 +432,21 @@ impl<E: fmt::Display> fmt::Display for OrderExpr<E> {
     }
 }
 
-impl Plan {
+impl QueryPlan {
     pub fn schema(&self) -> &[LogicalType] {
         match self {
-            Plan::TableScan { projected_schema, .. }
-            | Plan::Projection { projected_schema, .. } => projected_schema,
-            Plan::Aggregate { schema, .. }
-            | Plan::Join { schema, .. }
-            | Plan::Unnest { schema, .. }
-            | Plan::Insert { schema, .. }
-            | Plan::Update { schema, .. }
-            | Plan::Values { schema, .. } => schema,
-            Plan::Filter { source, .. }
-            | Plan::Limit { source, .. }
-            | Plan::Order { source, .. } => source.schema(),
-            Plan::Show(..) | Plan::Explain(..) => &[LogicalType::Text],
-            Plan::Empty
-            | Plan::Drop(..)
-            | Plan::Transaction(..)
-            | Plan::CreateNamespace(..)
-            | Plan::CreateTable(..)
-            | Plan::SetVariable { .. } => &[],
-        }
-    }
-
-    pub fn values(values: Values) -> Self {
-        let schema = values
-            .iter()
-            .map(|row| row.iter().map(|expr| expr.ty.clone()).collect())
-            .next()
-            .expect("values should be non-empty");
-        Plan::Values { values, schema }
-    }
-
-    /// Construct an `unnest` plan. `expr` must have an array type
-    pub fn unnest(expr: Expr) -> Self {
-        match &expr.ty {
-            LogicalType::Array(element_type) => {
-                Plan::Unnest { schema: Schema::new([*element_type.clone()]), expr }
-            }
-            _ => panic!("unnest expression must be an array"),
+            QueryPlan::TableScan { projected_schema, .. }
+            | QueryPlan::Projection { projected_schema, .. } => projected_schema,
+            QueryPlan::Aggregate { schema, .. }
+            | QueryPlan::Join { schema, .. }
+            | QueryPlan::Unnest { schema, .. }
+            | QueryPlan::Insert { schema, .. }
+            | QueryPlan::Update { schema, .. }
+            | QueryPlan::Values { schema, .. } => schema,
+            QueryPlan::Filter { source, .. }
+            | QueryPlan::Limit { source, .. }
+            | QueryPlan::Order { source, .. } => source.schema(),
+            QueryPlan::Empty => &[],
         }
     }
 
@@ -465,17 +465,17 @@ impl Plan {
             .map(|e| e.ty.clone())
             .chain(functions.iter().map(|(f, _args)| f.return_type()))
             .collect();
-        Box::new(Plan::Aggregate { schema, functions, group_by, source: self })
+        Box::new(Self::Aggregate { schema, functions, group_by, source: self })
     }
 
     #[inline]
     pub fn limit(self: Box<Self>, limit: u64) -> Box<Self> {
-        Box::new(Plan::Limit { source: self, limit, exceeded_message: None })
+        Box::new(Self::Limit { source: self, limit, exceeded_message: None })
     }
 
     #[inline]
     pub fn strict_limit(self: Box<Self>, limit: u64, exceeded_message: &'static str) -> Box<Self> {
-        Box::new(Plan::Limit { source: self, limit, exceeded_message: Some(exceeded_message) })
+        Box::new(Self::Limit { source: self, limit, exceeded_message: Some(exceeded_message) })
     }
 
     #[inline]
@@ -485,26 +485,26 @@ impl Plan {
             return self;
         }
 
-        Box::new(Plan::Order { source: self, order })
+        Box::new(Self::Order { source: self, order })
     }
 
     #[inline]
     pub fn join(self: Box<Self>, join: Join, rhs: Box<Self>) -> Box<Self> {
         let schema = self.schema().iter().chain(rhs.schema()).cloned().collect();
-        Box::new(Plan::Join { schema, join, lhs: self, rhs })
+        Box::new(Self::Join { schema, join, lhs: self, rhs })
     }
 
     #[inline]
     pub fn filter(self: Box<Self>, predicate: Expr) -> Box<Self> {
         assert!(matches!(predicate.ty, LogicalType::Bool | LogicalType::Null));
-        Box::new(Plan::Filter { source: self, predicate })
+        Box::new(Self::Filter { source: self, predicate })
     }
 
     #[inline]
     pub fn project(self: Box<Self>, projection: impl Into<Box<[Expr]>>) -> Box<Self> {
         let projection = projection.into();
         let projected_schema = projection.iter().map(|expr| expr.ty.clone()).collect();
-        Box::new(Plan::Projection { source: self, projection, projected_schema })
+        Box::new(Self::Projection { source: self, projection, projected_schema })
     }
 
     /// Create a projection that projects the first `k` columns of the plan
@@ -522,6 +522,43 @@ impl Plan {
             })
             .collect::<Box<_>>();
         self.project(projection)
+    }
+
+    pub fn values(values: Values) -> Box<Self> {
+        let schema = values
+            .iter()
+            .map(|row| row.iter().map(|expr| expr.ty.clone()).collect())
+            .next()
+            .expect("values should be non-empty");
+        Box::new(QueryPlan::Values { values, schema })
+    }
+
+    /// Construct an `unnest` plan. `expr` must have an array type
+    pub fn unnest(expr: Expr) -> Box<Self> {
+        match &expr.ty {
+            LogicalType::Array(element_type) => {
+                Box::new(QueryPlan::Unnest { schema: Schema::new([*element_type.clone()]), expr })
+            }
+            _ => panic!("unnest expression must be an array"),
+        }
+    }
+}
+
+impl Plan {
+    pub fn schema(&self) -> &[LogicalType] {
+        match self {
+            Plan::Show(..) | Plan::Explain(..) => &[LogicalType::Text],
+            Plan::Drop(..)
+            | Plan::Transaction(..)
+            | Plan::CreateNamespace(..)
+            | Plan::CreateTable(..)
+            | Plan::SetVariable { .. } => &[],
+            Plan::Query(query) => query.schema(),
+        }
+    }
+
+    pub fn query(query: QueryPlan) -> Self {
+        Plan::Query(Box::new(query))
     }
 }
 
