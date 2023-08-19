@@ -1,6 +1,7 @@
-use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::marker::PhantomData;
+use std::str::FromStr;
+use std::{cmp, fmt};
 
 use rkyv::{Archive, Deserialize, Serialize};
 
@@ -9,11 +10,37 @@ use rkyv::{Archive, Deserialize, Serialize};
 /// type, it is currently possible to misuse this type and read from the wrong set.
 // This must only be constructed internally by the catalog.
 // FIXME move the typedoid to catalog crate but keep the untyped one here
-#[derive(PartialOrd, Ord, PartialEq, Eq, Archive, Serialize, Deserialize)]
+#[derive(Archive, Serialize, Deserialize)]
+// #[structural_match]
 pub struct Oid<T: ?Sized> {
     oid: u64,
     marker: PhantomData<fn() -> T>,
 }
+
+impl<T: ?Sized> PartialEq for Oid<T> {
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        self.oid == other.oid
+    }
+}
+
+impl<T: ?Sized> Eq for Oid<T> {}
+
+impl<T: ?Sized> PartialOrd for Oid<T> {
+    #[inline]
+    fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl<T: ?Sized> Ord for Oid<T> {
+    #[inline]
+    fn cmp(&self, other: &Self) -> cmp::Ordering {
+        self.oid.cmp(&other.oid)
+    }
+}
+
+impl<T: ?Sized> std::marker::StructuralEq for Oid<T> {}
 
 impl<T> Oid<T> {
     pub const NULL: Self = Self::new(0);
@@ -35,7 +62,23 @@ impl<T: ?Sized> fmt::Debug for ArchivedOid<T> {
 
 impl<T: ?Sized> fmt::Display for Oid<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.oid)
+        write!(f, "#{}", self.oid)
+    }
+}
+
+impl<T: ?Sized> FromStr for Oid<T> {
+    type Err = anyhow::Error;
+
+    #[inline]
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        if s.is_empty() {
+            anyhow::bail!("invalid empty tuple index")
+        }
+
+        match s.split_at(1) {
+            ("#", index) => Ok(Self::new(index.parse()?)),
+            _ => anyhow::bail!("tuple index must be prefixed with `#`"),
+        }
     }
 }
 

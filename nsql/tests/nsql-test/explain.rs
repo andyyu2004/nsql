@@ -17,7 +17,7 @@ pub fn check_explain<'a>(
 
     let result = conn.query(&state, query)?;
     assert_eq!(result.tuples.len(), 1);
-    assert_eq!(result.tuples[0].len(), 1);
+    assert_eq!(result.tuples[0].width(), 1);
 
     expect.assert_eq(&result.tuples[0][TupleIndex::new(0)].to_string());
     Ok(())

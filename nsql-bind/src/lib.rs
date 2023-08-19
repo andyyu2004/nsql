@@ -703,7 +703,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
         not_implemented!(qualify.is_some());
 
         let (scope, mut source) = match &from[..] {
-            [] => (scope.clone(), Box::new(ir::QueryPlan::Empty)),
+            [] => (scope.clone(), Box::new(ir::QueryPlan::DummyScan)),
             [table] => self.bind_joint_tables(tx, scope, table)?,
             _ => todo!(),
         };

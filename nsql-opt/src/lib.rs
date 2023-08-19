@@ -1,7 +1,11 @@
+mod node;
+
 use std::mem;
 
+pub use egg::Id as NodeId;
 use ir::fold::{ExprFold, Folder, PlanFold};
 use ir::ExprKind;
+pub use node::{Expr, Graph, Plan};
 use nsql_core::LogicalType;
 
 trait Pass: Folder {
@@ -22,6 +26,8 @@ pub fn optimize(plan: Box<ir::Plan>) -> Box<ir::Plan> {
 }
 
 fn optimize_query(mut plan: Box<ir::QueryPlan>) -> Box<ir::QueryPlan> {
+    let _graph = node::Builder::default().build(&plan);
+
     plan.validate().unwrap_or_else(|err| panic!("invalid plan passed to optimizer: {err}"));
 
     loop {

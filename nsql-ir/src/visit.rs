@@ -52,7 +52,7 @@ pub trait Visitor {
                 self.visit_query_plan(source)
             }
             // FIXME where is the child of unnest try unnesting a column in a test before continuing with this change
-            QueryPlan::Unnest { expr, schema: _ } => self.visit_expr(&QueryPlan::Empty, expr),
+            QueryPlan::Unnest { expr, schema: _ } => self.visit_expr(&QueryPlan::DummyScan, expr),
             QueryPlan::Values { values: _, schema: _ } => ControlFlow::Continue(()),
             QueryPlan::Join { schema: _, join, lhs, rhs } => {
                 match join {
@@ -73,7 +73,7 @@ pub trait Visitor {
                 }
                 self.visit_query_plan(source)
             }
-            QueryPlan::Empty => ControlFlow::Continue(()),
+            QueryPlan::DummyScan => ControlFlow::Continue(()),
             QueryPlan::Insert { table: _, source, returning, schema: _ } => {
                 if let Some(returning) = returning {
                     self.visit_exprs(source, returning)?;

@@ -3,7 +3,6 @@ use super::*;
 #[derive(Debug)]
 pub struct PhysicalProjection<'env, 'txn, S, M> {
     children: [Arc<dyn PhysicalNode<'env, 'txn, S, M>>; 1],
-    schema: Schema,
     projection: ExecutableTupleExpr,
 }
 
@@ -11,11 +10,10 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     PhysicalProjection<'env, 'txn, S, M>
 {
     pub(crate) fn plan(
-        schema: Schema,
         source: Arc<dyn PhysicalNode<'env, 'txn, S, M>>,
         projection: ExecutableTupleExpr,
     ) -> Arc<dyn PhysicalNode<'env, 'txn, S, M>> {
-        Arc::new(Self { schema, children: [source], projection })
+        Arc::new(Self { children: [source], projection })
     }
 }
 
@@ -37,12 +35,12 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode<'env, 'txn, S, M>
     for PhysicalProjection<'env, 'txn, S, M>
 {
-    fn children(&self) -> &[Arc<dyn PhysicalNode<'env, 'txn, S, M>>] {
-        &self.children
+    fn schema(&self) -> &[LogicalType] {
+        todo!()
     }
 
-    fn schema(&self) -> &[LogicalType] {
-        &self.schema
+    fn children(&self) -> &[Arc<dyn PhysicalNode<'env, 'txn, S, M>>] {
+        &self.children
     }
 
     fn as_source(

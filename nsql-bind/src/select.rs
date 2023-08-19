@@ -203,7 +203,7 @@ impl<'a, 'env, S: StorageEngine> SelectBinder<'a, 'env, S> {
         };
 
         // this folder doesn't require the plan, so we just pass in an empty plan
-        let expr = expr.super_fold_with(&mut folder, &mut ir::QueryPlan::Empty);
+        let expr = expr.super_fold_with(&mut folder, &mut ir::QueryPlan::DummyScan);
 
         // if the select expression `expr` contains a column reference and `expr` is not
         // a super-expression of any aggregate, then we have a problem

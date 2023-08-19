@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+anyhow = "1.0.71"
 smol_str = { version = "0.2", default-features = false }
 rkyv = { version = "0.7.40", default-features = false, features = [
     "archive_be",

@@ -1,5 +1,6 @@
 use std::error::Error;
 use std::ops::Deref;
+use std::str::FromStr;
 use std::{fmt, mem};
 
 use itertools::Itertools;
@@ -66,6 +67,15 @@ pub enum Value {
     // experiment adding this as a value for serialiazation purposes
     Type(LogicalType),
     TupleExpr(TupleExpr),
+}
+
+/// very limited implementation of `FromStr` for literal values (used for egg)
+impl FromStr for Value {
+    type Err = std::convert::Infallible;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(Self::Text(s.into()))
+    }
 }
 
 static_assert_eq!(mem::size_of::<Value>(), 32);

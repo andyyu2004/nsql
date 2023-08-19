@@ -88,11 +88,11 @@ impl<'env, 'txn, S: StorageEngine> TableStorage<'env, 'txn, S, ReadWriteExecutio
     /// Split tuple into primary key and non-primary key components
     fn split_tuple(&self, tuple: &Tuple) -> (AlignedVec, AlignedVec) {
         assert_eq!(
-            tuple.len(),
+            tuple.width(),
             self.info.columns.len(),
             "tuple length did not match the expected number of columns, expected {}, got {} (info={:?}, tuple={})",
             self.info.columns.len(),
-            tuple.len(),
+            tuple.width(),
             self.info,
             tuple,
         );
@@ -100,7 +100,7 @@ impl<'env, 'txn, S: StorageEngine> TableStorage<'env, 'txn, S, ReadWriteExecutio
         let mut pk_tuple = vec![];
         let mut non_pk_tuple = vec![];
 
-        assert_eq!(tuple.len(), self.info.columns.len());
+        assert_eq!(tuple.width(), self.info.columns.len());
 
         for (value, col) in tuple.values().zip(&self.info.columns) {
             if col.is_primary_key {

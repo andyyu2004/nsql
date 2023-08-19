@@ -56,6 +56,53 @@ use crate::{
     Tuple, TupleStream,
 };
 
+impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalPlanner<'env, S> {
+    fn planv2<M: ExecutionMode<'env, S>>(
+        &mut self,
+        tx: &dyn Transaction<'env, S>,
+        g: &opt::Graph,
+    ) -> Result<Arc<dyn PhysicalNode<'env, 'txn, S, M>>> {
+        self.plan_nodev2(tx, g, g.root())
+    }
+
+    fn plan_nodev2<M: ExecutionMode<'env, S>>(
+        &mut self,
+        tx: &dyn Transaction<'env, S>,
+        g: &opt::Graph,
+        plan: opt::Plan<'_>,
+    ) -> Result<Arc<dyn PhysicalNode<'env, 'txn, S, M>>> {
+        self.fold_plan_nodev2(tx, g, plan, |planner, tx, node| planner.plan_nodev2(tx, g, node))
+    }
+
+    fn fold_plan_nodev2<M: ExecutionMode<'env, S>>(
+        &mut self,
+        tx: &dyn Transaction<'env, S>,
+        g: &opt::Graph,
+        plan: opt::Plan<'_>,
+        mut f: impl FnMut(
+            &mut Self,
+            &dyn Transaction<'env, S>,
+            opt::Plan<'_>,
+        ) -> Result<Arc<dyn PhysicalNode<'env, 'txn, S, M>>>,
+    ) -> Result<Arc<dyn PhysicalNode<'env, 'txn, S, M>>> {
+        match plan {
+            opt::Plan::Projection(projection) => {
+                let source = projection.source(g);
+                let exprs = projection.exprs(g);
+                Ok(PhysicalProjection::plan(f(self, tx, source)?, self.compile_exprsv2(tx, exprs)?))
+            }
+        }
+    }
+
+    fn compile_exprsv2(
+        &mut self,
+        tx: &dyn Transaction<'env, S>,
+        exprs: impl Iterator<Item = opt::Expr>,
+    ) -> Result<ExecutableTupleExpr> {
+        todo!()
+    }
+}
+
 pub struct PhysicalPlanner<'env, S> {
     catalog: Catalog<'env, S>,
     compiler: Compiler,
@@ -202,11 +249,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalPlanner<'env, S> {
                 PhysicalValues::plan(schema, self.compile_values(tx, values)?)
             }
             ir::QueryPlan::Projection { projected_schema, source, projection } => {
-                PhysicalProjection::plan(
-                    projected_schema,
-                    f(self, tx, source)?,
-                    self.compile_exprs(tx, projection)?,
-                )
+                PhysicalProjection::plan(f(self, tx, source)?, self.compile_exprs(tx, projection)?)
             }
             ir::QueryPlan::Limit { source, limit, exceeded_message } => {
                 PhysicalLimit::plan(f(self, tx, source)?, limit, exceeded_message)
@@ -240,7 +283,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalPlanner<'env, S> {
             ir::QueryPlan::Unnest { schema, expr } => {
                 PhysicalUnnest::plan(schema, self.compile_expr(tx, expr)?)
             }
-            ir::QueryPlan::Empty => PhysicalDummyScan::plan(),
+            ir::QueryPlan::DummyScan => PhysicalDummyScan::plan(),
             ir::QueryPlan::Update { .. } | ir::QueryPlan::Insert { .. } => {
                 unreachable!(
                     "write query plans should go through plan_write_query_node, got plan {:?}",

@@ -100,9 +100,10 @@ impl PlanFold for QueryPlan {
                 QueryPlan::Filter { predicate: folder.fold_expr(&mut source, predicate), source }
             }
 
-            QueryPlan::Unnest { expr, schema } => {
-                QueryPlan::Unnest { expr: folder.fold_expr(&mut QueryPlan::Empty, expr), schema }
-            }
+            QueryPlan::Unnest { expr, schema } => QueryPlan::Unnest {
+                expr: folder.fold_expr(&mut QueryPlan::DummyScan, expr),
+                schema,
+            },
             QueryPlan::Values { values, schema } => QueryPlan::Values { values, schema },
             QueryPlan::Join { schema, join, lhs, rhs } => {
                 let join = match join {
@@ -112,7 +113,7 @@ impl PlanFold for QueryPlan {
                         match constraint {
                             JoinConstraint::On(expr) => JoinConstraint::On(
                                 // FIXME: not sure how to pass the plan here
-                                folder.fold_expr(&mut QueryPlan::Empty, expr),
+                                folder.fold_expr(&mut QueryPlan::DummyScan, expr),
                             ),
                         },
                     ),
@@ -139,7 +140,7 @@ impl PlanFold for QueryPlan {
                     source,
                 }
             }
-            QueryPlan::Empty => QueryPlan::Empty,
+            QueryPlan::DummyScan => QueryPlan::DummyScan,
             QueryPlan::Insert { table, source, returning, schema } => {
                 let mut source = folder.fold_boxed_plan(source);
                 QueryPlan::Insert {

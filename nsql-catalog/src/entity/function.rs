@@ -112,6 +112,11 @@ impl Function {
 
         panic!("missing builtin aggregate function definition for oid {}", self.oid)
     }
+
+    #[inline]
+    pub fn oid(&self) -> Oid<Function> {
+        self.oid
+    }
 }
 
 impl SystemEntity for Function {

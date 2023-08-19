@@ -1,4 +1,5 @@
 #![deny(rust_2018_idioms)]
+#![feature(structural_match, rustc_attrs)]
 
 mod oid;
 pub mod ty;

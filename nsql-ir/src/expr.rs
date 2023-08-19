@@ -28,8 +28,7 @@ impl Default for Expr {
 }
 
 impl Expr {
-    pub(crate) const NULL: Expr =
-        Expr { ty: LogicalType::Null, kind: ExprKind::Literal(Value::Null) };
+    pub const NULL: Expr = Expr { ty: LogicalType::Null, kind: ExprKind::Literal(Value::Null) };
 
     #[inline]
     pub fn new_column_ref(ty: LogicalType, qpath: QPath, index: TupleIndex) -> Self {

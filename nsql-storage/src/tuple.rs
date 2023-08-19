@@ -2,8 +2,10 @@ use std::error::Error;
 use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::ops::{Index, IndexMut};
+use std::str::FromStr;
 use std::sync::OnceLock;
 
+use anyhow::bail;
 use nsql_core::Schema;
 use rkyv::with::{RefAsBox, Skip};
 use rkyv::{Archive, Archived, Deserialize, Serialize};
@@ -55,13 +57,13 @@ impl Tuple {
     }
 
     #[inline]
-    pub fn len(&self) -> usize {
+    pub fn width(&self) -> usize {
         self.values.len()
     }
 
     #[inline]
     pub fn is_empty(&self) -> bool {
-        self.len() == 0
+        self.width() == 0
     }
 
     #[inline]
@@ -205,6 +207,22 @@ impl TupleIndex {
     #[inline]
     pub fn as_usize(&self) -> usize {
         self.0 as usize
+    }
+}
+
+impl FromStr for TupleIndex {
+    type Err = anyhow::Error;
+
+    #[inline]
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        if s.is_empty() {
+            bail!("invalid empty tuple index")
+        }
+
+        match s.split_at(1) {
+            ("$", index) => Ok(TupleIndex::new(index.parse()?)),
+            _ => bail!("tuple index must be prefixed with `$`"),
+        }
     }
 }
 

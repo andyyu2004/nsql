@@ -4,5 +4,6 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+egg = "0.9.5"
 ir = { path = "../nsql-ir", package = "nsql-ir" }
 nsql-core = { path = "../nsql-core" }

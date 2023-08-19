@@ -12,6 +12,57 @@ pub(crate) struct Compiler {
 }
 
 impl Compiler {
+    pub fn compile_many2<'env, S: StorageEngine>(
+        &mut self,
+        catalog: &dyn FunctionCatalog<'env, S>,
+        tx: &dyn Transaction<'env, S>,
+        exprs: impl IntoIterator<Item = opt::Expr>,
+    ) -> Result<ExecutableTupleExpr> {
+        exprs
+            .into_iter()
+            .map(|expr| self.compile2(catalog, tx, expr))
+            .collect::<Result<Box<_>>>()
+            .map(TupleExpr::new)
+    }
+
+    pub fn compile2<'env, S: StorageEngine>(
+        &mut self,
+        catalog: &dyn FunctionCatalog<'env, S>,
+        tx: &dyn Transaction<'env, S>,
+        expr: opt::Expr,
+    ) -> Result<ExecutableExpr> {
+        self.build2(catalog, tx, expr)?;
+        self.emit(ExprOp::Return);
+        Ok(Expr::new("not pretty", mem::take(&mut self.ops)))
+    }
+
+    fn build2<'env, S: StorageEngine>(
+        &mut self,
+        catalog: &dyn FunctionCatalog<'env, S>,
+        tx: &dyn Transaction<'env, S>,
+        expr: opt::Expr,
+    ) -> Result<()> {
+        // well we don't need these anymore apparently.
+        // let's leave it here for now as it's strictly more general and doesn't cause too much pain.
+        // It's probably best if we avoid using this and plumb in whatever is needed from the binder
+        let _ = (catalog, tx);
+        match expr {
+            opt::Expr::ColumnRef(index) => self.emit(ExprOp::Project { index }),
+            opt::Expr::Literal(value) => self.emit(ExprOp::Push(value)),
+            opt::Expr::Array(exprs) => {
+                let len = exprs.len();
+                for expr in exprs.into_vec() {
+                    self.build2(catalog, tx, expr)?;
+                }
+                self.emit(ExprOp::MkArray { len });
+            }
+        }
+
+        Ok(())
+    }
+}
+
+impl Compiler {
     pub fn compile_many<'env, S: StorageEngine>(
         &mut self,
         catalog: &dyn FunctionCatalog<'env, S>,
@@ -53,7 +104,7 @@ impl Compiler {
         // It's probably best if we avoid using this and plumb in whatever is needed from the binder
         let _ = (catalog, tx);
         match expr.kind {
-            ir::ExprKind::Literal(value) => self.ops.push(ExprOp::Push(value)),
+            ir::ExprKind::Literal(value) => self.emit(ExprOp::Push(value)),
             ir::ExprKind::Array(exprs) => {
                 let len = exprs.len();
                 for expr in exprs.into_vec() {
@@ -73,7 +124,7 @@ impl Compiler {
                 self.build(catalog, tx, *rhs)?;
                 self.emit(ExprOp::Call { function });
             }
-            ir::ExprKind::ColumnRef { index, .. } => self.ops.push(ExprOp::Project { index }),
+            ir::ExprKind::ColumnRef { index, .. } => self.emit(ExprOp::Project { index }),
             ir::ExprKind::FunctionCall { function, args } => {
                 for arg in args.into_vec() {
                     self.build(catalog, tx, arg)?;

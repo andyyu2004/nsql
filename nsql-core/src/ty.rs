@@ -1,6 +1,8 @@
 use std::fmt;
 use std::ops::Deref;
+use std::str::FromStr;
 
+use anyhow::bail;
 use rkyv::{Archive, Deserialize, Serialize};
 
 mod fold;
@@ -26,6 +28,22 @@ pub enum LogicalType {
     Array(#[omit_bounds] Box<LogicalType>),
     /// pseudotype for function types
     Any,
+}
+
+impl FromStr for LogicalType {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "byte" => Ok(Self::Byte),
+            "bool" => Ok(Self::Bool),
+            "int" => Ok(Self::Int64),
+            "float" => Ok(Self::Float64),
+            "text" => Ok(Self::Text),
+            "oid" => Ok(Self::Oid),
+            _ => bail!("unhandled value `{s}` in LogicalType::from_str"),
+        }
+    }
 }
 
 impl LogicalType {

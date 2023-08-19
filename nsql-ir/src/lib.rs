@@ -4,11 +4,13 @@ pub mod expr;
 pub mod fold;
 mod validate;
 pub mod visit;
+use std::str::FromStr;
 use std::{fmt, mem};
 
+use anyhow::bail;
 use itertools::Itertools;
-use nsql_catalog::{ColumnIndex, CreateColumnInfo, CreateNamespaceInfo, Namespace, Table};
-pub use nsql_catalog::{Function, Operator};
+use nsql_catalog::{ColumnIndex, CreateColumnInfo, CreateNamespaceInfo, Namespace};
+pub use nsql_catalog::{Function, Operator, Table};
 use nsql_core::{LogicalType, Name, Oid, Schema};
 pub use nsql_storage::tuple::TupleIndex;
 pub use nsql_storage::value::{Decimal, Value};
@@ -108,7 +110,7 @@ impl fmt::Display for VariableScope {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
 pub enum QueryPlan {
     #[default]
-    Empty,
+    DummyScan,
     Aggregate {
         aggregates: Box<[FunctionCall]>,
         source: Box<QueryPlan>,
@@ -135,8 +137,8 @@ pub enum QueryPlan {
         expr: Expr,
     },
     Values {
-        values: Values,
         schema: Schema,
+        values: Values,
     },
     Join {
         schema: Schema,
@@ -176,9 +178,10 @@ impl QueryPlan {
             | Self::Order { source, .. }
             | Self::Projection { source, .. }
             | Self::Filter { source, .. } => source.required_transaction_mode(),
-            Self::TableScan { .. } | Self::Empty | Self::Unnest { .. } | Self::Values { .. } => {
-                TransactionMode::ReadOnly
-            }
+            Self::TableScan { .. }
+            | Self::DummyScan
+            | Self::Unnest { .. }
+            | Self::Values { .. } => TransactionMode::ReadOnly,
             Self::Join { lhs, rhs, .. } => {
                 lhs.required_transaction_mode().max(rhs.required_transaction_mode())
             }
@@ -305,7 +308,7 @@ impl fmt::Display for PlanFormatter<'_> {
                 )?;
                 self.child(source).fmt(f)
             }
-            QueryPlan::Empty => write!(f, "{:indent$}empty", "", indent = self.indent),
+            QueryPlan::DummyScan => write!(f, "{:indent$}dummy scan", "", indent = self.indent),
             QueryPlan::Insert { table, source, returning, schema: _ } => {
                 write!(f, "INSERT INTO {table}")?;
                 if let Some(returning) = returning {
@@ -353,12 +356,26 @@ impl fmt::Display for Plan {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum JoinKind {
     Inner,
     Left,
     Right,
     Full,
+}
+
+impl FromStr for JoinKind {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "INNER" | "inner" => Ok(Self::Inner),
+            "LEFT" | "left" => Ok(Self::Left),
+            "RIGHT" | "right" => Ok(Self::Right),
+            "FULL" | "full" => Ok(Self::Full),
+            _ => bail!("invalid join type `{s}`"),
+        }
+    }
 }
 
 impl JoinKind {
@@ -492,7 +509,7 @@ impl QueryPlan {
             QueryPlan::Filter { source, .. }
             | QueryPlan::Limit { source, .. }
             | QueryPlan::Order { source, .. } => source.schema(),
-            QueryPlan::Empty => &[],
+            QueryPlan::DummyScan => &[],
         }
     }
 

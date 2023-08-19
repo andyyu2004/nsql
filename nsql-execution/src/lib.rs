@@ -50,8 +50,6 @@ trait PhysicalNode<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>
 {
     fn children(&self) -> &[Arc<dyn PhysicalNode<'env, 'txn, S, M>>];
 
-    // FIXME this method isn't actually used, it was used for sanity checks that no longer exist.
-    // Consider removing?
     fn schema(&self) -> &[LogicalType];
 
     fn as_source(

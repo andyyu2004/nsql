@@ -109,10 +109,13 @@ impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalOperator<'
         _ecx: &'txn ExecutionContext<'_, 'env, S, M>,
         lhs_tuple: Tuple,
     ) -> ExecutionResult<OperatorState<Tuple>> {
+        let lhs_width = lhs_tuple.width();
         let rhs_tuples = self.rhs_tuples.get().expect("probing before build is finished");
         if rhs_tuples.is_empty() {
             return Ok(OperatorState::Done);
         }
+
+        let rhs_tuple_width = rhs_tuples[0].width();
 
         let rhs_index = match self.rhs_index.fetch_update(
             atomic::Ordering::Relaxed,
@@ -129,9 +132,7 @@ impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalOperator<'
                 let found_match = self.found_match_for_tuple.swap(false, atomic::Ordering::Relaxed);
                 // emit the lhs_tuple padded with nulls if no match was found
                 if !found_match && self.join.is_left() {
-                    return Ok(OperatorState::Yield(
-                        lhs_tuple.fill_right(self.build_node().schema().len()),
-                    ));
+                    return Ok(OperatorState::Yield(lhs_tuple.fill_right(rhs_tuple_width)));
                 }
                 return Ok(OperatorState::Continue);
             }
@@ -156,9 +157,7 @@ impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalOperator<'
                     && !self.found_match_for_tuple.load(atomic::Ordering::Relaxed)
                 {
                     // emit a rhs_tuple padded with nulls if no match was found
-                    Ok(OperatorState::Again(Some(
-                        rhs_tuple.clone().fill_left(self.probe_node().schema().len()),
-                    )))
+                    Ok(OperatorState::Again(Some(rhs_tuple.clone().fill_left(lhs_width))))
                 } else {
                     Ok(OperatorState::Again(None))
                 }

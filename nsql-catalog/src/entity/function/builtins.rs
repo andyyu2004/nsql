@@ -61,33 +61,33 @@ macro_rules! prefix_op {
 #[rustfmt::skip]
 pub(crate) fn get_scalar_function(oid: Oid<Function>) -> Option<ScalarFunction> {
     Some(match oid {
-        Function::NEG_INT   => prefix_op!(- : i64),
-        Function::NOT_BOOL  => prefix_op!(! : bool),
-        Function::ADD_INT   => infix_op!(+ : i64),
-        Function::ADD_FLOAT => infix_op!(+ : f64),
-        Function::ADD_DEC   => infix_op!(+ : Decimal),
-        Function::SUB_INT   => infix_op!(- : i64),
-        Function::SUB_FLOAT => infix_op!(- : f64),
-        Function::SUB_DEC   => infix_op!(- : Decimal),
-        Function::MUL_INT   => infix_op!(* : i64),
-        Function::MUL_FLOAT => infix_op!(* : f64),
-        Function::MUL_DEC   => infix_op!(* : Decimal),
-        Function::DIV_INT   => infix_op!(/ : i64),
-        Function::DIV_FLOAT => infix_op!(/ : f64),
-        Function::DIV_DEC   => infix_op!(/ : Decimal),
-        Function::EQ        => comparison!(== : Value),
-        Function::LT        => comparison!(<  : Value),
-        Function::LTE       => comparison!(<= : Value),
-        Function::GTE       => comparison!(>= : Value),
-        Function::GT        => comparison!(>  : Value),
-        Function::OR_BOOL   => comparison!(|| : bool),
-        Function::AND_BOOL  => comparison!(&& : bool),
+        _ if oid == Function::NEG_INT   => prefix_op!(- : i64),
+        _ if oid == Function::NOT_BOOL  => prefix_op!(! : bool),
+        _ if oid == Function::ADD_INT   => infix_op!(+ : i64),
+        _ if oid == Function::ADD_FLOAT => infix_op!(+ : f64),
+        _ if oid == Function::ADD_DEC   => infix_op!(+ : Decimal),
+        _ if oid == Function::SUB_INT   => infix_op!(- : i64),
+        _ if oid == Function::SUB_FLOAT => infix_op!(- : f64),
+        _ if oid == Function::SUB_DEC   => infix_op!(- : Decimal),
+        _ if oid == Function::MUL_INT   => infix_op!(* : i64),
+        _ if oid == Function::MUL_FLOAT => infix_op!(* : f64),
+        _ if oid == Function::MUL_DEC   => infix_op!(* : Decimal),
+        _ if oid == Function::DIV_INT   => infix_op!(/ : i64),
+        _ if oid == Function::DIV_FLOAT => infix_op!(/ : f64),
+        _ if oid == Function::DIV_DEC   => infix_op!(/ : Decimal),
+        _ if oid == Function::EQ        => comparison!(== : Value),
+        _ if oid == Function::LT        => comparison!(<  : Value),
+        _ if oid == Function::LTE       => comparison!(<= : Value),
+        _ if oid == Function::GTE       => comparison!(>= : Value),
+        _ if oid == Function::GT        => comparison!(>  : Value),
+        _ if oid == Function::OR_BOOL   => comparison!(|| : bool),
+        _ if oid == Function::AND_BOOL  => comparison!(&& : bool),
         // casts
-        Function::CAST_SELF         => cast!(Value),
-        Function::CAST_INT_TO_DEC   => cast!(Decimal),
-        Function::CAST_INT_TO_FLOAT => cast!(f64),
+        _ if oid == Function::CAST_SELF         => cast!(Value),
+        _ if oid == Function::CAST_INT_TO_DEC   => cast!(Decimal),
+        _ if oid == Function::CAST_INT_TO_FLOAT => cast!(f64),
         // misc
-        Function::RANGE2 => |mut args| {
+        _ if oid == Function::RANGE2 => |mut args| {
             assert_eq!(args.len(), 2);
             let start: Option<i64> = args[0].take().cast().unwrap();
             let end: Option<i64> = args[1].take().cast().unwrap();
@@ -96,7 +96,7 @@ pub(crate) fn get_scalar_function(oid: Oid<Function>) -> Option<ScalarFunction> 
                 _ => Value::Null,
             }
         },
-        Function::ARRAY_ELEMENT => |mut args| {
+        _ if oid == Function::ARRAY_ELEMENT => |mut args| {
             assert_eq!(args.len(), 2);
             let array = match args[0].take() {
                 Value::Array(xs) => xs,
@@ -116,7 +116,7 @@ pub(crate) fn get_scalar_function(oid: Oid<Function>) -> Option<ScalarFunction> 
                 }
             }
         },
-        Function::ARRAY_POSITION => |mut args| {
+        _ if oid == Function::ARRAY_POSITION => |mut args| {
             assert_eq!(args.len(), 2);
             let array = match args[0].take() {
                 Value::Array(xs) => xs,
@@ -139,11 +139,11 @@ pub(crate) fn get_aggregate_function(
     oid: Oid<Function>,
 ) -> Option<Box<dyn AggregateFunctionInstance>> {
     Some(match oid {
-        Function::SUM_INT => Box::<SumInt>::default(),
-        Function::PRODUCT_INT => Box::<ProductInt>::default(),
-        Function::AVG_INT => Box::<AverageInt>::default(),
-        Function::COUNT => Box::<Count>::default(),
-        Function::COUNT_STAR => Box::<CountStar>::default(),
+        _ if oid == Function::SUM_INT => Box::<SumInt>::default(),
+        _ if oid == Function::PRODUCT_INT => Box::<ProductInt>::default(),
+        _ if oid == Function::AVG_INT => Box::<AverageInt>::default(),
+        _ if oid == Function::COUNT => Box::<Count>::default(),
+        _ if oid == Function::COUNT_STAR => Box::<CountStar>::default(),
         _ => return None,
     })
 }
