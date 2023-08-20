@@ -12,10 +12,6 @@ pub struct Operator {
     /// The function that implements this operator
     pub(crate) function: Oid<Function>,
     pub(crate) name: Name,
-    /// The type of the lhs operand, `NULL` if prefix operator
-    pub(crate) left: LogicalType,
-    pub(crate) right: LogicalType,
-    pub(crate) output: LogicalType,
 }
 
 impl Operator {
@@ -27,21 +23,6 @@ impl Operator {
     #[inline]
     pub fn function(&self) -> Oid<Function> {
         self.function
-    }
-
-    #[inline]
-    pub fn left_ty(&self) -> LogicalType {
-        self.left.clone()
-    }
-
-    #[inline]
-    pub fn right_ty(&self) -> LogicalType {
-        self.right.clone()
-    }
-
-    #[inline]
-    pub fn output_ty(&self) -> LogicalType {
-        self.output.clone()
     }
 }
 
@@ -82,7 +63,7 @@ impl SystemEntity for Operator {
 
     type Key = Oid<Self>;
 
-    type SearchKey = (Name, LogicalType, LogicalType);
+    type SearchKey = Name;
 
     #[inline]
     fn key(&self) -> Self::Key {
@@ -91,7 +72,7 @@ impl SystemEntity for Operator {
 
     #[inline]
     fn search_key(&self) -> Self::SearchKey {
-        (self.name(), self.left_ty(), self.right_ty())
+        self.name()
     }
 
     #[inline]
@@ -126,9 +107,6 @@ impl SystemEntity for Operator {
                 ColumnStorageInfo::new("namespace", LogicalType::Oid, true),
                 ColumnStorageInfo::new("function", LogicalType::Oid, false),
                 ColumnStorageInfo::new("name", LogicalType::Text, false),
-                ColumnStorageInfo::new("left", LogicalType::Type, true),
-                ColumnStorageInfo::new("right", LogicalType::Type, true),
-                ColumnStorageInfo::new("ret", LogicalType::Type, false),
             ],
         )
     }

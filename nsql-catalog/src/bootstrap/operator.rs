@@ -9,16 +9,14 @@ pub(super) struct BootstrapOperator {
 }
 
 impl Operator {
-    mk_consts![
-        LT_INT, LT_FLOAT, LT_DEC, LTE_INT, LTE_FLOAT, LTE_DEC, GTE_INT, GTE_FLOAT, GTE_DEC, GT_INT,
-        GT_FLOAT, GT_DEC, EQ_INT, EQ_FLOAT, EQ_DEC, ADD_INT, NEG_INT
-    ];
+    mk_consts![EQ, LT, LTE, GTE, GT, ADD_INT, NEG_INT];
 
-    pub const LT: &'static str = "<";
-    pub const LTE: &'static str = "<=";
-    pub const EQ: &'static str = "=";
-    pub const GTE: &'static str = ">=";
-    pub const GT: &'static str = ">";
+    pub const LESS: &'static str = "<";
+    pub const LESS_EQUAL: &'static str = "<=";
+    pub const EQUAL: &'static str = "=";
+    pub const NOT_EQUAL: &'static str = "=";
+    pub const GREATER_EQUAL: &'static str = ">=";
+    pub const GREATER: &'static str = ">";
     pub const PLUS: &'static str = "+";
     pub const MINUS: &'static str = "-";
 }
@@ -51,21 +49,11 @@ pub(super) fn bootstrap_data() -> Box<[BootstrapOperator]> {
     vec![
         prefix!(MINUS, NEG_INT),
         infix!(PLUS, ADD_INT),
-        infix!(LT, LT_INT),
-        infix!(LT, LT_FLOAT),
-        infix!(LT, LT_DEC),
-        infix!(LTE, LTE_INT),
-        infix!(LTE, LTE_FLOAT),
-        infix!(LTE, LTE_DEC),
-        infix!(EQ, EQ_INT),
-        infix!(EQ, EQ_FLOAT),
-        infix!(EQ, EQ_DEC),
-        infix!(GTE, GTE_INT),
-        infix!(GTE, GTE_FLOAT),
-        infix!(GTE, GTE_DEC),
-        infix!(GT, GT_INT),
-        infix!(GT, GT_FLOAT),
-        infix!(GT, GT_DEC),
+        infix!(EQUAL, EQ),
+        infix!(LESS, LT),
+        infix!(LESS_EQUAL, LTE),
+        infix!(GREATER_EQUAL, GTE),
+        infix!(GREATER, GT),
     ]
     .into_boxed_slice()
 }

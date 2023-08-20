@@ -1020,11 +1020,9 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
         };
 
         let (operators, namespace, name) = self.get_namespaced_entity_view::<Operator>(tx, path)?;
-        let key = (name, LogicalType::Null, operand);
-        let operator = match operators.find(self.catalog, tx, Some(namespace.key()), &key)? {
+        let operator = match operators.find(self.catalog, tx, Some(namespace.key()), &name)? {
             Some(operator) => operator,
             None => {
-                let (name, _, operand) = key;
                 bail!("no operator overload for operand types ({name}{operand})")
             }
         };
@@ -1038,7 +1036,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
         name: &'static str,
         left: LogicalType,
         right: LogicalType,
-    ) -> Result<Box<Operator>> {
+    ) -> Result<Box<ir::MonoOperator>> {
         // handle null type defaulting
         let (left, right) = match (left, right) {
             (LogicalType::Null, LogicalType::Null) => (LogicalType::Int64, LogicalType::Int64),
@@ -1049,14 +1047,25 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
 
         let (operators, namespace, name) = self
             .get_namespaced_entity_view::<Operator>(tx, &Path::qualified("nsql_catalog", name))?;
-        let key = (name, left, right);
-        let operator = match operators.find(self.catalog, tx, Some(namespace.key()), &key)? {
-            Some(operator) => operator,
-            None => {
-                let (name, left, right) = key;
-                bail!("no operator overload for operand types ({left} {name} {right})",)
-            }
-        };
+
+        let mut candidates = operators
+            .scan()?
+            .filter(|op| {
+                Ok(op.parent_oid(self.catalog, tx)?.unwrap() == namespace.key()
+                    && op.name() == name)
+            })
+            .peekable();
+
+        if candidates.peek()?.is_none() {
+            return Err(unbound!(Operator, name));
+        }
+
+        let args = [left, right];
+        let operator =
+            self.resolve_candidate_operators(tx, candidates, &args)?.ok_or_else(|| {
+                let [left, right] = args;
+                anyhow!("no operator overload for operand types ({left} {name} {right})")
+            })?;
 
         Ok(Box::new(operator))
     }
@@ -1135,17 +1144,17 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                 let rhs = Box::new(f(right)?);
 
                 let op = match op {
-                    ast::BinaryOperator::Eq => Operator::EQ,
+                    ast::BinaryOperator::Eq => Operator::EQUAL,
+                    ast::BinaryOperator::NotEq => Operator::NOT_EQUAL,
                     ast::BinaryOperator::Plus => Operator::PLUS,
                     ast::BinaryOperator::Minus => Operator::MINUS,
-                    ast::BinaryOperator::Lt => Operator::LT,
-                    ast::BinaryOperator::LtEq => Operator::LTE,
-                    ast::BinaryOperator::GtEq => Operator::GTE,
-                    ast::BinaryOperator::Gt => Operator::GT,
+                    ast::BinaryOperator::Lt => Operator::LESS,
+                    ast::BinaryOperator::LtEq => Operator::LESS_EQUAL,
+                    ast::BinaryOperator::GtEq => Operator::GREATER_EQUAL,
+                    ast::BinaryOperator::Gt => Operator::GREATER,
                     // ast::BinaryOperator::Multiply => ir::BinOp::Mul,
                     // ast::BinaryOperator::Divide => ir::BinOp::Div,
                     // ast::BinaryOperator::Modulo => ir::BinOp::Mod,
-                    // ast::BinaryOperator::NotEq => ir::BinOp::Ne,
                     // ast::BinaryOperator::And => ir::BinOp::And,
                     // ast::BinaryOperator::Or => ir::BinOp::Or,
                     ast::BinaryOperator::Xor
@@ -1169,7 +1178,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                 };
 
                 let operator = self.bind_infix_operator(tx, op, lhs.ty(), rhs.ty())?;
-                (operator.output_ty(), ir::ExprKind::InfixOperator { operator, lhs, rhs })
+                (operator.return_type(), ir::ExprKind::InfixOperator { operator, lhs, rhs })
             }
             ast::Expr::Array(array) => {
                 let mut expected_ty = None;

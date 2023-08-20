@@ -158,25 +158,17 @@ impl BootstrapData {
             .into_iter()
             .map(|op| {
                 let f = &functions_map[&op.function];
-                let output = f.return_type();
-                let (left, right) = match op.kind {
-                    OperatorKind::Prefix => {
-                        assert_eq!(
-                            f.args().len(),
-                            1,
-                            "function of prefix operator should take 1 argument"
-                        );
-                        (LogicalType::Null, f.args()[0].clone())
-                    }
-                    OperatorKind::Infix => {
-                        assert_eq!(
-                            f.args().len(),
-                            2,
-                            "function of binary operator should take 2 arguments"
-                        );
-                        let args = f.args();
-                        (args[0].clone(), args[1].clone())
-                    }
+                match op.kind {
+                    OperatorKind::Prefix => assert_eq!(
+                        f.args().len(),
+                        1,
+                        "function of prefix operator should take 1 argument"
+                    ),
+                    OperatorKind::Infix => assert_eq!(
+                        f.args().len(),
+                        2,
+                        "function of binary operator should take 2 arguments"
+                    ),
                 };
 
                 Operator {
@@ -185,9 +177,6 @@ impl BootstrapData {
                     namespace: Namespace::CATALOG,
                     function: op.function,
                     name: op.name.into(),
-                    left,
-                    right,
-                    output,
                 }
             })
             .collect::<Vec<_>>();

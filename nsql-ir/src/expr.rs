@@ -91,7 +91,7 @@ pub enum ExprKind {
         args: Box<[Expr]>,
     },
     InfixOperator {
-        operator: Box<Operator>,
+        operator: Box<MonoOperator>,
         lhs: Box<Expr>,
         rhs: Box<Expr>,
     },
@@ -104,6 +104,37 @@ pub enum ExprKind {
 }
 
 pub type FunctionCall<E = Expr> = (MonoFunction, Box<[E]>);
+
+/// A function that has been "monomorphized", i.e. all ANY types have been replaced with a concrete type
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct MonoOperator(Box<(Operator, MonoFunction)>);
+
+impl MonoOperator {
+    pub fn new(operator: Operator, function: MonoFunction) -> Self {
+        Self(Box::new((operator, function)))
+    }
+
+    #[inline]
+    pub fn operator(&self) -> &Operator {
+        &self.0.0
+    }
+
+    #[inline]
+    pub fn mono_function(&self) -> &MonoFunction {
+        &self.0.1
+    }
+
+    #[inline]
+    pub fn return_type(&self) -> LogicalType {
+        self.0.1.return_type()
+    }
+}
+
+impl fmt::Display for MonoOperator {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.operator())
+    }
+}
 
 /// A function that has been "monomorphized", i.e. all ANY types have been replaced with a concrete type
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

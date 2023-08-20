@@ -27,7 +27,7 @@ nsql_index
 nsql_namespace
 nsql_namespace_name_index
 nsql_operator
-nsql_operator_namespace_name_l_r_index
+nsql_operator_namespace_name_function_index
 nsql_table
 nsql_table_namespace_name_index
 

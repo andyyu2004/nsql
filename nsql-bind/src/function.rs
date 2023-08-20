@@ -1,11 +1,28 @@
-use nsql_catalog::Function;
+use nsql_catalog::{Function, Operator};
 use nsql_core::ty::{TypeFold, TypeFolder, Zip, ZipError, ZipResult, Zipper};
 use nsql_core::LogicalType;
-use nsql_storage_engine::FallibleIterator;
+use nsql_storage_engine::{FallibleIterator, StorageEngine, Transaction};
 
 use crate::{Binder, Error, Result};
 
-impl<'env, S> Binder<'env, S> {
+impl<'env, S: StorageEngine> Binder<'env, S> {
+    pub(crate) fn resolve_candidate_operators(
+        &self,
+        tx: &dyn Transaction<'env, S>,
+        mut candidates: impl FallibleIterator<Item = Operator, Error = Error>,
+        arg_types: &[LogicalType],
+    ) -> Result<Option<ir::MonoOperator>> {
+        let functions_table = self.catalog.functions(tx)?;
+        candidates.find_map(|op| {
+            let f = functions_table.get(op.function())?;
+            Ok(try {
+                let (args, ret) =
+                    Unifier::default().try_unify_function(arg_types, f.args(), f.return_type())?;
+                ir::MonoOperator::new(op, ir::MonoFunction::new(f, args, ret))
+            })
+        })
+    }
+
     pub(crate) fn resolve_candidate_functions(
         &self,
         mut candidates: impl FallibleIterator<Item = Function, Error = Error>,
@@ -14,7 +31,7 @@ impl<'env, S> Binder<'env, S> {
         candidates.find_map(|f| {
             Ok(try {
                 let (args, ret) =
-                    Unifier::default().try_unify(arg_types, f.args(), f.return_type())?;
+                    Unifier::default().try_unify_function(arg_types, f.args(), f.return_type())?;
                 ir::MonoFunction::new(f, args, ret)
             })
         })
@@ -30,7 +47,7 @@ struct Unifier {
 }
 
 impl Unifier {
-    fn try_unify(
+    fn try_unify_function(
         mut self,
         args: &[LogicalType],
         targets: &[LogicalType],

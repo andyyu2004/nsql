@@ -154,6 +154,22 @@ impl<'env, S: StorageEngine> Catalog<'env, S> {
     }
 
     #[inline]
+    pub fn functions<'txn>(
+        self,
+        tx: &'txn dyn Transaction<'env, S>,
+    ) -> Result<SystemTableView<'env, 'txn, S, ReadonlyExecutionMode, Function>> {
+        self.system_table(tx)
+    }
+
+    #[inline]
+    pub fn operators<'txn>(
+        self,
+        tx: &'txn dyn Transaction<'env, S>,
+    ) -> Result<SystemTableView<'env, 'txn, S, ReadonlyExecutionMode, Operator>> {
+        self.system_table(tx)
+    }
+
+    #[inline]
     pub fn columns<'txn>(
         self,
         tx: &'txn dyn Transaction<'env, S>,

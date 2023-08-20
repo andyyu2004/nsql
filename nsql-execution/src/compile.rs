@@ -49,6 +49,10 @@ impl Compiler {
         tx: &dyn Transaction<'env, S>,
         expr: ir::Expr,
     ) -> Result<()> {
+        // well we don't need these anymore apparently.
+        // let's leave it here for now as it's strictly more general and doesn't cause too much pain.
+        // It's probably best if we avoid using this and plumb in whatever is needed from the binder
+        let _ = (catalog, tx);
         match expr.kind {
             ir::ExprKind::Literal(value) => self.ops.push(ExprOp::Push(value)),
             ir::ExprKind::Array(exprs) => {
@@ -117,7 +121,7 @@ impl Compiler {
                 }
             }
             ir::ExprKind::InfixOperator { operator, lhs, rhs } => {
-                let function = catalog.get_function(tx, operator.function().untyped())?;
+                let function = Box::new(operator.mono_function().function());
                 self.build(catalog, tx, *lhs)?;
                 self.build(catalog, tx, *rhs)?;
                 self.emit(ExprOp::Call { function });

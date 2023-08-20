@@ -12,7 +12,7 @@ impl Table {
         TABLE_NAME_UNIQUE_INDEX,
         ATTRIBUTE_NAME_UNIQUE_INDEX,
         FUNCTION_NAME_ARGS_UNIQUE_INDEX,
-        OPERATOR_NAME_LEFT_RIGHT_UNIQUE_INDEX
+        OPERATOR_NAME_FN_UNIQUE_INDEX
     ];
 }
 
@@ -87,10 +87,14 @@ pub(super) fn bootstrap_data() -> Box<[BootstrapTable]> {
             name: "nsql_operator",
             columns: Operator::bootstrap_table_storage_info().columns,
             indexes: vec![BootstrapIndex {
-                table: Table::OPERATOR_NAME_LEFT_RIGHT_UNIQUE_INDEX,
-                name: "nsql_operator_namespace_name_l_r_index",
+                table: Table::OPERATOR_NAME_FN_UNIQUE_INDEX,
+                name: "nsql_operator_namespace_name_function_index",
                 kind: IndexKind::Unique,
-                column_names: vec!["namespace", "name", "left", "right"],
+                // unsure if this is a reasonable unique index?
+                // postgres stores the types of the operator and has a unique index on the left and right types
+                // but we just infer the type of the operator from it's function so we have a
+                // constraint on the function instead.
+                column_names: vec!["namespace", "name", "function"],
             }],
         },
     ]

@@ -19,6 +19,12 @@ impl Zip for LogicalType {
     }
 }
 
+impl<T: Zip, const N: usize> Zip for [T; N] {
+    fn zip_with<Z: Zipper>(zipper: &mut Z, a: &Self, b: &Self) -> ZipResult<()> {
+        Zip::zip_with(zipper, &a[..], &b[..])
+    }
+}
+
 impl<T: Zip> Zip for [T] {
     fn zip_with<Z: Zipper>(zipper: &mut Z, a: &Self, b: &Self) -> ZipResult<()> {
         if a.len() != b.len() {
