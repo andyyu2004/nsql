@@ -169,7 +169,7 @@ impl fmt::Display for ExprKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match &self {
             ExprKind::Literal(value) => write!(f, "{value}"),
-            ExprKind::ColumnRef { qpath, index: _ } => write!(f, "{qpath}"),
+            ExprKind::ColumnRef { qpath: _, index } => write!(f, "{index}"),
             ExprKind::Array(exprs) => write!(f, "[{}]", exprs.iter().format(", ")),
             ExprKind::FunctionCall { function, args } => {
                 write!(f, "{}({})", function.name(), args.iter().format(", "))
@@ -179,11 +179,11 @@ impl fmt::Display for ExprKind {
             ExprKind::Case { scrutinee, cases, else_result } => {
                 write!(f, "CASE {scrutinee} ")?;
                 for case in cases.iter() {
-                    writeln!(f, "\tWHEN {} THEN {} ", case.when, case.then)?;
+                    write!(f, "WHEN {} THEN {}", case.when, case.then)?;
                 }
 
                 if let Some(else_result) = else_result.as_ref() {
-                    write!(f, "\tELSE {else_result} ")?;
+                    write!(f, " ELSE {else_result} ")?;
                 }
                 write!(f, "END")
             }

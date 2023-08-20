@@ -257,7 +257,7 @@ impl fmt::Display for PlanFormatter<'_> {
                 writeln!(f, "  {source}")
             }
             QueryPlan::TableScan { table, projection, projected_schema: _ } => {
-                write!(f, "table scan {}", table)?;
+                write!(f, "{:indent$}table scan {}", "", table, indent = self.indent)?;
                 if let Some(projection) = projection {
                     write!(f, "({})", projection.iter().format(","))?;
                 }

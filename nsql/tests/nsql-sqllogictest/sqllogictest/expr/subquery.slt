@@ -31,3 +31,12 @@ query error
 SELECT x FROM (VALUES (1)) AS t(x) WHERE x = (SELECT * FROM (VALUES (1), (2)))
 ----
 subquery used as an expression must return at most one row
+
+statement ok
+CREATE TABLE t1(a INTEGER PRIMARY KEY, b INTEGER, c INTEGER, d INTEGER, e INTEGER);
+
+query I nosort
+SELECT CASE WHEN c::float>(SELECT avg(c) FROM t1) THEN a*2 ELSE b*10 END FROM t1 ORDER BY 1
+----
+30 values hashing to 3c13dee48d9356ae19af2515e05e6b54
+

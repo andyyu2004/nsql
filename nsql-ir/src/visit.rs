@@ -87,12 +87,14 @@ pub trait Visitor {
                 self.visit_query_plan(source)
             }
             QueryPlan::Aggregate { source, functions, group_by, schema: _ } => {
+                self.visit_exprs(source, group_by)?;
+
                 for (_f, args) in &functions[..] {
                     for arg in &args[..] {
-                        self.visit_expr(plan, arg)?;
+                        self.visit_expr(source, arg)?;
                     }
                 }
-                self.visit_exprs(source, group_by)?;
+
                 self.visit_query_plan(source)
             }
         }
