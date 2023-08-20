@@ -159,12 +159,12 @@ impl BootstrapData {
             .map(|op| {
                 let f = &functions_map[&op.function];
                 match op.kind {
-                    OperatorKind::Prefix => assert_eq!(
+                    OperatorKind::Unary => assert_eq!(
                         f.args().len(),
                         1,
                         "function of prefix operator should take 1 argument"
                     ),
-                    OperatorKind::Infix => assert_eq!(
+                    OperatorKind::Binary => assert_eq!(
                         f.args().len(),
                         2,
                         "function of binary operator should take 2 arguments"

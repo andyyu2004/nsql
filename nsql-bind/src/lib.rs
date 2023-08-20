@@ -16,7 +16,7 @@ use ir::{Decimal, Path, QPath, TransactionMode, TupleIndex};
 use itertools::Itertools;
 use nsql_catalog::{
     Catalog, ColumnIndex, CreateColumnInfo, CreateNamespaceInfo, Function, FunctionKind, Namespace,
-    Operator, SystemEntity, SystemTableView, Table, MAIN_SCHEMA,
+    Operator, OperatorKind, SystemEntity, SystemTableView, Table, MAIN_SCHEMA,
 };
 use nsql_core::{LogicalType, Name, Oid, Schema};
 use nsql_parse::ast;
@@ -1007,27 +1007,13 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
         Ok((function, args))
     }
 
-    fn bind_prefix_operator(
+    fn bind_unary_operator(
         &self,
         tx: &dyn Transaction<'env, S>,
-        path: &Path,
+        name: &'static str,
         operand: LogicalType,
-    ) -> Result<Operator> {
-        // handle null type defaulting
-        let operand = match operand {
-            LogicalType::Null => LogicalType::Int64,
-            operand => operand,
-        };
-
-        let (operators, namespace, name) = self.get_namespaced_entity_view::<Operator>(tx, path)?;
-        let operator = match operators.find(self.catalog, tx, Some(namespace.key()), &name)? {
-            Some(operator) => operator,
-            None => {
-                bail!("no operator overload for operand types ({name}{operand})")
-            }
-        };
-
-        Ok(operator)
+    ) -> Result<Box<ir::MonoOperator>> {
+        self.bind_operator(tx, name, OperatorKind::Unary, LogicalType::Null, operand)
     }
 
     fn bind_infix_operator(
@@ -1037,12 +1023,29 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
         left: LogicalType,
         right: LogicalType,
     ) -> Result<Box<ir::MonoOperator>> {
+        self.bind_operator(tx, name, OperatorKind::Binary, left, right)
+    }
+
+    fn bind_operator(
+        &self,
+        tx: &dyn Transaction<'env, S>,
+        name: &'static str,
+        kind: OperatorKind,
+        left: LogicalType,
+        right: LogicalType,
+    ) -> Result<Box<ir::MonoOperator>> {
+        if matches!(kind, OperatorKind::Unary) {
+            assert!(matches!(left, LogicalType::Null));
+        }
+
         // handle null type defaulting
-        let (left, right) = match (left, right) {
-            (LogicalType::Null, LogicalType::Null) => (LogicalType::Int64, LogicalType::Int64),
-            (LogicalType::Null, ty) => (ty.clone(), ty),
-            (ty, LogicalType::Null) => (ty.clone(), ty),
-            (left, right) => (left, right),
+        let (left, right) = match (kind, left, right) {
+            // default to `int64` if arguments are null
+            (_, LogicalType::Null, LogicalType::Null) => (LogicalType::Int64, LogicalType::Int64),
+            (OperatorKind::Unary, LogicalType::Null, ty) => (LogicalType::Null, ty),
+            (OperatorKind::Binary, LogicalType::Null, ty) => (ty.clone(), ty),
+            (_, ty, LogicalType::Null) => (ty.clone(), ty),
+            (_, left, right) => (left, right),
         };
 
         let (operators, namespace, name) = self
@@ -1060,12 +1063,22 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
             return Err(unbound!(Operator, name));
         }
 
-        let args = [left, right];
-        let operator =
-            self.resolve_candidate_operators(tx, candidates, &args)?.ok_or_else(|| {
-                let [left, right] = args;
-                anyhow!("no operator overload for operand types ({left} {name} {right})")
-            })?;
+        let operator = match kind {
+            OperatorKind::Unary => {
+                let args = [right];
+                self.resolve_candidate_operators(tx, candidates, &args)?.ok_or_else(|| {
+                    let [right] = args;
+                    anyhow!("no operator overload for `{name}{right}`")
+                })?
+            }
+            OperatorKind::Binary => {
+                let args = [left, right];
+                self.resolve_candidate_operators(tx, candidates, &args)?.ok_or_else(|| {
+                    let [left, right] = args;
+                    anyhow!("no operator overload for `{left} {name} {right}`")
+                })?
+            }
+        };
 
         Ok(Box::new(operator))
     }
@@ -1117,18 +1130,11 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                 (ty, ir::ExprKind::ColumnRef { qpath, index })
             }
             ast::Expr::UnaryOp { op, expr } => {
-                let expr = f(expr)?;
-                let (ty, op) = match op {
+                let expr = Box::new(f(expr)?);
+                let op = match op {
                     ast::UnaryOperator::Plus => todo!(),
-                    ast::UnaryOperator::Minus => {
-                        ensure!(
-                            matches!(expr.ty, LogicalType::Int64),
-                            "cannot negate value of type {}",
-                            expr.ty
-                        );
-                        (LogicalType::Int64, ir::UnaryOp::Neg)
-                    }
-                    ast::UnaryOperator::Not => todo!(),
+                    ast::UnaryOperator::Minus => Operator::MINUS,
+                    ast::UnaryOperator::Not => Operator::NOT,
                     ast::UnaryOperator::PGBitwiseNot => todo!(),
                     ast::UnaryOperator::PGSquareRoot => todo!(),
                     ast::UnaryOperator::PGCubeRoot => todo!(),
@@ -1137,7 +1143,8 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                     ast::UnaryOperator::PGAbs => todo!(),
                 };
 
-                (ty, ir::ExprKind::UnaryOp { op, expr: Box::new(expr) })
+                let operator = self.bind_unary_operator(tx, op, expr.ty())?;
+                (operator.return_type(), ir::ExprKind::UnaryOperator { operator, expr })
             }
             ast::Expr::BinaryOp { left, op, right } => {
                 let lhs = Box::new(f(left)?);
@@ -1178,7 +1185,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                 };
 
                 let operator = self.bind_infix_operator(tx, op, lhs.ty(), rhs.ty())?;
-                (operator.return_type(), ir::ExprKind::InfixOperator { operator, lhs, rhs })
+                (operator.return_type(), ir::ExprKind::BinaryOperator { operator, lhs, rhs })
             }
             ast::Expr::Array(array) => {
                 let mut expected_ty = None;

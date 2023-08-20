@@ -35,15 +35,15 @@ impl fmt::Display for Operator {
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 #[repr(u8)]
 pub enum OperatorKind {
-    Prefix,
-    Infix, // note: make sure the assertion below is changed if variants are reordered
+    Unary,
+    Binary, // note: make sure the assertion below is changed if variants are reordered
 }
 
 impl FromValue for OperatorKind {
     fn from_value(value: Value) -> Result<Self, CastError<Self>> {
         match value {
             Value::Byte(b) => {
-                assert!(b <= OperatorKind::Infix as u8);
+                assert!(b <= OperatorKind::Binary as u8);
                 Ok(unsafe { mem::transmute(b) })
             }
             _ => Err(CastError::new(value)),

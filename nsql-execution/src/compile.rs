@@ -2,8 +2,7 @@ use std::mem;
 
 use anyhow::Result;
 use nsql_storage::eval::{
-    ExecutableExpr, ExecutableExprOp, ExecutableTupleExpr, Expr, ExprOp, FunctionCatalog,
-    TupleExpr, UnaryOp,
+    ExecutableExpr, ExecutableExprOp, ExecutableTupleExpr, Expr, ExprOp, FunctionCatalog, TupleExpr,
 };
 use nsql_storage_engine::{StorageEngine, Transaction};
 
@@ -63,12 +62,16 @@ impl Compiler {
                 self.emit(ExprOp::MkArray { len });
             }
             ir::ExprKind::Alias { expr, .. } => self.build(catalog, tx, *expr)?,
-            ir::ExprKind::UnaryOp { op, expr } => {
+            ir::ExprKind::UnaryOperator { operator, expr } => {
+                let function = Box::new(operator.mono_function().function());
                 self.build(catalog, tx, *expr)?;
-                let op = match op {
-                    ir::UnaryOp::Neg => UnaryOp::Neg,
-                };
-                self.emit(ExprOp::UnaryOp(op));
+                self.emit(ExprOp::Call { function });
+            }
+            ir::ExprKind::BinaryOperator { operator, lhs, rhs } => {
+                let function = Box::new(operator.mono_function().function());
+                self.build(catalog, tx, *lhs)?;
+                self.build(catalog, tx, *rhs)?;
+                self.emit(ExprOp::Call { function });
             }
             ir::ExprKind::ColumnRef { index, .. } => self.ops.push(ExprOp::Project { index }),
             ir::ExprKind::FunctionCall { function, args } => {
@@ -119,12 +122,6 @@ impl Compiler {
                 for marker in end_markers {
                     marker.backpatch(self);
                 }
-            }
-            ir::ExprKind::InfixOperator { operator, lhs, rhs } => {
-                let function = Box::new(operator.mono_function().function());
-                self.build(catalog, tx, *lhs)?;
-                self.build(catalog, tx, *rhs)?;
-                self.emit(ExprOp::Call { function });
             }
             ir::ExprKind::Subquery(_) => {
                 unimplemented!("cannot compile subqueries (needs to be flattened during planning)")

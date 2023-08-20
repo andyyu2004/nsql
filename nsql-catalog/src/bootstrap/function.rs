@@ -12,6 +12,7 @@ pub(super) struct BootstrapFunction {
 impl Function {
     mk_consts![
         NEG_INT,
+        NOT_BOOL,
         EQ,
         LT,
         LTE,
@@ -77,8 +78,9 @@ pub(super) fn bootstrap_data() -> Box<[BootstrapFunction]> {
         comparison!(GTE       >= : Any),
         comparison!(GT        >  : Any),
         // `(a, a) -> a` operations
-        binary!(ADD_INT + : Int64),
-        scalar!(NEG_INT - : (Int64) -> Int64),
+        binary!(ADD_INT  + : Int64),
+        scalar!(NEG_INT  - : (Int64) -> Int64),
+        scalar!(NOT_BOOL - : (Bool) -> Bool),
         scalar!(RANGE2 range : (Int64, Int64) -> array(Int64)),
         scalar!(ARRAY_ELEMENT array_element : (array(Any), Int64) -> Any),
         scalar!(ARRAY_POSITION array_position : (array(Any), Any) -> Int64),

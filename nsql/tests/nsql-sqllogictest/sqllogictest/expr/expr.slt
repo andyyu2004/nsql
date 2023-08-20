@@ -6,6 +6,15 @@ true
 query error
 SELECT 1 = false
 ----
-no operator overload for operand types \(int = boolean\)
+no operator overload for `int = boolean`
 
+query I
+SELECT NOT false
+----
+true
+
+query error
+SELECT NOT 1
+----
+no operator overload for `!int`
 

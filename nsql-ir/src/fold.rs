@@ -203,8 +203,8 @@ impl ExprFold for Expr {
             ExprKind::Alias { alias, expr } => {
                 ExprKind::Alias { alias: alias.clone(), expr: folder.fold_boxed_expr(plan, expr) }
             }
-            ExprKind::UnaryOp { op, expr } => {
-                ExprKind::UnaryOp { op, expr: folder.fold_boxed_expr(plan, expr) }
+            ExprKind::UnaryOperator { operator, expr } => {
+                ExprKind::UnaryOperator { operator, expr: folder.fold_boxed_expr(plan, expr) }
             }
             ExprKind::FunctionCall { function, args } => ExprKind::FunctionCall {
                 function: function.clone(),
@@ -223,7 +223,7 @@ impl ExprFold for Expr {
                 else_result: else_result.map(|expr| folder.fold_boxed_expr(plan, expr)),
             },
             ExprKind::Subquery(plan) => ExprKind::Subquery(folder.fold_boxed_plan(plan)),
-            ExprKind::InfixOperator { operator, lhs, rhs } => ExprKind::InfixOperator {
+            ExprKind::BinaryOperator { operator, lhs, rhs } => ExprKind::BinaryOperator {
                 operator,
                 lhs: folder.fold_boxed_expr(plan, lhs),
                 rhs: folder.fold_boxed_expr(plan, rhs),

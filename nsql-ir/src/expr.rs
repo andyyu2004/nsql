@@ -76,10 +76,6 @@ pub enum ExprKind {
         alias: Name,
         expr: Box<Expr>,
     },
-    UnaryOp {
-        op: UnaryOp,
-        expr: Box<Expr>,
-    },
     ColumnRef {
         /// A qualified display path for the column (for pretty printing etc)
         qpath: QPath,
@@ -90,7 +86,11 @@ pub enum ExprKind {
         function: MonoFunction,
         args: Box<[Expr]>,
     },
-    InfixOperator {
+    UnaryOperator {
+        operator: Box<MonoOperator>,
+        expr: Box<Expr>,
+    },
+    BinaryOperator {
         operator: Box<MonoOperator>,
         lhs: Box<Expr>,
         rhs: Box<Expr>,
@@ -187,9 +187,11 @@ impl fmt::Display for ExprKind {
                 }
                 write!(f, "END")
             }
-            ExprKind::UnaryOp { op, expr } => write!(f, "{op}{expr}"),
             ExprKind::Subquery(_plan) => write!(f, "<subquery>"),
-            ExprKind::InfixOperator { operator, lhs, rhs } => write!(f, "({lhs} {operator} {rhs})"),
+            ExprKind::UnaryOperator { operator, expr } => write!(f, "{operator}{expr}"),
+            ExprKind::BinaryOperator { operator, lhs, rhs } => {
+                write!(f, "({lhs} {operator} {rhs})")
+            }
         }
     }
 }
@@ -198,19 +200,6 @@ impl fmt::Display for ExprKind {
 pub struct Case {
     pub when: Expr,
     pub then: Expr,
-}
-
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub enum UnaryOp {
-    Neg,
-}
-
-impl fmt::Display for UnaryOp {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match &self {
-            UnaryOp::Neg => write!(f, "-"),
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

@@ -141,9 +141,9 @@ pub trait Visitor {
 
                 ControlFlow::Continue(())
             }
-            ExprKind::UnaryOp { op: _, expr } => self.visit_expr(plan, expr),
             ExprKind::Subquery(plan) => self.visit_query_plan(plan),
-            ExprKind::InfixOperator { operator: _, lhs, rhs } => {
+            ExprKind::UnaryOperator { operator: _, expr } => self.visit_expr(plan, expr),
+            ExprKind::BinaryOperator { operator: _, lhs, rhs } => {
                 self.visit_expr(plan, lhs)?;
                 self.visit_expr(plan, rhs)
             }

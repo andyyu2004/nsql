@@ -1,5 +1,4 @@
 #![deny(rust_2018_idioms)]
-// #![feature(const_trait_impl)]
 
 mod oid;
 pub mod ty;

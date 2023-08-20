@@ -9,7 +9,7 @@ pub(super) struct BootstrapOperator {
 }
 
 impl Operator {
-    mk_consts![EQ, LT, LTE, GTE, GT, ADD_INT, NEG_INT];
+    mk_consts![EQ, LT, LTE, GTE, GT, ADD_INT, NEG_INT, NOT_BOOL];
 
     pub const LESS: &'static str = "<";
     pub const LESS_EQUAL: &'static str = "<=";
@@ -19,6 +19,7 @@ impl Operator {
     pub const GREATER: &'static str = ">";
     pub const PLUS: &'static str = "+";
     pub const MINUS: &'static str = "-";
+    pub const NOT: &'static str = "!";
 }
 
 macro_rules! operator {
@@ -32,28 +33,29 @@ macro_rules! operator {
     };
 }
 
-macro_rules! infix {
+macro_rules! binary {
     ($name:ident, $oid:ident) => {
-        operator!($name, $oid, Infix)
+        operator!($name, $oid, Binary)
     };
 }
 
-macro_rules! prefix {
+macro_rules! unary {
     ($name:ident, $oid:ident) => {
-        operator!($name, $oid, Prefix)
+        operator!($name, $oid, Unary)
     };
 }
 
 pub(super) fn bootstrap_data() -> Box<[BootstrapOperator]> {
     // the macro assumes that the corresponding `Function::$oid` is the same name as the `Operator::$oid`
     vec![
-        prefix!(MINUS, NEG_INT),
-        infix!(PLUS, ADD_INT),
-        infix!(EQUAL, EQ),
-        infix!(LESS, LT),
-        infix!(LESS_EQUAL, LTE),
-        infix!(GREATER_EQUAL, GTE),
-        infix!(GREATER, GT),
+        unary!(MINUS, NEG_INT),
+        unary!(NOT, NOT_BOOL),
+        binary!(PLUS, ADD_INT),
+        binary!(EQUAL, EQ),
+        binary!(LESS, LT),
+        binary!(LESS_EQUAL, LTE),
+        binary!(GREATER_EQUAL, GTE),
+        binary!(GREATER, GT),
     ]
     .into_boxed_slice()
 }

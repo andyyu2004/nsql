@@ -57,6 +57,7 @@ pub(crate) fn get_scalar_function(oid: Oid<Function>) -> Option<ScalarFunction> 
             }
         },
         Function::NEG_INT   => prefix_op!(- : i64),
+        Function::NOT_BOOL  => prefix_op!(! : bool),
         Function::ADD_INT   => infix_op!(+ : i64),
         Function::EQ        => comparison!(== : Value),
         Function::LT        => comparison!(<  : Value),

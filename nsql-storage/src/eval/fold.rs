@@ -27,7 +27,6 @@ impl<F> ExprOp<F> {
             ExprOp::Project { index } => Ok(ExprOp::Project { index }),
             ExprOp::MkArray { len } => Ok(ExprOp::MkArray { len }),
             ExprOp::Call { function } => Ok(ExprOp::Call { function: f(function)? }),
-            ExprOp::UnaryOp(op) => Ok(ExprOp::UnaryOp(op)),
             ExprOp::Jmp { offset } => Ok(ExprOp::Jmp { offset }),
             ExprOp::IfNeJmp { offset } => Ok(ExprOp::IfNeJmp { offset }),
             ExprOp::Return => Ok(ExprOp::Return),

@@ -150,18 +150,12 @@ pub enum ExprOp<F = UntypedOid> {
     Project { index: TupleIndex },
     MkArray { len: usize },
     Call { function: F },
-    UnaryOp(UnaryOp),
     IfNeJmp { offset: u32 },
     Jmp { offset: u32 },
     Return,
 }
 
 static_assert_eq!(mem::size_of::<ExprOp>(), 32);
-
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Archive, Serialize, Deserialize)]
-pub enum UnaryOp {
-    Neg,
-}
 
 impl ExprOp<Box<dyn ScalarFunction>> {
     fn execute(&self, stack: &mut Vec<Value>, ip: &mut usize, tuple: &Tuple) {
@@ -175,15 +169,6 @@ impl ExprOp<Box<dyn ScalarFunction>> {
             ExprOp::Call { function } => {
                 let args = stack.drain(stack.len() - function.arity()..).collect::<Box<[Value]>>();
                 function.call(args)
-            }
-            ExprOp::UnaryOp(op) => {
-                let value = stack.pop().unwrap();
-                match op {
-                    UnaryOp::Neg => match value {
-                        Value::Int64(value) => Value::Int64(-value),
-                        _ => unimplemented!(),
-                    },
-                }
             }
             ExprOp::IfNeJmp { offset } => {
                 let rhs = stack.pop().unwrap();
