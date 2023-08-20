@@ -21,6 +21,7 @@ use crate::{
     SystemEntity, SystemTableView, Table, MAIN_SCHEMA,
 };
 
+// The order matters as it will determine which id is assigned to each element
 macro_rules! mk_consts {
     ([$count:expr] $name:ident) => {
         pub(crate) const $name: Oid<Self> = Oid::new($count);

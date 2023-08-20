@@ -44,6 +44,7 @@ macro_rules! prefix_op {
     };
 }
 
+#[rustfmt::skip]
 pub(crate) fn get_scalar_function(oid: Oid<Function>) -> Option<ScalarFunction> {
     Some(match oid {
         Function::RANGE2 => |mut args| {
@@ -55,12 +56,23 @@ pub(crate) fn get_scalar_function(oid: Oid<Function>) -> Option<ScalarFunction> 
                 _ => Value::Null,
             }
         },
-        Function::NEG_INT => prefix_op!(- : i64),
-        Function::ADD_INT => infix_op!(+ : i64),
-        Function::EQ_INT => comparison!(== : i64),
-        Function::GT_INT => comparison!(> : i64),
-        Function::GT_FLOAT => comparison!(> : f64),
-        Function::GT_DEC => comparison!(> : Decimal),
+        Function::NEG_INT   => prefix_op!(- : i64),
+        Function::ADD_INT   => infix_op!(+ : i64),
+        Function::EQ_INT    => comparison!(== : i64),
+        Function::EQ_FLOAT  => comparison!(== : f64),
+        Function::EQ_DEC    => comparison!(== : Decimal),
+        Function::LT_INT    => comparison!(<  : i64),
+        Function::LT_FLOAT  => comparison!(<  : f64),
+        Function::LT_DEC    => comparison!(<  : Decimal),
+        Function::LTE_INT   => comparison!(<= : i64),
+        Function::LTE_FLOAT => comparison!(<= : f64),
+        Function::LTE_DEC   => comparison!(<= : Decimal),
+        Function::GTE_INT   => comparison!(>= : i64),
+        Function::GTE_FLOAT => comparison!(>= : f64),
+        Function::GTE_DEC   => comparison!(>= : Decimal),
+        Function::GT_INT    => comparison!(>  : i64),
+        Function::GT_FLOAT  => comparison!(>  : f64),
+        Function::GT_DEC    => comparison!(>  : Decimal),
         Function::ARRAY_ELEMENT => |mut args| {
             assert_eq!(args.len(), 2);
             let array = match args[0].take() {

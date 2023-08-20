@@ -4,6 +4,22 @@ SELECT NULL > NULL
 NULL
 
 query B
+SELECT NULL = NULL
+----
+NULL
+
+query B
+SELECT 2 = 2
+----
+true
+
+query B
+SELECT 2.0 = 2.0
+----
+true
+
+
+query B
 SELECT 2 > 1
 ----
 true
@@ -18,8 +34,37 @@ SELECT 2.0 > NULL
 ----
 NULL
 
-
 query B
 SELECT NULL > 2
 ----
 NULL
+
+query B
+SELECT 1 < 2
+----
+true
+
+query B
+SELECT 1.0 < 2.0
+----
+true
+
+query B
+SELECT 1 <= 1
+----
+true
+
+query B
+SELECT 1.0 <= 1.1
+----
+true
+
+query B
+SELECT 1 >= 1
+----
+true
+
+query B
+SELECT 1.0 >= 1.1
+----
+false
