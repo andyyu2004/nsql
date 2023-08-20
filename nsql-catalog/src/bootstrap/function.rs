@@ -39,8 +39,10 @@ macro_rules! scalar {
 }
 
 macro_rules! cast {
-    ($oid:ident $name:tt : $from:expr => $to:expr) => {{
-        function!($oid $name Scalar : ( $from, $to ) -> $to)
+    ($oid:ident : $from:expr => $to:expr) => {{
+        // casts from a => b are implemented as functions `(a, b) -> b`
+        // where the second argument is a dummy just for function overloading resolution
+        scalar!($oid cast : ( $from, $to ) -> $to)
     }};
 }
 
@@ -72,7 +74,9 @@ impl Function {
         AVG_INT,
         SUM_INT,
         PRODUCT_INT,
-        CAST_INT_TO_DEC
+        CAST_SELF,
+        CAST_INT_TO_DEC,
+        CAST_INT_TO_FLOAT
     ];
 }
 
@@ -86,15 +90,20 @@ pub(super) fn bootstrap_data() -> Box<[BootstrapFunction]> {
         comparison!(GT        >  : Any),
         // `(a, a) -> a` operations
         binary!(ADD_INT  + : Int64),
+        // general scalar functions
         scalar!(NEG_INT  - : (Int64) -> Int64),
         scalar!(NOT_BOOL - : (Bool) -> Bool),
         scalar!(RANGE2 range : (Int64, Int64) -> array(Int64)),
         scalar!(ARRAY_ELEMENT array_element : (array(Any), Int64) -> Any),
         scalar!(ARRAY_POSITION array_position : (array(Any), Any) -> Int64),
+        // aggregates
         aggregate!(SUM_INT sum : (Int64) -> Int64),
         aggregate!(AVG_INT avg : (Int64) -> Float64),
         aggregate!(PRODUCT_INT product : (Int64) -> Int64),
-        cast!(CAST_INT_TO_DEC cast : Int64 => Decimal),
+        // casts
+        cast!(CAST_SELF          : Any => Any),
+        cast!(CAST_INT_TO_DEC    : Int64 => Decimal),
+        cast!(CAST_INT_TO_FLOAT  : Int64 => Float64),
     ]
     .into_boxed_slice()
 }

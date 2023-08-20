@@ -515,13 +515,17 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                 ast::ExactNumberInfo::None => Ok(LogicalType::Decimal),
                 ast::ExactNumberInfo::Precision(_)
                 | ast::ExactNumberInfo::PrecisionAndScale(_, _) => {
-                    unimplemented!("precision or scale not implemented")
+                    not_implemented!("decimal precision and scale")
                 }
             },
             ast::DataType::Text => Ok(LogicalType::Text),
             ast::DataType::Bytea => Ok(LogicalType::Bytea),
             ast::DataType::Boolean => Ok(LogicalType::Bool),
-            _ => bail!("unhandled type: {:?}", ty),
+            ast::DataType::Float(precision) => match precision {
+                Some(_) => not_implemented!("float type precision"),
+                None => Ok(LogicalType::Float64),
+            },
+            _ => bail!("type {ty} not implemented"),
         }
     }
 

@@ -2,3 +2,18 @@ query I
 SELECT 1::decimal
 ----
 1
+
+query I
+SELECT 1::float
+----
+1
+
+query I
+SELECT 1::float::float
+----
+1
+
+query I
+SELECT 1::int
+----
+1

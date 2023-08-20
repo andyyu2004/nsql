@@ -31,7 +31,7 @@ impl fmt::Display for CastError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "cannot cast value {:?} of type {} to {}",
+            "cannot cast value `{}` of type `{}` to `{}`",
             self.value,
             self.value.logical_type(),
             self.to
@@ -140,6 +140,13 @@ where
             Some(v) => v.into(),
             None => Value::Null,
         }
+    }
+}
+
+impl From<f64> for Value {
+    #[inline]
+    fn from(f: f64) -> Self {
+        Self::Float64(f.to_bits())
     }
 }
 
@@ -366,7 +373,8 @@ impl FromValue for f64 {
     #[inline]
     fn from_value(value: Value) -> Result<Self, CastError> {
         match value {
-            Value::Float64(i) => Ok(f64::from_bits(i)),
+            Value::Float64(u) => Ok(f64::from_bits(u)),
+            Value::Int64(i) => Ok(i as f64),
             _ => Err(CastError::new(value, LogicalType::Float64)),
         }
     }
