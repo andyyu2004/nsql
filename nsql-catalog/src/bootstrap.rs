@@ -1,3 +1,7 @@
+mod function;
+mod namespace;
+mod table;
+
 use anyhow::bail;
 use nsql_core::{LogicalType, UntypedOid};
 use nsql_storage::eval::{Expr, ExprOp, FunctionCatalog, TupleExpr};
@@ -5,6 +9,9 @@ use nsql_storage::tuple::TupleIndex;
 use nsql_storage::{ColumnStorageInfo, Result};
 use nsql_storage_engine::{ReadWriteExecutionMode, StorageEngine, Transaction};
 
+use self::function::BootstrapFunction;
+use self::namespace::BootstrapNamespace;
+use self::table::BootstrapTable;
 use crate::entity::function::FunctionKind;
 use crate::{
     Column, ColumnIndex, Function, Index, IndexKind, Namespace, Oid, SystemEntity, SystemTableView,
@@ -24,32 +31,7 @@ macro_rules! mk_consts {
     };
 }
 
-struct BootstrapFunction {
-    oid: Oid<Function>,
-    name: &'static str,
-    kind: FunctionKind,
-    args: Vec<LogicalType>,
-    ret: LogicalType,
-}
-
-struct BootstrapNamespace {
-    oid: Oid<Namespace>,
-    name: &'static str,
-}
-
-struct BootstrapTable {
-    oid: Oid<Table>,
-    name: &'static str,
-    columns: Vec<ColumnStorageInfo>,
-    indexes: Vec<BootstrapIndex>,
-}
-
-struct BootstrapIndex {
-    table: Oid<Table>,
-    name: &'static str,
-    kind: IndexKind,
-    column_names: Vec<&'static str>,
-}
+use mk_consts;
 
 struct BootstrapFunctionCatalog;
 
@@ -108,173 +90,21 @@ pub(crate) fn bootstrap<'env, S: StorageEngine>(
     Ok(())
 }
 
-impl Table {
-    mk_consts![
-        NAMESPACE,
-        TABLE,
-        ATTRIBUTE,
-        INDEX,
-        FUNCTION,
-        NAMESPACE_NAME_UNIQUE_INDEX,
-        TABLE_NAME_UNIQUE_INDEX,
-        ATTRIBUTE_NAME_UNIQUE_INDEX,
-        FUNCTION_NAME_ARGS_UNIQUE_INDEX
-    ];
-}
-
-impl Namespace {
-    pub(crate) const CATALOG: Oid<Self> = Oid::new(0);
-    pub const MAIN: Oid<Self> = Oid::new(1);
-}
-
-impl Function {
-    mk_consts![
-        RANGE2,
-        SUM_INT,
-        PRODUCT_INT,
-        AVG_INT,
-        GT_INT,
-        GT_FLOAT,
-        GT_DEC,
-        ARRAY_ELEMENT,
-        ARRAY_POSITION
-    ];
-}
-
-// FIXME there is still quite a bit of duplicated work between here and `bootstrap_table_storage_info`
-fn bootstrap_info() -> BootstrapInfo {
-    BootstrapInfo {
-        namespaces: vec![
-            BootstrapNamespace { oid: Namespace::CATALOG, name: "nsql_catalog" },
-            BootstrapNamespace { oid: Namespace::MAIN, name: MAIN_SCHEMA },
-        ],
-        tables: vec![
-            BootstrapTable {
-                oid: Table::NAMESPACE,
-                name: "nsql_namespace",
-                columns: Namespace::bootstrap_table_storage_info().columns,
-                indexes: vec![BootstrapIndex {
-                    table: Table::NAMESPACE_NAME_UNIQUE_INDEX,
-                    name: "nsql_namespace_name_index",
-                    kind: IndexKind::Unique,
-                    column_names: vec!["name"],
-                }],
-            },
-            BootstrapTable {
-                oid: Table::TABLE,
-                name: "nsql_table",
-                columns: Table::bootstrap_table_storage_info().columns,
-                indexes: vec![BootstrapIndex {
-                    table: Table::TABLE_NAME_UNIQUE_INDEX,
-                    name: "nsql_table_namespace_name_index",
-                    kind: IndexKind::Unique,
-                    column_names: vec!["namespace", "name"],
-                }],
-            },
-            BootstrapTable {
-                oid: Table::ATTRIBUTE,
-                name: "nsql_attribute",
-                columns: Column::bootstrap_table_storage_info().columns,
-                indexes: vec![BootstrapIndex {
-                    table: Table::ATTRIBUTE_NAME_UNIQUE_INDEX,
-                    name: "nsql_attribute_table_name_index",
-                    kind: IndexKind::Unique,
-                    column_names: vec!["table", "name"],
-                }],
-            },
-            BootstrapTable {
-                oid: Table::INDEX,
-                name: "nsql_index",
-                columns: Index::bootstrap_table_storage_info().columns,
-                indexes: vec![],
-            },
-            BootstrapTable {
-                oid: Table::FUNCTION,
-                name: "nsql_function",
-                columns: Function::bootstrap_table_storage_info().columns,
-                indexes: vec![BootstrapIndex {
-                    table: Table::FUNCTION_NAME_ARGS_UNIQUE_INDEX,
-                    name: "nsql_function_namespace_name_args_index",
-                    kind: IndexKind::Unique,
-                    column_names: vec!["namespace", "name", "args"],
-                }],
-            },
-        ],
-        functions: vec![
-            BootstrapFunction {
-                oid: Function::RANGE2,
-                name: "range",
-                kind: FunctionKind::Scalar,
-                args: vec![LogicalType::Int64, LogicalType::Int64],
-                ret: LogicalType::array(LogicalType::Int64),
-            },
-            BootstrapFunction {
-                oid: Function::SUM_INT,
-                name: "sum",
-                kind: FunctionKind::Aggregate,
-                args: vec![LogicalType::Int64],
-                ret: LogicalType::Int64,
-            },
-            BootstrapFunction {
-                oid: Function::PRODUCT_INT,
-                name: "product",
-                kind: FunctionKind::Aggregate,
-                args: vec![LogicalType::Int64],
-                ret: LogicalType::Int64,
-            },
-            BootstrapFunction {
-                oid: Function::AVG_INT,
-                name: "avg",
-                kind: FunctionKind::Aggregate,
-                args: vec![LogicalType::Int64],
-                ret: LogicalType::Float64,
-            },
-            BootstrapFunction {
-                oid: Function::GT_INT,
-                name: ">",
-                kind: FunctionKind::Scalar,
-                args: vec![LogicalType::Int64, LogicalType::Int64],
-                ret: LogicalType::Bool,
-            },
-            BootstrapFunction {
-                oid: Function::GT_FLOAT,
-                name: ">",
-                kind: FunctionKind::Scalar,
-                args: vec![LogicalType::Float64, LogicalType::Int64],
-                ret: LogicalType::Bool,
-            },
-            BootstrapFunction {
-                oid: Function::GT_DEC,
-                name: ">",
-                kind: FunctionKind::Scalar,
-                args: vec![LogicalType::Decimal, LogicalType::Decimal],
-                ret: LogicalType::Bool,
-            },
-            BootstrapFunction {
-                oid: Function::ARRAY_ELEMENT,
-                name: "array_element",
-                kind: FunctionKind::Scalar,
-                args: vec![LogicalType::array(LogicalType::Any), LogicalType::Int64],
-                ret: LogicalType::Any,
-            },
-            BootstrapFunction {
-                oid: Function::ARRAY_POSITION,
-                name: "array_position",
-                kind: FunctionKind::Scalar,
-                args: vec![LogicalType::array(LogicalType::Any), LogicalType::Any],
-                ret: LogicalType::Int64,
-            },
-        ],
+fn bootstrap_info() -> BootstrapData {
+    BootstrapData {
+        namespaces: namespace::bootstrap_data(),
+        tables: table::bootstrap_data(),
+        functions: function::bootstrap_data(),
     }
 }
 
-struct BootstrapInfo {
-    namespaces: Vec<BootstrapNamespace>,
-    tables: Vec<BootstrapTable>,
-    functions: Vec<BootstrapFunction>,
+struct BootstrapData {
+    namespaces: Box<[BootstrapNamespace]>,
+    tables: Box<[BootstrapTable]>,
+    functions: Box<[BootstrapFunction]>,
 }
 
-impl BootstrapInfo {
+impl BootstrapData {
     fn desugar(
         self,
     ) -> (
@@ -284,10 +114,13 @@ impl BootstrapInfo {
         impl Iterator<Item = Index>,
         impl Iterator<Item = Function>,
     ) {
-        let namespaces =
-            self.namespaces.into_iter().map(|ns| Namespace { oid: ns.oid, name: ns.name.into() });
+        let namespaces = self
+            .namespaces
+            .into_vec()
+            .into_iter()
+            .map(|ns| Namespace { oid: ns.oid, name: ns.name.into() });
 
-        let functions = self.functions.into_iter().map(|f| Function {
+        let functions = self.functions.into_vec().into_iter().map(|f| Function {
             oid: f.oid,
             namespace: Namespace::MAIN,
             name: f.name.into(),
@@ -300,7 +133,7 @@ impl BootstrapInfo {
         let mut columns = vec![];
         let mut indexes = vec![];
 
-        for table in self.tables {
+        for table in self.tables.into_vec() {
             tables.push(Table {
                 oid: table.oid,
                 namespace: Namespace::CATALOG,
