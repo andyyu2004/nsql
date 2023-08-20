@@ -70,20 +70,20 @@ impl ExecutableTupleExpr {
 
 impl FromValue for TupleExpr {
     #[inline]
-    fn from_value(value: Value) -> Result<Self, CastError<Self>> {
+    fn from_value(value: Value) -> Result<Self, CastError> {
         match value {
             Value::TupleExpr(expr) => Ok(expr),
-            _ => Err(CastError::<Self>::new(value)),
+            _ => Err(CastError::new(value, LogicalType::TupleExpr)),
         }
     }
 }
 
 impl FromValue for LogicalType {
     #[inline]
-    fn from_value(value: Value) -> Result<Self, CastError<Self>> {
+    fn from_value(value: Value) -> Result<Self, CastError> {
         match value {
             Value::Type(ty) => Ok(ty),
-            _ => Err(CastError::<Self>::new(value)),
+            _ => Err(CastError::new(value, LogicalType::Type)),
         }
     }
 }

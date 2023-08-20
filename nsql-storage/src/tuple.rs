@@ -238,8 +238,8 @@ impl fmt::Display for FromTupleError {
 
 impl Error for FromTupleError {}
 
-impl<T: 'static> From<CastError<T>> for FromTupleError {
-    fn from(err: CastError<T>) -> Self {
+impl From<CastError> for FromTupleError {
+    fn from(err: CastError) -> Self {
         Self::InvalidCast(Box::new(err))
     }
 }

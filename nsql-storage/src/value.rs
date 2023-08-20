@@ -1,5 +1,4 @@
 use std::error::Error;
-use std::marker::PhantomData;
 use std::ops::Deref;
 use std::{fmt, mem};
 
@@ -11,40 +10,36 @@ pub use rust_decimal::Decimal;
 
 use crate::eval::TupleExpr;
 
-pub struct CastError<T> {
+pub struct CastError {
     value: Value,
-    phantom: PhantomData<fn() -> T>,
+    to: LogicalType,
 }
 
-impl<T> CastError<T> {
-    pub fn new(value: Value) -> Self {
-        Self { value, phantom: PhantomData }
-    }
-
-    pub fn cast<U>(self) -> CastError<U> {
-        CastError::new(self.value)
+impl CastError {
+    pub fn new(value: Value, to: LogicalType) -> Self {
+        Self { value, to }
     }
 }
 
-impl<T> fmt::Debug for CastError<T> {
+impl fmt::Debug for CastError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{self}")
     }
 }
 
-impl<T> fmt::Display for CastError<T> {
+impl fmt::Display for CastError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
             "cannot cast value {:?} of type {} to {}",
             self.value,
             self.value.logical_type(),
-            std::any::type_name::<T>()
+            self.to
         )
     }
 }
 
-impl<T> Error for CastError<T> {}
+impl Error for CastError {}
 
 /// An nsql value
 #[derive(
@@ -82,6 +77,7 @@ pub enum Value {
 static_assert_eq!(mem::size_of::<Value>(), 32);
 
 #[derive(
+    Default,
     Debug,
     Clone,
     PartialEq,
@@ -126,11 +122,31 @@ where
 
 impl<V> From<Box<[V]>> for Value
 where
-    V: Into<Value>,
+    Value: From<V>,
 {
     #[inline]
     fn from(vs: Box<[V]>) -> Self {
         Vec::from(vs).into()
+    }
+}
+
+impl<V> From<Option<V>> for Value
+where
+    Value: From<V>,
+{
+    #[inline]
+    fn from(v: Option<V>) -> Self {
+        match v {
+            Some(v) => v.into(),
+            None => Value::Null,
+        }
+    }
+}
+
+impl From<Decimal> for Value {
+    #[inline]
+    fn from(dec: Decimal) -> Self {
+        Self::Decimal(dec)
     }
 }
 
@@ -215,7 +231,7 @@ impl Value {
     }
 
     #[inline]
-    pub fn cast<T: FromValue>(self) -> Result<T, CastError<T>> {
+    pub fn cast<T: FromValue>(self) -> Result<T, CastError> {
         T::from_value(self)
     }
 
@@ -273,165 +289,165 @@ impl fmt::Display for Value {
 // FIXME missing lots of implementations
 pub trait FromValue: Sized {
     /// Cast a nsql `value` to a rust value.
-    fn from_value(value: Value) -> Result<Self, CastError<Self>>;
+    fn from_value(value: Value) -> Result<Self, CastError>;
 }
 
 impl FromValue for Value {
     #[inline]
-    fn from_value(value: Self) -> Result<Self, CastError<Self>> {
+    fn from_value(value: Self) -> Result<Self, CastError> {
         Ok(value)
     }
 }
 
 impl<V: FromValue> FromValue for Option<V> {
     #[inline]
-    fn from_value(value: Value) -> Result<Self, CastError<Self>> {
+    fn from_value(value: Value) -> Result<Self, CastError> {
         match value {
             Value::Null => Ok(None),
-            value => V::from_value(value).map(Some).map_err(CastError::cast),
+            value => V::from_value(value).map(Some),
         }
     }
 }
 
 impl<V: FromValue> FromValue for Box<[V]> {
     #[inline]
-    fn from_value(value: Value) -> Result<Self, CastError<Self>> {
-        Vec::<V>::from_value(value).map(|v| v.into_boxed_slice()).map_err(CastError::cast)
+    fn from_value(value: Value) -> Result<Self, CastError> {
+        Vec::<V>::from_value(value).map(|v| v.into_boxed_slice())
     }
 }
 
 impl<V: FromValue> FromValue for Vec<V> {
     #[inline]
-    fn from_value(value: Value) -> Result<Self, CastError<Self>> {
+    fn from_value(value: Value) -> Result<Self, CastError> {
         match value {
-            Value::Array(values) => values
-                .into_vec()
-                .into_iter()
-                .map(|value| V::from_value(value).map_err(CastError::cast))
-                .collect(),
-            _ => Err(CastError::new(value)),
+            Value::Array(values) => {
+                values.into_vec().into_iter().map(|value| V::from_value(value)).collect()
+            }
+            _ => Err(CastError::new(value, LogicalType::array(LogicalType::Any))),
         }
     }
 }
 
 impl FromValue for u64 {
     #[inline]
-    fn from_value(value: Value) -> Result<Self, CastError<Self>> {
+    fn from_value(value: Value) -> Result<Self, CastError> {
         match value {
             Value::Bool(b) => Ok(b as u64),
             Value::Int64(i) => Ok(i as u64),
-            Value::Decimal(d) => d.to_u64().ok_or_else(|| CastError::new(value)),
-            _ => Err(CastError::new(value)),
+            Value::Decimal(d) => {
+                d.to_u64().ok_or_else(|| CastError::new(value, LogicalType::Int64))
+            }
+            _ => Err(CastError::new(value, LogicalType::Int64)),
         }
     }
 }
 
 impl<T> FromValue for Oid<T> {
     #[inline]
-    fn from_value(value: Value) -> Result<Self, CastError<Self>> {
+    fn from_value(value: Value) -> Result<Self, CastError> {
         match value {
             Value::Oid(oid) => Ok(oid.cast()),
-            _ => Err(CastError::new(value)),
+            _ => Err(CastError::new(value, LogicalType::Oid)),
         }
     }
 }
 
 impl FromValue for bool {
     #[inline]
-    fn from_value(value: Value) -> Result<Self, CastError<Self>> {
+    fn from_value(value: Value) -> Result<Self, CastError> {
         match value {
             Value::Bool(b) => Ok(b),
-            _ => Err(CastError::new(value)),
+            _ => Err(CastError::new(value, LogicalType::Bool)),
         }
     }
 }
 
 impl FromValue for f64 {
     #[inline]
-    fn from_value(value: Value) -> Result<Self, CastError<Self>> {
+    fn from_value(value: Value) -> Result<Self, CastError> {
         match value {
             Value::Float64(i) => Ok(f64::from_bits(i)),
-            _ => Err(CastError::new(value)),
+            _ => Err(CastError::new(value, LogicalType::Float64)),
         }
     }
 }
 
 impl FromValue for Decimal {
     #[inline]
-    fn from_value(value: Value) -> Result<Self, CastError<Self>> {
+    fn from_value(value: Value) -> Result<Self, CastError> {
         match value {
             Value::Decimal(d) => Ok(d),
-            _ => Err(CastError::new(value)),
+            Value::Int64(i) => Ok(Decimal::from(i)),
+            _ => Err(CastError::new(value, LogicalType::Decimal)),
         }
     }
 }
 
 impl FromValue for i64 {
     #[inline]
-    fn from_value(value: Value) -> Result<Self, CastError<Self>> {
+    fn from_value(value: Value) -> Result<Self, CastError> {
         match value {
             Value::Int64(i) => Ok(i),
-            _ => Err(CastError::new(value)),
+            _ => Err(CastError::new(value, LogicalType::Int64)),
         }
     }
 }
 
 impl FromValue for i32 {
     #[inline]
-    fn from_value(value: Value) -> Result<Self, CastError<Self>> {
+    fn from_value(value: Value) -> Result<Self, CastError> {
         match value {
             Value::Int64(i) => Ok(i as i32),
-            _ => Err(CastError::new(value)),
+            _ => Err(CastError::new(value, LogicalType::Int64)),
         }
     }
 }
 
 impl FromValue for i8 {
     #[inline]
-    fn from_value(value: Value) -> Result<Self, CastError<Self>> {
+    fn from_value(value: Value) -> Result<Self, CastError> {
         match value {
+            Value::Byte(u) => Ok(u as i8),
             Value::Int64(i) => Ok(i as i8),
-            _ => Err(CastError::new(value)),
+            _ => Err(CastError::new(value, LogicalType::Byte)),
         }
     }
 }
 
 impl FromValue for u8 {
     #[inline]
-    fn from_value(value: Value) -> Result<Self, CastError<Self>> {
+    fn from_value(value: Value) -> Result<Self, CastError> {
         match value {
+            Value::Byte(u) => Ok(u),
             Value::Int64(i) => Ok(i as u8),
-            _ => Err(CastError::new(value)),
+            _ => Err(CastError::new(value, LogicalType::Byte)),
         }
     }
 }
 
 impl FromValue for String {
     #[inline]
-    fn from_value(value: Value) -> Result<Self, CastError<Self>> {
+    fn from_value(value: Value) -> Result<Self, CastError> {
         match value {
             Value::Text(s) => Ok(s),
-            _ => Err(CastError::new(value)),
+            _ => Err(CastError::new(value, LogicalType::Text)),
         }
     }
 }
 
 impl FromValue for Bytea {
     #[inline]
-    fn from_value(value: Value) -> Result<Self, CastError<Self>> {
+    fn from_value(value: Value) -> Result<Self, CastError> {
         match value {
             Value::Bytea(b) => Ok(b),
-            _ => Err(CastError::new(value)),
+            _ => Err(CastError::new(value, LogicalType::Bytea)),
         }
     }
 }
 
 impl FromValue for Name {
     #[inline]
-    fn from_value(value: Value) -> Result<Self, CastError<Self>> {
-        match value {
-            Value::Text(s) => Ok(s.into()),
-            _ => Err(CastError::new(value)),
-        }
+    fn from_value(value: Value) -> Result<Self, CastError> {
+        value.cast::<String>().map(Into::into)
     }
 }

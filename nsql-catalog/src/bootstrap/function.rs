@@ -9,25 +9,6 @@ pub(super) struct BootstrapFunction {
     pub ret: LogicalType,
 }
 
-impl Function {
-    mk_consts![
-        NEG_INT,
-        NOT_BOOL,
-        EQ,
-        LT,
-        LTE,
-        GTE,
-        GT,
-        ADD_INT,
-        ARRAY_ELEMENT,
-        ARRAY_POSITION,
-        RANGE2,
-        AVG_INT,
-        SUM_INT,
-        PRODUCT_INT
-    ];
-}
-
 fn array(ty: LogicalType) -> LogicalType {
     LogicalType::array(ty)
 }
@@ -57,6 +38,12 @@ macro_rules! scalar {
     }};
 }
 
+macro_rules! cast {
+    ($oid:ident $name:tt : $from:expr => $to:expr) => {{
+        function!($oid $name Scalar : ( $from, $to ) -> $to)
+    }};
+}
+
 macro_rules! comparison {
     ($oid:ident $name:tt : $ty:expr) => {{
         scalar!($oid $name : ( $ty, $ty ) -> Bool)
@@ -67,6 +54,26 @@ macro_rules! binary {
     ($oid:ident $name:tt : $ty:expr) => {{
         scalar!($oid $name : ( $ty, $ty ) -> $ty)
     }};
+}
+
+impl Function {
+    mk_consts![
+        NEG_INT,
+        NOT_BOOL,
+        EQ,
+        LT,
+        LTE,
+        GTE,
+        GT,
+        ADD_INT,
+        ARRAY_ELEMENT,
+        ARRAY_POSITION,
+        RANGE2,
+        AVG_INT,
+        SUM_INT,
+        PRODUCT_INT,
+        CAST_INT_TO_DEC
+    ];
 }
 
 pub(super) fn bootstrap_data() -> Box<[BootstrapFunction]> {
@@ -87,6 +94,7 @@ pub(super) fn bootstrap_data() -> Box<[BootstrapFunction]> {
         aggregate!(SUM_INT sum : (Int64) -> Int64),
         aggregate!(AVG_INT avg : (Int64) -> Float64),
         aggregate!(PRODUCT_INT product : (Int64) -> Int64),
+        cast!(CAST_INT_TO_DEC cast : Int64 => Decimal),
     ]
     .into_boxed_slice()
 }

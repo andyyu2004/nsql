@@ -20,6 +20,7 @@ impl Operator {
     pub const PLUS: &'static str = "+";
     pub const MINUS: &'static str = "-";
     pub const NOT: &'static str = "!";
+    pub const CAST: &'static str = "::";
 }
 
 macro_rules! operator {

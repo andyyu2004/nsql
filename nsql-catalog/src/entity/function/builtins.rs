@@ -1,7 +1,19 @@
 use nsql_core::Oid;
-use nsql_storage::value::Value;
+use nsql_storage::value::{Decimal, Value};
 
 use super::*;
+
+macro_rules! cast {
+    ($to:ty) => {
+        |mut args| {
+            assert_eq!(args.len(), 2);
+            let casted: Option<$to> = args[0].take().cast().unwrap();
+            let dummy: Option<$to> = args[0].take().cast().unwrap();
+            assert!(dummy.is_none(), "non-null value was passed as dummy cast argument");
+            Value::from(casted)
+        }
+    };
+}
 
 macro_rules! comparison {
     ($op:tt: $ty:ty) => {
@@ -64,6 +76,7 @@ pub(crate) fn get_scalar_function(oid: Oid<Function>) -> Option<ScalarFunction> 
         Function::LTE       => comparison!(<= : Value),
         Function::GTE       => comparison!(>= : Value),
         Function::GT        => comparison!(>  : Value),
+        Function::CAST_INT_TO_DEC => cast!(Decimal),
         Function::ARRAY_ELEMENT => |mut args| {
             assert_eq!(args.len(), 2);
             let array = match args[0].take() {

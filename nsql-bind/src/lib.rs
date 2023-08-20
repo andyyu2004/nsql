@@ -509,6 +509,15 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
             ast::DataType::Int(width) | ast::DataType::Integer(width) if width.is_none() => {
                 Ok(LogicalType::Int64)
             }
+            ast::DataType::Dec(info)
+            | ast::DataType::Decimal(info)
+            | ast::DataType::BigDecimal(info) => match info {
+                ast::ExactNumberInfo::None => Ok(LogicalType::Decimal),
+                ast::ExactNumberInfo::Precision(_)
+                | ast::ExactNumberInfo::PrecisionAndScale(_, _) => {
+                    unimplemented!("precision or scale not implemented")
+                }
+            },
             ast::DataType::Text => Ok(LogicalType::Text),
             ast::DataType::Bytea => Ok(LogicalType::Bytea),
             ast::DataType::Boolean => Ok(LogicalType::Bool),
@@ -1016,7 +1025,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
         self.bind_operator(tx, name, OperatorKind::Unary, LogicalType::Null, operand)
     }
 
-    fn bind_infix_operator(
+    fn bind_binary_operator(
         &self,
         tx: &dyn Transaction<'env, S>,
         name: &'static str,
@@ -1184,8 +1193,30 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                     _ => bail!("unsupported binary operator: {:?}", op),
                 };
 
-                let operator = self.bind_infix_operator(tx, op, lhs.ty(), rhs.ty())?;
+                let operator = self.bind_binary_operator(tx, op, lhs.ty(), rhs.ty())?;
                 (operator.return_type(), ir::ExprKind::BinaryOperator { operator, lhs, rhs })
+            }
+            ast::Expr::Cast { expr, data_type } => {
+                let expr = f(expr)?;
+                let target = self.lower_ty(data_type)?;
+                // We implement `CAST` by hacking operator overloading.
+                // We search for a cast function `(from, target) -> target` with the second parameter being a dummy argument.
+                let args = [expr.ty(), target];
+                let function =
+                    self.resolve_function(tx, &Path::qualified(MAIN_SCHEMA, "cast"), &args)?;
+                let [_, target] = args;
+                (
+                    function.return_type(),
+                    ir::ExprKind::FunctionCall {
+                        function,
+                        args: [
+                            expr,
+                            // just pass null as the dummy argument as it is unused
+                            ir::Expr { ty: target, kind: ir::ExprKind::Literal(ir::Value::Null) },
+                        ]
+                        .into(),
+                    },
+                )
             }
             ast::Expr::Array(array) => {
                 let mut expected_ty = None;

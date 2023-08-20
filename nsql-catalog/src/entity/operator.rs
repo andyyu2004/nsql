@@ -40,14 +40,10 @@ pub enum OperatorKind {
 }
 
 impl FromValue for OperatorKind {
-    fn from_value(value: Value) -> Result<Self, CastError<Self>> {
-        match value {
-            Value::Byte(b) => {
-                assert!(b <= OperatorKind::Binary as u8);
-                Ok(unsafe { mem::transmute(b) })
-            }
-            _ => Err(CastError::new(value)),
-        }
+    fn from_value(value: Value) -> Result<Self, CastError> {
+        let b = value.cast::<u8>()?;
+        assert!(b <= OperatorKind::Binary as u8);
+        Ok(unsafe { mem::transmute(b) })
     }
 }
 
