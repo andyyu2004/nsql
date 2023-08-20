@@ -96,6 +96,7 @@ impl Function {
 
     #[inline]
     pub fn get_scalar_function(&self) -> ScalarFunction {
+        assert!(matches!(self.kind, FunctionKind::Scalar));
         if let Some(f) = builtins::get_scalar_function(self.oid) {
             return f;
         }
@@ -103,16 +104,17 @@ impl Function {
         // otherwise, we store the bytecode for non-builtin functions
         // let bytecode: Expr = todo!();
 
-        panic!("missing scalar function definition for oid {}", self.oid)
+        panic!("missing builtin scalar function definition for oid {}", self.oid)
     }
 
     #[inline]
     pub fn get_aggregate_instance(&self) -> Box<dyn AggregateFunctionInstance> {
+        assert!(matches!(self.kind, FunctionKind::Aggregate));
         if let Some(f) = builtins::get_aggregate_function(self.oid) {
             return f;
         }
 
-        panic!("missing aggregate function")
+        panic!("missing builtin aggregate function definition for oid {}", self.oid)
     }
 }
 

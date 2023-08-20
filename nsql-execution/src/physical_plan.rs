@@ -57,7 +57,7 @@ use crate::{
 };
 
 pub struct PhysicalPlanner<'env, S> {
-    _catalog: Catalog<'env, S>,
+    catalog: Catalog<'env, S>,
     compiler: Compiler,
 }
 
@@ -71,8 +71,8 @@ impl<'env, 'txn, S, M> PhysicalPlan<'env, 'txn, S, M> {
 }
 
 impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalPlanner<'env, S> {
-    pub fn new(_catalog: Catalog<'env, S>) -> Self {
-        Self { _catalog, compiler: Default::default() }
+    pub fn new(catalog: Catalog<'env, S>) -> Self {
+        Self { catalog, compiler: Default::default() }
     }
 
     #[inline]
@@ -128,7 +128,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalPlanner<'env, S> {
                     schema,
                     table,
                     source,
-                    returning.map(|e| self.compile_exprs(e)),
+                    returning.map(|expr| self.compile_exprs(tx, expr)).transpose()?,
                 )
             }
             ir::QueryPlan::Insert { table, source, returning, schema } => {
@@ -137,7 +137,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalPlanner<'env, S> {
                     schema,
                     table,
                     source,
-                    returning.map(|exprs| self.compile_exprs(exprs)),
+                    returning.map(|exprs| self.compile_exprs(tx, exprs)).transpose()?,
                 )
             }
             _ => return self.fold_query_plan(tx, plan, Self::plan_write_query_node),
@@ -199,46 +199,46 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalPlanner<'env, S> {
                 PhysicalTableScan::plan(projected_schema, table, projection)
             }
             ir::QueryPlan::Values { schema, values } => {
-                PhysicalValues::plan(schema, self.compile_values(values))
+                PhysicalValues::plan(schema, self.compile_values(tx, values)?)
             }
             ir::QueryPlan::Projection { projected_schema, source, projection } => {
                 PhysicalProjection::plan(
                     projected_schema,
                     f(self, tx, source)?,
-                    self.compile_exprs(projection),
+                    self.compile_exprs(tx, projection)?,
                 )
             }
             ir::QueryPlan::Limit { source, limit, exceeded_message } => {
                 PhysicalLimit::plan(f(self, tx, source)?, limit, exceeded_message)
             }
             ir::QueryPlan::Order { source, order } => {
-                PhysicalOrder::plan(f(self, tx, source)?, self.compile_order_exprs(order))
+                PhysicalOrder::plan(f(self, tx, source)?, self.compile_order_exprs(tx, order)?)
             }
             ir::QueryPlan::Filter { source, predicate } => {
-                PhysicalFilter::plan(f(self, tx, source)?, self.compile_expr(predicate))
+                PhysicalFilter::plan(f(self, tx, source)?, self.compile_expr(tx, predicate)?)
             }
             ir::QueryPlan::Join { schema, join, lhs, rhs } => PhysicalNestedLoopJoin::plan(
                 schema,
-                join.map(|expr| self.compile_expr(expr)),
+                join.try_map(|expr| self.compile_expr(tx, expr))?,
                 f(self, tx, lhs)?,
                 f(self, tx, rhs)?,
             ),
             ir::QueryPlan::Aggregate { functions, source, schema, group_by }
                 if group_by.is_empty() =>
             {
-                let functions = self.compile_aggregate_functions(functions.to_vec());
+                let functions = self.compile_aggregate_functions(tx, functions.to_vec())?;
                 PhysicalUngroupedAggregate::plan(schema, functions, f(self, tx, source)?)
             }
             ir::QueryPlan::Aggregate { functions, source, schema, group_by } => {
                 PhysicalHashAggregate::plan(
                     schema,
-                    self.compile_aggregate_functions(functions.to_vec()),
+                    self.compile_aggregate_functions(tx, functions.to_vec())?,
                     f(self, tx, source)?,
-                    self.compile_exprs(group_by),
+                    self.compile_exprs(tx, group_by)?,
                 )
             }
             ir::QueryPlan::Unnest { schema, expr } => {
-                PhysicalUnnest::plan(schema, self.compile_expr(expr))
+                PhysicalUnnest::plan(schema, self.compile_expr(tx, expr)?)
             }
             ir::QueryPlan::Empty => PhysicalDummyScan::plan(),
             ir::QueryPlan::Update { .. } | ir::QueryPlan::Insert { .. } => {
@@ -254,8 +254,9 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalPlanner<'env, S> {
 
     fn compile_aggregate_functions(
         &mut self,
+        tx: &dyn Transaction<'env, S>,
         functions: impl IntoIterator<Item = (ir::MonoFunction, Box<[ir::Expr]>)>,
-    ) -> Box<[(ir::MonoFunction, ExecutableExpr)]> {
+    ) -> Result<Box<[(ir::MonoFunction, ExecutableExpr)]>> {
         functions
             .into_iter()
             .map(|(f, args)| {
@@ -264,32 +265,54 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalPlanner<'env, S> {
                     1,
                     "only one argument allowed for aggregate functions for now"
                 );
-                let arg = self.compile_expr(args[0].clone());
-                (f, arg)
+                let arg = self.compile_expr(tx, args[0].clone())?;
+                Ok((f, arg))
             })
-            .collect::<Box<_>>()
+            .collect()
     }
 
-    fn compile_values(&mut self, values: ir::Values) -> Box<[ExecutableTupleExpr]> {
-        values.into_inner().into_vec().into_iter().map(|e| self.compile_exprs(e)).collect()
+    fn compile_values(
+        &mut self,
+        tx: &dyn Transaction<'env, S>,
+        values: ir::Values,
+    ) -> Result<Box<[ExecutableTupleExpr]>> {
+        values
+            .into_inner()
+            .into_vec()
+            .into_iter()
+            .map(|expr| self.compile_exprs(tx, expr))
+            .collect()
     }
 
-    fn compile_exprs(&mut self, exprs: Box<[ir::Expr]>) -> ExecutableTupleExpr {
-        self.compiler.compile_many(exprs.into_vec())
+    fn compile_exprs(
+        &mut self,
+        tx: &dyn Transaction<'env, S>,
+        exprs: Box<[ir::Expr]>,
+    ) -> Result<ExecutableTupleExpr> {
+        self.compiler.compile_many(&self.catalog, tx, exprs.into_vec())
     }
 
-    fn compile_expr(&mut self, expr: ir::Expr) -> ExecutableExpr {
-        self.compiler.compile(expr)
+    fn compile_expr(
+        &mut self,
+        tx: &dyn Transaction<'env, S>,
+        expr: ir::Expr,
+    ) -> Result<ExecutableExpr> {
+        self.compiler.compile(&self.catalog, tx, expr)
     }
 
     fn compile_order_exprs(
         &mut self,
+        tx: &dyn Transaction<'env, S>,
         expr: Box<[ir::OrderExpr]>,
-    ) -> Box<[ir::OrderExpr<ExecutableExpr>]> {
-        expr.into_vec().into_iter().map(|e| self.compile_order_expr(e)).collect()
+    ) -> Result<Box<[ir::OrderExpr<ExecutableExpr>]>> {
+        expr.into_vec().into_iter().map(|expr| self.compile_order_expr(tx, expr)).collect()
     }
 
-    fn compile_order_expr(&mut self, expr: ir::OrderExpr) -> ir::OrderExpr<ExecutableExpr> {
-        ir::OrderExpr { expr: self.compiler.compile(expr.expr), asc: expr.asc }
+    fn compile_order_expr(
+        &mut self,
+        tx: &dyn Transaction<'env, S>,
+        expr: ir::OrderExpr,
+    ) -> Result<ir::OrderExpr<ExecutableExpr>> {
+        Ok(ir::OrderExpr { expr: self.compile_expr(tx, expr.expr)?, asc: expr.asc })
     }
 }

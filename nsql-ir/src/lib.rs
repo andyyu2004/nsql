@@ -402,6 +402,18 @@ impl<E> Join<E> {
             Join::Constrained(kind, constraint) => Join::Constrained(kind, constraint.map(f)),
         }
     }
+
+    pub fn try_map<X, Error>(
+        self,
+        f: impl FnOnce(E) -> Result<X, Error>,
+    ) -> Result<Join<X>, Error> {
+        match self {
+            Join::Cross => Ok(Join::Cross),
+            Join::Constrained(kind, constraint) => {
+                Ok(Join::Constrained(kind, constraint.try_map(f)?))
+            }
+        }
+    }
 }
 
 impl<E: fmt::Display> fmt::Display for Join<E> {
@@ -423,6 +435,16 @@ impl<E> JoinConstraint<E> {
     pub fn map<X>(self, f: impl FnOnce(E) -> X) -> JoinConstraint<X> {
         match self {
             JoinConstraint::On(expr) => JoinConstraint::On(f(expr)),
+        }
+    }
+
+    #[inline]
+    pub fn try_map<X, Error>(
+        self,
+        f: impl FnOnce(E) -> Result<X, Error>,
+    ) -> Result<JoinConstraint<X>, Error> {
+        match self {
+            JoinConstraint::On(expr) => f(expr).map(JoinConstraint::On),
         }
     }
 }
@@ -631,8 +653,8 @@ impl From<Name> for Path {
 }
 
 impl Path {
-    pub fn qualified(prefix: Path, name: Name) -> Path {
-        Path::Qualified(QPath { prefix: Box::new(prefix), name })
+    pub fn qualified(prefix: impl Into<Path>, name: impl Into<Name>) -> Path {
+        Path::Qualified(QPath { prefix: Box::new(prefix.into()), name: name.into() })
     }
 
     pub fn unqualified(name: impl Into<Name>) -> Path {

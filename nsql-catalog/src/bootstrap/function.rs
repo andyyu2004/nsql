@@ -14,10 +14,13 @@ impl Function {
         RANGE2,
         SUM_INT,
         PRODUCT_INT,
+        NEG_INT,
         AVG_INT,
+        EQ_INT,
         GT_INT,
         GT_FLOAT,
         GT_DEC,
+        ADD_INT,
         ARRAY_ELEMENT,
         ARRAY_POSITION
     ];
@@ -54,6 +57,13 @@ pub(super) fn bootstrap_data() -> Box<[BootstrapFunction]> {
             ret: LogicalType::Float64,
         },
         BootstrapFunction {
+            oid: Function::EQ_INT,
+            name: "=",
+            kind: FunctionKind::Scalar,
+            args: vec![LogicalType::Int64, LogicalType::Int64],
+            ret: LogicalType::Bool,
+        },
+        BootstrapFunction {
             oid: Function::GT_INT,
             name: ">",
             kind: FunctionKind::Scalar,
@@ -73,6 +83,20 @@ pub(super) fn bootstrap_data() -> Box<[BootstrapFunction]> {
             kind: FunctionKind::Scalar,
             args: vec![LogicalType::Decimal, LogicalType::Decimal],
             ret: LogicalType::Bool,
+        },
+        BootstrapFunction {
+            oid: Function::ADD_INT,
+            name: "+",
+            kind: FunctionKind::Scalar,
+            args: vec![LogicalType::Int64, LogicalType::Int64],
+            ret: LogicalType::Int64,
+        },
+        BootstrapFunction {
+            oid: Function::NEG_INT,
+            name: "-",
+            kind: FunctionKind::Scalar,
+            args: vec![LogicalType::Int64],
+            ret: LogicalType::Int64,
         },
         BootstrapFunction {
             oid: Function::ARRAY_ELEMENT,

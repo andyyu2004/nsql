@@ -1,4 +1,9 @@
 query B
+SELECT NULL > NULL
+----
+NULL
+
+query B
 SELECT 2 > 1
 ----
 true

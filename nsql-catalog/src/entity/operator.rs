@@ -1,3 +1,4 @@
+use core::fmt;
 use std::mem;
 
 use super::*;
@@ -24,6 +25,11 @@ impl Operator {
     }
 
     #[inline]
+    pub fn function(&self) -> Oid<Function> {
+        self.function
+    }
+
+    #[inline]
     pub fn left_ty(&self) -> LogicalType {
         self.left.clone()
     }
@@ -31,6 +37,17 @@ impl Operator {
     #[inline]
     pub fn right_ty(&self) -> LogicalType {
         self.right.clone()
+    }
+
+    #[inline]
+    pub fn output_ty(&self) -> LogicalType {
+        self.output.clone()
+    }
+}
+
+impl fmt::Display for Operator {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.name)
     }
 }
 

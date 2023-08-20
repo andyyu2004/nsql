@@ -16,7 +16,7 @@ use ir::{Decimal, Path, QPath, TransactionMode, TupleIndex};
 use itertools::Itertools;
 use nsql_catalog::{
     Catalog, ColumnIndex, CreateColumnInfo, CreateNamespaceInfo, Function, FunctionKind, Namespace,
-    SystemEntity, SystemTableView, Table, MAIN_SCHEMA,
+    Operator, SystemEntity, SystemTableView, Table, MAIN_SCHEMA,
 };
 use nsql_core::{LogicalType, Name, Oid, Schema};
 use nsql_parse::ast;
@@ -1007,14 +1007,68 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
         Ok((function, args))
     }
 
+    fn bind_prefix_operator(
+        &self,
+        tx: &dyn Transaction<'env, S>,
+        path: &Path,
+        operand: LogicalType,
+    ) -> Result<Operator> {
+        // handle null type defaulting
+        let operand = match operand {
+            LogicalType::Null => LogicalType::Int64,
+            operand => operand,
+        };
+
+        let (operators, namespace, name) = self.get_namespaced_entity_view::<Operator>(tx, path)?;
+        let key = (name, LogicalType::Null, operand);
+        let operator = match operators.find(self.catalog, tx, Some(namespace.key()), &key)? {
+            Some(operator) => operator,
+            None => {
+                let (name, _, operand) = key;
+                bail!("no operator overload for operand types ({name}{operand})")
+            }
+        };
+
+        Ok(operator)
+    }
+
+    fn bind_infix_operator(
+        &self,
+        tx: &dyn Transaction<'env, S>,
+        name: &'static str,
+        left: LogicalType,
+        right: LogicalType,
+    ) -> Result<Box<Operator>> {
+        // handle null type defaulting
+        let (left, right) = match (left, right) {
+            (LogicalType::Null, LogicalType::Null) => (LogicalType::Int64, LogicalType::Int64),
+            (LogicalType::Null, ty) => (ty.clone(), ty),
+            (ty, LogicalType::Null) => (ty.clone(), ty),
+            (left, right) => (left, right),
+        };
+
+        let (operators, namespace, name) = self
+            .get_namespaced_entity_view::<Operator>(tx, &Path::qualified("nsql_catalog", name))?;
+        let key = (name, left, right);
+        let operator = match operators.find(self.catalog, tx, Some(namespace.key()), &key)? {
+            Some(operator) => operator,
+            None => {
+                let (name, left, right) = key;
+                bail!("no operator overload for operand types ({left} {name} {right})",)
+            }
+        };
+
+        Ok(Box::new(operator))
+    }
+
     fn resolve_function(
         &self,
         tx: &dyn Transaction<'env, S>,
         path: &Path,
         args: &[LogicalType],
     ) -> Result<ir::MonoFunction> {
-        let (table, namespace, name) = self.get_namespaced_entity_view::<Function>(tx, path)?;
-        let mut candidates = table
+        let (functions, namespace, name) = self.get_namespaced_entity_view::<Function>(tx, path)?;
+        let mut candidates = functions
             .scan()?
             .filter(|f| {
                 Ok(f.parent_oid(self.catalog, tx)?.unwrap() == namespace.key() && f.name() == name)
@@ -1077,55 +1131,17 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                 (ty, ir::ExprKind::UnaryOp { op, expr: Box::new(expr) })
             }
             ast::Expr::BinaryOp { left, op, right } => {
-                let lhs = f(left)?;
-                let rhs = f(right)?;
-                let (ty, op) = match op {
-                    ast::BinaryOperator::Eq => {
-                        ensure!(
-                            lhs.ty == rhs.ty,
-                            "cannot compare value of type {} to {}",
-                            lhs.ty,
-                            rhs.ty
-                        );
-                        (LogicalType::Bool, ir::BinOp::Eq)
-                    }
-                    ast::BinaryOperator::Plus => {
-                        ensure!(
-                            lhs.ty == rhs.ty,
-                            "cannot add value of type {} to {}",
-                            lhs.ty,
-                            rhs.ty
-                        );
-                        ensure!(
-                            matches!(lhs.ty, LogicalType::Int64),
-                            "cannot add value of type {}",
-                            lhs.ty,
-                        );
-                        (LogicalType::Int64, ir::BinOp::Plus)
-                    }
+                let lhs = Box::new(f(left)?);
+                let rhs = Box::new(f(right)?);
+
+                let op = match op {
+                    ast::BinaryOperator::Eq => Operator::EQ,
+                    ast::BinaryOperator::Plus => Operator::PLUS,
+                    ast::BinaryOperator::Gt => Operator::GT,
                     // ast::BinaryOperator::Minus => ir::BinOp::Sub,
                     // ast::BinaryOperator::Multiply => ir::BinOp::Mul,
                     // ast::BinaryOperator::Divide => ir::BinOp::Div,
                     // ast::BinaryOperator::Modulo => ir::BinOp::Mod,
-                    ast::BinaryOperator::Gt => {
-                        let function = self.resolve_function(
-                            tx,
-                            &Path::unqualified(">"),
-                            &[lhs.ty(), rhs.ty()],
-                        )?;
-                        // idea, have the concept similar to traits including supertraits and default methods.
-                        // see if it's implementable as a system table. We need one equivalent to Eq, Ord, Add and all these basic operations
-                        // maybe it's similar to postgres operator classes
-                        // we don't need sql level syntax for this for now.
-                        // name ideas, operator class and operator instance?
-                        return Ok(ir::Expr {
-                            ty: function.return_type(),
-                            kind: ir::ExprKind::FunctionCall {
-                                function,
-                                args: vec![lhs, rhs].into(),
-                            },
-                        });
-                    }
                     // ast::BinaryOperator::Lt => ir::BinOp::Lt,
                     // ast::BinaryOperator::GtEq => ir::BinOp::Ge,
                     // ast::BinaryOperator::LtEq => ir::BinOp::Le,
@@ -1152,7 +1168,8 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                     _ => bail!("unsupported binary operator: {:?}", op),
                 };
 
-                (ty, ir::ExprKind::BinOp { op, lhs: Box::new(lhs), rhs: Box::new(rhs) })
+                let operator = self.bind_infix_operator(tx, op, lhs.ty(), rhs.ty())?;
+                (operator.output_ty(), ir::ExprKind::InfixOperator { operator, lhs, rhs })
             }
             ast::Expr::Array(array) => {
                 let mut expected_ty = None;

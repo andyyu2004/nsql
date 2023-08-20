@@ -125,10 +125,6 @@ pub trait Visitor {
         match &expr.kind {
             ExprKind::Literal(_) => ControlFlow::Continue(()),
             ExprKind::Array(exprs) => self.visit_exprs(plan, exprs),
-            ExprKind::BinOp { op: _, lhs, rhs } => {
-                self.visit_expr(plan, lhs)?;
-                self.visit_expr(plan, rhs)
-            }
             ExprKind::ColumnRef { .. } => ControlFlow::Continue(()),
             ExprKind::FunctionCall { function: _, args } => self.visit_exprs(plan, args),
             ExprKind::Alias { alias: _, expr } => self.visit_expr(plan, expr),
@@ -147,6 +143,10 @@ pub trait Visitor {
             }
             ExprKind::UnaryOp { op: _, expr } => self.visit_expr(plan, expr),
             ExprKind::Subquery(plan) => self.visit_query_plan(plan),
+            ExprKind::InfixOperator { operator: _, lhs, rhs } => {
+                self.visit_expr(plan, lhs)?;
+                self.visit_expr(plan, rhs)
+            }
         }
     }
 }

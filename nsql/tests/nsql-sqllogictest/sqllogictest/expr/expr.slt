@@ -6,6 +6,6 @@ true
 query error
 SELECT 1 = false
 ----
-cannot compare value of type int to boolean
+no operator overload for operand types \(int = boolean\)
 
 

@@ -309,7 +309,7 @@ impl<V: FromValue> FromValue for Vec<V> {
                 .into_iter()
                 .map(|value| V::from_value(value).map_err(CastError::cast))
                 .collect(),
-            _ => Err(CastError { value, phantom: PhantomData }),
+            _ => Err(CastError::new(value)),
         }
     }
 }
@@ -321,7 +321,7 @@ impl FromValue for u64 {
             Value::Bool(b) => Ok(b as u64),
             Value::Int64(i) => Ok(i as u64),
             Value::Decimal(d) => d.to_u64().ok_or_else(|| CastError::new(value)),
-            _ => Err(CastError { value, phantom: PhantomData }),
+            _ => Err(CastError::new(value)),
         }
     }
 }
@@ -331,7 +331,7 @@ impl<T> FromValue for Oid<T> {
     fn from_value(value: Value) -> Result<Self, CastError<Self>> {
         match value {
             Value::Oid(oid) => Ok(oid.cast()),
-            _ => Err(CastError { value, phantom: PhantomData }),
+            _ => Err(CastError::new(value)),
         }
     }
 }
@@ -341,7 +341,7 @@ impl FromValue for bool {
     fn from_value(value: Value) -> Result<Self, CastError<Self>> {
         match value {
             Value::Bool(b) => Ok(b),
-            _ => Err(CastError { value, phantom: PhantomData }),
+            _ => Err(CastError::new(value)),
         }
     }
 }
@@ -351,7 +351,7 @@ impl FromValue for f64 {
     fn from_value(value: Value) -> Result<Self, CastError<Self>> {
         match value {
             Value::Float64(i) => Ok(f64::from_bits(i)),
-            _ => Err(CastError { value, phantom: PhantomData }),
+            _ => Err(CastError::new(value)),
         }
     }
 }
@@ -361,7 +361,7 @@ impl FromValue for Decimal {
     fn from_value(value: Value) -> Result<Self, CastError<Self>> {
         match value {
             Value::Decimal(d) => Ok(d),
-            _ => Err(CastError { value, phantom: PhantomData }),
+            _ => Err(CastError::new(value)),
         }
     }
 }
@@ -371,7 +371,7 @@ impl FromValue for i64 {
     fn from_value(value: Value) -> Result<Self, CastError<Self>> {
         match value {
             Value::Int64(i) => Ok(i),
-            _ => Err(CastError { value, phantom: PhantomData }),
+            _ => Err(CastError::new(value)),
         }
     }
 }
@@ -381,7 +381,7 @@ impl FromValue for i32 {
     fn from_value(value: Value) -> Result<Self, CastError<Self>> {
         match value {
             Value::Int64(i) => Ok(i as i32),
-            _ => Err(CastError { value, phantom: PhantomData }),
+            _ => Err(CastError::new(value)),
         }
     }
 }
@@ -391,7 +391,7 @@ impl FromValue for i8 {
     fn from_value(value: Value) -> Result<Self, CastError<Self>> {
         match value {
             Value::Int64(i) => Ok(i as i8),
-            _ => Err(CastError { value, phantom: PhantomData }),
+            _ => Err(CastError::new(value)),
         }
     }
 }
@@ -401,7 +401,7 @@ impl FromValue for u8 {
     fn from_value(value: Value) -> Result<Self, CastError<Self>> {
         match value {
             Value::Int64(i) => Ok(i as u8),
-            _ => Err(CastError { value, phantom: PhantomData }),
+            _ => Err(CastError::new(value)),
         }
     }
 }
@@ -411,7 +411,7 @@ impl FromValue for String {
     fn from_value(value: Value) -> Result<Self, CastError<Self>> {
         match value {
             Value::Text(s) => Ok(s),
-            _ => Err(CastError { value, phantom: PhantomData }),
+            _ => Err(CastError::new(value)),
         }
     }
 }
@@ -421,7 +421,7 @@ impl FromValue for Bytea {
     fn from_value(value: Value) -> Result<Self, CastError<Self>> {
         match value {
             Value::Bytea(b) => Ok(b),
-            _ => Err(CastError { value, phantom: PhantomData }),
+            _ => Err(CastError::new(value)),
         }
     }
 }
@@ -431,7 +431,7 @@ impl FromValue for Name {
     fn from_value(value: Value) -> Result<Self, CastError<Self>> {
         match value {
             Value::Text(s) => Ok(s.into()),
-            _ => Err(CastError { value, phantom: PhantomData }),
+            _ => Err(CastError::new(value)),
         }
     }
 }

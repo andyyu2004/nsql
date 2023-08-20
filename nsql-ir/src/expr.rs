@@ -5,7 +5,7 @@ use std::{fmt, mem};
 
 pub use const_eval::EvalNotConst;
 use itertools::Itertools;
-use nsql_catalog::Function;
+use nsql_catalog::{Function, Operator};
 use nsql_core::{LogicalType, Name};
 use nsql_storage::tuple::TupleIndex;
 use nsql_storage::value::Value;
@@ -80,11 +80,6 @@ pub enum ExprKind {
         op: UnaryOp,
         expr: Box<Expr>,
     },
-    BinOp {
-        op: BinOp,
-        lhs: Box<Expr>,
-        rhs: Box<Expr>,
-    },
     ColumnRef {
         /// A qualified display path for the column (for pretty printing etc)
         qpath: QPath,
@@ -94,6 +89,11 @@ pub enum ExprKind {
     FunctionCall {
         function: MonoFunction,
         args: Box<[Expr]>,
+    },
+    InfixOperator {
+        operator: Box<Operator>,
+        lhs: Box<Expr>,
+        rhs: Box<Expr>,
     },
     Case {
         scrutinee: Box<Expr>,
@@ -139,7 +139,6 @@ impl fmt::Display for ExprKind {
         match &self {
             ExprKind::Literal(value) => write!(f, "{value}"),
             ExprKind::ColumnRef { qpath, index: _ } => write!(f, "{qpath}"),
-            ExprKind::BinOp { op, lhs, rhs } => write!(f, "{lhs} {op} {rhs}"),
             ExprKind::Array(exprs) => write!(f, "[{}]", exprs.iter().format(", ")),
             ExprKind::FunctionCall { function, args } => {
                 write!(f, "{}({})", function.name(), args.iter().format(", "))
@@ -159,6 +158,7 @@ impl fmt::Display for ExprKind {
             }
             ExprKind::UnaryOp { op, expr } => write!(f, "{op}{expr}"),
             ExprKind::Subquery(_plan) => write!(f, "<subquery>"),
+            ExprKind::InfixOperator { operator, lhs, rhs } => write!(f, "({lhs} {operator} {rhs})"),
         }
     }
 }
@@ -178,43 +178,6 @@ impl fmt::Display for UnaryOp {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match &self {
             UnaryOp::Neg => write!(f, "-"),
-        }
-    }
-}
-
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub enum BinOp {
-    Plus,
-    Sub,
-    Mul,
-    Div,
-    Mod,
-    Eq,
-    Ne,
-    Lt,
-    Le,
-    Gt,
-    Ge,
-    And,
-    Or,
-}
-
-impl fmt::Display for BinOp {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match &self {
-            BinOp::Plus => write!(f, "+"),
-            BinOp::Sub => write!(f, "-"),
-            BinOp::Mul => write!(f, "*"),
-            BinOp::Div => write!(f, "/"),
-            BinOp::Mod => write!(f, "%"),
-            BinOp::Eq => write!(f, "="),
-            BinOp::Ne => write!(f, "!="),
-            BinOp::Lt => write!(f, "<"),
-            BinOp::Le => write!(f, "<="),
-            BinOp::Gt => write!(f, ">"),
-            BinOp::Ge => write!(f, ">="),
-            BinOp::And => write!(f, "AND"),
-            BinOp::Or => write!(f, "OR"),
         }
     }
 }

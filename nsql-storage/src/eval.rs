@@ -150,7 +150,6 @@ pub enum ExprOp<F = UntypedOid> {
     Project { index: TupleIndex },
     MkArray { len: usize },
     Call { function: F },
-    BinOp(BinOp),
     UnaryOp(UnaryOp),
     IfNeJmp { offset: u32 },
     Jmp { offset: u32 },
@@ -158,12 +157,6 @@ pub enum ExprOp<F = UntypedOid> {
 }
 
 static_assert_eq!(mem::size_of::<ExprOp>(), 32);
-
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Archive, Serialize, Deserialize)]
-pub enum BinOp {
-    Eq,
-    Plus,
-}
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Archive, Serialize, Deserialize)]
 pub enum UnaryOp {
@@ -188,17 +181,6 @@ impl ExprOp<Box<dyn ScalarFunction>> {
                 match op {
                     UnaryOp::Neg => match value {
                         Value::Int64(value) => Value::Int64(-value),
-                        _ => unimplemented!(),
-                    },
-                }
-            }
-            ExprOp::BinOp(op) => {
-                let rhs = stack.pop().unwrap();
-                let lhs = stack.pop().unwrap();
-                match op {
-                    BinOp::Eq => Value::Bool(lhs == rhs),
-                    BinOp::Plus => match (lhs, rhs) {
-                        (Value::Int64(lhs), Value::Int64(rhs)) => Value::Int64(lhs + rhs),
                         _ => unimplemented!(),
                     },
                 }
