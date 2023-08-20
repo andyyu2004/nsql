@@ -1138,7 +1138,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                     ast::BinaryOperator::Eq => Operator::EQ,
                     ast::BinaryOperator::Plus => Operator::PLUS,
                     ast::BinaryOperator::Gt => Operator::GT,
-                    // ast::BinaryOperator::Minus => ir::BinOp::Sub,
+                    ast::BinaryOperator::Minus => Operator::MINUS,
                     // ast::BinaryOperator::Multiply => ir::BinOp::Mul,
                     // ast::BinaryOperator::Divide => ir::BinOp::Div,
                     // ast::BinaryOperator::Modulo => ir::BinOp::Mod,

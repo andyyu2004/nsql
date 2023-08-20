@@ -26,92 +26,63 @@ impl Function {
     ];
 }
 
+fn array(ty: LogicalType) -> LogicalType {
+    LogicalType::array(ty)
+}
+
+macro_rules! function {
+    ($oid:ident @ $name:tt $kind:ident : ( $($args:expr),* ) -> $ret:expr) => {{
+        use LogicalType::*;
+        BootstrapFunction {
+            oid: Function::$oid,
+            name: stringify!($name),
+            kind: FunctionKind::$kind,
+            args: vec![ $($args),* ],
+            ret: $ret
+        }
+    }};
+}
+
+macro_rules! aggregate {
+    ($oid:ident @ $name:tt : ( $($args:expr),* ) -> $ret:expr) => {
+        function!($oid@$name Aggregate : ( $($args),* ) -> $ret)
+    };
+}
+
+macro_rules! scalar {
+    ($oid:ident @ $name:tt : ( $($args:expr),* ) -> $ret:expr) => {{
+        function!($oid @ $name Scalar : ( $($args),* ) -> $ret)
+    }};
+}
+
+macro_rules! comparison {
+    ($oid:ident @ $name:tt : $ty:expr) => {{
+        scalar!($oid @ $name : ( $ty, $ty ) -> Bool)
+    }};
+}
+
+macro_rules! binary {
+    ($oid:ident @ $name:tt : $ty:expr) => {{
+        scalar!($oid @ $name : ( $ty, $ty ) -> $ty)
+    }};
+}
+
 pub(super) fn bootstrap_data() -> Box<[BootstrapFunction]> {
     vec![
-        BootstrapFunction {
-            oid: Function::RANGE2,
-            name: "range",
-            kind: FunctionKind::Scalar,
-            args: vec![LogicalType::Int64, LogicalType::Int64],
-            ret: LogicalType::array(LogicalType::Int64),
-        },
-        BootstrapFunction {
-            oid: Function::SUM_INT,
-            name: "sum",
-            kind: FunctionKind::Aggregate,
-            args: vec![LogicalType::Int64],
-            ret: LogicalType::Int64,
-        },
-        BootstrapFunction {
-            oid: Function::PRODUCT_INT,
-            name: "product",
-            kind: FunctionKind::Aggregate,
-            args: vec![LogicalType::Int64],
-            ret: LogicalType::Int64,
-        },
-        BootstrapFunction {
-            oid: Function::AVG_INT,
-            name: "avg",
-            kind: FunctionKind::Aggregate,
-            args: vec![LogicalType::Int64],
-            ret: LogicalType::Float64,
-        },
-        BootstrapFunction {
-            oid: Function::EQ_INT,
-            name: "=",
-            kind: FunctionKind::Scalar,
-            args: vec![LogicalType::Int64, LogicalType::Int64],
-            ret: LogicalType::Bool,
-        },
-        BootstrapFunction {
-            oid: Function::GT_INT,
-            name: ">",
-            kind: FunctionKind::Scalar,
-            args: vec![LogicalType::Int64, LogicalType::Int64],
-            ret: LogicalType::Bool,
-        },
-        BootstrapFunction {
-            oid: Function::GT_FLOAT,
-            name: ">",
-            kind: FunctionKind::Scalar,
-            args: vec![LogicalType::Float64, LogicalType::Int64],
-            ret: LogicalType::Bool,
-        },
-        BootstrapFunction {
-            oid: Function::GT_DEC,
-            name: ">",
-            kind: FunctionKind::Scalar,
-            args: vec![LogicalType::Decimal, LogicalType::Decimal],
-            ret: LogicalType::Bool,
-        },
-        BootstrapFunction {
-            oid: Function::ADD_INT,
-            name: "+",
-            kind: FunctionKind::Scalar,
-            args: vec![LogicalType::Int64, LogicalType::Int64],
-            ret: LogicalType::Int64,
-        },
-        BootstrapFunction {
-            oid: Function::NEG_INT,
-            name: "-",
-            kind: FunctionKind::Scalar,
-            args: vec![LogicalType::Int64],
-            ret: LogicalType::Int64,
-        },
-        BootstrapFunction {
-            oid: Function::ARRAY_ELEMENT,
-            name: "array_element",
-            kind: FunctionKind::Scalar,
-            args: vec![LogicalType::array(LogicalType::Any), LogicalType::Int64],
-            ret: LogicalType::Any,
-        },
-        BootstrapFunction {
-            oid: Function::ARRAY_POSITION,
-            name: "array_position",
-            kind: FunctionKind::Scalar,
-            args: vec![LogicalType::array(LogicalType::Any), LogicalType::Any],
-            ret: LogicalType::Int64,
-        },
+        // `(a, a) -> bool` operations
+        comparison!(EQ_INT   @ = : Int64),
+        comparison!(GT_INT   @ > : Int64),
+        comparison!(GT_FLOAT @ > : Float64),
+        comparison!(GT_DEC   @ > : Decimal),
+        // `(a, a) -> a` operations
+        binary!(ADD_INT @ + : Int64),
+        scalar!(NEG_INT @ - : (Int64) -> Int64),
+        scalar!(RANGE2 @ range : (Int64, Int64) -> array(Int64)),
+        scalar!(ARRAY_ELEMENT @ array_element : (array(Any), Int64) -> Any),
+        scalar!(ARRAY_POSITION @ array_position : (array(Any), Any) -> Int64),
+        aggregate!(SUM_INT @ sum : (Int64) -> Int64),
+        aggregate!(AVG_INT @ avg : (Int64) -> Float64),
+        aggregate!(PRODUCT_INT @ product : (Int64) -> Int64),
     ]
     .into_boxed_slice()
 }

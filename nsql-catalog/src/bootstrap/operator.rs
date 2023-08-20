@@ -9,7 +9,7 @@ pub(super) struct BootstrapOperator {
 }
 
 impl Operator {
-    mk_consts![GT_INT, GT_DEC, EQ_INT, ADD_INT, MINUS_INT];
+    mk_consts![GT_INT, GT_DEC, EQ_INT, ADD_INT, NEG_INT];
 
     pub const GT: &'static str = ">";
     pub const EQ: &'static str = "=";
@@ -17,38 +17,37 @@ impl Operator {
     pub const MINUS: &'static str = "-";
 }
 
+macro_rules! operator {
+    ($name:ident, $oid:ident, $kind:ident) => {
+        BootstrapOperator {
+            oid: Operator::$oid,
+            name: Operator::$name,
+            kind: OperatorKind::$kind,
+            function: Function::$oid,
+        }
+    };
+}
+
+macro_rules! infix {
+    ($name:ident, $oid:ident) => {
+        operator!($name, $oid, Infix)
+    };
+}
+
+macro_rules! prefix {
+    ($name:ident, $oid:ident) => {
+        operator!($name, $oid, Prefix)
+    };
+}
+
 pub(super) fn bootstrap_data() -> Box<[BootstrapOperator]> {
+    // the macro assumes that the corresponding `Function::$oid` is the same name as the `Operator::$oid`
     vec![
-        BootstrapOperator {
-            oid: Operator::ADD_INT,
-            name: Operator::PLUS,
-            kind: OperatorKind::Infix,
-            function: Function::ADD_INT,
-        },
-        BootstrapOperator {
-            oid: Operator::MINUS_INT,
-            name: Operator::PLUS,
-            kind: OperatorKind::Prefix,
-            function: Function::NEG_INT,
-        },
-        BootstrapOperator {
-            oid: Operator::GT_INT,
-            name: Operator::GT,
-            kind: OperatorKind::Infix,
-            function: Function::GT_INT,
-        },
-        BootstrapOperator {
-            oid: Operator::GT_DEC,
-            name: Operator::GT,
-            kind: OperatorKind::Infix,
-            function: Function::GT_DEC,
-        },
-        BootstrapOperator {
-            oid: Operator::EQ_INT,
-            name: Operator::EQ,
-            kind: OperatorKind::Infix,
-            function: Function::EQ_INT,
-        },
+        prefix!(MINUS, NEG_INT),
+        infix!(PLUS, ADD_INT),
+        infix!(GT, GT_INT),
+        infix!(GT, GT_DEC),
+        infix!(EQ, EQ_INT),
     ]
     .into_boxed_slice()
 }

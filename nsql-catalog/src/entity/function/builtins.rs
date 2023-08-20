@@ -17,27 +17,27 @@ macro_rules! comparison {
     };
 }
 
-macro_rules! int_op {
+macro_rules! infix_op {
     ($op:tt: $ty:ty) => {
         |mut args| {
             assert_eq!(args.len(), 2);
             let a: Option<$ty> = args[0].take().cast().unwrap();
             let b: Option<$ty> = args[1].take().cast().unwrap();
             match (a, b) {
-                (Some(a), Some(b)) => Value::Int64(a $op b),
+                (Some(a), Some(b)) => Value::from(a $op b),
                 _  => Value::Null,
             }
         }
     };
 }
 
-macro_rules! unary_op {
+macro_rules! prefix_op {
     ($op:tt: $ty:ty) => {
         |mut args| {
             assert_eq!(args.len(), 1);
             let x: Option<$ty> = args[0].take().cast().unwrap();
             match x {
-                Some(x) => Value::Int64($op x),
+                Some(x) => Value::from($op x),
                 _  => Value::Null,
             }
         }
@@ -55,8 +55,8 @@ pub(crate) fn get_scalar_function(oid: Oid<Function>) -> Option<ScalarFunction> 
                 _ => Value::Null,
             }
         },
-        Function::NEG_INT => unary_op!(- : i64),
-        Function::ADD_INT => int_op!(+ : i64),
+        Function::NEG_INT => prefix_op!(- : i64),
+        Function::ADD_INT => infix_op!(+ : i64),
         Function::EQ_INT => comparison!(== : i64),
         Function::GT_INT => comparison!(> : i64),
         Function::GT_FLOAT => comparison!(> : f64),
