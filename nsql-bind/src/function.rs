@@ -14,7 +14,7 @@ impl<'env, S> Binder<'env, S> {
         candidates.find_map(|f| {
             Ok(try {
                 let (args, ret) =
-                    Unifier::default().try_unify(f.args(), arg_types, f.return_type())?;
+                    Unifier::default().try_unify(arg_types, f.args(), f.return_type())?;
                 ir::MonoFunction::new(f, args, ret)
             })
         })
@@ -53,16 +53,20 @@ impl Unifier {
 impl Zipper for Unifier {
     fn zip_tys(&mut self, arg: &LogicalType, target: &LogicalType) -> ZipResult<()> {
         match (arg, target) {
-            (LogicalType::Any, ty) => match &self.subst {
+            // a null argument can be passed anywhere
+            (LogicalType::Null, _) => Ok(()),
+            // the ANY type can match any type
+            (ty, LogicalType::Any) => match &self.subst {
+                // if we already have a substituion (ANY -> ty) and we now require a different one, fail
                 Some(subst) if subst != ty => Err(ZipError),
                 _ => {
                     self.subst = Some(ty.clone());
                     Ok(())
                 }
             },
+            // any other new recursive cases need to be added here
             (LogicalType::Array(a), LogicalType::Array(b)) => self.zip_tys(a, b),
-            // any other recursive cases need to be added here
-            (t, u) if t == u || u.is_null() => Ok(()),
+            (t, u) if t == u => Ok(()),
             _ => Err(ZipError),
         }
     }
