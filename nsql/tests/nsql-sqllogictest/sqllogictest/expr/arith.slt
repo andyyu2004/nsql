@@ -1,0 +1,9 @@
+query I
+SELECT 1 + 1 * 2
+----
+3
+
+query I
+SELECT 1.0 + 1.0 * 2.0
+----
+3.00

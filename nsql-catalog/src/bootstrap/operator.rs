@@ -9,7 +9,10 @@ pub(super) struct BootstrapOperator {
 }
 
 impl Operator {
-    mk_consts![EQ, LT, LTE, GTE, GT, ADD_INT, NEG_INT, NOT_BOOL];
+    mk_consts![
+        EQ, LT, LTE, GTE, GT, NEG_INT, NOT_BOOL, ADD_INT, ADD_FLOAT, ADD_DEC, MUL_INT, MUL_FLOAT,
+        MUL_DEC
+    ];
 
     pub const LESS: &'static str = "<";
     pub const LESS_EQUAL: &'static str = "<=";
@@ -17,6 +20,7 @@ impl Operator {
     pub const NOT_EQUAL: &'static str = "=";
     pub const GREATER_EQUAL: &'static str = ">=";
     pub const GREATER: &'static str = ">";
+    pub const STAR: &'static str = "*";
     pub const PLUS: &'static str = "+";
     pub const MINUS: &'static str = "-";
     pub const NOT: &'static str = "!";
@@ -52,6 +56,11 @@ pub(super) fn bootstrap_data() -> Box<[BootstrapOperator]> {
         unary!(MINUS, NEG_INT),
         unary!(NOT, NOT_BOOL),
         binary!(PLUS, ADD_INT),
+        binary!(PLUS, ADD_FLOAT),
+        binary!(PLUS, ADD_DEC),
+        binary!(STAR, MUL_INT),
+        binary!(STAR, MUL_FLOAT),
+        binary!(STAR, MUL_DEC),
         binary!(EQUAL, EQ),
         binary!(LESS, LT),
         binary!(LESS_EQUAL, LTE),
