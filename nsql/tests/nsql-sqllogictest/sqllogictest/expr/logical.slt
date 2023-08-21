@@ -1,0 +1,49 @@
+query B
+SELECT NULL AND FALSE
+----
+NULL
+
+query B
+SELECT FALSE AND FALSE
+----
+false
+
+query B
+SELECT FALSE AND TRUE
+----
+false
+
+query B
+SELECT TRUE AND FALSE
+----
+false
+
+query B
+SELECT TRUE AND TRUE
+----
+true
+
+query B
+SELECT NULL OR FALSE
+----
+NULL
+
+query B
+SELECT FALSE OR FALSE
+----
+false
+
+query B
+SELECT FALSE OR TRUE
+----
+true
+
+query B
+SELECT TRUE OR FALSE
+----
+true
+
+query B
+SELECT TRUE OR TRUE
+----
+true

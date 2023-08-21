@@ -11,7 +11,7 @@ pub(super) struct BootstrapOperator {
 impl Operator {
     mk_consts![
         EQ, LT, LTE, GTE, GT, NEG_INT, NOT_BOOL, ADD_INT, ADD_FLOAT, ADD_DEC, SUB_INT, SUB_FLOAT,
-        SUB_DEC, MUL_INT, MUL_FLOAT, MUL_DEC, DIV_INT, DIV_FLOAT, DIV_DEC
+        SUB_DEC, MUL_INT, MUL_FLOAT, MUL_DEC, DIV_INT, DIV_FLOAT, DIV_DEC, AND_BOOL, OR_BOOL
     ];
 
     pub const LESS: &'static str = "<";
@@ -26,6 +26,8 @@ impl Operator {
     pub const MINUS: &'static str = "-";
     pub const NOT: &'static str = "!";
     pub const CAST: &'static str = "::";
+    pub const AND: &'static str = "AND";
+    pub const OR: &'static str = "OR";
 }
 
 macro_rules! operator {
@@ -73,6 +75,8 @@ pub(super) fn bootstrap_data() -> Box<[BootstrapOperator]> {
         binary!(LESS_EQUAL, LTE),
         binary!(GREATER_EQUAL, GTE),
         binary!(GREATER, GT),
+        binary!(AND, AND_BOOL),
+        binary!(OR, OR_BOOL),
     ]
     .into_boxed_slice()
 }

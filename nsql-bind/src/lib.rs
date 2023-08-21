@@ -1174,10 +1174,9 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                     ast::BinaryOperator::Gt => Operator::GREATER,
                     ast::BinaryOperator::Multiply => Operator::STAR,
                     ast::BinaryOperator::Divide => Operator::SLASH,
-                    // ast::BinaryOperator::Divide => ir::BinOp::Div,
-                    // ast::BinaryOperator::Modulo => ir::BinOp::Mod,
-                    // ast::BinaryOperator::And => ir::BinOp::And,
-                    // ast::BinaryOperator::Or => ir::BinOp::Or,
+                    // the compiler should special case these operators and implement short circuiting
+                    ast::BinaryOperator::And => Operator::AND,
+                    ast::BinaryOperator::Or => Operator::OR,
                     ast::BinaryOperator::Xor
                     | ast::BinaryOperator::StringConcat
                     | ast::BinaryOperator::Spaceship

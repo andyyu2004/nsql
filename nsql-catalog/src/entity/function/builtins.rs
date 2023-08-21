@@ -89,6 +89,8 @@ pub(crate) fn get_scalar_function(oid: Oid<Function>) -> Option<ScalarFunction> 
         Function::LTE       => comparison!(<= : Value),
         Function::GTE       => comparison!(>= : Value),
         Function::GT        => comparison!(>  : Value),
+        Function::OR_BOOL   => comparison!(|| : bool),
+        Function::AND_BOOL  => comparison!(&& : bool),
         // casts
         Function::CAST_SELF         => cast!(Value),
         Function::CAST_INT_TO_DEC   => cast!(Decimal),
