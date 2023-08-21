@@ -9,7 +9,7 @@ mod builtins;
 pub type ScalarFunction = fn(Box<[Value]>) -> Value;
 
 pub trait AggregateFunctionInstance: fmt::Debug {
-    fn update(&mut self, value: Value);
+    fn update(&mut self, value: Option<Value>);
     fn finalize(self: Box<Self>) -> Value;
 }
 

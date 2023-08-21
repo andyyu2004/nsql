@@ -252,21 +252,25 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalPlanner<'env, S> {
         Ok(plan)
     }
 
+    #[allow(clippy::type_complexity)]
     fn compile_aggregate_functions(
         &mut self,
         tx: &dyn Transaction<'env, S>,
         functions: impl IntoIterator<Item = (ir::MonoFunction, Box<[ir::Expr]>)>,
-    ) -> Result<Box<[(ir::MonoFunction, ExecutableExpr)]>> {
+    ) -> Result<Box<[(ir::MonoFunction, Option<ExecutableExpr>)]>> {
         functions
             .into_iter()
             .map(|(f, args)| {
-                assert_eq!(
-                    args.len(),
-                    1,
-                    "only one argument allowed for aggregate functions for now"
+                assert!(
+                    args.len() <= 1,
+                    "no more than one argument allowed for aggregate functions for now"
                 );
-                let arg = self.compile_expr(tx, args[0].clone())?;
-                Ok((f, arg))
+                if args.is_empty() {
+                    Ok((f, None))
+                } else {
+                    let arg = self.compile_expr(tx, args[0].clone())?;
+                    Ok((f, Some(arg)))
+                }
             })
             .collect()
     }

@@ -9,7 +9,7 @@ use super::*;
 #[derive(Debug)]
 pub struct PhysicalUngroupedAggregate<'env, 'txn, S, M> {
     schema: Schema,
-    functions: Box<[(ir::MonoFunction, ExecutableExpr)]>,
+    functions: Box<[(ir::MonoFunction, Option<ExecutableExpr>)]>,
     aggregate_functions: Mutex<Vec<Box<dyn AggregateFunctionInstance>>>,
     children: [Arc<dyn PhysicalNode<'env, 'txn, S, M>>; 1],
 }
@@ -19,7 +19,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
 {
     pub(crate) fn plan(
         schema: Schema,
-        functions: Box<[(ir::MonoFunction, ExecutableExpr)]>,
+        functions: Box<[(ir::MonoFunction, Option<ExecutableExpr>)]>,
         source: Arc<dyn PhysicalNode<'env, 'txn, S, M>>,
     ) -> Arc<dyn PhysicalNode<'env, 'txn, S, M>> {
         Arc::new(Self {
@@ -58,7 +58,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSink
     ) -> ExecutionResult<()> {
         let mut aggregate_functions = self.aggregate_functions.lock();
         for (state, (_f, expr)) in aggregate_functions.iter_mut().zip(&self.functions[..]) {
-            let v = expr.execute(&tuple);
+            let v = expr.as_ref().map(|expr| expr.execute(&tuple));
             state.update(v);
         }
 
@@ -113,7 +113,10 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Explain<'env
             "ungrouped aggregate ({})",
             self.functions
                 .iter()
-                .map(|(f, args)| format!("{}({})", f.name(), args))
+                .map(|(f, arg)| match arg {
+                    Some(arg) => format!("{}({})", f.name(), arg),
+                    None => format!("{}(*)", f.name()),
+                })
                 .collect::<Vec<_>>()
                 .join(", ")
         )?;

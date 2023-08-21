@@ -143,7 +143,7 @@ pub(crate) fn get_aggregate_function(
         Function::PRODUCT_INT => Box::<ProductInt>::default(),
         Function::AVG_INT => Box::<AverageInt>::default(),
         Function::COUNT => Box::<Count>::default(),
-        // Function::COUNT_STAR => Box::<CountStar>::default(),
+        Function::COUNT_STAR => Box::<CountStar>::default(),
         _ => return None,
     })
 }
@@ -155,8 +155,8 @@ struct SumInt {
 
 impl AggregateFunctionInstance for SumInt {
     #[inline]
-    fn update(&mut self, value: Value) {
-        match value {
+    fn update(&mut self, value: Option<Value>) {
+        match value.expect("sum should be passed an argument") {
             Value::Int64(n) => self.state += n,
             _ => panic!(),
         }
@@ -181,8 +181,8 @@ impl Default for ProductInt {
 
 impl AggregateFunctionInstance for ProductInt {
     #[inline]
-    fn update(&mut self, value: Value) {
-        match value {
+    fn update(&mut self, value: Option<Value>) {
+        match value.expect("product should be passed an argument") {
             Value::Int64(i) => self.state *= i,
             _ => panic!(),
         }
@@ -202,8 +202,8 @@ struct AverageInt {
 
 impl AggregateFunctionInstance for AverageInt {
     #[inline]
-    fn update(&mut self, value: Value) {
-        match value {
+    fn update(&mut self, value: Option<Value>) {
+        match value.expect("avg should be passed an argument") {
             Value::Int64(n) => {
                 self.value += n;
                 self.count += 1;
@@ -230,11 +230,29 @@ struct Count {
 
 impl AggregateFunctionInstance for Count {
     #[inline]
-    fn update(&mut self, value: Value) {
-        match value {
+    fn update(&mut self, value: Option<Value>) {
+        match value.expect("count should be passed an argument") {
             Value::Null => {}
             _ => self.count += 1,
         }
+    }
+
+    #[inline]
+    fn finalize(self: Box<Self>) -> Value {
+        Value::Int64(self.count as i64)
+    }
+}
+
+#[derive(Debug, Default)]
+struct CountStar {
+    count: usize,
+}
+
+impl AggregateFunctionInstance for CountStar {
+    #[inline]
+    fn update(&mut self, value: Option<Value>) {
+        debug_assert!(value.is_none(), "count(*) should not be passed an arg");
+        self.count += 1
     }
 
     #[inline]

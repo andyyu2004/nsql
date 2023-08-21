@@ -11,7 +11,7 @@ use super::*;
 #[derive(Debug)]
 pub struct PhysicalHashAggregate<'env, 'txn, S, M> {
     schema: Schema,
-    functions: Box<[(MonoFunction, ExecutableExpr)]>,
+    functions: Box<[(MonoFunction, Option<ExecutableExpr>)]>,
     children: [Arc<dyn PhysicalNode<'env, 'txn, S, M>>; 1],
     group_expr: ExecutableTupleExpr,
     output_groups: DashMap<Tuple, Mutex<Vec<Box<dyn AggregateFunctionInstance>>>>,
@@ -22,7 +22,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
 {
     pub(crate) fn plan(
         schema: Schema,
-        functions: Box<[(MonoFunction, ExecutableExpr)]>,
+        functions: Box<[(MonoFunction, Option<ExecutableExpr>)]>,
         source: Arc<dyn PhysicalNode<'env, 'txn, S, M>>,
         group_expr: ExecutableTupleExpr,
     ) -> Arc<dyn PhysicalNode<'env, 'txn, S, M>> {
@@ -71,7 +71,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSink
 
         let mut aggregate_functions = functions.lock();
         for (state, (_f, expr)) in aggregate_functions.iter_mut().zip(&self.functions[..]) {
-            let value = expr.execute(&tuple);
+            let value = expr.as_ref().map(|expr| expr.execute(&tuple));
             state.update(value);
         }
 
@@ -126,7 +126,10 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Explain<'env
             "hash aggregate ({}) by {}",
             self.functions
                 .iter()
-                .map(|(f, args)| format!("{}({})", f.name(), args))
+                .map(|(f, arg)| match arg {
+                    Some(arg) => format!("{}({})", f.name(), arg),
+                    None => format!("{}(*)", f.name()),
+                })
                 .collect::<Vec<_>>()
                 .join(", "),
             self.group_expr

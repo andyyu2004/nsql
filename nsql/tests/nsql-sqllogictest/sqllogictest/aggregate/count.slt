@@ -8,18 +8,17 @@ SELECT COUNT(x) FROM (VALUES (1), (NULL), (3)) AS t(x)
 ----
 2
 
-# query I
-# SELECT COUNT(*) FROM (VALUES (1), (2), (3))
-# ----
-# 3
-#
-#
-# query I
-# SELECT COUNT(*) FROM (VALUES (1), (NULL), (3))
-# ----
-# 3
-#
-# query I
-# SELECT COUNT(*)
-# ----
-# 1
+query I
+SELECT COUNT(*) FROM (VALUES (1), (2), (3))
+----
+3
+
+query I
+SELECT COUNT(*) FROM (VALUES (1), (NULL), (3))
+----
+3
+
+query I
+SELECT COUNT(*)
+----
+1
