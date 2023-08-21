@@ -1173,6 +1173,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                     ast::BinaryOperator::GtEq => Operator::GREATER_EQUAL,
                     ast::BinaryOperator::Gt => Operator::GREATER,
                     ast::BinaryOperator::Multiply => Operator::STAR,
+                    ast::BinaryOperator::Divide => Operator::SLASH,
                     // ast::BinaryOperator::Divide => ir::BinOp::Div,
                     // ast::BinaryOperator::Modulo => ir::BinOp::Mod,
                     // ast::BinaryOperator::And => ir::BinOp::And,
