@@ -223,13 +223,13 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalPlanner<'env, S> {
                 f(self, tx, lhs)?,
                 f(self, tx, rhs)?,
             ),
-            ir::QueryPlan::Aggregate { functions, source, schema, group_by }
+            ir::QueryPlan::Aggregate { aggregates, source, schema, group_by }
                 if group_by.is_empty() =>
             {
-                let functions = self.compile_aggregate_functions(tx, functions.to_vec())?;
+                let functions = self.compile_aggregate_functions(tx, aggregates.to_vec())?;
                 PhysicalUngroupedAggregate::plan(schema, functions, f(self, tx, source)?)
             }
-            ir::QueryPlan::Aggregate { functions, source, schema, group_by } => {
+            ir::QueryPlan::Aggregate { aggregates: functions, source, schema, group_by } => {
                 PhysicalHashAggregate::plan(
                     schema,
                     self.compile_aggregate_functions(tx, functions.to_vec())?,

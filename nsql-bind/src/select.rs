@@ -131,7 +131,7 @@ impl<'a, 'env, S: StorageEngine> SelectBinder<'a, 'env, S> {
 
         let aggregates = self.aggregates.into_iter().collect::<Box<_>>();
         let mut plan =
-            source.aggregate(aggregates, self.group_by).project(pre_projection).order_by(order_by);
+            source.aggregate(self.group_by, aggregates).project(pre_projection).order_by(order_by);
 
         if let Some(having) = having {
             plan = plan.filter(having);

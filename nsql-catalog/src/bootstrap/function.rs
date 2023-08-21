@@ -1,13 +1,7 @@
+use nsql_core::Name;
+
 use super::*;
 use crate::FunctionKind;
-
-pub(super) struct BootstrapFunction {
-    pub oid: Oid<Function>,
-    pub name: &'static str,
-    pub kind: FunctionKind,
-    pub args: Vec<LogicalType>,
-    pub ret: LogicalType,
-}
 
 fn array(ty: LogicalType) -> LogicalType {
     LogicalType::array(ty)
@@ -16,11 +10,12 @@ fn array(ty: LogicalType) -> LogicalType {
 macro_rules! function {
     ($oid:ident $name:tt $kind:ident : ( $($args:expr),* ) -> $ret:expr) => {{
         use LogicalType::*;
-        BootstrapFunction {
+        Function {
+            namespace: Namespace::MAIN,
             oid: Function::$oid,
-            name: stringify!($name),
+            name: Name::new_inline(stringify!($name)),
             kind: FunctionKind::$kind,
-            args: vec![ $($args),* ],
+            args: vec![ $($args),* ].into_boxed_slice(),
             ret: $ret
         }
     }};
@@ -93,47 +88,55 @@ impl Function {
         CAST_INT_TO_DEC,
         CAST_INT_TO_FLOAT
     ];
-}
 
-pub(super) fn bootstrap_data() -> Box<[BootstrapFunction]> {
-    vec![
-        // `(a, a) -> bool` operations
-        comparison!(EQ        =  : Any),
-        comparison!(LT        >  : Any),
-        comparison!(LTE       >= : Any),
-        comparison!(GTE       >= : Any),
-        comparison!(GT        >  : Any),
-        // `(a, a) -> a` operations
-        binary!(ADD_INT    +   : Int64),
-        binary!(ADD_FLOAT  +   : Float64),
-        binary!(ADD_DEC    +   : Decimal),
-        binary!(SUB_INT    -   : Int64),
-        binary!(SUB_FLOAT  -   : Float64),
-        binary!(SUB_DEC    -   : Decimal),
-        binary!(MUL_INT    *   : Int64),
-        binary!(MUL_FLOAT  *   : Float64),
-        binary!(MUL_DEC    *   : Decimal),
-        binary!(DIV_INT    /   : Int64),
-        binary!(DIV_FLOAT  /   : Float64),
-        binary!(DIV_DEC    /   : Decimal),
-        binary!(AND_BOOL   OR  : Bool),
-        binary!(OR_BOOL    AND : Bool),
-        // general scalar functions
-        scalar!(NEG_INT  - : (Int64) -> Int64),
-        scalar!(NOT_BOOL - : (Bool) -> Bool),
-        scalar!(RANGE2 range : (Int64, Int64) -> array(Int64)),
-        scalar!(ARRAY_ELEMENT array_element : (array(Any), Int64) -> Any),
-        scalar!(ARRAY_POSITION array_position : (array(Any), Any) -> Int64),
-        // aggregates
-        aggregate!(SUM_INT     sum     : (Int64) -> Int64),
-        aggregate!(AVG_INT     avg     : (Int64) -> Float64),
-        aggregate!(PRODUCT_INT product : (Int64) -> Int64),
-        aggregate!(COUNT       count   : (Any)   -> Int64),
-        aggregate!(COUNT_STAR  count   : ()      -> Int64),
-        // casts
-        cast!(CAST_SELF          : Any => Any),
-        cast!(CAST_INT_TO_DEC    : Int64 => Decimal),
-        cast!(CAST_INT_TO_FLOAT  : Int64 => Float64),
-    ]
-    .into_boxed_slice()
+    pub fn count_star() -> Function {
+        aggregate!(COUNT_STAR count: () -> Int64)
+    }
+
+    pub fn equal() -> Function {
+        comparison!(EQ = : Any)
+    }
+
+    pub(super) fn bootstrap_data() -> Box<[Function]> {
+        vec![
+            // `(a, a) -> bool` operations
+            comparison!(EQ        =  : Any),
+            comparison!(LT        >  : Any),
+            comparison!(LTE       >= : Any),
+            comparison!(GTE       >= : Any),
+            comparison!(GT        >  : Any),
+            // `(a, a) -> a` operations
+            binary!(ADD_INT    +   : Int64),
+            binary!(ADD_FLOAT  +   : Float64),
+            binary!(ADD_DEC    +   : Decimal),
+            binary!(SUB_INT    -   : Int64),
+            binary!(SUB_FLOAT  -   : Float64),
+            binary!(SUB_DEC    -   : Decimal),
+            binary!(MUL_INT    *   : Int64),
+            binary!(MUL_FLOAT  *   : Float64),
+            binary!(MUL_DEC    *   : Decimal),
+            binary!(DIV_INT    /   : Int64),
+            binary!(DIV_FLOAT  /   : Float64),
+            binary!(DIV_DEC    /   : Decimal),
+            binary!(AND_BOOL   OR  : Bool),
+            binary!(OR_BOOL    AND : Bool),
+            // general scalar functions
+            scalar!(NEG_INT  - : (Int64) -> Int64),
+            scalar!(NOT_BOOL - : (Bool) -> Bool),
+            scalar!(RANGE2 range : (Int64, Int64) -> array(Int64)),
+            scalar!(ARRAY_ELEMENT array_element : (array(Any), Int64) -> Any),
+            scalar!(ARRAY_POSITION array_position : (array(Any), Any) -> Int64),
+            // aggregates
+            aggregate!(SUM_INT     sum     : (Int64) -> Int64),
+            aggregate!(AVG_INT     avg     : (Int64) -> Float64),
+            aggregate!(PRODUCT_INT product : (Int64) -> Int64),
+            aggregate!(COUNT       count   : (Any)   -> Int64),
+            aggregate!(COUNT_STAR  count   : ()      -> Int64),
+            // casts
+            cast!(CAST_SELF          : Any => Any),
+            cast!(CAST_INT_TO_DEC    : Int64 => Decimal),
+            cast!(CAST_INT_TO_FLOAT  : Int64 => Float64),
+        ]
+        .into_boxed_slice()
+    }
 }

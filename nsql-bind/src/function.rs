@@ -16,9 +16,9 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
         candidates.find_map(|op| {
             let f = functions_table.get(op.function())?;
             Ok(try {
-                let (args, ret) =
+                let (_args, ret) =
                     Unifier::default().try_unify_function(arg_types, f.args(), f.return_type())?;
-                ir::MonoOperator::new(op, ir::MonoFunction::new(f, args, ret))
+                ir::MonoOperator::new(op, ir::MonoFunction::new(f, ret))
             })
         })
     }
@@ -30,9 +30,9 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
     ) -> Result<Option<ir::MonoFunction>> {
         candidates.find_map(|f| {
             Ok(try {
-                let (args, ret) =
+                let (_args, ret) =
                     Unifier::default().try_unify_function(arg_types, f.args(), f.return_type())?;
-                ir::MonoFunction::new(f, args, ret)
+                ir::MonoFunction::new(f, ret)
             })
         })
     }

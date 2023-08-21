@@ -158,10 +158,10 @@ impl PlanFold for QueryPlan {
                     schema,
                 }
             }
-            QueryPlan::Aggregate { source, functions, group_by, schema } => {
+            QueryPlan::Aggregate { source, aggregates, group_by, schema } => {
                 let mut source = folder.fold_boxed_plan(source);
                 QueryPlan::Aggregate {
-                    functions: functions
+                    aggregates: aggregates
                         .into_vec()
                         .into_iter()
                         .map(|(f, args)| (f, folder.fold_exprs(&mut source, args)))
@@ -222,7 +222,9 @@ impl ExprFold for Expr {
                     .collect(),
                 else_result: else_result.map(|expr| folder.fold_boxed_expr(plan, expr)),
             },
-            ExprKind::Subquery(plan) => ExprKind::Subquery(folder.fold_boxed_plan(plan)),
+            ExprKind::Subquery(kind, plan) => {
+                ExprKind::Subquery(kind, folder.fold_boxed_plan(plan))
+            }
             ExprKind::BinaryOperator { operator, lhs, rhs } => ExprKind::BinaryOperator {
                 operator,
                 lhs: folder.fold_boxed_expr(plan, lhs),

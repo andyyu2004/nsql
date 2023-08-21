@@ -123,7 +123,7 @@ impl Compiler {
                     marker.backpatch(self);
                 }
             }
-            ir::ExprKind::Subquery(_) => {
+            ir::ExprKind::Subquery(..) => {
                 unimplemented!("cannot compile subqueries (needs to be flattened during planning)")
             }
         }

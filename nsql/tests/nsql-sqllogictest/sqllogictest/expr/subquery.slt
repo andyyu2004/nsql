@@ -4,6 +4,10 @@ SELECT (SELECT 1)
 1
 
 query I
+SELECT (SELECT 1 WHERE false)
+----
+
+query I
 (SELECT 1)
 ----
 1
@@ -22,6 +26,10 @@ query I
 SELECT x FROM (VALUES (1), (2)) AS t(x) WHERE x = (SELECT 1)
 ----
 1
+
+query I
+SELECT x FROM (VALUES (1), (2)) AS t(x) WHERE x = (SELECT 1 WHERE false)
+----
 
 query I
 SELECT x FROM (VALUES (1), (2)) AS t(x) WHERE x = (SELECT * FROM (VALUES (1)) WHERE false)

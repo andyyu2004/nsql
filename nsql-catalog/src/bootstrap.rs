@@ -12,9 +12,7 @@ use nsql_storage::tuple::TupleIndex;
 use nsql_storage::{ColumnStorageInfo, Result};
 use nsql_storage_engine::{ReadWriteExecutionMode, StorageEngine, Transaction};
 
-use self::function::BootstrapFunction;
 use self::namespace::BootstrapNamespace;
-use self::operator::BootstrapOperator;
 use self::table::BootstrapTable;
 use crate::{
     Column, ColumnIndex, Function, Index, IndexKind, Namespace, Oid, Operator, OperatorKind,
@@ -103,16 +101,16 @@ fn bootstrap_info() -> BootstrapData {
     BootstrapData {
         namespaces: namespace::bootstrap_data(),
         tables: table::bootstrap_data(),
-        functions: function::bootstrap_data(),
-        operators: operator::bootstrap_data(),
+        functions: Function::bootstrap_data(),
+        operators: Operator::bootstrap_data(),
     }
 }
 
 struct BootstrapData {
     namespaces: Box<[BootstrapNamespace]>,
     tables: Box<[BootstrapTable]>,
-    functions: Box<[BootstrapFunction]>,
-    operators: Box<[BootstrapOperator]>,
+    functions: Box<[Function]>,
+    operators: Box<[Operator]>,
 }
 
 impl BootstrapData {
@@ -139,14 +137,6 @@ impl BootstrapData {
             .into_vec()
             .into_iter()
             .map(|f| {
-                let f = Function {
-                    oid: f.oid,
-                    namespace: Namespace::MAIN,
-                    name: f.name.into(),
-                    args: f.args.into_boxed_slice(),
-                    ret: f.ret,
-                    kind: f.kind,
-                };
                 assert!(functions_map.insert(f.oid, f.clone()).is_none());
                 f
             })
@@ -171,13 +161,7 @@ impl BootstrapData {
                     ),
                 };
 
-                Operator {
-                    oid: op.oid,
-                    kind: op.kind,
-                    namespace: Namespace::CATALOG,
-                    function: op.function,
-                    name: op.name.into(),
-                }
+                op
             })
             .collect::<Vec<_>>();
 

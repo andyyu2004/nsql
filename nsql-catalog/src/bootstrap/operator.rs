@@ -1,12 +1,7 @@
+use nsql_core::Name;
+
 use super::*;
 use crate::OperatorKind;
-
-pub(super) struct BootstrapOperator {
-    pub oid: Oid<Operator>,
-    pub name: &'static str,
-    pub kind: OperatorKind,
-    pub function: Oid<Function>,
-}
 
 impl Operator {
     mk_consts![
@@ -32,9 +27,10 @@ impl Operator {
 
 macro_rules! operator {
     ($name:ident, $oid:ident, $kind:ident) => {
-        BootstrapOperator {
+        Operator {
             oid: Operator::$oid,
-            name: Operator::$name,
+            namespace: Namespace::CATALOG,
+            name: Name::new_inline(Operator::$name),
             kind: OperatorKind::$kind,
             function: Function::$oid,
         }
@@ -53,30 +49,36 @@ macro_rules! unary {
     };
 }
 
-pub(super) fn bootstrap_data() -> Box<[BootstrapOperator]> {
-    // the macro assumes that the corresponding `Function::$oid` is the same name as the `Operator::$oid`
-    vec![
-        unary!(MINUS, NEG_INT),
-        unary!(NOT, NOT_BOOL),
-        binary!(PLUS, ADD_INT),
-        binary!(PLUS, ADD_FLOAT),
-        binary!(PLUS, ADD_DEC),
-        binary!(MINUS, SUB_INT),
-        binary!(MINUS, SUB_FLOAT),
-        binary!(MINUS, SUB_DEC),
-        binary!(STAR, MUL_INT),
-        binary!(STAR, MUL_FLOAT),
-        binary!(STAR, MUL_DEC),
-        binary!(SLASH, DIV_INT),
-        binary!(SLASH, DIV_FLOAT),
-        binary!(SLASH, DIV_DEC),
-        binary!(EQUAL, EQ),
-        binary!(LESS, LT),
-        binary!(LESS_EQUAL, LTE),
-        binary!(GREATER_EQUAL, GTE),
-        binary!(GREATER, GT),
-        binary!(AND, AND_BOOL),
-        binary!(OR, OR_BOOL),
-    ]
-    .into_boxed_slice()
+impl Operator {
+    pub fn equal() -> Self {
+        binary!(EQUAL, EQ)
+    }
+
+    pub(super) fn bootstrap_data() -> Box<[Operator]> {
+        // the macro assumes that the corresponding `Function::$oid` is the same name as the `Operator::$oid`
+        vec![
+            unary!(MINUS, NEG_INT),
+            unary!(NOT, NOT_BOOL),
+            binary!(PLUS, ADD_INT),
+            binary!(PLUS, ADD_FLOAT),
+            binary!(PLUS, ADD_DEC),
+            binary!(MINUS, SUB_INT),
+            binary!(MINUS, SUB_FLOAT),
+            binary!(MINUS, SUB_DEC),
+            binary!(STAR, MUL_INT),
+            binary!(STAR, MUL_FLOAT),
+            binary!(STAR, MUL_DEC),
+            binary!(SLASH, DIV_INT),
+            binary!(SLASH, DIV_FLOAT),
+            binary!(SLASH, DIV_DEC),
+            binary!(EQUAL, EQ),
+            binary!(LESS, LT),
+            binary!(LESS_EQUAL, LTE),
+            binary!(GREATER_EQUAL, GTE),
+            binary!(GREATER, GT),
+            binary!(AND, AND_BOOL),
+            binary!(OR, OR_BOOL),
+        ]
+        .into_boxed_slice()
+    }
 }

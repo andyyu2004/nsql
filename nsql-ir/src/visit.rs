@@ -86,10 +86,10 @@ pub trait Visitor {
                 }
                 self.visit_query_plan(source)
             }
-            QueryPlan::Aggregate { source, functions, group_by, schema: _ } => {
+            QueryPlan::Aggregate { source, aggregates, group_by, schema: _ } => {
                 self.visit_exprs(source, group_by)?;
 
-                for (_f, args) in &functions[..] {
+                for (_f, args) in &aggregates[..] {
                     for arg in &args[..] {
                         self.visit_expr(source, arg)?;
                     }
@@ -143,7 +143,7 @@ pub trait Visitor {
 
                 ControlFlow::Continue(())
             }
-            ExprKind::Subquery(plan) => self.visit_query_plan(plan),
+            ExprKind::Subquery(_kind, plan) => self.visit_query_plan(plan),
             ExprKind::UnaryOperator { operator: _, expr } => self.visit_expr(plan, expr),
             ExprKind::BinaryOperator { operator: _, lhs, rhs } => {
                 self.visit_expr(plan, lhs)?;

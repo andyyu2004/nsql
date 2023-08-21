@@ -8,6 +8,7 @@ use std::{fmt, mem};
 
 use itertools::Itertools;
 use nsql_catalog::{ColumnIndex, CreateColumnInfo, CreateNamespaceInfo, Namespace, Table};
+pub use nsql_catalog::{Function, Operator};
 use nsql_core::{LogicalType, Name, Oid, Schema};
 pub use nsql_storage::tuple::TupleIndex;
 pub use nsql_storage::value::{Decimal, Value};
@@ -109,7 +110,7 @@ pub enum QueryPlan {
     #[default]
     Empty,
     Aggregate {
-        functions: Box<[FunctionCall]>,
+        aggregates: Box<[FunctionCall]>,
         source: Box<QueryPlan>,
         group_by: Box<[Expr]>,
         schema: Schema,
@@ -243,25 +244,29 @@ impl<'p> PlanFormatter<'p> {
 impl fmt::Display for PlanFormatter<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.plan {
-            QueryPlan::Aggregate { functions, source, group_by, schema: _ } => {
-                write!(
+            QueryPlan::Aggregate { aggregates: functions, source, group_by, schema: _ } => {
+                writeln!(
                     f,
-                    "aggregate ({}) by {}",
+                    "aggregate ({})",
                     functions
                         .iter()
                         .map(|(f, args)| format!("{}({})", f.name(), args.iter().format(",")))
                         .collect::<Vec<_>>()
                         .join(","),
-                    group_by.iter().format(",")
                 )?;
-                writeln!(f, "  {source}")
+
+                if !group_by.is_empty() {
+                    write!(f, " by {}", group_by.iter().format(","))?;
+                }
+
+                self.child(source).fmt(f)
             }
             QueryPlan::TableScan { table, projection, projected_schema: _ } => {
                 write!(f, "{:indent$}table scan {}", "", table, indent = self.indent)?;
                 if let Some(projection) = projection {
                     write!(f, "({})", projection.iter().format(","))?;
                 }
-                Ok(())
+                writeln!(f)
             }
             QueryPlan::Projection { source, projection, projected_schema: _ } => {
                 writeln!(
@@ -300,7 +305,7 @@ impl fmt::Display for PlanFormatter<'_> {
                 )?;
                 self.child(source).fmt(f)
             }
-            QueryPlan::Empty => write!(f, "empty"),
+            QueryPlan::Empty => write!(f, "{:indent$}empty", "", indent = self.indent),
             QueryPlan::Insert { table, source, returning, schema: _ } => {
                 write!(f, "INSERT INTO {table}")?;
                 if let Some(returning) = returning {
@@ -491,12 +496,22 @@ impl QueryPlan {
         }
     }
 
+    pub fn ungrouped_aggregate(
+        self: Box<Self>,
+        aggregates: impl Into<Box<[FunctionCall]>>,
+    ) -> Box<Self> {
+        self.aggregate([], aggregates)
+    }
+
     pub fn aggregate(
         self: Box<Self>,
-        functions: Box<[FunctionCall]>,
-        group_by: Box<[Expr]>,
+        group_by: impl Into<Box<[Expr]>>,
+        aggregates: impl Into<Box<[FunctionCall]>>,
     ) -> Box<Self> {
-        if functions.is_empty() && group_by.is_empty() {
+        let group_by = group_by.into();
+        let aggregates = aggregates.into();
+
+        if aggregates.is_empty() && group_by.is_empty() {
             return self;
         }
 
@@ -504,9 +519,9 @@ impl QueryPlan {
         let schema = group_by
             .iter()
             .map(|e| e.ty.clone())
-            .chain(functions.iter().map(|(f, _args)| f.return_type()))
+            .chain(aggregates.iter().map(|(f, _args)| f.return_type()))
             .collect();
-        Box::new(Self::Aggregate { schema, functions, group_by, source: self })
+        Box::new(Self::Aggregate { schema, aggregates, group_by, source: self })
     }
 
     #[inline]

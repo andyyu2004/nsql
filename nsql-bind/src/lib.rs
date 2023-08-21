@@ -599,6 +599,17 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
         }
     }
 
+    fn bind_subquery(
+        &self,
+        tx: &dyn Transaction<'env, S>,
+        _scope: &Scope,
+        subquery: &ast::Query,
+    ) -> Result<Box<ir::QueryPlan>> {
+        // passing empty scope for now to disallow correlated subqueries
+        let (_scope, plan) = self.bind_query(tx, &Scope::default(), subquery)?;
+        Ok(plan)
+    }
+
     fn bind_query(
         &self,
         tx: &dyn Transaction<'env, S>,
@@ -1028,7 +1039,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
         tx: &dyn Transaction<'env, S>,
         name: &'static str,
         operand: LogicalType,
-    ) -> Result<Box<ir::MonoOperator>> {
+    ) -> Result<ir::MonoOperator> {
         self.bind_operator(tx, name, OperatorKind::Unary, LogicalType::Null, operand)
     }
 
@@ -1038,7 +1049,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
         name: &'static str,
         left: LogicalType,
         right: LogicalType,
-    ) -> Result<Box<ir::MonoOperator>> {
+    ) -> Result<ir::MonoOperator> {
         self.bind_operator(tx, name, OperatorKind::Binary, left, right)
     }
 
@@ -1049,7 +1060,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
         kind: OperatorKind,
         left: LogicalType,
         right: LogicalType,
-    ) -> Result<Box<ir::MonoOperator>> {
+    ) -> Result<ir::MonoOperator> {
         if matches!(kind, OperatorKind::Unary) {
             assert!(matches!(left, LogicalType::Null));
         }
@@ -1096,7 +1107,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
             }
         };
 
-        Ok(Box::new(operator))
+        Ok(operator)
     }
 
     fn resolve_function(
@@ -1261,9 +1272,9 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                     FunctionKind::Aggregate => bail!("aggregate not allowed here"),
                 }
             }
-            ast::Expr::Subquery(query) => {
-                // passing empty scope for now to disallow correlated subqueries
-                let (_scope, plan) = self.bind_query(tx, &Scope::default(), query)?;
+            ast::Expr::Subquery(subquery) => {
+                let plan = self.bind_subquery(tx, scope, subquery)?;
+
                 let schema = plan.schema();
                 ensure!(
                     schema.len() == 1,
@@ -1272,7 +1283,27 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                 );
 
                 let ty = schema[0].clone();
-                (ty, ir::ExprKind::Subquery(plan))
+                (ty, ir::ExprKind::Subquery(ir::SubqueryKind::Scalar, plan))
+            }
+            ast::Expr::Exists { subquery, negated } => {
+                // `NOT EXISTS (subquery)` is literally `NOT (EXISTS (subquery))` so do that transformation
+                if *negated {
+                    return self.walk_expr(
+                        tx,
+                        scope,
+                        &ast::Expr::UnaryOp {
+                            op: ast::UnaryOperator::Not,
+                            expr: Box::new(ast::Expr::Exists {
+                                subquery: subquery.clone(),
+                                negated: false,
+                            }),
+                        },
+                        f,
+                    );
+                }
+
+                let plan = self.bind_subquery(tx, scope, subquery)?;
+                (LogicalType::Bool, ir::ExprKind::Subquery(ir::SubqueryKind::Exists, plan))
             }
             ast::Expr::Case { operand, conditions, results, else_result } => {
                 assert_eq!(conditions.len(), results.len());

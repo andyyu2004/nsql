@@ -1,0 +1,9 @@
+query B
+SELECT EXISTS(SELECT 1)
+----
+true
+
+query B
+SELECT NOT EXISTS(SELECT 1)
+----
+false

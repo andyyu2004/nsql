@@ -87,11 +87,11 @@ pub enum ExprKind {
         args: Box<[Expr]>,
     },
     UnaryOperator {
-        operator: Box<MonoOperator>,
+        operator: MonoOperator,
         expr: Box<Expr>,
     },
     BinaryOperator {
-        operator: Box<MonoOperator>,
+        operator: MonoOperator,
         lhs: Box<Expr>,
         rhs: Box<Expr>,
     },
@@ -100,7 +100,13 @@ pub enum ExprKind {
         cases: Box<[Case]>,
         else_result: Option<Box<Expr>>,
     },
-    Subquery(Box<QueryPlan>),
+    Subquery(SubqueryKind, Box<QueryPlan>),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum SubqueryKind {
+    Scalar,
+    Exists,
 }
 
 pub type FunctionCall<E = Expr> = (MonoFunction, Box<[E]>);
@@ -138,11 +144,11 @@ impl fmt::Display for MonoOperator {
 
 /// A function that has been "monomorphized", i.e. all ANY types have been replaced with a concrete type
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct MonoFunction(Box<(Function, Box<[LogicalType]>, LogicalType)>);
+pub struct MonoFunction(Box<(Function, LogicalType)>);
 
 impl MonoFunction {
-    pub fn new(function: Function, args: Box<[LogicalType]>, return_type: LogicalType) -> Self {
-        Self(Box::new((function, args, return_type)))
+    pub fn new(function: Function, return_type: LogicalType) -> Self {
+        Self(Box::new((function, return_type)))
     }
 
     #[inline]
@@ -152,7 +158,7 @@ impl MonoFunction {
 
     #[inline]
     pub fn return_type(&self) -> LogicalType {
-        self.0.2.clone()
+        self.0.1.clone()
     }
 }
 
@@ -187,7 +193,10 @@ impl fmt::Display for ExprKind {
                 }
                 write!(f, "END")
             }
-            ExprKind::Subquery(_plan) => write!(f, "<subquery>"),
+            ExprKind::Subquery(kind, _plan) => match kind {
+                SubqueryKind::Scalar => write!(f, "<subquery>"),
+                SubqueryKind::Exists => write!(f, "EXISTS (<subquery>)"),
+            },
             ExprKind::UnaryOperator { operator, expr } => write!(f, "{operator}{expr}"),
             ExprKind::BinaryOperator { operator, lhs, rhs } => {
                 write!(f, "({lhs} {operator} {rhs})")

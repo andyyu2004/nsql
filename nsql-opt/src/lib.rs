@@ -1,6 +1,7 @@
 use std::mem;
 
 use ir::fold::{ExprFold, Folder, PlanFold};
+use ir::ExprKind;
 use nsql_core::LogicalType;
 
 trait Pass: Folder {
@@ -72,23 +73,79 @@ impl Folder for SubqueryFlattener {
 
             fn fold_expr(&mut self, plan: &mut ir::QueryPlan, expr: ir::Expr) -> ir::Expr {
                 match expr.kind {
-                    ir::ExprKind::Subquery(subquery_plan) => {
-                        self.found_subquery |= true;
-                        assert_eq!(subquery_plan.schema().len(), 1);
-                        // FIXME we should error if the number of rows exceeds one
-                        let subquery_plan = subquery_plan.strict_limit(
-                            1,
-                            "subquery used as an expression must return at most one row",
-                        );
-                        let ty = subquery_plan.schema()[0].clone();
+                    ir::ExprKind::Subquery(kind, subquery_plan) => match kind {
+                        ir::SubqueryKind::Scalar => {
+                            self.found_subquery |= true;
+                            assert_eq!(subquery_plan.schema().len(), 1);
+                            // FIXME we should error if the number of rows exceeds one
+                            let subquery_plan = subquery_plan.strict_limit(
+                                1,
+                                "subquery used as an expression must return at most one row",
+                            );
+                            let ty = subquery_plan.schema()[0].clone();
 
-                        let i = ir::TupleIndex::new(plan.schema().len());
-                        // Replace the parent plan with a join of the former parent plan and the subquery plan.
-                        // This will add a new column to the parent plan's schema, which we will then reference
-                        *plan = *Box::new(mem::take(plan)).join(ir::Join::Cross, subquery_plan);
+                            let i = ir::TupleIndex::new(plan.schema().len());
+                            // Replace the parent plan with a join of the former parent plan and the subquery plan.
+                            // This will add a new column to the parent plan's schema, which we will then reference
+                            *plan = *Box::new(mem::take(plan)).join(ir::Join::Cross, subquery_plan);
 
-                        ir::Expr::new_column_ref(ty, ir::QPath::new("", "__subquery__"), i)
-                    }
+                            ir::Expr::new_column_ref(
+                                ty,
+                                ir::QPath::new("", "__scalar_subquery__"),
+                                i,
+                            )
+                        }
+                        ir::SubqueryKind::Exists => {
+                            self.found_subquery |= true;
+                            let subquery_plan = subquery_plan
+                                // add a `limit 1` clause as we only care about existence
+                                .limit(1)
+                                // add a `COUNT(*)` aggregate over the limit
+                                // this will cause the output to be exactly one row of either `0` or `1`
+                                .ungrouped_aggregate([(
+                                    ir::MonoFunction::new(
+                                        ir::Function::count_star(),
+                                        LogicalType::Int64,
+                                    ),
+                                    [].into(),
+                                )])
+                                // We need to convert the `0 | 1` output to be `false | true` respectively.
+                                // We do this by comparing for equality with the constant `1`
+                                .project([ir::Expr {
+                                    ty: LogicalType::Bool,
+                                    kind: ExprKind::BinaryOperator {
+                                        operator: ir::MonoOperator::new(
+                                            ir::Operator::equal(),
+                                            ir::MonoFunction::new(
+                                                ir::Function::equal(),
+                                                LogicalType::Bool,
+                                            ),
+                                        ),
+                                        lhs: Box::new(ir::Expr {
+                                            ty: LogicalType::Int64,
+                                            kind: ir::ExprKind::ColumnRef {
+                                                index: ir::TupleIndex::new(0),
+                                                qpath: ir::QPath::new("", "count()"),
+                                            },
+                                        }),
+                                        rhs: Box::new(ir::Expr {
+                                            ty: LogicalType::Int64,
+                                            kind: ir::ExprKind::Literal(ir::Value::Int64(1)),
+                                        }),
+                                    },
+                                }]);
+
+                            // again, we replace the parent with a cross join
+                            let i = ir::TupleIndex::new(plan.schema().len());
+                            *plan = *Box::new(mem::take(plan)).join(ir::Join::Cross, subquery_plan);
+
+                            ir::Expr::new_column_ref(
+                                LogicalType::Int64,
+                                ir::QPath::new("", "__exists_subquery__"),
+                                i,
+                            )
+                        }
+                    },
                     _ => expr.fold_with(self, plan),
                 }
             }
