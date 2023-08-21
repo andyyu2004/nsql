@@ -225,10 +225,27 @@ impl<'a, 'env, S: StorageEngine> SelectBinder<'a, 'env, S> {
         order_expr: &ast::OrderByExpr,
     ) -> Result<ir::OrderExpr> {
         not_implemented!(!order_expr.nulls_first.unwrap_or(true));
-        Ok(ir::OrderExpr {
-            expr: self.bind_maybe_aggregate_expr(tx, scope, &order_expr.expr)?,
-            asc: order_expr.asc.unwrap_or(true),
-        })
+        let expr = self.bind_maybe_aggregate_expr(tx, scope, &order_expr.expr)?;
+        let expr = match expr.kind {
+            ir::ExprKind::Literal(ir::Value::Int64(i)) => {
+                ensure!(
+                    i >= 1,
+                    "order index out of range, should be between 1 and {}",
+                    scope.len()
+                );
+                let i = i as usize - 1;
+                ensure!(
+                    i < scope.len(),
+                    "order index out of range, should be between 1 and {}",
+                    scope.len(),
+                );
+
+                let (qpath, ty) = scope.lookup_by_index(i);
+                ir::Expr { ty, kind: ir::ExprKind::ColumnRef { qpath, index: TupleIndex::new(i) } }
+            }
+            _ => expr,
+        };
+        Ok(ir::OrderExpr { expr, asc: order_expr.asc.unwrap_or(true) })
     }
 
     fn bind_select_item(

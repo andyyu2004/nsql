@@ -1,4 +1,9 @@
 query I
+SELECT -1
+----
+-1
+
+query I
 SELECT 1 = 1
 ----
 true

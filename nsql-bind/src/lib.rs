@@ -1343,11 +1343,11 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
     fn bind_value(&self, val: &ast::Value) -> ir::Value {
         match val {
             ast::Value::Number(n, b) => {
+                assert!(!b, "what does this bool mean?");
                 if let Ok(i) = n.parse::<i64>() {
                     return ir::Value::Int64(i);
                 }
 
-                assert!(!b, "what does this bool mean?");
                 let decimal = Decimal::from_str(n)
                     .expect("this should be a parse error if the decimal is not valid");
                 ir::Value::Decimal(decimal)

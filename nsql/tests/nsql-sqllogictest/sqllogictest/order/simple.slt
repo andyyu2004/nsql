@@ -46,3 +46,21 @@ SELECT x AS s FROM (VALUES(1), (2)) AS t(x) ORDER BY s, x
 ----
 1
 2
+
+query I
+SELECT x AS s FROM (VALUES(1), (2)) AS t(x) ORDER BY 1
+----
+1
+2
+
+query I
+SELECT x AS s FROM (VALUES(1), (2)) AS t(x) ORDER BY 1 DESC
+----
+2
+1
+
+
+query error
+SELECT x AS s FROM (VALUES(1), (2)) AS t(x) ORDER BY 2 DESC
+----
+order index out of range, should be between 1 and 1

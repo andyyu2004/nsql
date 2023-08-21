@@ -95,6 +95,10 @@ impl Scope {
         Ok(Self { columns })
     }
 
+    pub fn lookup_by_index(&self, index: usize) -> (QPath, LogicalType) {
+        self.columns[index].clone()
+    }
+
     pub fn lookup_column(&self, path: &Path) -> Result<(QPath, LogicalType, ir::TupleIndex)> {
         match path {
             Path::Qualified(qpath) => {
@@ -161,6 +165,10 @@ impl Scope {
         };
 
         Ok(Self { columns: self.columns.push_back((QPath::new("", "unnest"), ty)) })
+    }
+
+    pub fn len(&self) -> usize {
+        self.columns.len()
     }
 
     /// Returns an iterator over the columns in the scope exposed as `ir::Expr`s
