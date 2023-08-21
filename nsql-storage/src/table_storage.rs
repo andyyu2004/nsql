@@ -103,13 +103,6 @@ impl<'env, 'txn, S: StorageEngine> TableStorage<'env, 'txn, S, ReadWriteExecutio
         assert_eq!(tuple.len(), self.info.columns.len());
 
         for (value, col) in tuple.values().zip(&self.info.columns) {
-            assert!(
-                value.logical_type().is_subtype_of(&col.logical_type),
-                "expected column type {:?}, got {:?}",
-                col.logical_type,
-                value.logical_type()
-            );
-
             if col.is_primary_key {
                 pk_tuple.push(value);
             } else {

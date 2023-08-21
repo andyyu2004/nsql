@@ -61,15 +61,6 @@ macro_rules! prefix_op {
 #[rustfmt::skip]
 pub(crate) fn get_scalar_function(oid: Oid<Function>) -> Option<ScalarFunction> {
     Some(match oid {
-        Function::RANGE2 => |mut args| {
-            assert_eq!(args.len(), 2);
-            let start: Option<i64> = args[0].take().cast().unwrap();
-            let end: Option<i64> = args[1].take().cast().unwrap();
-            match (start, end) {
-                (Some(start), Some(end)) => Value::Array((start..end).map(Value::Int64).collect()),
-                _ => Value::Null,
-            }
-        },
         Function::NEG_INT   => prefix_op!(- : i64),
         Function::NOT_BOOL  => prefix_op!(! : bool),
         Function::ADD_INT   => infix_op!(+ : i64),
@@ -96,6 +87,15 @@ pub(crate) fn get_scalar_function(oid: Oid<Function>) -> Option<ScalarFunction> 
         Function::CAST_INT_TO_DEC   => cast!(Decimal),
         Function::CAST_INT_TO_FLOAT => cast!(f64),
         // misc
+        Function::RANGE2 => |mut args| {
+            assert_eq!(args.len(), 2);
+            let start: Option<i64> = args[0].take().cast().unwrap();
+            let end: Option<i64> = args[1].take().cast().unwrap();
+            match (start, end) {
+                (Some(start), Some(end)) => Value::Array((start..end).map(Value::Int64).collect()),
+                _ => Value::Null,
+            }
+        },
         Function::ARRAY_ELEMENT => |mut args| {
             assert_eq!(args.len(), 2);
             let array = match args[0].take() {
@@ -142,6 +142,8 @@ pub(crate) fn get_aggregate_function(
         Function::SUM_INT => Box::<SumInt>::default(),
         Function::PRODUCT_INT => Box::<ProductInt>::default(),
         Function::AVG_INT => Box::<AverageInt>::default(),
+        Function::COUNT => Box::<Count>::default(),
+        // Function::COUNT_STAR => Box::<CountStar>::default(),
         _ => return None,
     })
 }
@@ -218,5 +220,25 @@ impl AggregateFunctionInstance for AverageInt {
 
         let f = self.value as f64 / self.count as f64;
         Value::Float64(f.to_bits())
+    }
+}
+
+#[derive(Debug, Default)]
+struct Count {
+    count: usize,
+}
+
+impl AggregateFunctionInstance for Count {
+    #[inline]
+    fn update(&mut self, value: Value) {
+        match value {
+            Value::Null => {}
+            _ => self.count += 1,
+        }
+    }
+
+    #[inline]
+    fn finalize(self: Box<Self>) -> Value {
+        Value::Int64(self.count as i64)
     }
 }

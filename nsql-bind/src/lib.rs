@@ -996,6 +996,9 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
 
         let args = args
             .iter()
+            // filter out any wildcard parameters, we just treat it like it's not there for now
+            // i.e. `COUNT(*)` desugars to just `COUNT()`
+            .filter(|arg| !matches!(arg, ast::FunctionArg::Unnamed(ast::FunctionArgExpr::Wildcard)))
             .map(|arg| {
                 Ok(match arg {
                     ast::FunctionArg::Named { .. } => {
@@ -1006,7 +1009,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                         ast::FunctionArgExpr::QualifiedWildcard(_) => {
                             not_implemented!("qualified wildcard arg")
                         }
-                        ast::FunctionArgExpr::Wildcard => not_implemented!("wildcard arg"),
+                        ast::FunctionArgExpr::Wildcard => unreachable!("filtered out above"),
                     },
                 })
             })
@@ -1336,8 +1339,35 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
     }
 
     fn bind_value_expr(&self, value: &ast::Value) -> (LogicalType, ir::ExprKind) {
-        let lit = self.bind_value(value);
-        (lit.logical_type(), ir::ExprKind::Literal(lit))
+        let value = self.bind_value(value);
+        (Self::default_logical_type_of_value(&value), ir::ExprKind::Literal(value))
+    }
+
+    // resist moving this logic out of the binder.
+    // the array defaulting logic is a bit of a hack that will cause issues if used outside of here.
+    // i.e. if we have an empty array and someone decides to call say `val.logical_type()` it will
+    // be `int[]`, which is probably not the proper type.
+    fn default_logical_type_of_value(value: &ir::Value) -> LogicalType {
+        match value {
+            ir::Value::Null => LogicalType::Null,
+            ir::Value::Int64(_) => LogicalType::Int64,
+            ir::Value::Bool(_) => LogicalType::Bool,
+            ir::Value::Decimal(_) => LogicalType::Decimal,
+            ir::Value::Text(_) => LogicalType::Text,
+            ir::Value::Oid(_) => LogicalType::Oid,
+            ir::Value::Bytea(_) => LogicalType::Bytea,
+            ir::Value::Array(values) => LogicalType::array(
+                values
+                    .iter()
+                    .find(|val| !matches!(val, ir::Value::Null))
+                    .map(|val| Self::default_logical_type_of_value(val))
+                    .unwrap_or(LogicalType::Int64),
+            ),
+            ir::Value::Type(_) => LogicalType::Type,
+            ir::Value::TupleExpr(_) => LogicalType::TupleExpr,
+            ir::Value::Byte(_) => LogicalType::Byte,
+            ir::Value::Float64(_) => LogicalType::Float64,
+        }
     }
 
     fn bind_value(&self, val: &ast::Value) -> ir::Value {

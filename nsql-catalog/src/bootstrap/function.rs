@@ -87,6 +87,8 @@ impl Function {
         AVG_INT,
         SUM_INT,
         PRODUCT_INT,
+        COUNT,
+        COUNT_STAR,
         CAST_SELF,
         CAST_INT_TO_DEC,
         CAST_INT_TO_FLOAT
@@ -123,9 +125,11 @@ pub(super) fn bootstrap_data() -> Box<[BootstrapFunction]> {
         scalar!(ARRAY_ELEMENT array_element : (array(Any), Int64) -> Any),
         scalar!(ARRAY_POSITION array_position : (array(Any), Any) -> Int64),
         // aggregates
-        aggregate!(SUM_INT sum : (Int64) -> Int64),
-        aggregate!(AVG_INT avg : (Int64) -> Float64),
+        aggregate!(SUM_INT     sum     : (Int64) -> Int64),
+        aggregate!(AVG_INT     avg     : (Int64) -> Float64),
         aggregate!(PRODUCT_INT product : (Int64) -> Int64),
+        aggregate!(COUNT       count   : (Any)   -> Int64),
+        aggregate!(COUNT_STAR  count   : ()      -> Int64),
         // casts
         cast!(CAST_SELF          : Any => Any),
         cast!(CAST_INT_TO_DEC    : Int64 => Decimal),

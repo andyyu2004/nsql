@@ -70,11 +70,6 @@ impl Tuple {
     }
 
     #[inline]
-    pub fn schema(&self) -> &Schema {
-        self.cached_schema.get_or_init(|| self.values.iter().map(|v| v.logical_type()).collect())
-    }
-
-    #[inline]
     pub fn values(&self) -> impl Iterator<Item = &Value> {
         self.values.iter()
     }

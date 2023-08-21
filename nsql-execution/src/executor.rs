@@ -32,18 +32,11 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Executor<'en
     ) -> ExecutionResult<()> {
         let pipeline: &Pipeline<'env, 'txn, S, M> = &self.arena[pipeline];
         let mut stream = Arc::clone(&pipeline.source).source(ecx)?;
-        let source_schema = pipeline.source.schema();
 
         'main: while let Some(input_tuple) = stream.next()? {
             'input: loop {
                 let mut again = false;
                 let mut tuple = input_tuple.clone();
-                debug_assert!(
-                    tuple.schema().is_subtype_of(source_schema),
-                    "{:?} !<: {:?}",
-                    tuple.schema(),
-                    source_schema
-                );
 
                 for op in &pipeline.operators {
                     tuple = match op.execute(ecx, tuple)? {
@@ -59,13 +52,6 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Executor<'en
                         // Once an operator completes, the entire pipeline is finished
                         OperatorState::Done => return Ok(()),
                     };
-
-                    debug_assert!(
-                        tuple.schema().is_subtype_of(op.schema()),
-                        "{:?} !<: {:?}",
-                        tuple.schema(),
-                        op.schema()
-                    );
                 }
 
                 pipeline.sink.sink(ecx, tuple)?;
