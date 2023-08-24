@@ -8,7 +8,6 @@ use super::*;
 
 #[derive(Debug)]
 pub struct PhysicalUngroupedAggregate<'env, 'txn, S, M> {
-    schema: Schema,
     functions: Box<[(ir::MonoFunction, Option<ExecutableExpr>)]>,
     aggregate_functions: Mutex<Vec<Box<dyn AggregateFunctionInstance>>>,
     children: [Arc<dyn PhysicalNode<'env, 'txn, S, M>>; 1],
@@ -18,12 +17,10 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     PhysicalUngroupedAggregate<'env, 'txn, S, M>
 {
     pub(crate) fn plan(
-        schema: Schema,
         functions: Box<[(ir::MonoFunction, Option<ExecutableExpr>)]>,
         source: Arc<dyn PhysicalNode<'env, 'txn, S, M>>,
     ) -> Arc<dyn PhysicalNode<'env, 'txn, S, M>> {
         Arc::new(Self {
-            schema,
             aggregate_functions: Mutex::new(
                 functions.iter().map(|(f, _args)| f.get_aggregate_instance()).collect(),
             ),
@@ -71,10 +68,6 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode
 {
     fn children(&self) -> &[Arc<dyn PhysicalNode<'env, 'txn, S, M>>] {
         &self.children
-    }
-
-    fn schema(&self) -> &[LogicalType] {
-        &self.schema
     }
 
     fn as_source(

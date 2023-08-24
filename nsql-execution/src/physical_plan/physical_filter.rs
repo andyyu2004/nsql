@@ -48,10 +48,6 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode
         &self.children
     }
 
-    fn schema(&self) -> &[LogicalType] {
-        self.children[0].schema()
-    }
-
     #[inline]
     fn as_source(
         self: Arc<Self>,

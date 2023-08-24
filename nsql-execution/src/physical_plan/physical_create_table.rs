@@ -30,10 +30,6 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalNode<'env, 'txn, S, ReadWriteEx
         &[]
     }
 
-    fn schema(&self) -> &[LogicalType] {
-        &[]
-    }
-
     #[inline]
     fn as_source(
         self: Arc<Self>,

@@ -10,7 +10,6 @@ use super::*;
 
 #[derive(Debug)]
 pub struct PhysicalHashAggregate<'env, 'txn, S, M> {
-    schema: Schema,
     functions: Box<[(MonoFunction, Option<ExecutableExpr>)]>,
     children: [Arc<dyn PhysicalNode<'env, 'txn, S, M>>; 1],
     group_expr: ExecutableTupleExpr,
@@ -21,13 +20,11 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     PhysicalHashAggregate<'env, 'txn, S, M>
 {
     pub(crate) fn plan(
-        schema: Schema,
         functions: Box<[(MonoFunction, Option<ExecutableExpr>)]>,
         source: Arc<dyn PhysicalNode<'env, 'txn, S, M>>,
         group_expr: ExecutableTupleExpr,
     ) -> Arc<dyn PhysicalNode<'env, 'txn, S, M>> {
         Arc::new(Self {
-            schema,
             functions,
             group_expr,
             children: [source],
@@ -84,10 +81,6 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode
 {
     fn children(&self) -> &[Arc<dyn PhysicalNode<'env, 'txn, S, M>>] {
         &self.children
-    }
-
-    fn schema(&self) -> &[LogicalType] {
-        &self.schema
     }
 
     fn as_source(

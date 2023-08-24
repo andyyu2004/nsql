@@ -7,7 +7,6 @@ use nsql_storage_engine::FallibleIterator;
 use super::*;
 
 pub struct PhysicalTableScan {
-    schema: Schema,
     table: Oid<Table>,
     projection: Option<Box<[ColumnIndex]>>,
 }
@@ -23,11 +22,10 @@ impl fmt::Debug for PhysicalTableScan {
 
 impl<'env: 'txn, 'txn> PhysicalTableScan {
     pub(crate) fn plan<S: StorageEngine, M: ExecutionMode<'env, S>>(
-        schema: Schema,
         table: Oid<Table>,
         projection: Option<Box<[ColumnIndex]>>,
     ) -> Arc<dyn PhysicalNode<'env, 'txn, S, M>> {
-        Arc::new(Self { schema, table, projection })
+        Arc::new(Self { table, projection })
     }
 }
 
@@ -59,10 +57,6 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode
 {
     fn children(&self) -> &[Arc<dyn PhysicalNode<'env, 'txn, S, M>>] {
         &[]
-    }
-
-    fn schema(&self) -> &[LogicalType] {
-        &self.schema
     }
 
     fn as_source(

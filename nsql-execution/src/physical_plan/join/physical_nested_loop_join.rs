@@ -11,7 +11,6 @@ use crate::pipeline::{MetaPipelineBuilder, PipelineBuilder, PipelineBuilderArena
 #[derive(Debug)]
 pub(crate) struct PhysicalNestedLoopJoin<'env, 'txn, S, M> {
     children: [Arc<dyn PhysicalNode<'env, 'txn, S, M>>; 2],
-    schema: Schema,
     join: ir::Join<ExecutableExpr>,
     // mutex is only used during build phase
     rhs_tuples_build: Mutex<Vec<Tuple>>,
@@ -25,14 +24,12 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     PhysicalNestedLoopJoin<'env, 'txn, S, M>
 {
     pub fn plan(
-        schema: Schema,
         join: ir::Join<ExecutableExpr>,
         probe_node: Arc<dyn PhysicalNode<'env, 'txn, S, M>>,
         build_node: Arc<dyn PhysicalNode<'env, 'txn, S, M>>,
     ) -> Arc<dyn PhysicalNode<'env, 'txn, S, M>> {
         Arc::new(Self {
             join,
-            schema,
             children: [probe_node, build_node],
             found_match_for_tuple: AtomicBool::new(false),
             rhs_index: AtomicUsize::new(0),
@@ -55,10 +52,6 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode
 {
     fn children(&self) -> &[Arc<dyn PhysicalNode<'env, 'txn, S, M>>] {
         &self.children
-    }
-
-    fn schema(&self) -> &[LogicalType] {
-        &self.schema
     }
 
     fn as_source(

@@ -24,7 +24,6 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use nsql_catalog::Catalog;
-use nsql_core::{LogicalType, Schema};
 use nsql_storage::eval::{ExecutableExpr, ExecutableTupleExpr};
 use nsql_storage_engine::{StorageEngine, Transaction};
 
@@ -57,12 +56,12 @@ use crate::{
 };
 
 impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalPlanner<'env, S> {
-    fn planv2<M: ExecutionMode<'env, S>>(
+    pub fn planv2<M: ExecutionMode<'env, S>>(
         &mut self,
         tx: &dyn Transaction<'env, S>,
         g: &opt::Graph,
-    ) -> Result<Arc<dyn PhysicalNode<'env, 'txn, S, M>>> {
-        self.plan_nodev2(tx, g, g.root())
+    ) -> Result<PhysicalPlan<'env, 'txn, S, M>> {
+        self.plan_nodev2(tx, g, g.root()).map(PhysicalPlan)
     }
 
     fn plan_nodev2<M: ExecutionMode<'env, S>>(
@@ -99,7 +98,16 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalPlanner<'env, S> {
         tx: &dyn Transaction<'env, S>,
         exprs: impl Iterator<Item = opt::Expr>,
     ) -> Result<ExecutableTupleExpr> {
-        todo!()
+        self.compiler.compile_many2(&self.catalog, tx, exprs)
+    }
+
+    fn compile_exprv2(
+        &mut self,
+        tx: &dyn Transaction<'env, S>,
+        g: &opt::Graph,
+        expr: opt::Expr,
+    ) -> Result<ExecutableExpr> {
+        self.compiler.compile2(&self.catalog, tx, expr)
     }
 }
 
@@ -169,19 +177,17 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalPlanner<'env, S> {
         plan: Box<ir::QueryPlan>,
     ) -> Result<Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode>>> {
         let plan = match *plan {
-            ir::QueryPlan::Update { table, source, returning, schema } => {
+            ir::QueryPlan::Update { table, source, returning, schema: _ } => {
                 let source = self.plan_write_query_node(tx, source)?;
                 PhysicalUpdate::plan(
-                    schema,
                     table,
                     source,
                     returning.map(|expr| self.compile_exprs(tx, expr)).transpose()?,
                 )
             }
-            ir::QueryPlan::Insert { table, source, returning, schema } => {
+            ir::QueryPlan::Insert { table, source, returning, schema: _ } => {
                 let source = self.plan_write_query_node(tx, source)?;
                 PhysicalInsert::plan(
-                    schema,
                     table,
                     source,
                     returning.map(|exprs| self.compile_exprs(tx, exprs)).transpose()?,
@@ -242,13 +248,13 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalPlanner<'env, S> {
         ) -> Result<Arc<dyn PhysicalNode<'env, 'txn, S, M>>>,
     ) -> Result<Arc<dyn PhysicalNode<'env, 'txn, S, M>>> {
         let plan = match *plan {
-            ir::QueryPlan::TableScan { table, projection, projected_schema } => {
-                PhysicalTableScan::plan(projected_schema, table, projection)
+            ir::QueryPlan::TableScan { table, projection, projected_schema: _ } => {
+                PhysicalTableScan::plan(table, projection)
             }
-            ir::QueryPlan::Values { schema, values } => {
-                PhysicalValues::plan(schema, self.compile_values(tx, values)?)
+            ir::QueryPlan::Values { schema: _, values } => {
+                PhysicalValues::plan(self.compile_values(tx, values)?)
             }
-            ir::QueryPlan::Projection { projected_schema, source, projection } => {
+            ir::QueryPlan::Projection { source, projection, projected_schema: _ } => {
                 PhysicalProjection::plan(f(self, tx, source)?, self.compile_exprs(tx, projection)?)
             }
             ir::QueryPlan::Limit { source, limit, exceeded_message } => {
@@ -260,28 +266,26 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalPlanner<'env, S> {
             ir::QueryPlan::Filter { source, predicate } => {
                 PhysicalFilter::plan(f(self, tx, source)?, self.compile_expr(tx, predicate)?)
             }
-            ir::QueryPlan::Join { schema, join, lhs, rhs } => PhysicalNestedLoopJoin::plan(
-                schema,
+            ir::QueryPlan::Join { schema: _, join, lhs, rhs } => PhysicalNestedLoopJoin::plan(
                 join.try_map(|expr| self.compile_expr(tx, expr))?,
                 f(self, tx, lhs)?,
                 f(self, tx, rhs)?,
             ),
-            ir::QueryPlan::Aggregate { aggregates, source, schema, group_by }
+            ir::QueryPlan::Aggregate { aggregates, source, group_by, schema: _ }
                 if group_by.is_empty() =>
             {
                 let functions = self.compile_aggregate_functions(tx, aggregates.to_vec())?;
-                PhysicalUngroupedAggregate::plan(schema, functions, f(self, tx, source)?)
+                PhysicalUngroupedAggregate::plan(functions, f(self, tx, source)?)
             }
-            ir::QueryPlan::Aggregate { aggregates: functions, source, schema, group_by } => {
+            ir::QueryPlan::Aggregate { aggregates, source, group_by, schema: _ } => {
                 PhysicalHashAggregate::plan(
-                    schema,
-                    self.compile_aggregate_functions(tx, functions.to_vec())?,
+                    self.compile_aggregate_functions(tx, aggregates.to_vec())?,
                     f(self, tx, source)?,
                     self.compile_exprs(tx, group_by)?,
                 )
             }
-            ir::QueryPlan::Unnest { schema, expr } => {
-                PhysicalUnnest::plan(schema, self.compile_expr(tx, expr)?)
+            ir::QueryPlan::Unnest { expr, schema: _ } => {
+                PhysicalUnnest::plan(self.compile_expr(tx, expr)?)
             }
             ir::QueryPlan::DummyScan => PhysicalDummyScan::plan(),
             ir::QueryPlan::Update { .. } | ir::QueryPlan::Insert { .. } => {
