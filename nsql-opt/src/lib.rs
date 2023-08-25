@@ -8,10 +8,9 @@ use std::mem;
 
 pub use egg::Id as NodeId;
 use ir::fold::{ExprFold, Folder, PlanFold};
-use ir::ExprKind;
 use nsql_core::LogicalType;
 
-pub use self::view::{CallExpr, Expr, Plan, Query};
+pub use self::view::{CallExpr, Expr, ExprKind, Plan, Query};
 
 trait Pass: Folder {
     fn name(&self) -> &'static str;
@@ -133,7 +132,7 @@ impl Folder for SubqueryFlattener {
                                 // We do this by comparing for equality with the constant `1`
                                 .project([ir::Expr {
                                     ty: LogicalType::Bool,
-                                    kind: ExprKind::BinaryOperator {
+                                    kind: ir::ExprKind::BinaryOperator {
                                         operator: ir::MonoOperator::new(
                                             ir::Operator::equal(),
                                             ir::MonoFunction::new(

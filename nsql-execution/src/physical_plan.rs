@@ -332,6 +332,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalPlanner<'env, S> {
         self.plan_write_node(tx, plan).map(PhysicalPlan)
     }
 
+    #[allow(clippy::boxed_local)]
     fn plan_write_query_node(
         &mut self,
         _tx: &dyn Transaction<'env, S>,

@@ -652,6 +652,30 @@ impl QPath {
     }
 }
 
+impl FromStr for QPath {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.rsplit_once(s) {
+            Some((prefix, name)) => {
+                Ok(Self { prefix: Box::new(prefix.parse()?), name: name.into() })
+            }
+            None => bail!("invalid qualified path `{}`", s),
+        }
+    }
+}
+
+impl FromStr for Path {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.contains('.') {
+            true => Ok(Self::Qualified(s.parse()?)),
+            false => Ok(Self::Unqualified(s.into())),
+        }
+    }
+}
+
 impl fmt::Debug for QPath {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{self}")

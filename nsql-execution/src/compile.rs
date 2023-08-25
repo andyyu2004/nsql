@@ -35,7 +35,9 @@ impl Compiler {
     ) -> Result<ExecutableExpr> {
         self.build2(catalog, tx, q, expr)?;
         self.emit(ExprOp::Return);
-        Ok(Expr::new("not pretty", mem::take(&mut self.ops)))
+        let original_expr = q.original_expr(expr.id);
+        println!("{original_expr}");
+        Ok(Expr::new(original_expr, mem::take(&mut self.ops)))
     }
 
     fn build2<'env, S: StorageEngine>(
@@ -45,10 +47,10 @@ impl Compiler {
         q: &opt::Query,
         expr: opt::Expr<'_>,
     ) -> Result<()> {
-        match expr {
-            opt::Expr::ColumnRef(index) => self.emit(ExprOp::Project { index }),
-            opt::Expr::Literal(lit) => self.emit(ExprOp::Push(lit.value(q).clone())),
-            opt::Expr::Array(array) => {
+        match expr.kind {
+            opt::ExprKind::ColumnRef(index) => self.emit(ExprOp::Project { index }),
+            opt::ExprKind::Literal(lit) => self.emit(ExprOp::Push(lit.value(q).clone())),
+            opt::ExprKind::Array(array) => {
                 let exprs = array.exprs(q);
                 let len = exprs.len();
                 for expr in exprs {
@@ -56,7 +58,7 @@ impl Compiler {
                 }
                 self.emit(ExprOp::MkArray { len });
             }
-            opt::Expr::Call(call) => {
+            opt::ExprKind::Call(call) => {
                 let function = catalog.get_function(tx, call.function().untyped())?;
                 let args = call.args(q);
                 assert_eq!(function.arity(), args.len());
@@ -65,7 +67,7 @@ impl Compiler {
                 }
                 self.emit(ExprOp::Call { function });
             }
-            opt::Expr::Case(case) => {
+            opt::ExprKind::Case(case) => {
                 let scrutinee = case.scrutinee(q);
                 let cases = case.cases(q);
                 let else_expr = case.else_expr(q);
