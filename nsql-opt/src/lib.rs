@@ -1,33 +1,47 @@
+#![deny(rust_2018_idioms)]
+#![feature(iter_array_chunks, if_let_guard)]
+
 mod node;
+pub mod view;
 
 use std::mem;
 
 pub use egg::Id as NodeId;
 use ir::fold::{ExprFold, Folder, PlanFold};
 use ir::ExprKind;
-pub use node::{Expr, Graph, Plan};
 use nsql_core::LogicalType;
+
+pub use self::view::{CallExpr, Expr, Plan, Query};
 
 trait Pass: Folder {
     fn name(&self) -> &'static str;
 }
 
-pub fn optimize(plan: Box<ir::Plan>) -> Box<ir::Plan> {
-    match *plan {
-        ir::Plan::Show(_)
-        | ir::Plan::Drop(_)
-        | ir::Plan::Transaction(_)
-        | ir::Plan::CreateNamespace(_)
-        | ir::Plan::CreateTable(_)
-        | ir::Plan::SetVariable { .. } => plan,
-        ir::Plan::Explain(query) => Box::new(ir::Plan::Explain(optimize(query))),
-        ir::Plan::Query(query) => Box::new(ir::Plan::Query(optimize_query(query))),
-    }
+#[allow(clippy::boxed_local)]
+pub fn optimize(plan: Box<ir::Plan>) -> Box<ir::Plan<Query>> {
+    let optimized = match *plan {
+        // ir::Plan::Show(_)
+        // | ir::Plan::Drop(_)
+        // | ir::Plan::Transaction(_)
+        // | ir::Plan::CreateNamespace(_)
+        // | ir::Plan::CreateTable(_)
+        // | ir::Plan::SetVariable { .. } => plan,
+        ir::Plan::Show(show) => ir::Plan::Show(show),
+        ir::Plan::Drop(refs) => ir::Plan::Drop(refs),
+        ir::Plan::Transaction(txn) => ir::Plan::Transaction(txn),
+        ir::Plan::CreateNamespace(info) => ir::Plan::CreateNamespace(info),
+        ir::Plan::CreateTable(info) => ir::Plan::CreateTable(info),
+        ir::Plan::SetVariable { name, value, scope } => {
+            ir::Plan::SetVariable { name, value, scope }
+        }
+        ir::Plan::Explain(query) => ir::Plan::Explain(optimize(query)),
+        ir::Plan::Query(query) => ir::Plan::Query(optimize_query(query)),
+    };
+
+    Box::new(optimized)
 }
 
-fn optimize_query(mut plan: Box<ir::QueryPlan>) -> Box<ir::QueryPlan> {
-    let _graph = node::Builder::default().build(&plan);
-
+fn optimize_query(mut plan: Box<ir::QueryPlan>) -> Query {
     plan.validate().unwrap_or_else(|err| panic!("invalid plan passed to optimizer: {err}"));
 
     loop {
@@ -44,7 +58,7 @@ fn optimize_query(mut plan: Box<ir::QueryPlan>) -> Box<ir::QueryPlan> {
         }
     }
 
-    plan
+    node::Builder::default().build(&plan)
 }
 
 struct SubqueryFlattener;

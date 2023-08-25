@@ -5,7 +5,7 @@ use super::*;
 use crate::config::ExplainOutput;
 
 pub struct PhysicalExplain<'env, 'txn, S, M> {
-    logical_plan: Box<ir::Plan>,
+    logical_plan: Box<ir::Plan<opt::Query>>,
     children: [Arc<dyn PhysicalNode<'env, 'txn, S, M>>; 1],
 }
 
@@ -20,7 +20,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
 {
     #[inline]
     pub(crate) fn plan(
-        logical_plan: Box<ir::Plan>,
+        logical_plan: Box<ir::Plan<opt::Query>>,
         physical_plan: Arc<dyn PhysicalNode<'env, 'txn, S, M>>,
     ) -> Arc<dyn PhysicalNode<'env, 'txn, S, M>> {
         Arc::new(Self { logical_plan, children: [physical_plan] })

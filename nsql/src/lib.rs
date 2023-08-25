@@ -160,7 +160,7 @@ impl<S: StorageEngine> Shared<S> {
         let (tx, tuples) = match tx {
             ReadOrWriteTransaction::Read(tx) => {
                 tracing::info!("executing readonly query");
-                let physical_plan = planner.plan(&tx, plan)?;
+                let physical_plan = planner.planv2(&tx, plan)?;
                 let ecx =
                     ExecutionContext::new(catalog, TransactionContext::new(tx, auto_commit), state);
                 let tuples = nsql_execution::execute(&ecx, physical_plan)?;
@@ -174,7 +174,7 @@ impl<S: StorageEngine> Shared<S> {
             }
             ReadOrWriteTransaction::Write(tx) => {
                 tracing::info!("executing write query");
-                let physical_plan = planner.plan_write(&tx, plan)?;
+                let physical_plan = planner.planv2_write(&tx, plan)?;
                 let ecx =
                     ExecutionContext::new(catalog, TransactionContext::new(tx, auto_commit), state);
                 let tuples = match nsql_execution::execute_write(&ecx, physical_plan) {

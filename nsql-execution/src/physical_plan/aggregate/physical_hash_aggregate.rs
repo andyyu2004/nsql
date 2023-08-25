@@ -1,7 +1,6 @@
 use std::mem;
 
 use dashmap::DashMap;
-use ir::MonoFunction;
 use nsql_catalog::AggregateFunctionInstance;
 use nsql_storage_engine::fallible_iterator;
 use parking_lot::Mutex;
@@ -10,7 +9,7 @@ use super::*;
 
 #[derive(Debug)]
 pub struct PhysicalHashAggregate<'env, 'txn, S, M> {
-    functions: Box<[(MonoFunction, Option<ExecutableExpr>)]>,
+    functions: Box<[(ir::Function, Option<ExecutableExpr>)]>,
     children: [Arc<dyn PhysicalNode<'env, 'txn, S, M>>; 1],
     group_expr: ExecutableTupleExpr,
     output_groups: DashMap<Tuple, Mutex<Vec<Box<dyn AggregateFunctionInstance>>>>,
@@ -20,7 +19,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     PhysicalHashAggregate<'env, 'txn, S, M>
 {
     pub(crate) fn plan(
-        functions: Box<[(MonoFunction, Option<ExecutableExpr>)]>,
+        functions: Box<[(ir::Function, Option<ExecutableExpr>)]>,
         source: Arc<dyn PhysicalNode<'env, 'txn, S, M>>,
         group_expr: ExecutableTupleExpr,
     ) -> Arc<dyn PhysicalNode<'env, 'txn, S, M>> {

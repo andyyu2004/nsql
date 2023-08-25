@@ -56,58 +56,218 @@ use crate::{
 };
 
 impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalPlanner<'env, S> {
+    pub fn planv2_write(
+        &mut self,
+        tx: &dyn Transaction<'env, S>,
+        plan: Box<ir::Plan<opt::Query>>,
+    ) -> Result<PhysicalPlan<'env, 'txn, S, ReadWriteExecutionMode>> {
+        let node = match *plan {
+            ir::Plan::Transaction(kind) => PhysicalTransaction::plan(kind),
+            ir::Plan::SetVariable { name, value, scope } => PhysicalSet::plan(name, value, scope),
+            ir::Plan::Show(object_type) => PhysicalShow::plan(object_type),
+            ir::Plan::CreateTable(info) => PhysicalCreateTable::plan(info),
+            ir::Plan::CreateNamespace(info) => PhysicalCreateNamespace::plan(info),
+            ir::Plan::Drop(refs) => PhysicalDrop::plan(refs),
+            ir::Plan::Query(q) => self.plan_write_query_nodev2(tx, &q, q.root())?,
+            ir::Plan::Explain(logical_plan) => {
+                let physical_plan = self.planv2_write(tx, logical_plan.clone())?;
+                self.explain_plan(logical_plan, physical_plan.0)?
+            }
+        };
+
+        Ok(PhysicalPlan(node))
+    }
+
+    fn plan_write_query_nodev2(
+        &mut self,
+        tx: &dyn Transaction<'env, S>,
+        q: &opt::Query,
+        plan: opt::Plan<'_>,
+    ) -> Result<Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode>>> {
+        let plan = match plan {
+            opt::Plan::Update(insert) => PhysicalUpdate::plan(
+                insert.table(q),
+                self.plan_write_query_nodev2(tx, q, insert.source(q))?,
+                self.compile_exprsv2(tx, q, insert.returning(q))?,
+            ),
+            opt::Plan::Insert(insert) => PhysicalInsert::plan(
+                insert.table(q),
+                self.plan_write_query_nodev2(tx, q, insert.source(q))?,
+                self.compile_exprsv2(tx, q, insert.returning(q))?,
+            ),
+            _ => {
+                return self.fold_plan_nodev2(tx, q, plan, |planner, node| {
+                    planner.plan_write_query_nodev2(tx, q, node)
+                });
+            }
+        };
+
+        Ok(plan)
+    }
+
     pub fn planv2<M: ExecutionMode<'env, S>>(
         &mut self,
         tx: &dyn Transaction<'env, S>,
-        g: &opt::Graph,
+        plan: Box<ir::Plan<opt::Query>>,
     ) -> Result<PhysicalPlan<'env, 'txn, S, M>> {
-        self.plan_nodev2(tx, g, g.root()).map(PhysicalPlan)
+        let node = match *plan {
+            ir::Plan::Transaction(kind) => PhysicalTransaction::plan(kind),
+            ir::Plan::SetVariable { name, value, scope } => PhysicalSet::plan(name, value, scope),
+            ir::Plan::Show(object_type) => PhysicalShow::plan(object_type),
+            ir::Plan::Explain(logical_plan) => {
+                let physical_plan = self.planv2(tx, logical_plan.clone())?;
+                self.explain_plan(logical_plan, physical_plan.0)?
+            }
+            ir::Plan::Drop(_) | ir::Plan::CreateNamespace(_) | ir::Plan::CreateTable(_) => {
+                todo!();
+                // unreachable!("write plans should go through plan_write_node, got plan {:?}", plan)
+            }
+            ir::Plan::Query(q) => self.plan_nodev2(tx, &q, q.root())?,
+        };
+
+        Ok(PhysicalPlan(node))
     }
 
     fn plan_nodev2<M: ExecutionMode<'env, S>>(
         &mut self,
         tx: &dyn Transaction<'env, S>,
-        g: &opt::Graph,
+        q: &opt::Query,
         plan: opt::Plan<'_>,
     ) -> Result<Arc<dyn PhysicalNode<'env, 'txn, S, M>>> {
-        self.fold_plan_nodev2(tx, g, plan, |planner, tx, node| planner.plan_nodev2(tx, g, node))
+        self.fold_plan_nodev2(tx, q, plan, |planner, node| planner.plan_nodev2(tx, q, node))
     }
 
     fn fold_plan_nodev2<M: ExecutionMode<'env, S>>(
         &mut self,
         tx: &dyn Transaction<'env, S>,
-        g: &opt::Graph,
+        q: &opt::Query,
         plan: opt::Plan<'_>,
-        mut f: impl FnMut(
-            &mut Self,
-            &dyn Transaction<'env, S>,
-            opt::Plan<'_>,
-        ) -> Result<Arc<dyn PhysicalNode<'env, 'txn, S, M>>>,
+        mut f: impl FnMut(&mut Self, opt::Plan<'_>) -> Result<Arc<dyn PhysicalNode<'env, 'txn, S, M>>>,
     ) -> Result<Arc<dyn PhysicalNode<'env, 'txn, S, M>>> {
-        match plan {
+        let plan = match plan {
             opt::Plan::Projection(projection) => {
-                let source = projection.source(g);
-                let exprs = projection.exprs(g);
-                Ok(PhysicalProjection::plan(f(self, tx, source)?, self.compile_exprsv2(tx, exprs)?))
+                let source = projection.source(q);
+                let exprs = projection.exprs(q);
+                PhysicalProjection::plan(f(self, source)?, self.compile_exprsv2(tx, q, exprs)?)
             }
-        }
+            opt::Plan::CrossJoin(join) => PhysicalNestedLoopJoin::plan(
+                ir::Join::Cross,
+                f(self, join.lhs(q))?,
+                f(self, join.rhs(q))?,
+            ),
+            opt::Plan::Join(join) => PhysicalNestedLoopJoin::plan(
+                join.join_expr(q).try_map(|expr| self.compile_exprv2(tx, q, expr))?,
+                f(self, join.lhs(q))?,
+                f(self, join.rhs(q))?,
+            ),
+            opt::Plan::Limit(limit) => {
+                let source = f(self, limit.source(q))?;
+                PhysicalLimit::plan(source, limit.limit(q), limit.limit_exceeded_message(q))
+            }
+            opt::Plan::Filter(filter) => PhysicalFilter::plan(
+                f(self, filter.source(q))?,
+                self.compile_exprv2(tx, q, filter.predicate(q))?,
+            ),
+            opt::Plan::Aggregate(agg) => {
+                let functions = self.compile_aggregate_functionsv2(tx, q, agg.aggregates(q))?;
+                let group_by = agg.group_by(q);
+                let source = f(self, agg.source(q))?;
+                if group_by.is_empty() {
+                    PhysicalUngroupedAggregate::plan(functions, source)
+                } else {
+                    PhysicalHashAggregate::plan(
+                        functions,
+                        source,
+                        self.compile_exprsv2(tx, q, group_by)?,
+                    )
+                }
+            }
+            opt::Plan::Values(values) => PhysicalValues::plan(
+                values
+                    .rows(q)
+                    .map(|exprs| self.compile_exprsv2(tx, q, exprs))
+                    .collect::<Result<_>>()?,
+            ),
+            opt::Plan::Order(order) => PhysicalOrder::plan(
+                f(self, order.source(q))?,
+                self.compile_order_exprsv2(tx, q, order.order_exprs(q))?,
+            ),
+            opt::Plan::TableScan(scan) => PhysicalTableScan::plan(scan.table(q), None),
+            opt::Plan::DummyScan => PhysicalDummyScan::plan(),
+            opt::Plan::Unnest(unnest) => {
+                PhysicalUnnest::plan(self.compile_exprv2(tx, q, unnest.expr(q))?)
+            }
+            opt::Plan::Update(..) | opt::Plan::Insert(..) => unreachable!(
+                "write query plans should go through plan_write_query_node, got plan {:?}",
+                plan,
+            ),
+        };
+
+        Ok(plan)
+    }
+
+    fn compile_order_exprsv2(
+        &mut self,
+        tx: &dyn Transaction<'env, S>,
+        q: &opt::Query,
+        exprs: impl Iterator<Item = ir::OrderExpr<opt::Expr<'_>>>,
+    ) -> Result<Box<[ir::OrderExpr<ExecutableExpr>]>> {
+        exprs.map(|expr| self.compile_order_exprv2(tx, q, expr)).collect()
+    }
+
+    fn compile_order_exprv2(
+        &mut self,
+        tx: &dyn Transaction<'env, S>,
+        q: &opt::Query,
+        expr: ir::OrderExpr<opt::Expr<'_>>,
+    ) -> Result<ir::OrderExpr<ExecutableExpr>> {
+        Ok(ir::OrderExpr { expr: self.compile_exprv2(tx, q, expr.expr)?, asc: expr.asc })
     }
 
     fn compile_exprsv2(
         &mut self,
         tx: &dyn Transaction<'env, S>,
-        exprs: impl Iterator<Item = opt::Expr>,
+        q: &opt::Query,
+        exprs: impl Iterator<Item = opt::Expr<'_>>,
     ) -> Result<ExecutableTupleExpr> {
-        self.compiler.compile_many2(&self.catalog, tx, exprs)
+        self.compiler.compile_many2(&self.catalog, tx, q, exprs)
     }
 
     fn compile_exprv2(
         &mut self,
         tx: &dyn Transaction<'env, S>,
-        g: &opt::Graph,
-        expr: opt::Expr,
+        q: &opt::Query,
+        expr: opt::Expr<'_>,
     ) -> Result<ExecutableExpr> {
-        self.compiler.compile2(&self.catalog, tx, expr)
+        self.compiler.compile2(&self.catalog, tx, q, expr)
+    }
+
+    #[allow(clippy::type_complexity)]
+    fn compile_aggregate_functionsv2(
+        &mut self,
+        tx: &dyn Transaction<'env, S>,
+        q: &opt::Query,
+        functions: impl IntoIterator<Item = opt::CallExpr<'_>>,
+    ) -> Result<Box<[(ir::Function, Option<ExecutableExpr>)]>> {
+        functions
+            .into_iter()
+            .map(|call| {
+                let f = self.catalog.get(tx, call.function())?;
+                let mut args = call.args(q);
+                assert!(
+                    args.len() <= 1,
+                    "no more than one argument allowed for aggregate functions for now"
+                );
+
+                match args.next() {
+                    Some(arg) => {
+                        let arg = self.compile_exprv2(tx, q, arg)?;
+                        Ok((f, Some(arg)))
+                    }
+                    None => Ok((f, None)),
+                }
+            })
+            .collect()
     }
 }
 
@@ -149,9 +309,10 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalPlanner<'env, S> {
             ir::Plan::Transaction(kind) => PhysicalTransaction::plan(kind),
             ir::Plan::SetVariable { name, value, scope } => PhysicalSet::plan(name, value, scope),
             ir::Plan::Show(object_type) => PhysicalShow::plan(object_type),
-            ir::Plan::Explain(logical_plan) => {
-                let physical_plan = self.plan_node(tx, logical_plan.clone())?;
-                return self.explain_plan(logical_plan, physical_plan);
+            ir::Plan::Explain(_logical_plan) => {
+                todo!()
+                // let physical_plan = self.plan_node(tx, logical_plan.clone())?;
+                // return self.explain_plan(logical_plan, physical_plan);
             }
             ir::Plan::Drop(_) | ir::Plan::CreateNamespace(_) | ir::Plan::CreateTable(_) => {
                 unreachable!("write plans should go through plan_write_node, got plan {:?}", plan)
@@ -173,30 +334,27 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalPlanner<'env, S> {
 
     fn plan_write_query_node(
         &mut self,
-        tx: &dyn Transaction<'env, S>,
-        plan: Box<ir::QueryPlan>,
+        _tx: &dyn Transaction<'env, S>,
+        _plan: Box<ir::QueryPlan>,
     ) -> Result<Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode>>> {
-        let plan = match *plan {
-            ir::QueryPlan::Update { table, source, returning, schema: _ } => {
-                let source = self.plan_write_query_node(tx, source)?;
-                PhysicalUpdate::plan(
-                    table,
-                    source,
-                    returning.map(|expr| self.compile_exprs(tx, expr)).transpose()?,
-                )
-            }
-            ir::QueryPlan::Insert { table, source, returning, schema: _ } => {
-                let source = self.plan_write_query_node(tx, source)?;
-                PhysicalInsert::plan(
-                    table,
-                    source,
-                    returning.map(|exprs| self.compile_exprs(tx, exprs)).transpose()?,
-                )
-            }
-            _ => return self.fold_query_plan(tx, plan, Self::plan_write_query_node),
-        };
-
-        Ok(plan)
+        panic!();
+        // let plan = match *plan {
+        //     ir::QueryPlan::Update { table, source, returning, schema: _ } => {
+        //         panic!()
+        //     }
+        //     ir::QueryPlan::Insert { table, source, returning, schema: _ } => {
+        //         panic!()
+        //         // let source = self.plan_write_query_node(tx, source)?;
+        //         // PhysicalInsert::plan(
+        //         //     table,
+        //         //     source,
+        //         //     returning.map(|exprs| self.compile_exprs(tx, exprs)).transpose()?,
+        //         // )
+        //     }
+        //     _ => return self.fold_query_plan(tx, plan, Self::plan_write_query_node),
+        // };
+        //
+        // Ok(plan)
     }
 
     fn plan_write_node(
@@ -209,9 +367,10 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalPlanner<'env, S> {
             ir::Plan::CreateNamespace(info) => PhysicalCreateNamespace::plan(info),
             ir::Plan::Drop(refs) => PhysicalDrop::plan(refs),
             ir::Plan::Query(query) => self.plan_write_query_node(tx, query)?,
-            ir::Plan::Explain(logical_plan) => {
-                let physical_plan = self.plan_write_node(tx, logical_plan.clone())?;
-                return self.explain_plan(logical_plan, physical_plan);
+            ir::Plan::Explain(_logical_plan) => {
+                todo!()
+                // let physical_plan = self.plan_write_node(tx, logical_plan.clone())?;
+                // return self.explain_plan(logical_plan, physical_plan);
             }
             _ => self.plan_node(tx, plan)?,
         };
@@ -221,7 +380,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalPlanner<'env, S> {
 
     fn explain_plan<M: ExecutionMode<'env, S>>(
         &self,
-        logical_plan: Box<ir::Plan>,
+        logical_plan: Box<ir::Plan<opt::Query>>,
         physical_plan: Arc<dyn PhysicalNode<'env, 'txn, S, M>>,
     ) -> Result<Arc<dyn PhysicalNode<'env, 'txn, S, M>>> {
         Ok(PhysicalExplain::plan(logical_plan, physical_plan))
@@ -258,7 +417,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalPlanner<'env, S> {
                 PhysicalProjection::plan(f(self, tx, source)?, self.compile_exprs(tx, projection)?)
             }
             ir::QueryPlan::Limit { source, limit, exceeded_message } => {
-                PhysicalLimit::plan(f(self, tx, source)?, limit, exceeded_message)
+                PhysicalLimit::plan(f(self, tx, source)?, limit, exceeded_message.map(Into::into))
             }
             ir::QueryPlan::Order { source, order } => {
                 PhysicalOrder::plan(f(self, tx, source)?, self.compile_order_exprs(tx, order)?)
@@ -271,18 +430,20 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalPlanner<'env, S> {
                 f(self, tx, lhs)?,
                 f(self, tx, rhs)?,
             ),
-            ir::QueryPlan::Aggregate { aggregates, source, group_by, schema: _ }
+            ir::QueryPlan::Aggregate { aggregates: _, source: _, group_by, schema: _ }
                 if group_by.is_empty() =>
             {
-                let functions = self.compile_aggregate_functions(tx, aggregates.to_vec())?;
-                PhysicalUngroupedAggregate::plan(functions, f(self, tx, source)?)
+                panic!();
+                // let functions = self.compile_aggregate_functions(tx, aggregates.to_vec())?;
+                // PhysicalUngroupedAggregate::plan(functions, f(self, tx, source)?)
             }
-            ir::QueryPlan::Aggregate { aggregates, source, group_by, schema: _ } => {
-                PhysicalHashAggregate::plan(
-                    self.compile_aggregate_functions(tx, aggregates.to_vec())?,
-                    f(self, tx, source)?,
-                    self.compile_exprs(tx, group_by)?,
-                )
+            ir::QueryPlan::Aggregate { aggregates: _, source: _, group_by: _, schema: _ } => {
+                panic!();
+                // PhysicalHashAggregate::plan(
+                //     self.compile_aggregate_functions(tx, aggregates.to_vec())?,
+                //     f(self, tx, source)?,
+                //     self.compile_exprs(tx, group_by)?,
+                // )
             }
             ir::QueryPlan::Unnest { expr, schema: _ } => {
                 PhysicalUnnest::plan(self.compile_expr(tx, expr)?)
@@ -297,29 +458,6 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalPlanner<'env, S> {
         };
 
         Ok(plan)
-    }
-
-    #[allow(clippy::type_complexity)]
-    fn compile_aggregate_functions(
-        &mut self,
-        tx: &dyn Transaction<'env, S>,
-        functions: impl IntoIterator<Item = (ir::MonoFunction, Box<[ir::Expr]>)>,
-    ) -> Result<Box<[(ir::MonoFunction, Option<ExecutableExpr>)]>> {
-        functions
-            .into_iter()
-            .map(|(f, args)| {
-                assert!(
-                    args.len() <= 1,
-                    "no more than one argument allowed for aggregate functions for now"
-                );
-                if args.is_empty() {
-                    Ok((f, None))
-                } else {
-                    let arg = self.compile_expr(tx, args[0].clone())?;
-                    Ok((f, Some(arg)))
-                }
-            })
-            .collect()
     }
 
     fn compile_values(

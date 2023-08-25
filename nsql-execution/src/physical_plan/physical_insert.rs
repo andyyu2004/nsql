@@ -15,7 +15,7 @@ pub(crate) struct PhysicalInsert<'env, 'txn, S: StorageEngine> {
     table_oid: Oid<Table>,
     storage: OnceLock<Mutex<TableStorage<'env, 'txn, S, ReadWriteExecutionMode>>>,
     table: OnceLock<Table>,
-    returning: Option<ExecutableTupleExpr>,
+    returning: ExecutableTupleExpr,
     returning_tuples: RwLock<Vec<Tuple>>,
 }
 
@@ -23,7 +23,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalInsert<'env, 'txn, S> {
     pub fn plan(
         table_oid: Oid<Table>,
         source: Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode>>,
-        returning: Option<ExecutableTupleExpr>,
+        returning: ExecutableTupleExpr,
     ) -> Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode>> {
         Arc::new(Self {
             table_oid,
@@ -93,8 +93,8 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSink<'env, 'txn, S, ReadWriteEx
             anyhow::anyhow!("duplicate key `{key}` violates unique constraint")
         })?;
 
-        if let Some(return_expr) = &self.returning {
-            self.returning_tuples.write().push(return_expr.execute(&tuple));
+        if !self.returning.is_empty() {
+            self.returning_tuples.write().push(self.returning.execute(&tuple));
         }
 
         Ok(())

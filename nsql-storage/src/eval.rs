@@ -47,6 +47,11 @@ impl<F> TupleExpr<F> {
     pub fn new(exprs: impl Into<Box<[Expr<F>]>>) -> Self {
         Self { exprs: exprs.into() }
     }
+
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.exprs.is_empty()
+    }
 }
 
 impl TupleExpr {

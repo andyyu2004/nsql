@@ -1,8 +1,11 @@
 use egg::{define_language, Id};
 use ir::Value;
-use nsql_core::Oid;
+use nsql_core::{LogicalType, Oid};
+use rustc_hash::FxHashMap;
 
-type EGraph = egg::EGraph<Node, ()>;
+use crate::Query;
+
+pub(crate) type EGraph = egg::EGraph<Node, ()>;
 
 define_language! {
     /// The logical optimizer specific language for rule based optimization.
@@ -13,7 +16,7 @@ define_language! {
         ColumnRef(ir::TupleIndex),
         "array" = Array(Box<[Id]>),
         "subquery" = Subquery(Id),
-        "case" = Case([Id; 3]), // (case <scrutinee> (<cases>...) <else>)
+        "case" = Case([Id; 3]), // (case <scrutinee> (<condition> <then> <condition> <then> ...) <else>)
 
         // a "list" of nodes
         "nodes" = Nodes(Box<[Id]>),
@@ -27,8 +30,8 @@ define_language! {
         "unnest" = Unnest(Id),                   // (unnest <array-expr>)
         "order" = Order([Id; 2]),                // (order <source> (<order-exprs>...))
         "limit" = Limit([Id; 2]),                // (limit <source> <limit>)
-        "scan" = TableScan([Id; 1]),             // (scan <table>)
-        "agg" = Agg([Id; 3]),                    // (agg <source> <group_by>... <aggregates>...)
+        "scan" = TableScan(Id),                  // (scan <table>)
+        "agg" = Aggregate([Id; 3]),              // (agg <source> <group_by>... <aggregates-calls>...)
         "strict_limit" = StrictLimit([Id; 3]),   // (strict_limit <source> <limit> <message>)
         "values" = Values(Box<[Id]>),
 
@@ -41,127 +44,6 @@ define_language! {
         Table(Oid<ir::Table>),
         Function(Oid<ir::Function>),
         "call" = Call([Id; 2]), // (call f (args...))
-        "case_condition" = CaseCondition([Id; 2]),
-    }
-}
-
-/// An structured view over the raw nodes
-pub struct Graph {
-    egraph: EGraph,
-    root: Id,
-}
-
-impl Graph {
-    #[allow(dead_code)]
-    pub(crate) fn egraph(&self) -> &EGraph {
-        &self.egraph
-    }
-
-    pub fn root(&self) -> Plan<'_> {
-        self.plan(self.root)
-    }
-
-    fn node(&self, id: Id) -> &Node {
-        &self.egraph[id].nodes[0]
-    }
-
-    fn nodes(&self, id: Id) -> &[Id] {
-        match self.node(id) {
-            Node::Nodes(nodes) => nodes,
-            _ => panic!("expected `Nodes` node"),
-        }
-    }
-
-    fn expr(&self, id: Id) -> Expr {
-        match *self.node(id) {
-            Node::ColumnRef(idx) => Expr::ColumnRef(idx),
-            Node::Literal(ref value) => Expr::Literal(value.clone()),
-            Node::Array(ref exprs) => Expr::Array(exprs.iter().map(|&id| self.expr(id)).collect()),
-            Node::Subquery(_) => todo!(),
-            Node::Case(_) => todo!(),
-            Node::DummyScan
-            | Node::Nodes(_)
-            | Node::Project(_)
-            | Node::Filter(_)
-            | Node::Join(_)
-            | Node::CrossJoin(_)
-            | Node::Unnest(_)
-            | Node::Order(_)
-            | Node::Limit(_)
-            | Node::TableScan(_)
-            | Node::Agg(_)
-            | Node::StrictLimit(_)
-            | Node::Values(_)
-            | Node::Insert(_)
-            | Node::Update(_)
-            | Node::Desc(_)
-            | Node::JoinOn(_, _)
-            | Node::Table(_)
-            | Node::Function(_)
-            | Node::Call(_)
-            | Node::CaseCondition(_) => panic!("expected `Expr` node"),
-        }
-    }
-
-    fn plan(&self, id: Id) -> Plan<'_> {
-        match *self.node(id) {
-            Node::Case(_) => todo!(),
-            Node::DummyScan => todo!(),
-            Node::Project([source, projection]) => {
-                Plan::Projection(Projection { projections: self.nodes(projection), source })
-            }
-            Node::Filter(_) => todo!(),
-            Node::Join(_) => todo!(),
-            Node::CrossJoin(_) => todo!(),
-            Node::Unnest(_) => todo!(),
-            Node::Order(_) => todo!(),
-            Node::Limit(_) => todo!(),
-            Node::TableScan(_) => todo!(),
-            Node::Agg(_) => todo!(),
-            Node::StrictLimit(_) => todo!(),
-            Node::Values(_) => todo!(),
-            Node::Insert(_) => todo!(),
-            Node::Update(_) => todo!(),
-            Node::Desc(_)
-            | Node::Nodes(_)
-            | Node::Table(_)
-            | Node::Function(_)
-            | Node::Call(_)
-            | Node::Literal(_)
-            | Node::ColumnRef(_)
-            | Node::Array(_)
-            | Node::Subquery(_)
-            | Node::JoinOn(..)
-            | Node::CaseCondition(_) => unreachable!("not a plan node"),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy)]
-pub enum Plan<'a> {
-    Projection(Projection<'a>),
-}
-
-#[derive(Debug, Clone)]
-pub enum Expr {
-    ColumnRef(ir::TupleIndex),
-    Literal(Value),
-    Array(Box<[Expr]>),
-}
-
-#[derive(Debug, Copy, Clone)]
-pub struct Projection<'a> {
-    projections: &'a [Id],
-    source: Id,
-}
-
-impl<'a> Projection<'a> {
-    pub fn exprs(self, g: &'a Graph) -> impl Iterator<Item = Expr> + 'a {
-        self.projections.iter().map(|&expr| g.expr(expr))
-    }
-
-    pub fn source(self, g: &'a Graph) -> Plan<'a> {
-        g.plan(self.source)
     }
 }
 
@@ -171,9 +53,9 @@ pub(crate) struct Builder {
 }
 
 impl Builder {
-    pub fn build(mut self, query: &ir::QueryPlan) -> Graph {
+    pub fn build(mut self, query: &ir::QueryPlan) -> Query {
         let root = self.build_query(query);
-        Graph { egraph: self.egraph, root }
+        Query::new(self.egraph, root)
     }
 
     fn build_query(&mut self, query: &ir::QueryPlan) -> Id {
@@ -192,10 +74,10 @@ impl Builder {
                         })
                         .collect(),
                 );
-                Node::Agg([source, group_by, self.add(functions)])
+                Node::Aggregate([source, group_by, self.add(functions)])
             }
             ir::QueryPlan::TableScan { table, projection: None, projected_schema: _ } => {
-                Node::TableScan([self.add(Node::Table(*table))])
+                Node::TableScan(self.add(Node::Table(*table)))
             }
             ir::QueryPlan::TableScan { .. } => todo!(),
             ir::QueryPlan::Projection { source, projection, projected_schema: _ } => {
@@ -304,10 +186,10 @@ impl Builder {
                 let scrutinee = self.build_expr(scrutinee);
                 let cases = cases
                     .iter()
-                    .map(|case| {
+                    .flat_map(|case| {
                         let when = self.build_expr(&case.when);
                         let then = self.build_expr(&case.then);
-                        self.add(Node::CaseCondition([when, then]))
+                        [when, then]
                     })
                     .collect();
 

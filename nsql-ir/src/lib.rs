@@ -190,15 +190,15 @@ impl QueryPlan {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum Plan {
+pub enum Plan<Q = Box<QueryPlan>> {
     Show(ObjectType),
     Drop(Vec<EntityRef>),
     Transaction(TransactionStmt),
     CreateNamespace(CreateNamespaceInfo),
     CreateTable(CreateTableInfo),
     SetVariable { name: Name, value: Value, scope: VariableScope },
-    Explain(Box<Plan>),
-    Query(Box<QueryPlan>),
+    Explain(Box<Plan<Q>>),
+    Query(Q),
 }
 
 impl Default for Plan {
@@ -333,7 +333,7 @@ impl fmt::Display for QueryPlan {
     }
 }
 
-impl fmt::Display for Plan {
+impl<Q: fmt::Display> fmt::Display for Plan<Q> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Plan::Show(kind) => write!(f, "SHOW {kind}"),
