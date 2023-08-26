@@ -1,5 +1,3 @@
-use std::mem;
-
 use egg::{define_language, Id};
 use ir::Value;
 use nsql_core::Oid;
@@ -7,7 +5,6 @@ use nsql_core::Oid;
 use crate::Query;
 
 pub(crate) type EGraph = egg::EGraph<Node, ()>;
-pub(crate) type Rewrite = egg::Rewrite<Node, ()>;
 
 define_language! {
     /// The logical optimizer specific language for rule based optimization.
@@ -59,12 +56,12 @@ impl Builder {
         self.build_query(query)
     }
 
-    pub(crate) fn optimize(&mut self, rewrites: &[Rewrite]) {
-        self.egraph = egg::Runner::<Node, (), ()>::new(())
-            .with_egraph(mem::take(&mut self.egraph))
-            .run(rewrites)
-            .egraph;
-    }
+    // pub(crate) fn optimize(&mut self, rewrites: &[Rewrite]) {
+    //     self.egraph = egg::Runner::<Node, (), ()>::new(())
+    //         .with_egraph(mem::take(&mut self.egraph))
+    //         .run(rewrites)
+    //         .egraph;
+    // }
 
     pub fn finalize(mut self, root: Id) -> Query {
         struct CostFunction;
