@@ -13,7 +13,7 @@ use smol_str::SmolStr;
 pub use ty::{LogicalType, Schema};
 
 /// Lowercase name of a catalog entry (for case insensitive lookup)
-#[derive(Clone, PartialEq, Eq, Hash)]
+#[derive(Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Name {
     name: SmolStr,
 }

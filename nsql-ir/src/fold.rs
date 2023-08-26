@@ -184,7 +184,7 @@ impl ExprFold for Expr {
     fn fold_with(self, folder: &mut dyn Folder, plan: &mut QueryPlan) -> Self {
         let kind = match self.kind {
             ExprKind::Literal(lit) => ExprKind::Literal(lit),
-            ExprKind::ColumnRef { qpath, index } => ExprKind::ColumnRef { qpath, index },
+            ExprKind::ColumnRef(col) => ExprKind::ColumnRef(col),
             ExprKind::Array(exprs) => ExprKind::Array(folder.fold_exprs(plan, exprs)),
             ExprKind::Alias { alias, expr } => {
                 ExprKind::Alias { alias: alias.clone(), expr: folder.fold_boxed_expr(plan, expr) }

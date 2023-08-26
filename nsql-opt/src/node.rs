@@ -1,11 +1,13 @@
+use std::mem;
+
 use egg::{define_language, Id};
 use ir::Value;
 use nsql_core::Oid;
-use rustc_hash::FxHashMap;
 
 use crate::Query;
 
 pub(crate) type EGraph = egg::EGraph<Node, ()>;
+pub(crate) type Rewrite = egg::Rewrite<Node, ()>;
 
 define_language! {
     /// The logical optimizer specific language for rule based optimization.
@@ -14,9 +16,10 @@ define_language! {
         // scalar expressions
         Literal(Value),
         // We pass the plan id here so column refs with the same index don't get merged into the same eclass
-        ColumnRef(ir::TupleIndex, Id),           // (column-ref <index> <plan>)
+        ColumnRef(ir::ColumnRef, Id),           // (column-ref <index> <plan>)
         "array" = Array(Box<[Id]>),
         "subquery" = Subquery(Id),
+        "exists" = Exists(Id),
         "case" = Case([Id; 3]), // (case <scrutinee> (<condition> <then> <condition> <then> ...) <else>)
 
         // a "list" of nodes
@@ -27,13 +30,12 @@ define_language! {
         "project" = Project([Id; 2]),            // (project <source> (<exprs> ...))
         "filter" = Filter([Id; 2]),              // (filter <source> <predicate>)
         Join(ir::JoinKind, [Id; 2]),             // (join <join-kind> <lhs> <rhs>)
-        // "cross-join" = CrossJoin([Id; 2]),       // (cross-join <lhs> <rhs>)
         "unnest" = Unnest(Id),                   // (unnest <array-expr>)
         "order" = Order([Id; 2]),                // (order <source> (<order-exprs>...))
         "limit" = Limit([Id; 2]),                // (limit <source> <limit>)
         "scan" = TableScan(Id),                  // (scan <table>)
         "agg" = Aggregate([Id; 3]),              // (agg <source> <group_by>... <aggregates-calls>...)
-        "strict_limit" = StrictLimit([Id; 3]),   // (strict_limit <source> <limit> <message>)
+        "strict-limit" = StrictLimit([Id; 3]),   // (strict_limit <source> <limit> <message>)
         "values" = Values(Box<[Id]>),
 
         "insert" = Insert([Id; 3]),    // (insert <table> <source> <returning>)
@@ -50,14 +52,49 @@ define_language! {
 #[derive(Debug, Default)]
 pub(crate) struct Builder {
     egraph: EGraph,
-    /// Map from eclass id to the original expression
-    expr_map: FxHashMap<Id, ir::Expr>,
 }
 
 impl Builder {
-    pub fn build(mut self, query: &ir::QueryPlan) -> Query {
-        let root = self.build_query(query);
-        Query::new(self.egraph, root, self.expr_map)
+    pub fn build(&mut self, query: &ir::QueryPlan) -> Id {
+        self.build_query(query)
+    }
+
+    pub(crate) fn optimize(&mut self, rewrites: &[Rewrite]) {
+        self.egraph = egg::Runner::<Node, (), ()>::new(())
+            .with_egraph(mem::take(&mut self.egraph))
+            .run(rewrites)
+            .egraph;
+    }
+
+    pub fn finalize(mut self, root: Id) -> Query {
+        struct CostFunction;
+
+        impl egg::CostFunction<Node> for CostFunction {
+            type Cost = usize;
+
+            fn cost<C>(&mut self, node: &Node, _costs: C) -> Self::Cost
+            where
+                C: FnMut(Id) -> Self::Cost,
+            {
+                match node {
+                    Node::Subquery(..) | Node::Exists(..) => 100000,
+                    _ => 1,
+                }
+            }
+        }
+
+        let extractor = egg::Extractor::new(&self.egraph, CostFunction);
+        let (cost, best) = extractor.find_best(root);
+        tracing::debug!("best cost: {}", cost);
+        self.egraph.rebuild();
+
+        // create a new egraph with only the optimal nodes
+        let mut optimized_egraph = egg::EGraph::default();
+
+        let root = optimized_egraph.add_expr(&best);
+        optimized_egraph.rebuild();
+
+        Query::new(optimized_egraph, root)
     }
 
     fn build_query(&mut self, query: &ir::QueryPlan) -> Id {
@@ -170,7 +207,7 @@ impl Builder {
                 Node::Array(exprs.iter().map(|expr| self.build_expr(plan, expr)).collect())
             }
             ir::ExprKind::Alias { alias: _, expr } => return self.build_expr(plan, expr),
-            ir::ExprKind::ColumnRef { qpath: _, index } => Node::ColumnRef(*index, plan),
+            ir::ExprKind::ColumnRef(col) => Node::ColumnRef(col.clone(), plan),
             ir::ExprKind::FunctionCall { function, args } => {
                 let f = self.add(Node::Function(function.oid()));
                 let args = self.build_exprs(plan, args);
@@ -203,14 +240,12 @@ impl Builder {
 
                 Node::Case([scrutinee, self.add(Node::Nodes(cases)), else_result])
             }
-            ir::ExprKind::Subquery(_kind, query) => Node::Subquery(self.build_query(query)),
+            ir::ExprKind::Subquery(kind, query) => match kind {
+                ir::SubqueryKind::Scalar => Node::Subquery(self.build_query(query)),
+                ir::SubqueryKind::Exists => Node::Exists(self.build_query(query)),
+            },
         };
 
-        let id = self.add(node);
-        if let Some(prev) = self.expr_map.insert(id, expr.clone()) {
-            // just monitoring whether this happens
-            debug_assert_eq!(prev.to_string(), expr.to_string());
-        }
-        id
+        self.add(node)
     }
 }

@@ -1,6 +1,7 @@
 mod const_eval;
 
 use std::ops::Deref;
+use std::str::FromStr;
 use std::{fmt, mem};
 
 pub use const_eval::EvalNotConst;
@@ -32,7 +33,7 @@ impl Expr {
 
     #[inline]
     pub fn new_column_ref(ty: LogicalType, qpath: QPath, index: TupleIndex) -> Self {
-        Self { ty, kind: ExprKind::ColumnRef { qpath, index } }
+        Self { ty, kind: ExprKind::ColumnRef(ColumnRef { qpath, index }) }
     }
 
     #[inline]
@@ -71,34 +72,12 @@ static_assert_eq!(mem::size_of::<ExprKind>(), 40);
 pub enum ExprKind {
     Literal(Value),
     Array(Box<[Expr]>),
-    Alias {
-        alias: Name,
-        expr: Box<Expr>,
-    },
-    ColumnRef {
-        /// A qualified display path for the column (for pretty printing etc)
-        qpath: QPath,
-        /// An index into the tuple the expression is evaluated against
-        index: TupleIndex,
-    },
-    FunctionCall {
-        function: MonoFunction,
-        args: Box<[Expr]>,
-    },
-    UnaryOperator {
-        operator: MonoOperator,
-        expr: Box<Expr>,
-    },
-    BinaryOperator {
-        operator: MonoOperator,
-        lhs: Box<Expr>,
-        rhs: Box<Expr>,
-    },
-    Case {
-        scrutinee: Box<Expr>,
-        cases: Box<[Case]>,
-        else_result: Option<Box<Expr>>,
-    },
+    Alias { alias: Name, expr: Box<Expr> },
+    ColumnRef(ColumnRef),
+    FunctionCall { function: MonoFunction, args: Box<[Expr]> },
+    UnaryOperator { operator: MonoOperator, expr: Box<Expr> },
+    BinaryOperator { operator: MonoOperator, lhs: Box<Expr>, rhs: Box<Expr> },
+    Case { scrutinee: Box<Expr>, cases: Box<[Case]>, else_result: Option<Box<Expr>> },
     Subquery(SubqueryKind, Box<QueryPlan>),
 }
 
@@ -106,6 +85,31 @@ pub enum ExprKind {
 pub enum SubqueryKind {
     Scalar,
     Exists,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct ColumnRef {
+    /// An index into the tuple the expression is evaluated against
+    pub index: TupleIndex,
+
+    /// A qualified display path for the column (for pretty printing etc)
+    pub qpath: QPath,
+}
+
+impl fmt::Display for ColumnRef {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}@{}", self.qpath, self.index)
+    }
+}
+
+impl FromStr for ColumnRef {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let (qpath, index) =
+            s.split_once('@').ok_or_else(|| anyhow::anyhow!("invalid column ref"))?;
+        Ok(Self { qpath: qpath.parse()?, index: index.parse()? })
+    }
 }
 
 pub type FunctionCall<E = Expr> = (MonoFunction, Box<[E]>);
@@ -174,7 +178,7 @@ impl fmt::Display for ExprKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match &self {
             ExprKind::Literal(value) => write!(f, "{value}"),
-            ExprKind::ColumnRef { qpath, index: _ } => write!(f, "{qpath}"),
+            ExprKind::ColumnRef(ColumnRef { qpath, index: _ }) => write!(f, "{qpath}"),
             ExprKind::Array(exprs) => write!(f, "[{}]", exprs.iter().format(", ")),
             ExprKind::FunctionCall { function, args } => {
                 write!(f, "{}({})", function.name(), args.iter().format(", "))

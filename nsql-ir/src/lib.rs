@@ -519,10 +519,10 @@ impl QueryPlan {
         let projection = (0..k)
             .map(|i| Expr {
                 ty: schema[i].clone(),
-                kind: ExprKind::ColumnRef {
+                kind: ExprKind::ColumnRef(ColumnRef {
                     qpath: QPath::new("", format!("{i}")),
                     index: TupleIndex::new(i),
-                },
+                }),
             })
             .collect::<Box<_>>();
         self.project(projection)
@@ -566,7 +566,7 @@ impl Plan {
     }
 }
 
-#[derive(Clone, PartialEq, Eq, Hash)]
+#[derive(Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct QPath {
     pub prefix: Box<Path>,
     pub name: Name,
@@ -619,7 +619,7 @@ impl fmt::Display for QPath {
     }
 }
 
-#[derive(Clone, PartialEq, Eq, Hash)]
+#[derive(Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Path {
     Qualified(QPath),
     Unqualified(Name),

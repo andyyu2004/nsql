@@ -33,41 +33,39 @@ impl Compiler {
         q: &opt::Query,
         expr: opt::Expr<'_>,
     ) -> Result<ExecutableExpr> {
-        self.build2(catalog, tx, q, expr)?;
+        self.build(catalog, tx, q, &expr)?;
         self.emit(ExprOp::Return);
-        let original_expr = q.original_expr(expr.id);
-        println!("{original_expr}");
-        Ok(Expr::new(original_expr, mem::take(&mut self.ops)))
+        Ok(Expr::new(expr.display(q), mem::take(&mut self.ops)))
     }
 
-    fn build2<'env, S: StorageEngine>(
+    fn build<'env, S: StorageEngine>(
         &mut self,
         catalog: &dyn FunctionCatalog<'env, S>,
         tx: &dyn Transaction<'env, S>,
         q: &opt::Query,
-        expr: opt::Expr<'_>,
+        expr: &opt::Expr<'_>,
     ) -> Result<()> {
-        match expr.kind {
-            opt::ExprKind::ColumnRef(index) => self.emit(ExprOp::Project { index }),
-            opt::ExprKind::Literal(lit) => self.emit(ExprOp::Push(lit.value(q).clone())),
-            opt::ExprKind::Array(array) => {
+        match &expr {
+            opt::Expr::ColumnRef(col) => self.emit(ExprOp::Project { index: col.index }),
+            opt::Expr::Literal(lit) => self.emit(ExprOp::Push(lit.value(q).clone())),
+            opt::Expr::Array(array) => {
                 let exprs = array.exprs(q);
                 let len = exprs.len();
                 for expr in exprs {
-                    self.build2(catalog, tx, q, expr)?;
+                    self.build(catalog, tx, q, &expr)?;
                 }
                 self.emit(ExprOp::MkArray { len });
             }
-            opt::ExprKind::Call(call) => {
+            opt::Expr::Call(call) => {
                 let function = catalog.get_function(tx, call.function().untyped())?;
                 let args = call.args(q);
                 assert_eq!(function.arity(), args.len());
                 for arg in args {
-                    self.build2(catalog, tx, q, arg)?;
+                    self.build(catalog, tx, q, &arg)?;
                 }
                 self.emit(ExprOp::Call { function });
             }
-            opt::ExprKind::Case(case) => {
+            opt::Expr::Case(case) => {
                 let scrutinee = case.scrutinee(q);
                 let cases = case.cases(q);
                 let else_expr = case.else_expr(q);
@@ -84,13 +82,13 @@ impl Compiler {
                     // FIXME should this be evaluated once or once per branch?
                     // probably once in total (so might need a dup instruction rather than rebuilding it every time)
                     // push the scrutinee onto the stack
-                    self.build2(catalog, tx, q, scrutinee)?;
+                    self.build(catalog, tx, q, &scrutinee)?;
                     // push the comparison expression onto the stack
-                    self.build2(catalog, tx, q, when)?;
+                    self.build(catalog, tx, q, &when)?;
                     // if the comparison is false, jump to the the branch
                     next_branch_marker = Some(self.emit_jmp(|offset| ExprOp::IfNeJmp { offset }));
                     // otherwise, build the then expression
-                    self.build2(catalog, tx, q, then)?;
+                    self.build(catalog, tx, q, &then)?;
                     // and jump to the end of the case
                     end_markers.push(self.emit_jmp(|offset| ExprOp::Jmp { offset }));
                 }
@@ -101,7 +99,7 @@ impl Compiler {
                     .expect("this should exist as cases are non-empty")
                     .backpatch(self);
 
-                self.build2(catalog, tx, q, else_expr)?;
+                self.build(catalog, tx, q, &else_expr)?;
 
                 // backpatch all the end markers
                 for marker in end_markers {

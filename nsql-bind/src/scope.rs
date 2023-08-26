@@ -41,7 +41,9 @@ impl Scope {
                 ir::ExprKind::Alias { alias, .. } => {
                     (QPath::new("", Name::clone(alias)), expr.ty.clone())
                 }
-                ir::ExprKind::ColumnRef { qpath, .. } => (qpath.clone(), expr.ty.clone()),
+                ir::ExprKind::ColumnRef(ir::ColumnRef { qpath, .. }) => {
+                    (qpath.clone(), expr.ty.clone())
+                }
                 // the generated column name is a string representation of the expression
                 _ => (QPath::new("unknowntabletodo", expr.name()), expr.ty.clone()),
             })
@@ -183,7 +185,7 @@ impl Scope {
             .filter(|(idx, _)| !exclude.contains(idx))
             .map(move |(index, (path, ty))| ir::Expr {
                 ty: ty.clone(),
-                kind: ir::ExprKind::ColumnRef { qpath: path.clone(), index },
+                kind: ir::ExprKind::ColumnRef(ir::ColumnRef { qpath: path.clone(), index }),
             })
     }
 

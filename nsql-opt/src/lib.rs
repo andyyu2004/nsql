@@ -1,7 +1,8 @@
 #![deny(rust_2018_idioms)]
-#![feature(iter_array_chunks, if_let_guard)]
+#![feature(iter_array_chunks, if_let_guard, lazy_cell)]
 
 mod node;
+mod rules;
 pub mod view;
 
 use std::mem;
@@ -10,7 +11,7 @@ pub use egg::Id as NodeId;
 use ir::fold::{ExprFold, Folder, PlanFold};
 use nsql_core::LogicalType;
 
-pub use self::view::{CallExpr, Expr, ExprKind, Plan, Query};
+pub use self::view::{CallExpr, Expr, Plan, Query};
 
 trait Pass: Folder {
     fn name(&self) -> &'static str;
@@ -51,7 +52,9 @@ fn optimize_query(mut plan: Box<ir::QueryPlan>) -> Query {
         }
     }
 
-    node::Builder::default().build(&plan)
+    let mut builder = node::Builder::default();
+    let root = builder.build(&plan);
+    builder.finalize(root)
 }
 
 struct SubqueryFlattener;
@@ -135,10 +138,10 @@ impl Folder for SubqueryFlattener {
                                         ),
                                         lhs: Box::new(ir::Expr {
                                             ty: LogicalType::Int64,
-                                            kind: ir::ExprKind::ColumnRef {
+                                            kind: ir::ExprKind::ColumnRef(ir::ColumnRef {
                                                 index: ir::TupleIndex::new(0),
                                                 qpath: ir::QPath::new("", "count()"),
-                                            },
+                                            }),
                                         }),
                                         rhs: Box::new(ir::Expr {
                                             ty: LogicalType::Int64,
@@ -198,7 +201,7 @@ impl Folder for IdentityProjectionRemover {
         fn is_identity_projection(source_schema: &[LogicalType], projection: &[ir::Expr]) -> bool {
             source_schema.len() == projection.len()
                 && projection.iter().enumerate().all(|(i, expr)| match &expr.kind {
-                    ir::ExprKind::ColumnRef { index, .. } => index.as_usize() == i,
+                    ir::ExprKind::ColumnRef(ir::ColumnRef { index, .. }) => index.as_usize() == i,
                     _ => false,
                 })
         }

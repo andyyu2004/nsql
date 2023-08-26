@@ -1,8 +1,8 @@
-use core::fmt;
+use std::fmt;
 
 use egg::Id;
+use itertools::Itertools;
 use nsql_core::Oid;
-use rustc_hash::FxHashMap;
 
 use crate::node::{EGraph, Node};
 
@@ -12,7 +12,6 @@ use crate::node::{EGraph, Node};
 pub struct Query {
     egraph: EGraph,
     root: Id,
-    expr_map: FxHashMap<Id, ir::Expr>,
 }
 
 impl fmt::Display for Query {
@@ -23,17 +22,18 @@ impl fmt::Display for Query {
 }
 
 impl Query {
-    pub(crate) fn new(egraph: EGraph, root: Id, expr_map: FxHashMap<Id, ir::Expr>) -> Self {
-        Self { egraph, root, expr_map }
+    pub(crate) fn new(egraph: EGraph, root: Id) -> Self {
+        assert!(egraph.clean);
+        for eclass in egraph.classes() {
+            assert_eq!(eclass.nodes.len(), 1, "expected eclass to have exactly one unique node");
+        }
+
+        Self { egraph, root }
     }
 
     #[allow(dead_code)]
     pub(crate) fn egraph(&self) -> &EGraph {
         &self.egraph
-    }
-
-    pub fn original_expr(&self, id: Id) -> &ir::Expr {
-        self.expr_map.get(&id).expect("no original expr for id")
     }
 
     pub fn root(&self) -> Plan<'_> {
@@ -66,16 +66,18 @@ impl Query {
     }
 
     fn expr(&self, id: Id) -> Expr<'_> {
-        let kind = match *self.node(id) {
-            Node::ColumnRef(idx, _) => ExprKind::ColumnRef(idx),
-            Node::Literal(_) => ExprKind::Literal(LiteralExpr(id)),
-            Node::Array(ref exprs) => ExprKind::Array(ArrayExpr(exprs)),
+        match *self.node(id) {
+            Node::ColumnRef(ref col, _) => Expr::ColumnRef(col.clone()),
+            Node::Literal(_) => Expr::Literal(LiteralExpr(id)),
+            Node::Array(ref exprs) => Expr::Array(ArrayExpr(exprs)),
             Node::Call([f, args]) => {
-                ExprKind::Call(CallExpr { function: self.function(f), args: self.nodes(args) })
+                Expr::Call(CallExpr { function: self.function(f), args: self.nodes(args) })
             }
-            Node::Subquery(_) => todo!(),
             Node::Case([scrutinee, cases, else_expr]) => {
-                ExprKind::Case(CaseExpr { scrutinee, cases: self.nodes(cases), else_expr })
+                Expr::Case(CaseExpr { scrutinee, cases: self.nodes(cases), else_expr })
+            }
+            Node::Subquery(_) | Node::Exists(..) => {
+                panic!("subquery nodes should have been flattened during optimization")
             }
             ref node @ (Node::DummyScan
             | Node::Nodes(_)
@@ -94,9 +96,7 @@ impl Query {
             | Node::Desc(_)
             | Node::Table(_)
             | Node::Function(_)) => panic!("expected `Expr` node, got `{node}`"),
-        };
-
-        Expr { id, kind }
+        }
     }
 
     fn plan(&self, id: Id) -> Plan<'_> {
@@ -133,6 +133,7 @@ impl Query {
             | Node::Literal(_)
             | Node::ColumnRef(..)
             | Node::Array(_)
+            | Node::Exists(_)
             | Node::Subquery(_) => unreachable!("not a plan node"),
         }
     }
@@ -266,8 +267,8 @@ impl Limit {
 
     #[inline]
     pub fn limit(self, q: &Query) -> u64 {
-        match q.expr(self.limit).kind {
-            ExprKind::Literal(lit) if let &ir::Value::Int64(limit) = lit.value(q) => {
+        match q.expr(self.limit){
+            Expr::Literal(lit) if let &ir::Value::Int64(limit) = lit.value(q) => {
                 limit as u64
             },
             _ => panic!("expected `Literal` text node"),
@@ -276,8 +277,8 @@ impl Limit {
 
     #[inline]
     pub fn limit_exceeded_message(self, q: &Query) -> Option<String> {
-        match q.expr(self.msg?).kind {
-            ExprKind::Literal(lit) if let ir::Value::Text(msg) = lit.value(q) => {
+        match q.expr(self.msg?){
+            Expr::Literal(lit) if let ir::Value::Text(msg) = lit.value(q) => {
                 Some(msg.clone())
             },
             _ => panic!("expected `Literal` text node"),
@@ -305,8 +306,8 @@ impl Aggregate {
 
     #[inline]
     pub fn aggregates(self, q: &Query) -> impl ExactSizeIterator<Item = CallExpr<'_>> + '_ {
-        q.exprs(self.aggregates).map(|expr| match expr.kind {
-            ExprKind::Call(call) => call,
+        q.exprs(self.aggregates).map(|expr| match expr {
+            Expr::Call(call) => call,
             _ => panic!("expected `Call` node"),
         })
     }
@@ -411,19 +412,54 @@ impl CrossJoin {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct Expr<'a> {
-    pub id: Id,
-    pub kind: ExprKind<'a>,
-}
-
-#[derive(Debug, Clone, Copy)]
-pub enum ExprKind<'a> {
-    ColumnRef(ir::TupleIndex),
+#[derive(Debug, Clone)]
+pub enum Expr<'a> {
+    ColumnRef(ir::ColumnRef),
     Literal(LiteralExpr),
     Array(ArrayExpr<'a>),
     Call(CallExpr<'a>),
     Case(CaseExpr<'a>),
+}
+
+impl<'q> Expr<'q> {
+    pub fn display(self, q: &'q Query) -> impl fmt::Display + 'q {
+        ExprDisplay { q, expr: self }
+    }
+}
+
+struct ExprDisplay<'q> {
+    q: &'q Query,
+    expr: Expr<'q>,
+}
+
+impl<'q> fmt::Display for ExprDisplay<'q> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let q = self.q;
+        match &self.expr {
+            Expr::ColumnRef(col) => write!(f, "{}", col.qpath),
+            Expr::Literal(lit) => write!(f, "{}", lit.value(q)),
+            Expr::Array(array) => {
+                write!(f, "[{}]", array.exprs(q).map(|expr| expr.display(q)).format(", "))
+            }
+            Expr::Call(call) => {
+                write!(
+                    f,
+                    "{}({})",
+                    call.function(),
+                    call.args(q).map(|expr| expr.display(q)).format(", ")
+                )
+            }
+            Expr::Case(case) => {
+                write!(f, "CASE {} ", case.scrutinee(q).display(q))?;
+                for (when, then) in case.cases(q) {
+                    write!(f, "WHEN {} THEN {}", when.display(q), then.display(q))?;
+                }
+
+                write!(f, " ELSE {} ", case.else_expr(q).display(q))?;
+                write!(f, "END")
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy)]

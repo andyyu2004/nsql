@@ -195,7 +195,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                         .iter()
                         .map(|ident| ast::Expr::Identifier(ident.clone()))
                         .map(|expr| match self.bind_expr(tx, &scope, &expr)?.kind {
-                            ir::ExprKind::ColumnRef { index, .. } => Ok(index),
+                            ir::ExprKind::ColumnRef(ir::ColumnRef { index, .. }) => Ok(index),
                             _ => unreachable!("expected column reference"),
                         })
                         .collect::<Result<Vec<_>>>()?;
@@ -210,13 +210,13 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                                 (column_index.as_usize() == column.index().as_usize()).then_some(
                                     ir::Expr {
                                         ty: source_schema[i].clone(),
-                                        kind: ir::ExprKind::ColumnRef {
+                                        kind: ir::ExprKind::ColumnRef(ir::ColumnRef {
                                             qpath: QPath::new(
                                                 table.to_string().as_ref(),
                                                 column.name(),
                                             ),
                                             index: TupleIndex::new(i),
-                                        },
+                                        }),
                                     },
                                 )
                             },
@@ -1129,12 +1129,12 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
             ast::Expr::Value(literal) => self.bind_value_expr(literal),
             ast::Expr::Identifier(ident) => {
                 let (qpath, ty, index) = self.bind_ident(scope, ident)?;
-                (ty, ir::ExprKind::ColumnRef { qpath, index })
+                (ty, ir::ExprKind::ColumnRef(ir::ColumnRef { qpath, index }))
             }
             ast::Expr::CompoundIdentifier(ident) => {
                 let path = self.lower_path(ident)?;
                 let (qpath, ty, index) = scope.lookup_column(&path)?;
-                (ty, ir::ExprKind::ColumnRef { qpath, index })
+                (ty, ir::ExprKind::ColumnRef(ir::ColumnRef { qpath, index }))
             }
             ast::Expr::UnaryOp { op, expr } => {
                 let expr = Box::new(f(expr)?);

@@ -4,7 +4,7 @@ use std::ops::ControlFlow;
 use anyhow::anyhow;
 
 use crate::visit::Visitor;
-use crate::{Expr, ExprKind, QueryPlan};
+use crate::{ColumnRef, Expr, ExprKind, QueryPlan};
 
 #[derive(Default)]
 struct Validator {
@@ -28,7 +28,7 @@ impl std::error::Error for ValidationError {}
 impl Visitor for Validator {
     fn visit_expr(&mut self, plan: &QueryPlan, expr: &Expr) -> ControlFlow<()> {
         match &expr.kind {
-            ExprKind::ColumnRef { qpath, index } => {
+            ExprKind::ColumnRef(ColumnRef { qpath, index }) => {
                 if index.as_usize() >= plan.schema().len() {
                     self.errors.push(anyhow!(
                         "column reference out of bounds: {index} >= {} (path: {})",

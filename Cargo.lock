@@ -1399,9 +1399,11 @@ name = "nsql-opt"
 version = "0.1.0"
 dependencies = [
  "egg",
+ "itertools 0.11.0",
  "nsql-core",
  "nsql-ir",
  "rustc-hash",
+ "tracing",
 ]
 
 [[package]]
