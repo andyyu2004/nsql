@@ -81,8 +81,7 @@ impl Query {
             | Node::Nodes(_)
             | Node::Project(_)
             | Node::Filter(_)
-            | Node::Join(_)
-            | Node::CrossJoin(_)
+            | Node::Join(..)
             | Node::Unnest(_)
             | Node::Order(_)
             | Node::Limit(_)
@@ -93,7 +92,6 @@ impl Query {
             | Node::Insert(_)
             | Node::Update(_)
             | Node::Desc(_)
-            | Node::JoinOn(_, _)
             | Node::Table(_)
             | Node::Function(_)) => panic!("expected `Expr` node, got `{node}`"),
         };
@@ -109,8 +107,7 @@ impl Query {
                 Plan::Projection(Projection { projection, source })
             }
             Node::Filter([source, predicate]) => Plan::Filter(Filter { source, predicate }),
-            Node::Join([join_expr, lhs, rhs]) => Plan::Join(Join { join_expr, lhs, rhs }),
-            Node::CrossJoin([lhs, rhs]) => Plan::CrossJoin(CrossJoin { lhs, rhs }),
+            Node::Join(join_kind, [lhs, rhs]) => Plan::Join(Join { join_kind, lhs, rhs }),
             Node::Unnest(expr) => Plan::Unnest(Unnest { expr }),
             Node::Order([source, order_exprs]) => Plan::Order(Order { source, order_exprs }),
             Node::Limit([source, limit]) => Plan::Limit(Limit { source, limit, msg: None }),
@@ -136,8 +133,7 @@ impl Query {
             | Node::Literal(_)
             | Node::ColumnRef(..)
             | Node::Array(_)
-            | Node::Subquery(_)
-            | Node::JoinOn(..) => unreachable!("not a plan node"),
+            | Node::Subquery(_) => unreachable!("not a plan node"),
         }
     }
 }
@@ -148,7 +144,6 @@ pub enum Plan<'a> {
     Update(Update),
     Projection(Projection),
     Join(Join),
-    CrossJoin(CrossJoin),
     Limit(Limit),
     Aggregate(Aggregate),
     Filter(Filter),
@@ -376,20 +371,15 @@ impl<'a> Values<'a> {
 
 #[derive(Debug, Copy, Clone)]
 pub struct Join {
-    join_expr: Id,
+    join_kind: ir::JoinKind,
     lhs: Id,
     rhs: Id,
 }
 
 impl Join {
     #[inline]
-    pub fn join_expr(self, q: &Query) -> ir::Join<Expr<'_>> {
-        match q.node(self.join_expr) {
-            Node::JoinOn(kind, expr) => {
-                ir::Join::Constrained(*kind, ir::JoinConstraint::On(q.expr(*expr)))
-            }
-            _ => panic!("expected `JoinOn` node"),
-        }
+    pub fn join_kind(self) -> ir::JoinKind {
+        self.join_kind
     }
 
     #[inline]

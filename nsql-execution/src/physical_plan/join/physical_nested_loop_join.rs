@@ -11,7 +11,8 @@ use crate::pipeline::{MetaPipelineBuilder, PipelineBuilder, PipelineBuilderArena
 #[derive(Debug)]
 pub(crate) struct PhysicalNestedLoopJoin<'env, 'txn, S, M> {
     children: [Arc<dyn PhysicalNode<'env, 'txn, S, M>>; 2],
-    join: ir::Join<ExecutableExpr>,
+    join_kind: ir::JoinKind,
+    join_predicate: ExecutableExpr,
     // mutex is only used during build phase
     rhs_tuples_build: Mutex<Vec<Tuple>>,
     // tuples are moved into this vector during finalization (to avoid unnecessary locks)
@@ -24,12 +25,14 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     PhysicalNestedLoopJoin<'env, 'txn, S, M>
 {
     pub fn plan(
-        join: ir::Join<ExecutableExpr>,
+        join_kind: ir::JoinKind,
+        join_predicate: ExecutableExpr,
         probe_node: Arc<dyn PhysicalNode<'env, 'txn, S, M>>,
         build_node: Arc<dyn PhysicalNode<'env, 'txn, S, M>>,
     ) -> Arc<dyn PhysicalNode<'env, 'txn, S, M>> {
         Arc::new(Self {
-            join,
+            join_kind,
+            join_predicate,
             children: [probe_node, build_node],
             found_match_for_tuple: AtomicBool::new(false),
             rhs_index: AtomicUsize::new(0),
@@ -124,7 +127,7 @@ impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalOperator<'
 
                 let found_match = self.found_match_for_tuple.swap(false, atomic::Ordering::Relaxed);
                 // emit the lhs_tuple padded with nulls if no match was found
-                if !found_match && self.join.is_left() {
+                if !found_match && self.join_kind.is_left() {
                     return Ok(OperatorState::Yield(lhs_tuple.fill_right(rhs_tuple_width)));
                 }
                 return Ok(OperatorState::Continue);
@@ -134,32 +137,20 @@ impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalOperator<'
         let rhs_tuple = &rhs_tuples[rhs_index];
         let joint_tuple = lhs_tuple.join(rhs_tuple);
 
-        match &self.join {
-            ir::Join::Constrained(_kind, constraint) => {
-                let keep = match constraint {
-                    ir::JoinConstraint::On(predicate) => {
-                        predicate.execute(&joint_tuple).cast::<Option<bool>>()?.unwrap_or(false)
-                    }
-                };
+        let keep =
+            self.join_predicate.execute(&joint_tuple).cast::<Option<bool>>()?.unwrap_or(false);
 
-                if keep {
-                    self.found_match_for_tuple.store(true, atomic::Ordering::Relaxed);
-                    Ok(OperatorState::Again(Some(joint_tuple)))
-                } else if rhs_index == rhs_tuples.len() - 1
-                    && self.join.is_right()
-                    && !self.found_match_for_tuple.load(atomic::Ordering::Relaxed)
-                {
-                    // emit a rhs_tuple padded with nulls if no match was found
-                    Ok(OperatorState::Again(Some(rhs_tuple.clone().fill_left(lhs_width))))
-                } else {
-                    Ok(OperatorState::Again(None))
-                }
-            }
-            // ir::Join::Inner(constraint)
-            // | ir::Join::Left(constraint)
-            // | ir::Join::Right(constraint)
-            // | ir::Join::Full(constraint) => {
-            ir::Join::Cross => Ok(OperatorState::Again(Some(joint_tuple))),
+        if keep {
+            self.found_match_for_tuple.store(true, atomic::Ordering::Relaxed);
+            Ok(OperatorState::Again(Some(joint_tuple)))
+        } else if rhs_index == rhs_tuples.len() - 1
+            && self.join_kind.is_right()
+            && !self.found_match_for_tuple.load(atomic::Ordering::Relaxed)
+        {
+            // emit a rhs_tuple padded with nulls if no match was found
+            Ok(OperatorState::Again(Some(rhs_tuple.clone().fill_left(lhs_width))))
+        } else {
+            Ok(OperatorState::Again(None))
         }
     }
 }
@@ -204,7 +195,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Explain<'_, 
         _tx: &dyn Transaction<'_, S>,
         f: &mut fmt::Formatter<'_>,
     ) -> explain::Result {
-        write!(f, "nested loop join ({})", self.join)?;
+        write!(f, "nested loop join ({})", self.join_kind)?;
         Ok(())
     }
 }

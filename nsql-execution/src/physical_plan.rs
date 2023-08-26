@@ -175,24 +175,25 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalPlanner<'env, S> {
                 let exprs = projection.exprs(q);
                 PhysicalProjection::plan(f(self, source)?, self.compile_exprs(tx, q, exprs)?)
             }
-            opt::Plan::CrossJoin(join) => PhysicalNestedLoopJoin::plan(
-                ir::Join::Cross,
-                f(self, join.lhs(q))?,
-                f(self, join.rhs(q))?,
-            ),
-            opt::Plan::Join(join) => PhysicalNestedLoopJoin::plan(
-                join.join_expr(q).try_map(|expr| self.compile_expr(tx, q, expr))?,
-                f(self, join.lhs(q))?,
-                f(self, join.rhs(q))?,
-            ),
+            opt::Plan::Filter(filter) => match filter.source(q) {
+                // we expect a join node to be followed by a filter
+                opt::Plan::Join(join) => PhysicalNestedLoopJoin::plan(
+                    join.join_kind(),
+                    self.compile_expr(tx, q, filter.predicate(q))?,
+                    f(self, join.lhs(q))?,
+                    f(self, join.rhs(q))?,
+                ),
+                _ => {
+                    let source = f(self, filter.source(q))?;
+                    let predicate = self.compile_expr(tx, q, filter.predicate(q))?;
+                    PhysicalFilter::plan(source, predicate)
+                }
+            },
+            opt::Plan::Join(..) => unreachable!("expected join to be the child of a filter"),
             opt::Plan::Limit(limit) => {
                 let source = f(self, limit.source(q))?;
                 PhysicalLimit::plan(source, limit.limit(q), limit.limit_exceeded_message(q))
             }
-            opt::Plan::Filter(filter) => PhysicalFilter::plan(
-                f(self, filter.source(q))?,
-                self.compile_expr(tx, q, filter.predicate(q))?,
-            ),
             opt::Plan::Aggregate(agg) => {
                 let functions = self.compile_aggregate_functions(tx, q, agg.aggregates(q))?;
                 let group_by = agg.group_by(q);

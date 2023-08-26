@@ -19,12 +19,6 @@ trait Pass: Folder {
 #[allow(clippy::boxed_local)]
 pub fn optimize(plan: Box<ir::Plan>) -> Box<ir::Plan<Query>> {
     let optimized = match *plan {
-        // ir::Plan::Show(_)
-        // | ir::Plan::Drop(_)
-        // | ir::Plan::Transaction(_)
-        // | ir::Plan::CreateNamespace(_)
-        // | ir::Plan::CreateTable(_)
-        // | ir::Plan::SetVariable { .. } => plan,
         ir::Plan::Show(show) => ir::Plan::Show(show),
         ir::Plan::Drop(refs) => ir::Plan::Drop(refs),
         ir::Plan::Transaction(txn) => ir::Plan::Transaction(txn),
@@ -96,7 +90,6 @@ impl Folder for SubqueryFlattener {
                         ir::SubqueryKind::Scalar => {
                             self.found_subquery |= true;
                             assert_eq!(subquery_plan.schema().len(), 1);
-                            // FIXME we should error if the number of rows exceeds one
                             let subquery_plan = subquery_plan.strict_limit(
                                 1,
                                 "subquery used as an expression must return at most one row",
@@ -106,7 +99,7 @@ impl Folder for SubqueryFlattener {
                             let i = ir::TupleIndex::new(plan.schema().len());
                             // Replace the parent plan with a join of the former parent plan and the subquery plan.
                             // This will add a new column to the parent plan's schema, which we will then reference
-                            *plan = *Box::new(mem::take(plan)).join(ir::Join::Cross, subquery_plan);
+                            *plan = *Box::new(mem::take(plan)).cross_join(subquery_plan);
 
                             ir::Expr::new_column_ref(
                                 ty,
@@ -156,7 +149,7 @@ impl Folder for SubqueryFlattener {
 
                             // again, we replace the parent with a cross join
                             let i = ir::TupleIndex::new(plan.schema().len());
-                            *plan = *Box::new(mem::take(plan)).join(ir::Join::Cross, subquery_plan);
+                            *plan = *Box::new(mem::take(plan)).cross_join(subquery_plan);
 
                             ir::Expr::new_column_ref(
                                 LogicalType::Int64,

@@ -753,28 +753,32 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
         let (rhs_scope, rhs) = self.bind_table_factor(tx, &Scope::default(), &join.relation)?;
 
         let scope = lhs_scope.join(&rhs_scope);
+        let kind = match join.join_operator {
+            ast::JoinOperator::Inner(_) | ast::JoinOperator::CrossJoin => ir::JoinKind::Inner,
+            ast::JoinOperator::LeftOuter(_) => ir::JoinKind::Left,
+            ast::JoinOperator::RightOuter(_) => ir::JoinKind::Right,
+            ast::JoinOperator::FullOuter(_) => ir::JoinKind::Full,
+            _ => not_implemented!("{kind}"),
+        };
+
         let plan = match &join.join_operator {
-            ast::JoinOperator::CrossJoin => lhs.join(ir::Join::Cross, rhs),
-            ast::JoinOperator::Inner(constraint) => match constraint {
-                // an inner join without a join constraint is the same as a cross join
-                ast::JoinConstraint::None => lhs.join(ir::Join::Cross, rhs),
-                _ => {
-                    let constraint = self.bind_join_constraint(tx, &scope, constraint)?;
-                    lhs.join(ir::Join::Constrained(ir::JoinKind::Inner, constraint), rhs)
+            ast::JoinOperator::CrossJoin | ast::JoinOperator::Inner(ast::JoinConstraint::None) => {
+                lhs.cross_join(rhs)
+            }
+            ast::JoinOperator::Inner(constraint)
+            | ast::JoinOperator::LeftOuter(constraint)
+            | ast::JoinOperator::RightOuter(constraint)
+            | ast::JoinOperator::FullOuter(constraint) => match constraint {
+                ast::JoinConstraint::On(predicate) => {
+                    let predicate = self.bind_predicate(tx, &scope, predicate)?;
+                    lhs.join(kind, rhs, predicate)
+                }
+                ast::JoinConstraint::Using(_) => not_implemented!("using join"),
+                ast::JoinConstraint::Natural => not_implemented!("natural join"),
+                ast::JoinConstraint::None => {
+                    bail!("must provide a join constraint for non-inner joins")
                 }
             },
-            ast::JoinOperator::LeftOuter(constraint) => {
-                let constraint = self.bind_join_constraint(tx, &scope, constraint)?;
-                lhs.join(ir::Join::Constrained(ir::JoinKind::Left, constraint), rhs)
-            }
-            ast::JoinOperator::RightOuter(constraint) => {
-                let constraint = self.bind_join_constraint(tx, &scope, constraint)?;
-                lhs.join(ir::Join::Constrained(ir::JoinKind::Right, constraint), rhs)
-            }
-            ast::JoinOperator::FullOuter(constraint) => {
-                let constraint = self.bind_join_constraint(tx, &scope, constraint)?;
-                lhs.join(ir::Join::Constrained(ir::JoinKind::Full, constraint), rhs)
-            }
             ast::JoinOperator::LeftSemi(_)
             | ast::JoinOperator::RightSemi(_)
             | ast::JoinOperator::LeftAnti(_)
@@ -784,30 +788,6 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
         };
 
         Ok((scope, plan))
-    }
-
-    fn bind_join_constraint(
-        &self,
-        tx: &dyn Transaction<'env, S>,
-        scope: &Scope,
-        constraint: &ast::JoinConstraint,
-    ) -> Result<ir::JoinConstraint> {
-        match &constraint {
-            ast::JoinConstraint::On(expr) => {
-                let predicate = self.bind_predicate(tx, scope, expr)?;
-                ensure!(
-                    predicate.ty == LogicalType::Bool,
-                    "join predicate must be a boolean expression"
-                );
-                Ok(ir::JoinConstraint::On(predicate))
-            }
-            ast::JoinConstraint::None => {
-                bail!("must provide a join constraint for non-inner joins")
-            }
-            ast::JoinConstraint::Using(_) | ast::JoinConstraint::Natural => {
-                not_implemented!("only `on` joins are currently supported")
-            }
-        }
     }
 
     fn bind_table_factor(

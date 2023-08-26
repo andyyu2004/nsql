@@ -105,27 +105,12 @@ impl PlanFold for QueryPlan {
                 schema,
             },
             QueryPlan::Values { values, schema } => QueryPlan::Values { values, schema },
-            QueryPlan::Join { schema, join, lhs, rhs } => {
-                let join = match join {
-                    Join::Cross => Join::Cross,
-                    Join::Constrained(kind, constraint) => Join::Constrained(
-                        kind,
-                        match constraint {
-                            JoinConstraint::On(expr) => JoinConstraint::On(
-                                // FIXME: not sure how to pass the plan here
-                                folder.fold_expr(&mut QueryPlan::DummyScan, expr),
-                            ),
-                        },
-                    ),
-                };
-
-                QueryPlan::Join {
-                    schema,
-                    join,
-                    lhs: folder.fold_boxed_plan(lhs),
-                    rhs: folder.fold_boxed_plan(rhs),
-                }
-            }
+            QueryPlan::Join { schema, join, lhs, rhs } => QueryPlan::Join {
+                schema,
+                join,
+                lhs: folder.fold_boxed_plan(lhs),
+                rhs: folder.fold_boxed_plan(rhs),
+            },
             QueryPlan::Limit { source, limit, exceeded_message } => {
                 QueryPlan::Limit { source: folder.fold_boxed_plan(source), limit, exceeded_message }
             }

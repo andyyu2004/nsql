@@ -26,8 +26,8 @@ define_language! {
         "dummy" = DummyScan,
         "project" = Project([Id; 2]),            // (project <source> (<exprs> ...))
         "filter" = Filter([Id; 2]),              // (filter <source> <predicate>)
-        "join" = Join([Id; 3]),                  // (join <join-expr> <lhs> <rhs>)
-        "cross-join" = CrossJoin([Id; 2]),       // (cross-join <lhs> <rhs>)
+        Join(ir::JoinKind, [Id; 2]),             // (join <join-kind> <lhs> <rhs>)
+        // "cross-join" = CrossJoin([Id; 2]),       // (cross-join <lhs> <rhs>)
         "unnest" = Unnest(Id),                   // (unnest <array-expr>)
         "order" = Order([Id; 2]),                // (order <source> (<order-exprs>...))
         "limit" = Limit([Id; 2]),                // (limit <source> <limit>)
@@ -41,7 +41,6 @@ define_language! {
 
         // pseudo expressions
         "desc" = Desc(Id),
-        JoinOn(ir::JoinKind, Id),
         Table(Oid<ir::Table>),
         Function(Oid<ir::Function>),
         "call" = Call([Id; 2]), // (call f (args...))
@@ -104,19 +103,7 @@ impl Builder {
             ir::QueryPlan::Join { schema: _, join, lhs, rhs } => {
                 let lhs = self.build_query(lhs);
                 let rhs = self.build_query(rhs);
-                let dummy = self.dummy();
-                match join {
-                    ir::Join::Cross => Node::CrossJoin([lhs, rhs]),
-                    ir::Join::Constrained(kind, constraint) => {
-                        let constraint = match constraint {
-                            ir::JoinConstraint::On(expr) => {
-                                // FIXME passing dummy plan here is incorrect
-                                Node::JoinOn(*kind, self.build_expr(dummy, expr))
-                            }
-                        };
-                        Node::Join([self.egraph.add(constraint), lhs, rhs])
-                    }
-                }
+                Node::Join(*join, [lhs, rhs])
             }
             ir::QueryPlan::Limit { source, limit, exceeded_message } => {
                 let source = self.build_query(source);

@@ -1,6 +1,6 @@
 use std::ops::ControlFlow;
 
-use crate::{Expr, ExprKind, Join, JoinConstraint, Plan, QueryPlan};
+use crate::{Expr, ExprKind, Plan, QueryPlan};
 // FIXME returning ControlFlow is probably better than using bool these days, also lets the visitor
 // carry a value on break which is convenient (can also use `?` for ergonomics)
 
@@ -54,13 +54,7 @@ pub trait Visitor {
             // FIXME where is the child of unnest try unnesting a column in a test before continuing with this change
             QueryPlan::Unnest { expr, schema: _ } => self.visit_expr(&QueryPlan::DummyScan, expr),
             QueryPlan::Values { values: _, schema: _ } => ControlFlow::Continue(()),
-            QueryPlan::Join { schema: _, join, lhs, rhs } => {
-                match join {
-                    Join::Constrained(_kind, constraint) => {
-                        self.visit_join_constraint(plan, constraint)
-                    }
-                    Join::Cross => ControlFlow::Continue(()),
-                }?;
+            QueryPlan::Join { schema: _, join: _, lhs, rhs } => {
                 self.visit_query_plan(lhs)?;
                 self.visit_query_plan(rhs)
             }
@@ -97,16 +91,6 @@ pub trait Visitor {
 
                 self.visit_query_plan(source)
             }
-        }
-    }
-
-    fn visit_join_constraint(
-        &mut self,
-        plan: &QueryPlan,
-        constraint: &JoinConstraint,
-    ) -> ControlFlow<()> {
-        match constraint {
-            JoinConstraint::On(expr) => self.visit_expr(plan, expr),
         }
     }
 

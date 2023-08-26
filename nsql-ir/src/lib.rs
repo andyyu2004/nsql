@@ -142,7 +142,7 @@ pub enum QueryPlan {
     },
     Join {
         schema: Schema,
-        join: Join,
+        join: JoinKind,
         lhs: Box<QueryPlan>,
         rhs: Box<QueryPlan>,
     },
@@ -402,84 +402,6 @@ impl fmt::Display for JoinKind {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum Join<E = Expr> {
-    Constrained(JoinKind, JoinConstraint<E>),
-    Cross,
-}
-
-impl<E> Join<E> {
-    #[inline]
-    pub fn is_left(&self) -> bool {
-        matches!(self,Join::Constrained(kind, _) if kind.is_left())
-    }
-
-    #[inline]
-    pub fn is_right(&self) -> bool {
-        matches!(self,Join::Constrained(kind, _) if kind.is_right())
-    }
-
-    pub fn map<X>(self, f: impl FnOnce(E) -> X) -> Join<X> {
-        match self {
-            Join::Cross => Join::Cross,
-            Join::Constrained(kind, constraint) => Join::Constrained(kind, constraint.map(f)),
-        }
-    }
-
-    pub fn try_map<X, Error>(
-        self,
-        f: impl FnOnce(E) -> Result<X, Error>,
-    ) -> Result<Join<X>, Error> {
-        match self {
-            Join::Cross => Ok(Join::Cross),
-            Join::Constrained(kind, constraint) => {
-                Ok(Join::Constrained(kind, constraint.try_map(f)?))
-            }
-        }
-    }
-}
-
-impl<E: fmt::Display> fmt::Display for Join<E> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Join::Constrained(kind, constraint) => write!(f, "{kind} JOIN {constraint}"),
-            Join::Cross => write!(f, "CROSS JOIN"),
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum JoinConstraint<E = Expr> {
-    On(E),
-}
-
-impl<E> JoinConstraint<E> {
-    #[inline]
-    pub fn map<X>(self, f: impl FnOnce(E) -> X) -> JoinConstraint<X> {
-        match self {
-            JoinConstraint::On(expr) => JoinConstraint::On(f(expr)),
-        }
-    }
-
-    #[inline]
-    pub fn try_map<X, Error>(
-        self,
-        f: impl FnOnce(E) -> Result<X, Error>,
-    ) -> Result<JoinConstraint<X>, Error> {
-        match self {
-            JoinConstraint::On(expr) => f(expr).map(JoinConstraint::On),
-        }
-    }
-}
-
-impl<E: fmt::Display> fmt::Display for JoinConstraint<E> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            JoinConstraint::On(expr) => write!(f, "ON {}", expr),
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct OrderExpr<E = Expr> {
     pub expr: E,
     pub asc: bool,
@@ -562,9 +484,18 @@ impl QueryPlan {
     }
 
     #[inline]
-    pub fn join(self: Box<Self>, join: Join, rhs: Box<Self>) -> Box<Self> {
+    pub fn cross_join(self: Box<Self>, rhs: Box<Self>) -> Box<Self> {
+        self.join(
+            JoinKind::Inner,
+            rhs,
+            Expr { ty: LogicalType::Bool, kind: ExprKind::Literal(Value::Bool(true)) },
+        )
+    }
+
+    #[inline]
+    pub fn join(self: Box<Self>, join: JoinKind, rhs: Box<Self>, predicate: Expr) -> Box<Self> {
         let schema = self.schema().iter().chain(rhs.schema()).cloned().collect();
-        Box::new(Self::Join { schema, join, lhs: self, rhs })
+        Box::new(Self::Join { schema, join, lhs: self, rhs }).filter(predicate)
     }
 
     #[inline]
