@@ -1282,6 +1282,7 @@ dependencies = [
  "nsql-catalog",
  "nsql-core",
  "nsql-execution",
+ "nsql-ir",
  "nsql-lmdb",
  "nsql-opt",
  "nsql-parse",

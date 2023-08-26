@@ -226,7 +226,8 @@ impl<'env, S: StorageEngine> Catalog<'env, S> {
         Ok(catalog)
     }
 
-    pub(crate) fn storage(&self) -> &'env S {
+    #[inline]
+    pub fn storage(&self) -> &'env S {
         self.storage
     }
 }

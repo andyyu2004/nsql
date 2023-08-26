@@ -12,7 +12,7 @@ use std::str::FromStr;
 pub use anyhow::Error;
 use anyhow::{anyhow, bail, ensure};
 use ir::expr::EvalNotConst;
-use ir::{Decimal, Path, QPath, TransactionMode, TupleIndex};
+use ir::{Decimal, Path, QPath, TupleIndex};
 use itertools::Itertools;
 use nsql_catalog::{
     Catalog, ColumnIndex, CreateColumnInfo, CreateNamespaceInfo, Function, FunctionKind, Namespace,
@@ -46,8 +46,8 @@ macro_rules! unbound {
     ($ty:ty, $path:expr) => {
         anyhow::anyhow!("{} `{}` not in scope", <$ty>::desc(), $path.clone())
     };
-    ($ty:ty, $path:expr, $key:expr) => {
-        anyhow::anyhow!("{} `{}` not in scope {:?}", <$ty>::desc(), $path.clone(), $key)
+    ($ty:ty, $path:expr) => {
+        anyhow::anyhow!("{} `{}` not in scope {:?}", <$ty>::desc(), $path.clone())
     };
 }
 
@@ -60,14 +60,13 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
         Self { catalog }
     }
 
-    pub fn requires_write_transaction(&self, storage: &S, stmt: &ast::Statement) -> Result<bool> {
-        // create a temporary transaction to bind the statement to figure out what transaction mode is required to execute it
-        let tmp_tx = storage.begin()?;
-        let stmt = self.bind(&tmp_tx, stmt)?;
-        Ok(matches!(stmt.required_transaction_mode(), TransactionMode::ReadWrite))
+    pub fn bind(&self, stmt: &ast::Statement) -> Result<Box<ir::Plan>> {
+        let tx = self.catalog.storage().begin()?;
+        let plan = self.bind_with(&tx, stmt)?;
+        Ok(plan)
     }
 
-    pub fn bind(
+    pub fn bind_with(
         &self,
         tx: &dyn Transaction<'env, S>,
         stmt: &ast::Statement,
@@ -382,7 +381,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                 not_implemented!(*analyze);
                 not_implemented!(format.is_some());
                 not_implemented!(*verbose);
-                ir::Plan::Explain(self.bind(tx, statement)?)
+                ir::Plan::Explain(self.bind_with(tx, statement)?)
             }
             ast::Statement::SetVariable { local, hivevar, variable, value } => {
                 not_implemented!(*hivevar);
@@ -583,7 +582,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
         let (table, namespace, name) = self.get_namespaced_entity_view::<T>(tx, path)?;
         let entity = table
             .find(self.catalog, tx, Some(namespace.key()), &name)?
-            .ok_or_else(|| unbound!(T, path, name))?;
+            .ok_or_else(|| unbound!(T, path))?;
 
         Ok(entity.key())
     }
@@ -602,11 +601,10 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
     fn bind_subquery(
         &self,
         tx: &dyn Transaction<'env, S>,
-        _scope: &Scope,
+        scope: &Scope,
         subquery: &ast::Query,
     ) -> Result<Box<ir::QueryPlan>> {
-        // passing empty scope for now to disallow correlated subqueries
-        let (_scope, plan) = self.bind_query(tx, &Scope::default(), subquery)?;
+        let (_scope, plan) = self.bind_query(tx, scope, subquery)?;
         Ok(plan)
     }
 

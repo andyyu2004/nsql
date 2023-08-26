@@ -136,24 +136,29 @@ impl<S: StorageEngine> Shared<S> {
         let stmt = &statements[0];
 
         let binder = Binder::new(catalog);
-        let (auto_commit, tx) = match tx {
-            Some(tx) => (false, tx),
-            None => (
-                true,
-                match binder.requires_write_transaction(storage, stmt)? {
-                    true => {
+        let (auto_commit, tx, plan) = match tx {
+            Some(tx) => {
+                tracing::info!("reusing existing transaction");
+                let plan = binder.bind_with(&tx, stmt)?;
+                (false, tx, plan)
+            }
+            None => {
+                let plan = binder.bind(stmt)?;
+                let tx = match plan.required_transaction_mode() {
+                    ir::TransactionMode::ReadOnly => {
                         tracing::info!("beginning fresh write transaction");
-                        ReadOrWriteTransaction::Write(storage.begin_write()?)
-                    }
-                    false => {
-                        tracing::info!("beginning fresh read transaction");
                         ReadOrWriteTransaction::Read(storage.begin()?)
                     }
-                },
-            ),
+                    ir::TransactionMode::ReadWrite => {
+                        tracing::info!("beginning fresh read transaction");
+                        ReadOrWriteTransaction::Write(storage.begin_write()?)
+                    }
+                };
+                (true, tx, plan)
+            }
         };
 
-        let plan = optimize(binder.bind(&tx, stmt)?);
+        let plan = optimize(plan);
 
         let mut planner = PhysicalPlanner::new(catalog);
 
