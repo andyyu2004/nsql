@@ -49,7 +49,7 @@ impl fmt::Display for TransactionMode {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum TransactionStmt {
     Begin(TransactionMode),
     Commit,
@@ -66,7 +66,7 @@ impl fmt::Display for TransactionStmt {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ObjectType {
     Table,
 }

@@ -8,7 +8,7 @@ pub(crate) type EGraph = egg::EGraph<Node, ()>;
 
 define_language! {
     /// The logical optimizer specific language for rule based optimization.
-    // This should be crate-private
+    // This should be crate-private. The `view` module exposes a typed view into these raw nodes.
     pub(crate) enum Node {
         // scalar expressions
         Literal(Value),

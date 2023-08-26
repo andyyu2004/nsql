@@ -85,8 +85,9 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalPlanner<'env, S> {
             ir::Plan::Show(object_type) => PhysicalShow::plan(object_type),
             ir::Plan::Query(q) => self.plan_node(tx, &q, q.root())?,
             ir::Plan::Explain(logical_plan) => {
-                let physical_plan = self.plan(tx, logical_plan.clone())?;
-                self.explain_plan(logical_plan, physical_plan.0)?
+                let logical_explain = logical_plan.to_string();
+                let physical_plan = self.plan(tx, logical_plan)?;
+                PhysicalExplain::plan(logical_explain, physical_plan.0)
             }
             ir::Plan::Drop(..) | ir::Plan::CreateNamespace(_) | ir::Plan::CreateTable(_) => {
                 unreachable!("write plans should go through plan_write_node")
@@ -110,20 +111,13 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalPlanner<'env, S> {
             ir::Plan::Drop(refs) => PhysicalDrop::plan(refs),
             ir::Plan::Query(q) => self.plan_write_query(tx, &q, q.root())?,
             ir::Plan::Explain(logical_plan) => {
-                let physical_plan = self.plan_write(tx, logical_plan.clone())?;
-                self.explain_plan(logical_plan, physical_plan.0)?
+                let logical_explain = logical_plan.to_string();
+                let physical_plan = self.plan_write(tx, logical_plan)?;
+                PhysicalExplain::plan(logical_explain, physical_plan.0)
             }
         };
 
         Ok(PhysicalPlan(node))
-    }
-
-    fn explain_plan<M: ExecutionMode<'env, S>>(
-        &self,
-        logical_plan: Box<ir::Plan<opt::Query>>,
-        physical_plan: Arc<dyn PhysicalNode<'env, 'txn, S, M>>,
-    ) -> Result<Arc<dyn PhysicalNode<'env, 'txn, S, M>>> {
-        Ok(PhysicalExplain::plan(logical_plan, physical_plan))
     }
 
     fn plan_write_query(

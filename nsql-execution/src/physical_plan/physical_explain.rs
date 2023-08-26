@@ -5,7 +5,7 @@ use super::*;
 use crate::config::ExplainOutput;
 
 pub struct PhysicalExplain<'env, 'txn, S, M> {
-    logical_plan: Box<ir::Plan<opt::Query>>,
+    logical_plan_explain: String,
     children: [Arc<dyn PhysicalNode<'env, 'txn, S, M>>; 1],
 }
 
@@ -20,10 +20,10 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
 {
     #[inline]
     pub(crate) fn plan(
-        logical_plan: Box<ir::Plan<opt::Query>>,
+        logical_plan: impl Into<String>,
         physical_plan: Arc<dyn PhysicalNode<'env, 'txn, S, M>>,
     ) -> Arc<dyn PhysicalNode<'env, 'txn, S, M>> {
-        Arc::new(Self { logical_plan, children: [physical_plan] })
+        Arc::new(Self { logical_plan_explain: logical_plan.into(), children: [physical_plan] })
     }
 }
 
@@ -78,7 +78,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
         );
         let pipeline_explain = pipeline.display(catalog, &tx).to_string();
 
-        let logical_explain = self.logical_plan.to_string();
+        let logical_explain = self.logical_plan_explain.clone();
 
         let explain_output = scx.config().explain_output();
         let stringified = match explain_output {

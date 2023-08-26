@@ -6,7 +6,6 @@ use nsql_core::Oid;
 
 use crate::node::{EGraph, Node};
 
-#[derive(Clone)]
 /// An structured view over the raw nodes
 // Not sure what a good name for this is?
 pub struct Query {
@@ -154,6 +153,7 @@ pub enum Plan<'a> {
     Unnest(Unnest),
     DummyScan,
 }
+
 
 #[derive(Debug, Copy, Clone)]
 pub struct Projection {
