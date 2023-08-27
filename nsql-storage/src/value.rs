@@ -39,6 +39,7 @@ impl Error for CastError {}
 /// An nsql value
 #[derive(
     Debug,
+    Default,
     Clone,
     PartialEq,
     Eq,
@@ -54,6 +55,7 @@ impl Error for CastError {}
 #[omit_bounds]
 #[archive(bound(serialize = "__S: rkyv::ser::ScratchSpace + rkyv::ser::Serializer"))]
 pub enum Value {
+    #[default]
     Null,
     Byte(u8),
     Int64(i64),

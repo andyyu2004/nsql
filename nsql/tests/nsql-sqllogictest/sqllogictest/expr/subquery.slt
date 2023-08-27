@@ -6,6 +6,7 @@ SELECT (SELECT 1)
 query I
 SELECT (SELECT 1 WHERE false)
 ----
+NULL
 
 query I
 (SELECT 1)
@@ -43,3 +44,7 @@ subquery used as an expression must return at most one row
 statement ok
 CREATE TABLE t1(a INTEGER PRIMARY KEY, b INTEGER, c INTEGER, d INTEGER, e INTEGER);
 
+query I
+SELECT 1, (SELECT 2 WHERE false)
+----
+1 NULL

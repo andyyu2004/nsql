@@ -142,6 +142,7 @@ pub(crate) fn get_aggregate_function(
         _ if oid == Function::SUM_INT => Box::<SumInt>::default(),
         _ if oid == Function::PRODUCT_INT => Box::<ProductInt>::default(),
         _ if oid == Function::AVG_INT => Box::<AverageInt>::default(),
+        _ if oid == Function::FIRST => Box::<First>::default(),
         _ if oid == Function::COUNT => Box::<Count>::default(),
         _ if oid == Function::COUNT_STAR => Box::<CountStar>::default(),
         _ => return None,
@@ -220,6 +221,26 @@ impl AggregateFunctionInstance for AverageInt {
 
         let f = self.value as f64 / self.count as f64;
         Value::Float64(f.to_bits())
+    }
+}
+
+#[derive(Debug, Default)]
+struct First {
+    value: Value,
+}
+
+impl AggregateFunctionInstance for First {
+    #[inline]
+    fn update(&mut self, value: Option<Value>) {
+        match value.expect("first should be passed an argument") {
+            v if self.value.is_null() => self.value = v,
+            _ => (),
+        }
+    }
+
+    #[inline]
+    fn finalize(self: Box<Self>) -> Value {
+        self.value
     }
 }
 

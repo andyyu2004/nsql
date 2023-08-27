@@ -93,11 +93,23 @@ impl Folder for SubqueryFlattener {
                         ir::SubqueryKind::Scalar => {
                             self.found_subquery |= true;
                             assert_eq!(subquery_plan.schema().len(), 1);
-                            let subquery_plan = subquery_plan.strict_limit(
-                                1,
-                                "subquery used as an expression must return at most one row",
-                            );
                             let ty = subquery_plan.schema()[0].clone();
+                            let subquery_plan = subquery_plan
+                                // add a `strict limit 1` as the subquery should not return more than one row
+                                .strict_limit(
+                                    1,
+                                    "subquery used as an expression must return at most one row",
+                                )
+                                // add a `FIRST(#0)` aggregate over the limit for when it returns no rows, we want to return `NULL` in that case
+                                .ungrouped_aggregate([(
+                                    ir::MonoFunction::new(ir::Function::first(), ty.clone()),
+                                    [ir::Expr::new_column_ref(
+                                        ty.clone(),
+                                        ir::QPath::new("", "__scalar_subquery__"),
+                                        ir::TupleIndex::new(0), // we know the subquery only has one column
+                                    )]
+                                    .into(),
+                                )]);
 
                             let i = ir::TupleIndex::new(plan.schema().len());
                             // Replace the parent plan with a join of the former parent plan and the subquery plan.

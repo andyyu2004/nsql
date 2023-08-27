@@ -94,7 +94,8 @@ impl TypeFolder for Unifier {
 
     fn fold_ty(&mut self, ty: LogicalType) -> Result<LogicalType, Self::Error> {
         match ty {
-            LogicalType::Any => Ok(self.subst.clone().expect("there was an ANY type present ")),
+            // if we have a substitution for ANY, replace it with that, otherwise default it to NULL
+            LogicalType::Any => Ok(self.subst.clone().unwrap_or(LogicalType::Null)),
             _ => ty.fold_with(self),
         }
     }

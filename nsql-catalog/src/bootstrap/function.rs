@@ -79,6 +79,7 @@ impl Function {
         ARRAY_ELEMENT,
         ARRAY_POSITION,
         RANGE2,
+        FIRST,
         AVG_INT,
         SUM_INT,
         PRODUCT_INT,
@@ -91,6 +92,10 @@ impl Function {
 
     pub fn count_star() -> Function {
         aggregate!(COUNT_STAR count: () -> Int64)
+    }
+
+    pub fn first() -> Function {
+        aggregate!(FIRST first: (Any) -> Int64)
     }
 
     pub fn equal() -> Function {
@@ -130,6 +135,7 @@ impl Function {
             aggregate!(SUM_INT     sum     : (Int64) -> Int64),
             aggregate!(AVG_INT     avg     : (Int64) -> Float64),
             aggregate!(PRODUCT_INT product : (Int64) -> Int64),
+            aggregate!(FIRST       first   : (Any)   -> Any),
             aggregate!(COUNT       count   : (Any)   -> Int64),
             aggregate!(COUNT_STAR  count   : ()      -> Int64),
             // casts
