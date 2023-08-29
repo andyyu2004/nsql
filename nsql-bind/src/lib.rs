@@ -17,8 +17,9 @@ use ir::expr::EvalNotConst;
 use ir::{Decimal, Path, QPath, TupleIndex};
 use itertools::Itertools;
 use nsql_catalog::{
-    Catalog, ColumnIndex, CreateColumnInfo, CreateNamespaceInfo, Function, FunctionKind, Namespace,
-    Operator, OperatorKind, SystemEntity, SystemTableView, Table, MAIN_SCHEMA,
+    Catalog, ColumnIdentity, ColumnIndex, CreateColumnInfo, CreateNamespaceInfo, Function,
+    FunctionKind, Namespace, Operator, OperatorKind, SystemEntity, SystemTableView, Table,
+    MAIN_SCHEMA,
 };
 use nsql_core::{LogicalType, Name, Oid, Schema};
 use nsql_parse::ast;
@@ -496,9 +497,32 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
         ensure!(idx < u8::MAX as usize, "too many columns (max 256)");
 
         let mut is_primary_key = false;
+        let mut identity = ColumnIdentity::None;
+
         for option in &column.options {
             match &option.option {
                 ast::ColumnOption::Unique { is_primary } if *is_primary => is_primary_key = true,
+                ast::ColumnOption::Generated {
+                    generated_as,
+                    sequence_options,
+                    generation_expr,
+                } => {
+                    not_implemented!(generation_expr.is_some());
+                    match generated_as {
+                        ast::GeneratedAs::Always => identity = ColumnIdentity::Always,
+                        ast::GeneratedAs::ByDefault => identity = ColumnIdentity::ByDefault,
+                        ast::GeneratedAs::ExpStored => {
+                            not_implemented!("generated expression stored")
+                        }
+                    }
+
+                    match sequence_options {
+                        Some(options) if !options.is_empty() => {
+                            not_implemented!("sequence options")
+                        }
+                        _ => (),
+                    }
+                }
                 _ => not_implemented!("column option"),
             }
         }
@@ -507,6 +531,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
             name: self.lower_name(&column.name),
             index: idx as u8,
             ty: self.lower_ty(&column.data_type)?,
+            identity,
             is_primary_key,
         })
     }

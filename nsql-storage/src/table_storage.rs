@@ -255,8 +255,8 @@ fn range_gen_arc<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
 
 #[derive(Debug, Clone)]
 pub struct TableStorageInfo {
-    pub name: Name,
-    pub columns: Vec<ColumnStorageInfo>,
+    name: Name,
+    columns: Vec<ColumnStorageInfo>,
 }
 
 impl TableStorageInfo {

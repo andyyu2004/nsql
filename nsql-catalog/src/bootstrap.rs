@@ -9,14 +9,14 @@ use anyhow::bail;
 use nsql_core::{LogicalType, UntypedOid};
 use nsql_storage::eval::{Expr, ExprOp, FunctionCatalog, TupleExpr};
 use nsql_storage::tuple::TupleIndex;
-use nsql_storage::{ColumnStorageInfo, Result};
+use nsql_storage::Result;
 use nsql_storage_engine::{ReadWriteExecutionMode, StorageEngine, Transaction};
 
 use self::namespace::BootstrapNamespace;
 use self::table::BootstrapTable;
 use crate::{
-    Column, ColumnIndex, Function, Index, IndexKind, Namespace, Oid, Operator, OperatorKind,
-    SystemEntity, SystemTableView, Table, MAIN_SCHEMA,
+    Column, ColumnIdentity, ColumnIndex, Function, Index, IndexKind, Namespace, Oid, Operator,
+    OperatorKind, SystemEntity, SystemTableView, Table, MAIN_SCHEMA,
 };
 
 // The order matters as it will determine which id is assigned to each element
@@ -204,11 +204,12 @@ impl BootstrapData {
                             columns.push(Column {
                                 table: index.table,
                                 index: ColumnIndex::new(col_index.try_into().unwrap()),
-                                ty: target_column.logical_type.clone(),
+                                ty: target_column.logical_type(),
                                 name: target_column.name.clone(),
                                 // all columns in an index are part of the primary key (for now) as
                                 // we only have unique indexes
                                 is_primary_key: true,
+                                identity: ColumnIdentity::None,
                             });
 
                             Expr::new(
@@ -234,9 +235,10 @@ impl BootstrapData {
                 columns.push(Column {
                     table: table.oid,
                     index: ColumnIndex::new(idx.try_into().unwrap()),
-                    ty: column.logical_type,
+                    ty: column.logical_type(),
                     name: column.name,
                     is_primary_key: column.is_primary_key,
+                    identity: ColumnIdentity::None,
                 });
             }
         }

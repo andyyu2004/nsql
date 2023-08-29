@@ -2,7 +2,7 @@ use nsql_storage::eval::TupleExpr;
 use nsql_storage::IndexStorageInfo;
 
 use super::*;
-use crate::Namespace;
+use crate::{Column, ColumnIdentity, ColumnIndex, Namespace};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, FromTuple)]
 pub struct Index {
@@ -99,17 +99,43 @@ impl SystemEntity for Index {
         catalog.get::<Table>(tx, self.table)?.parent_oid(catalog, tx)
     }
 
-    #[inline]
-    fn bootstrap_table_storage_info() -> TableStorageInfo {
-        TableStorageInfo::new(
-            Table::INDEX.untyped(),
-            vec![
-                ColumnStorageInfo::new("table", LogicalType::Oid, true),
-                ColumnStorageInfo::new("target", LogicalType::Oid, false),
-                ColumnStorageInfo::new("kind", LogicalType::Int64, false),
-                ColumnStorageInfo::new("index_expr", LogicalType::TupleExpr, false),
-            ],
-        )
+    fn bootstrap_column_info() -> Vec<Column> {
+        let table = Self::table();
+
+        vec![
+            Column {
+                table,
+                index: ColumnIndex::new(0),
+                ty: LogicalType::Oid,
+                name: "table".into(),
+                is_primary_key: true,
+                identity: ColumnIdentity::None,
+            },
+            Column {
+                table,
+                index: ColumnIndex::new(1),
+                ty: LogicalType::Oid,
+                name: "target".into(),
+                is_primary_key: false,
+                identity: ColumnIdentity::None,
+            },
+            Column {
+                table,
+                index: ColumnIndex::new(2),
+                ty: LogicalType::Int64,
+                name: "kind".into(),
+                is_primary_key: false,
+                identity: ColumnIdentity::None,
+            },
+            Column {
+                table,
+                index: ColumnIndex::new(3),
+                ty: LogicalType::TupleExpr,
+                name: "index_expr".into(),
+                is_primary_key: false,
+                identity: ColumnIdentity::None,
+            },
+        ]
     }
 
     #[inline]

@@ -90,6 +90,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSource<'env, 'txn, S, ReadWrite
                     ColumnIndex::new(info.index),
                     info.ty.clone(),
                     info.is_primary_key,
+                    info.identity,
                 ),
             )?;
         }

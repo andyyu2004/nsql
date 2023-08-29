@@ -18,7 +18,7 @@ use nsql_storage_engine::{
     ReadWriteExecutionMode, ReadonlyExecutionMode, StorageEngine, Transaction,
 };
 
-pub use self::entity::column::{Column, ColumnIndex, CreateColumnInfo};
+pub use self::entity::column::{Column, ColumnIdentity, ColumnIndex, CreateColumnInfo};
 pub use self::entity::function::{
     AggregateFunctionInstance, Function, FunctionKind, ScalarFunction,
 };
@@ -60,7 +60,14 @@ pub trait SystemEntity: FromTuple + IntoTuple + Eq + fmt::Debug {
     fn table() -> Oid<Table>;
 
     /// Returns the storage info for the table that is used to build the table during catalog bootstrap.
-    fn bootstrap_table_storage_info() -> TableStorageInfo;
+    fn bootstrap_column_info() -> Vec<Column>;
+
+    fn bootstrap_table_storage_info() -> TableStorageInfo {
+        TableStorageInfo::new(
+            Self::table().untyped(),
+            Self::bootstrap_column_info().into_iter().map(|c| c.into()).collect(),
+        )
+    }
 }
 
 impl SystemEntity for () {
@@ -86,7 +93,7 @@ impl SystemEntity for () {
         "catalog"
     }
 
-    fn bootstrap_table_storage_info() -> TableStorageInfo {
+    fn bootstrap_column_info() -> Vec<Column> {
         todo!()
     }
 

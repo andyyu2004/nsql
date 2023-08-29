@@ -3,6 +3,7 @@ use std::{fmt, mem};
 use nsql_core::UntypedOid;
 
 use super::*;
+use crate::{Column, ColumnIdentity, ColumnIndex};
 
 mod builtins;
 
@@ -159,18 +160,59 @@ impl SystemEntity for Function {
         Ok(Some(self.namespace))
     }
 
-    fn bootstrap_table_storage_info() -> TableStorageInfo {
-        TableStorageInfo::new(
-            Table::FUNCTION.untyped(),
-            vec![
-                ColumnStorageInfo::new("oid", LogicalType::Oid, true),
-                ColumnStorageInfo::new("kind", LogicalType::Byte, false),
-                ColumnStorageInfo::new("namespace", LogicalType::Oid, true),
-                ColumnStorageInfo::new("name", LogicalType::Text, false),
-                ColumnStorageInfo::new("args", LogicalType::array(LogicalType::Type), true),
-                ColumnStorageInfo::new("ret", LogicalType::Type, false),
-            ],
-        )
+    fn bootstrap_column_info() -> Vec<Column> {
+        let table = Self::table();
+
+        vec![
+            Column {
+                table,
+                index: ColumnIndex::new(0),
+                ty: LogicalType::Oid,
+                name: "oid".into(),
+                is_primary_key: true,
+                identity: ColumnIdentity::None,
+            },
+            Column {
+                table,
+                index: ColumnIndex::new(1),
+                ty: LogicalType::Byte,
+                name: "kind".into(),
+                is_primary_key: false,
+                identity: ColumnIdentity::None,
+            },
+            Column {
+                table,
+                index: ColumnIndex::new(2),
+                ty: LogicalType::Oid,
+                name: "namespace".into(),
+                is_primary_key: true,
+                identity: ColumnIdentity::None,
+            },
+            Column {
+                table,
+                index: ColumnIndex::new(3),
+                ty: LogicalType::Text,
+                name: "name".into(),
+                is_primary_key: false,
+                identity: ColumnIdentity::None,
+            },
+            Column {
+                table,
+                index: ColumnIndex::new(4),
+                ty: LogicalType::array(LogicalType::Type),
+                name: "args".into(),
+                is_primary_key: true,
+                identity: ColumnIdentity::None,
+            },
+            Column {
+                table,
+                index: ColumnIndex::new(5),
+                ty: LogicalType::Type,
+                name: "ret".into(),
+                is_primary_key: false,
+                identity: ColumnIdentity::None,
+            },
+        ]
     }
 
     #[inline]

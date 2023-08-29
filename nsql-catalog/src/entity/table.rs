@@ -7,7 +7,9 @@ use nsql_storage_engine::{
 };
 
 use super::*;
-use crate::{Catalog, Column, Index, Name, Namespace, Oid, SystemEntity};
+use crate::{
+    Catalog, Column, ColumnIdentity, ColumnIndex, Index, Name, Namespace, Oid, SystemEntity,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, FromTuple, IntoTuple)]
 pub struct Table {
@@ -172,15 +174,35 @@ impl SystemEntity for Table {
     }
 
     #[inline]
-    fn bootstrap_table_storage_info() -> TableStorageInfo {
-        TableStorageInfo::new(
-            Table::TABLE.untyped(),
-            vec![
-                ColumnStorageInfo::new("oid", LogicalType::Oid, true),
-                ColumnStorageInfo::new("namespace", LogicalType::Oid, false),
-                ColumnStorageInfo::new("name", LogicalType::Text, false),
-            ],
-        )
+    fn bootstrap_column_info() -> Vec<Column> {
+        let table = Self::table();
+
+        vec![
+            Column {
+                table,
+                index: ColumnIndex::new(0),
+                ty: LogicalType::Oid,
+                name: "oid".into(),
+                is_primary_key: true,
+                identity: ColumnIdentity::None,
+            },
+            Column {
+                table,
+                index: ColumnIndex::new(1),
+                ty: LogicalType::Oid,
+                name: "namespace".into(),
+                is_primary_key: false,
+                identity: ColumnIdentity::None,
+            },
+            Column {
+                table,
+                index: ColumnIndex::new(2),
+                ty: LogicalType::Text,
+                name: "name".into(),
+                is_primary_key: false,
+                identity: ColumnIdentity::None,
+            },
+        ]
     }
 
     #[inline]

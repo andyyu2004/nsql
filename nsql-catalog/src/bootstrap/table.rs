@@ -19,7 +19,7 @@ impl Table {
 pub(super) struct BootstrapTable {
     pub oid: Oid<Table>,
     pub name: &'static str,
-    pub columns: Vec<ColumnStorageInfo>,
+    pub columns: Vec<Column>,
     pub indexes: Vec<BootstrapIndex>,
 }
 
@@ -35,7 +35,7 @@ pub(super) fn bootstrap_data() -> Box<[BootstrapTable]> {
         BootstrapTable {
             oid: Table::NAMESPACE,
             name: "nsql_namespace",
-            columns: Namespace::bootstrap_table_storage_info().columns,
+            columns: Namespace::bootstrap_column_info(),
             indexes: vec![BootstrapIndex {
                 table: Table::NAMESPACE_NAME_UNIQUE_INDEX,
                 name: "nsql_namespace_name_index",
@@ -46,7 +46,7 @@ pub(super) fn bootstrap_data() -> Box<[BootstrapTable]> {
         BootstrapTable {
             oid: Table::TABLE,
             name: "nsql_table",
-            columns: Table::bootstrap_table_storage_info().columns,
+            columns: Table::bootstrap_column_info(),
             indexes: vec![BootstrapIndex {
                 table: Table::TABLE_NAME_UNIQUE_INDEX,
                 name: "nsql_table_namespace_name_index",
@@ -57,7 +57,7 @@ pub(super) fn bootstrap_data() -> Box<[BootstrapTable]> {
         BootstrapTable {
             oid: Table::ATTRIBUTE,
             name: "nsql_attribute",
-            columns: Column::bootstrap_table_storage_info().columns,
+            columns: Column::bootstrap_column_info(),
             indexes: vec![BootstrapIndex {
                 table: Table::ATTRIBUTE_NAME_UNIQUE_INDEX,
                 name: "nsql_attribute_table_name_index",
@@ -68,13 +68,13 @@ pub(super) fn bootstrap_data() -> Box<[BootstrapTable]> {
         BootstrapTable {
             oid: Table::INDEX,
             name: "nsql_index",
-            columns: Index::bootstrap_table_storage_info().columns,
+            columns: Index::bootstrap_column_info(),
             indexes: vec![],
         },
         BootstrapTable {
             oid: Table::FUNCTION,
             name: "nsql_function",
-            columns: Function::bootstrap_table_storage_info().columns,
+            columns: Function::bootstrap_column_info(),
             indexes: vec![BootstrapIndex {
                 table: Table::FUNCTION_NAME_ARGS_UNIQUE_INDEX,
                 name: "nsql_function_namespace_name_args_index",
@@ -85,7 +85,7 @@ pub(super) fn bootstrap_data() -> Box<[BootstrapTable]> {
         BootstrapTable {
             oid: Table::OPERATOR,
             name: "nsql_operator",
-            columns: Operator::bootstrap_table_storage_info().columns,
+            columns: Operator::bootstrap_column_info(),
             indexes: vec![BootstrapIndex {
                 table: Table::OPERATOR_NAME_FN_UNIQUE_INDEX,
                 name: "nsql_operator_namespace_name_function_index",
