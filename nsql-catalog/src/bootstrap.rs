@@ -15,8 +15,8 @@ use nsql_storage_engine::{ReadWriteExecutionMode, StorageEngine, Transaction};
 use self::namespace::BootstrapNamespace;
 use self::table::BootstrapTable;
 use crate::{
-    Column, ColumnIdentity, ColumnIndex, Function, Index, IndexKind, Namespace, Oid, Operator,
-    OperatorKind, SystemEntity, SystemTableView, Table, MAIN_SCHEMA,
+    Column, ColumnIndex, Function, Index, IndexKind, Namespace, Oid, Operator, OperatorKind,
+    SystemEntity, SystemTableView, Table, MAIN_SCHEMA,
 };
 
 // The order matters as it will determine which id is assigned to each element
@@ -209,7 +209,8 @@ impl BootstrapData {
                                 // all columns in an index are part of the primary key (for now) as
                                 // we only have unique indexes
                                 is_primary_key: true,
-                                identity: ColumnIdentity::None,
+                                identity: target_column.identity,
+                                default_expr: Expr::null(),
                             });
 
                             Expr::new(
@@ -232,14 +233,9 @@ impl BootstrapData {
             }
 
             for (idx, column) in table.columns.into_iter().enumerate() {
-                columns.push(Column {
-                    table: table.oid,
-                    index: ColumnIndex::new(idx.try_into().unwrap()),
-                    ty: column.logical_type(),
-                    name: column.name,
-                    is_primary_key: column.is_primary_key,
-                    identity: ColumnIdentity::None,
-                });
+                assert_eq!(column.table, table.oid);
+                assert_eq!(column.index.as_usize(), idx);
+                columns.push(column);
             }
         }
 

@@ -34,6 +34,7 @@ impl TypeFold for LogicalType {
             LogicalType::Oid => Ok(LogicalType::Oid),
             LogicalType::Bytea => Ok(LogicalType::Bytea),
             LogicalType::Type => Ok(LogicalType::Type),
+            LogicalType::Expr => Ok(LogicalType::Expr),
             LogicalType::TupleExpr => Ok(LogicalType::TupleExpr),
             LogicalType::Any => Ok(LogicalType::Any),
             LogicalType::Array(elem) => {

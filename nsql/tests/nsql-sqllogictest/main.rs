@@ -65,11 +65,12 @@ impl ColumnType for TypeWrapper {
             LogicalType::Null => todo!(),
             LogicalType::Oid => todo!(),
             LogicalType::Bytea => todo!(),
-            LogicalType::Type => todo!(),
-            LogicalType::TupleExpr => todo!(),
             LogicalType::Byte => todo!(),
             LogicalType::Array(_) => 'A',
-            LogicalType::Any => unreachable!(),
+            // pseudo types
+            LogicalType::Type | LogicalType::TupleExpr | LogicalType::Expr | LogicalType::Any => {
+                unreachable!()
+            }
         }
     }
 }

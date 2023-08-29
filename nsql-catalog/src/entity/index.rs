@@ -1,4 +1,4 @@
-use nsql_storage::eval::TupleExpr;
+use nsql_storage::eval::{Expr, TupleExpr};
 use nsql_storage::IndexStorageInfo;
 
 use super::*;
@@ -110,6 +110,7 @@ impl SystemEntity for Index {
                 name: "table".into(),
                 is_primary_key: true,
                 identity: ColumnIdentity::None,
+                default_expr: Expr::null(),
             },
             Column {
                 table,
@@ -118,6 +119,7 @@ impl SystemEntity for Index {
                 name: "target".into(),
                 is_primary_key: false,
                 identity: ColumnIdentity::None,
+                default_expr: Expr::null(),
             },
             Column {
                 table,
@@ -126,6 +128,7 @@ impl SystemEntity for Index {
                 name: "kind".into(),
                 is_primary_key: false,
                 identity: ColumnIdentity::None,
+                default_expr: Expr::null(),
             },
             Column {
                 table,
@@ -134,6 +137,7 @@ impl SystemEntity for Index {
                 name: "index_expr".into(),
                 is_primary_key: false,
                 identity: ColumnIdentity::None,
+                default_expr: Expr::null(),
             },
         ]
     }

@@ -25,6 +25,7 @@ pub enum LogicalType {
     Oid,
     Bytea,
     Type,
+    Expr,
     TupleExpr,
     Array(#[omit_bounds] Box<LogicalType>),
     /// pseudotype for function types
@@ -78,6 +79,7 @@ impl fmt::Display for LogicalType {
             LogicalType::Oid => write!(f, "oid"),
             LogicalType::Bytea => write!(f, "bytea"),
             LogicalType::Type => write!(f, "type"),
+            LogicalType::Expr => write!(f, "expr"),
             LogicalType::TupleExpr => write!(f, "tuple"),
             LogicalType::Array(element) => write!(f, "[{element}]"),
             LogicalType::Any => write!(f, "any"),

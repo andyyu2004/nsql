@@ -1,5 +1,7 @@
 use std::fmt;
 
+use nsql_storage::eval::Expr;
+
 use super::*;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, FromTuple, IntoTuple)]
@@ -10,6 +12,7 @@ pub struct Column {
     pub(crate) name: Name,
     pub(crate) is_primary_key: bool,
     pub(crate) identity: ColumnIdentity,
+    pub(crate) default_expr: Expr,
 }
 
 impl From<Column> for ColumnStorageInfo {
@@ -37,8 +40,9 @@ impl Column {
         ty: LogicalType,
         is_primary_key: bool,
         identity: ColumnIdentity,
+        default_expr: Expr,
     ) -> Self {
-        Self { table, name, index, ty, is_primary_key, identity }
+        Self { table, name, index, ty, is_primary_key, identity, default_expr }
     }
 
     #[inline]
@@ -109,6 +113,7 @@ pub struct CreateColumnInfo {
     pub ty: LogicalType,
     pub is_primary_key: bool,
     pub identity: ColumnIdentity,
+    pub default_expr: Expr,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -196,6 +201,7 @@ impl SystemEntity for Column {
                 name: "table".into(),
                 is_primary_key: true,
                 identity: ColumnIdentity::None,
+                default_expr: Expr::null(),
             },
             Column {
                 table,
@@ -204,6 +210,7 @@ impl SystemEntity for Column {
                 name: "index".into(),
                 is_primary_key: true,
                 identity: ColumnIdentity::None,
+                default_expr: Expr::null(),
             },
             Column {
                 table,
@@ -212,6 +219,7 @@ impl SystemEntity for Column {
                 name: "ty".into(),
                 is_primary_key: false,
                 identity: ColumnIdentity::None,
+                default_expr: Expr::null(),
             },
             Column {
                 table,
@@ -220,6 +228,7 @@ impl SystemEntity for Column {
                 name: "name".into(),
                 is_primary_key: false,
                 identity: ColumnIdentity::None,
+                default_expr: Expr::null(),
             },
             Column {
                 table,
@@ -228,6 +237,7 @@ impl SystemEntity for Column {
                 name: "is_primary_key".into(),
                 is_primary_key: false,
                 identity: ColumnIdentity::None,
+                default_expr: Expr::null(),
             },
             Column {
                 table,
@@ -236,6 +246,16 @@ impl SystemEntity for Column {
                 name: "identity".into(),
                 is_primary_key: false,
                 identity: ColumnIdentity::None,
+                default_expr: Expr::null(),
+            },
+            Column {
+                table,
+                index: ColumnIndex::new(6),
+                ty: LogicalType::Expr,
+                name: "default_expr".into(),
+                is_primary_key: false,
+                identity: ColumnIdentity::None,
+                default_expr: Expr::null(),
             },
         ]
     }

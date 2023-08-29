@@ -533,6 +533,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
             ty: self.lower_ty(&column.data_type)?,
             identity,
             is_primary_key,
+            default_expr: nsql_storage::eval::Expr::null(),
         })
     }
 
@@ -1470,6 +1471,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                     .unwrap_or(LogicalType::Int64),
             ),
             ir::Value::Type(_) => LogicalType::Type,
+            ir::Value::Expr(_) => LogicalType::Expr,
             ir::Value::TupleExpr(_) => LogicalType::TupleExpr,
             ir::Value::Byte(_) => LogicalType::Byte,
             ir::Value::Float64(_) => LogicalType::Float64,

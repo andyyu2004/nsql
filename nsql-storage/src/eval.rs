@@ -104,8 +104,27 @@ pub type ExecutableExpr = Expr<Box<dyn ScalarFunction>>;
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Archive, Serialize, Deserialize)]
 pub struct Expr<F = UntypedOid> {
-    pretty: String,
+    pretty: Box<str>,
     ops: Box<[ExprOp<F>]>,
+}
+
+static_assert_eq!(mem::size_of::<Expr>(), 32);
+
+impl FromValue for Expr {
+    #[inline]
+    fn from_value(value: Value) -> Result<Self, CastError> {
+        match value {
+            Value::Expr(expr) => Ok(expr),
+            _ => Err(CastError::new(value, LogicalType::Expr)),
+        }
+    }
+}
+
+impl From<Expr> for Value {
+    #[inline]
+    fn from(val: Expr) -> Self {
+        Value::Expr(val)
+    }
 }
 
 impl<F> fmt::Display for Expr<F> {
@@ -115,10 +134,14 @@ impl<F> fmt::Display for Expr<F> {
 }
 
 impl<F> Expr<F> {
+    pub fn null() -> Self {
+        Self { pretty: "NULL".into(), ops: Box::new([ExprOp::Push(Value::Null), ExprOp::Return]) }
+    }
+
     pub fn new(pretty: impl fmt::Display, ops: impl Into<Box<[ExprOp<F>]>>) -> Self {
         let ops = ops.into();
         assert!(ops.len() > 1, "should have at least one value and one return");
-        Self { pretty: pretty.to_string(), ops }
+        Self { pretty: pretty.to_string().into(), ops }
     }
 }
 
@@ -160,7 +183,7 @@ pub enum ExprOp<F = UntypedOid> {
     Return,
 }
 
-static_assert_eq!(mem::size_of::<ExprOp>(), 32);
+static_assert_eq!(mem::size_of::<ExprOp>(), 40);
 
 impl ExprOp<Box<dyn ScalarFunction>> {
     fn execute(&self, stack: &mut Vec<Value>, ip: &mut usize, tuple: &Tuple) {

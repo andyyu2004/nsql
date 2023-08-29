@@ -1,3 +1,5 @@
+use nsql_storage::eval::Expr;
+
 use super::*;
 use crate::{Column, ColumnIdentity, ColumnIndex};
 
@@ -61,6 +63,7 @@ impl SystemEntity for Namespace {
                 name: "oid".into(),
                 is_primary_key: true,
                 identity: ColumnIdentity::None,
+                default_expr: Expr::null(),
             },
             Column {
                 table,
@@ -69,6 +72,7 @@ impl SystemEntity for Namespace {
                 name: "name".into(),
                 is_primary_key: false,
                 identity: ColumnIdentity::None,
+                default_expr: Expr::null(),
             },
         ]
     }

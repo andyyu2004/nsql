@@ -9,7 +9,7 @@ use nsql_util::static_assert_eq;
 use rust_decimal::prelude::ToPrimitive;
 pub use rust_decimal::Decimal;
 
-use crate::eval::TupleExpr;
+use crate::eval::{Expr, TupleExpr};
 
 pub struct CastError {
     value: Value,
@@ -68,6 +68,7 @@ pub enum Value {
     Array(#[omit_bounds] Box<[Value]>),
     // experiment adding this as a value for serialiazation purposes
     Type(LogicalType),
+    Expr(#[omit_bounds] Expr),
     TupleExpr(TupleExpr),
 }
 
@@ -80,7 +81,7 @@ impl FromStr for Value {
     }
 }
 
-static_assert_eq!(mem::size_of::<Value>(), 32);
+static_assert_eq!(mem::size_of::<Value>(), 40);
 
 #[derive(
     Default,
@@ -268,6 +269,7 @@ impl fmt::Display for Value {
             Value::Bytea(bytes) => write!(f, "{bytes:x?}"),
             Value::Array(values) => write!(f, "[{}]", values.iter().format(", ")),
             Value::Type(ty) => write!(f, "{ty}"),
+            Value::Expr(_expr) => write!(f, "<expr>"),
             Value::TupleExpr(_expr) => write!(f, "<tuple-expr>"),
             Value::Float64(d) => write!(f, "{}", f64::from_bits(*d)),
         }

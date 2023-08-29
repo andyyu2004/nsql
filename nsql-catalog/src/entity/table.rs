@@ -1,6 +1,7 @@
 use std::fmt;
 
 use anyhow::Result;
+use nsql_storage::eval::Expr;
 use nsql_storage::{IndexStorageInfo, TableStorage, TableStorageInfo};
 use nsql_storage_engine::{
     ExecutionMode, FallibleIterator, ReadWriteExecutionMode, StorageEngine, Transaction,
@@ -185,6 +186,7 @@ impl SystemEntity for Table {
                 name: "oid".into(),
                 is_primary_key: true,
                 identity: ColumnIdentity::None,
+                default_expr: Expr::null(),
             },
             Column {
                 table,
@@ -193,6 +195,7 @@ impl SystemEntity for Table {
                 name: "namespace".into(),
                 is_primary_key: false,
                 identity: ColumnIdentity::None,
+                default_expr: Expr::null(),
             },
             Column {
                 table,
@@ -201,6 +204,7 @@ impl SystemEntity for Table {
                 name: "name".into(),
                 is_primary_key: false,
                 identity: ColumnIdentity::None,
+                default_expr: Expr::null(),
             },
         ]
     }

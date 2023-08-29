@@ -1,6 +1,7 @@
 use std::{fmt, mem};
 
 use nsql_core::UntypedOid;
+use nsql_storage::eval::Expr;
 
 use super::*;
 use crate::{Column, ColumnIdentity, ColumnIndex};
@@ -171,6 +172,7 @@ impl SystemEntity for Function {
                 name: "oid".into(),
                 is_primary_key: true,
                 identity: ColumnIdentity::None,
+                default_expr: Expr::null(),
             },
             Column {
                 table,
@@ -179,6 +181,7 @@ impl SystemEntity for Function {
                 name: "kind".into(),
                 is_primary_key: false,
                 identity: ColumnIdentity::None,
+                default_expr: Expr::null(),
             },
             Column {
                 table,
@@ -187,6 +190,7 @@ impl SystemEntity for Function {
                 name: "namespace".into(),
                 is_primary_key: true,
                 identity: ColumnIdentity::None,
+                default_expr: Expr::null(),
             },
             Column {
                 table,
@@ -195,6 +199,7 @@ impl SystemEntity for Function {
                 name: "name".into(),
                 is_primary_key: false,
                 identity: ColumnIdentity::None,
+                default_expr: Expr::null(),
             },
             Column {
                 table,
@@ -203,6 +208,7 @@ impl SystemEntity for Function {
                 name: "args".into(),
                 is_primary_key: true,
                 identity: ColumnIdentity::None,
+                default_expr: Expr::null(),
             },
             Column {
                 table,
@@ -211,6 +217,7 @@ impl SystemEntity for Function {
                 name: "ret".into(),
                 is_primary_key: false,
                 identity: ColumnIdentity::None,
+                default_expr: Expr::null(),
             },
         ]
     }
