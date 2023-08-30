@@ -21,6 +21,7 @@ impl Expr {
             | ExprKind::Subquery(..)
             | ExprKind::ColumnRef { .. }
             | ExprKind::FunctionCall { .. }
+            | ExprKind::Compiled(..)
             | ExprKind::Case { .. } => Err(EvalNotConst),
         }
     }

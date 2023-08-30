@@ -6,6 +6,7 @@ edition = "2021"
 [dependencies]
 egg = "0.9.5"
 ir = { path = "../nsql-ir", package = "nsql-ir" }
+nsql-storage = { path = "../nsql-storage" }
 itertools = "0.11.0"
 nsql-core = { path = "../nsql-core" }
 rustc-hash = "1.1.0"

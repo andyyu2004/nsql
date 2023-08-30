@@ -1,5 +1,7 @@
 //! A serializable stack-based bytecode for evaluating expressions.
 
+use std::str::FromStr;
+use std::sync::Arc;
 use std::{fmt, mem};
 
 use anyhow::Result;
@@ -17,7 +19,7 @@ pub trait FunctionCatalog<'env, S> {
         &self,
         tx: &dyn Transaction<'env, S>,
         oid: UntypedOid,
-    ) -> Result<Box<dyn ScalarFunction>>;
+    ) -> Result<Arc<dyn ScalarFunction>>;
 }
 
 pub trait ScalarFunction: fmt::Debug + Send + Sync + 'static {
@@ -34,7 +36,7 @@ pub struct TupleExpr<F = UntypedOid> {
     exprs: Box<[Expr<F>]>,
 }
 
-pub type ExecutableTupleExpr = TupleExpr<Box<dyn ScalarFunction>>;
+pub type ExecutableTupleExpr = TupleExpr<Arc<dyn ScalarFunction>>;
 
 impl<F> fmt::Display for TupleExpr<F> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -55,13 +57,25 @@ impl<F> TupleExpr<F> {
 }
 
 impl TupleExpr {
-    /// Prepare this expression for evaluation.
+    /// Prepare this tuple expression for evaluation.
     // This resolves any function oids and replaces them with the actual function.
     pub fn prepare<'env, S>(
         self,
         catalog: &dyn FunctionCatalog<'env, S>,
         tx: &dyn Transaction<'env, S>,
     ) -> Result<ExecutableTupleExpr> {
+        self.map(|oid| catalog.get_function(tx, oid))
+    }
+}
+
+impl Expr {
+    /// Prepare this expression for evaluation.
+    // This resolves any function oids and replaces them with the actual function.
+    pub fn prepare<'env, S>(
+        self,
+        catalog: &dyn FunctionCatalog<'env, S>,
+        tx: &dyn Transaction<'env, S>,
+    ) -> Result<ExecutableExpr> {
         self.map(|oid| catalog.get_function(tx, oid))
     }
 }
@@ -100,12 +114,21 @@ impl From<TupleExpr> for Value {
     }
 }
 
-pub type ExecutableExpr = Expr<Box<dyn ScalarFunction>>;
+pub type ExecutableExpr = Expr<Arc<dyn ScalarFunction>>;
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Archive, Serialize, Deserialize)]
 pub struct Expr<F = UntypedOid> {
     pretty: Box<str>,
     ops: Box<[ExprOp<F>]>,
+}
+
+// this is just to allow egg stuff to compile for now
+impl<F> FromStr for Expr<F> {
+    type Err = ();
+
+    fn from_str(_s: &str) -> std::result::Result<Self, Self::Err> {
+        Err(())
+    }
 }
 
 static_assert_eq!(mem::size_of::<Expr>(), 32);
@@ -143,6 +166,11 @@ impl<F> Expr<F> {
         assert!(ops.len() > 1, "should have at least one value and one return");
         Self { pretty: pretty.to_string().into(), ops }
     }
+
+    #[inline]
+    pub fn ops(&self) -> &[ExprOp<F>] {
+        self.ops.as_ref()
+    }
 }
 
 impl ExecutableExpr {
@@ -168,7 +196,7 @@ impl ExecutableExpr {
     }
 }
 
-pub type ExecutableExprOp = ExprOp<Box<dyn ScalarFunction>>;
+pub type ExecutableExprOp = ExprOp<Arc<dyn ScalarFunction>>;
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Archive, Serialize, Deserialize)]
 #[omit_bounds]
@@ -185,7 +213,7 @@ pub enum ExprOp<F = UntypedOid> {
 
 static_assert_eq!(mem::size_of::<ExprOp>(), 40);
 
-impl ExprOp<Box<dyn ScalarFunction>> {
+impl ExprOp<Arc<dyn ScalarFunction>> {
     fn execute(&self, stack: &mut Vec<Value>, ip: &mut usize, tuple: &Tuple) {
         let value = match self {
             ExprOp::Project { index } => tuple[*index].clone(),

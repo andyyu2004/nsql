@@ -46,6 +46,11 @@ impl Compiler {
         expr: &opt::Expr<'_>,
     ) -> Result<()> {
         match &expr {
+            opt::Expr::Compiled(expr) => {
+                assert!(self.ops.is_empty());
+                let expr = (*expr).clone();
+                self.ops.extend_from_slice(expr.prepare(catalog, tx)?.ops());
+            }
             opt::Expr::ColumnRef(col) => self.emit(ExprOp::Project { index: col.index }),
             opt::Expr::Literal(lit) => self.emit(ExprOp::Push(lit.value(q).clone())),
             opt::Expr::Array(array) => {

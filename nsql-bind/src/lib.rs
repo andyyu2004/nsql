@@ -212,7 +212,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                     // loop over all columns in the table and find the corresponding column in the base projection,
                     // if one does not exist then we fill it in with a null
                     let source_schema = source.schema();
-                    for column in table_columns.iter() {
+                    for column in &table_columns {
                         if let Some(expr) = target_column_indices.iter().enumerate().find_map(
                             |(i, column_index)| {
                                 (column_index.as_usize() == column.index().as_usize()).then_some(
@@ -234,7 +234,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                             let ty = column.logical_type().clone();
                             projection.push(ir::Expr {
                                 ty,
-                                kind: ir::ExprKind::Literal(ir::Value::Null),
+                                kind: ir::ExprKind::Compiled(column.default_expr().clone()),
                             });
                         }
                     }

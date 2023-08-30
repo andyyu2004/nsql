@@ -8,6 +8,7 @@ pub use const_eval::EvalNotConst;
 use itertools::Itertools;
 use nsql_catalog::{Function, Operator};
 use nsql_core::{LogicalType, Name};
+use nsql_storage::eval;
 use nsql_storage::tuple::TupleIndex;
 use nsql_storage::value::Value;
 use nsql_util::static_assert_eq;
@@ -79,6 +80,7 @@ pub enum ExprKind {
     BinaryOperator { operator: MonoOperator, lhs: Box<Expr>, rhs: Box<Expr> },
     Case { scrutinee: Box<Expr>, cases: Box<[Case]>, else_result: Option<Box<Expr>> },
     Subquery(SubqueryKind, Box<QueryPlan>),
+    Compiled(eval::Expr),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -204,6 +206,7 @@ impl fmt::Display for ExprKind {
             ExprKind::BinaryOperator { operator, lhs, rhs } => {
                 write!(f, "({lhs} {operator} {rhs})")
             }
+            ExprKind::Compiled(expr) => write!(f, "{expr}"),
         }
     }
 }

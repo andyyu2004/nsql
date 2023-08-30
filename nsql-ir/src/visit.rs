@@ -1,8 +1,6 @@
 use std::ops::ControlFlow;
 
 use crate::{Expr, ExprKind, Plan, QueryPlan};
-// FIXME returning ControlFlow is probably better than using bool these days, also lets the visitor
-// carry a value on break which is convenient (can also use `?` for ergonomics)
 
 /// A trait for walking a plan and its expressions.
 /// The `visit_*` methods are called when the walker encounters the corresponding node and are
@@ -142,6 +140,7 @@ pub trait Visitor {
                 self.visit_expr(plan, lhs)?;
                 self.visit_expr(plan, rhs)
             }
+            ExprKind::Compiled(_expr) => ControlFlow::Continue(()),
         }
     }
 }

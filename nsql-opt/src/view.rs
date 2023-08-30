@@ -3,6 +3,7 @@ use std::fmt;
 use egg::Id;
 use itertools::Itertools;
 use nsql_core::{Name, Oid};
+use nsql_storage::eval;
 
 use crate::node::{EGraph, Node};
 
@@ -69,6 +70,7 @@ impl Query {
             Node::ColumnRef(ref col, _) => Expr::ColumnRef(col.clone()),
             Node::Literal(_) => Expr::Literal(LiteralExpr(id)),
             Node::Array(ref exprs) => Expr::Array(ArrayExpr(exprs)),
+            Node::CompiledExpr(ref expr) => Expr::Compiled(expr),
             Node::Call([f, args]) => {
                 Expr::Call(CallExpr { function: self.function(f), args: self.nodes(args) })
             }
@@ -140,6 +142,7 @@ impl Query {
             | Node::Array(_)
             | Node::Exists(_)
             | Node::Case(_)
+            | Node::CompiledExpr(..)
             | Node::Subquery(_) => unreachable!("not a plan node"),
         }
     }
@@ -482,6 +485,7 @@ pub enum Expr<'a> {
     Array(ArrayExpr<'a>),
     Call(CallExpr<'a>),
     Case(CaseExpr<'a>),
+    Compiled(&'a eval::Expr),
 }
 
 impl<'q> Expr<'q> {
@@ -521,6 +525,7 @@ impl<'q> fmt::Display for ExprDisplay<'q> {
                 write!(f, " ELSE {} ", case.else_expr(q).display(q))?;
                 write!(f, "END")
             }
+            Expr::Compiled(expr) => write!(f, "{expr}"),
         }
     }
 }

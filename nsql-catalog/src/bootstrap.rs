@@ -4,6 +4,7 @@ mod operator;
 mod table;
 
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use anyhow::bail;
 use nsql_core::{LogicalType, UntypedOid};
@@ -42,7 +43,7 @@ impl<'env, S> FunctionCatalog<'env, S> for BootstrapFunctionCatalog {
         &self,
         _tx: &dyn Transaction<'env, S>,
         _oid: UntypedOid,
-    ) -> Result<Box<dyn nsql_storage::eval::ScalarFunction>> {
+    ) -> Result<Arc<dyn nsql_storage::eval::ScalarFunction>> {
         bail!("cannot get function during bootstrap")
     }
 }

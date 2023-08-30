@@ -1,6 +1,7 @@
 use egg::{define_language, Id};
 use ir::Value;
-use nsql_core::{Name, Oid};
+use nsql_core::{Name, Oid, Oid};
+use nsql_storage::eval;
 
 use crate::Query;
 
@@ -14,6 +15,7 @@ define_language! {
         Literal(Value),
         Cte(Name, [Id; 2]), // (cte-name (cte-plan child-plan))
         CteScan(Name),
+        CompiledExpr(eval::Expr),
         // We pass the plan id here so column refs with the same index don't get merged into the same eclass
         ColumnRef(ir::ColumnRef, Id),           // (column-ref <index> <plan>)
         "union" = Union([Id; 2]),               // (union <lhs> <rhs>)
@@ -255,6 +257,7 @@ impl Builder {
                 ir::SubqueryKind::Scalar => Node::Subquery(self.build_query(query)),
                 ir::SubqueryKind::Exists => Node::Exists(self.build_query(query)),
             },
+            ir::ExprKind::Compiled(expr) => Node::CompiledExpr(expr.clone()),
         };
 
         self.add(node)

@@ -64,6 +64,11 @@ impl Column {
     pub fn is_primary_key(&self) -> bool {
         self.is_primary_key
     }
+
+    #[inline]
+    pub fn default_expr(&self) -> &Expr {
+        &self.default_expr
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]

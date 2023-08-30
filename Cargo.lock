@@ -1403,6 +1403,7 @@ dependencies = [
  "itertools 0.11.0",
  "nsql-core",
  "nsql-ir",
+ "nsql-storage",
  "rustc-hash",
  "tracing",
 ]
