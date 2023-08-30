@@ -4,7 +4,7 @@ use std::mem;
 use nsql_storage::eval::Expr;
 
 use super::*;
-use crate::{Column, ColumnIdentity, ColumnIndex, Function};
+use crate::{ColumnIdentity, Function, SystemEntityPrivate};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, FromTuple, IntoTuple)]
 pub struct Operator {
@@ -95,55 +95,50 @@ impl SystemEntity for Operator {
     ) -> Result<Option<Oid<Self::Parent>>> {
         Ok(Some(self.namespace))
     }
+}
 
-    fn bootstrap_column_info() -> Vec<Column> {
-        let table = Self::table();
-
+impl SystemEntityPrivate for Operator {
+    fn bootstrap_column_info() -> Vec<BootstrapColumn> {
         vec![
-            Column {
-                table,
-                index: ColumnIndex::new(0),
+            BootstrapColumn {
                 ty: LogicalType::Oid,
-                name: "oid".into(),
+                name: "oid",
                 is_primary_key: true,
                 identity: ColumnIdentity::None,
                 default_expr: Expr::null(),
+                seq: None,
             },
-            Column {
-                table,
-                index: ColumnIndex::new(1),
+            BootstrapColumn {
                 ty: LogicalType::Byte,
-                name: "kind".into(),
+                name: "kind",
                 is_primary_key: false,
                 identity: ColumnIdentity::None,
                 default_expr: Expr::null(),
+                seq: None,
             },
-            Column {
-                table,
-                index: ColumnIndex::new(2),
+            BootstrapColumn {
                 ty: LogicalType::Oid,
-                name: "namespace".into(),
+                name: "namespace",
                 is_primary_key: true,
                 identity: ColumnIdentity::None,
                 default_expr: Expr::null(),
+                seq: None,
             },
-            Column {
-                table,
-                index: ColumnIndex::new(3),
+            BootstrapColumn {
                 ty: LogicalType::Oid,
-                name: "function".into(),
+                name: "function",
                 is_primary_key: false,
                 identity: ColumnIdentity::None,
                 default_expr: Expr::null(),
+                seq: None,
             },
-            Column {
-                table,
-                index: ColumnIndex::new(4),
+            BootstrapColumn {
                 ty: LogicalType::Text,
-                name: "name".into(),
+                name: "name",
                 is_primary_key: false,
                 identity: ColumnIdentity::None,
                 default_expr: Expr::null(),
+                seq: None,
             },
         ]
     }

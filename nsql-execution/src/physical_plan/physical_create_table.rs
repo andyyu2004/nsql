@@ -1,4 +1,4 @@
-use nsql_catalog::{Column, ColumnIndex, SystemEntity, Table};
+use nsql_catalog::{Column, ColumnIdentity, ColumnIndex, SystemEntity, Table};
 use nsql_storage_engine::fallible_iterator;
 
 use super::*;
@@ -80,18 +80,29 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSource<'env, 'txn, S, ReadWrite
         catalog.system_table_write(tx)?.insert(&catalog, tx, table.clone())?;
 
         let mut columns = catalog.system_table_write(tx)?;
-        for info in &self.info.columns {
+        let info: &ir::CreateTableInfo = &self.info;
+        for col in &info.columns {
+            match col.identity {
+                ColumnIdentity::None => {}
+                ColumnIdentity::ByDefault | ColumnIdentity::Always => {
+                    // let sequence_table =
+                    //     Table::new(info.namespace, format!("{}_{}_seq", info.name, col.name));
+                    // tables.insert(&catalog, tx, sequence_table.clone())?;
+                    todo!();
+                    // let sequence = Sequence::new(sequence_table);
+                }
+            }
             columns.insert(
                 &catalog,
                 tx,
                 Column::new(
                     table.key(),
-                    info.name.clone(),
-                    ColumnIndex::new(info.index),
-                    info.ty.clone(),
-                    info.is_primary_key,
-                    info.identity,
-                    info.default_expr.clone(),
+                    col.name.clone(),
+                    ColumnIndex::new(col.index),
+                    col.ty.clone(),
+                    col.is_primary_key,
+                    col.identity,
+                    col.default_expr.clone(),
                 ),
             )?;
         }

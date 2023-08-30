@@ -18,6 +18,7 @@ use nsql_storage_engine::{
     ReadWriteExecutionMode, ReadonlyExecutionMode, StorageEngine, Transaction,
 };
 
+use self::bootstrap::{BootstrapColumn, BootstrapSequence};
 pub use self::entity::column::{Column, ColumnIdentity, ColumnIndex, CreateColumnInfo};
 pub use self::entity::function::{
     AggregateFunctionInstance, Function, FunctionKind, ScalarFunction,
@@ -25,12 +26,31 @@ pub use self::entity::function::{
 pub use self::entity::index::{Index, IndexKind};
 pub use self::entity::namespace::{CreateNamespaceInfo, Namespace};
 pub use self::entity::operator::{Operator, OperatorKind};
+pub use self::entity::sequence::Sequence;
 pub use self::entity::table::{CreateTableInfo, Table};
+use self::private::SystemEntityPrivate;
 pub use self::system_table::SystemTableView;
 
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 
-pub trait SystemEntity: FromTuple + IntoTuple + Eq + fmt::Debug {
+mod private {
+    use super::*;
+    pub trait SystemEntityPrivate {
+        fn table() -> Oid<Table>;
+
+        /// Returns the storage info for the table that is used to build the table during catalog bootstrap.
+        fn bootstrap_column_info() -> Vec<BootstrapColumn>;
+
+        fn bootstrap_table_storage_info() -> TableStorageInfo {
+            TableStorageInfo::new(
+                Self::table().untyped(),
+                Self::bootstrap_column_info().into_iter().map(|c| c.into()).collect(),
+            )
+        }
+    }
+}
+
+pub trait SystemEntity: SystemEntityPrivate + FromTuple + IntoTuple + Eq + fmt::Debug {
     type Parent: SystemEntity;
 
     type Key: FromTuple + Eq + Hash + fmt::Debug;
@@ -56,18 +76,6 @@ pub trait SystemEntity: FromTuple + IntoTuple + Eq + fmt::Debug {
         catalog: Catalog<'env, S>,
         tx: &dyn Transaction<'env, S>,
     ) -> Result<Option<Oid<Self::Parent>>>;
-
-    fn table() -> Oid<Table>;
-
-    /// Returns the storage info for the table that is used to build the table during catalog bootstrap.
-    fn bootstrap_column_info() -> Vec<Column>;
-
-    fn bootstrap_table_storage_info() -> TableStorageInfo {
-        TableStorageInfo::new(
-            Self::table().untyped(),
-            Self::bootstrap_column_info().into_iter().map(|c| c.into()).collect(),
-        )
-    }
 }
 
 impl SystemEntity for () {
@@ -93,16 +101,18 @@ impl SystemEntity for () {
         "catalog"
     }
 
-    fn bootstrap_column_info() -> Vec<Column> {
-        todo!()
-    }
-
     fn parent_oid<'env, S: StorageEngine>(
         &self,
         _catalog: Catalog<'env, S>,
         _tx: &dyn Transaction<'env, S>,
     ) -> Result<Option<Oid<Self::Parent>>> {
         unreachable!()
+    }
+}
+
+impl SystemEntityPrivate for () {
+    fn bootstrap_column_info() -> Vec<BootstrapColumn> {
+        todo!()
     }
 
     fn table() -> Oid<Table> {

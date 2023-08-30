@@ -15,9 +15,10 @@ use nsql_storage_engine::{ReadWriteExecutionMode, StorageEngine, Transaction};
 
 use self::namespace::BootstrapNamespace;
 use self::table::BootstrapTable;
+pub(crate) use self::table::{BootstrapColumn, BootstrapSequence};
 use crate::{
-    Column, ColumnIndex, Function, Index, IndexKind, Namespace, Oid, Operator, OperatorKind,
-    SystemEntity, SystemTableView, Table, MAIN_SCHEMA,
+    Column, ColumnIdentity, ColumnIndex, Function, Index, IndexKind, Namespace, Oid, Operator,
+    OperatorKind, Sequence, SystemEntity, SystemTableView, Table, MAIN_SCHEMA,
 };
 
 // The order matters as it will determine which id is assigned to each element
@@ -56,8 +57,15 @@ pub(crate) fn bootstrap<'env, S: StorageEngine>(
 
     let catalog = &BootstrapFunctionCatalog;
 
-    let (mut namespaces, mut tables, mut columns, mut indexes, mut functions, mut operators) =
-        bootstrap_info().desugar();
+    let (
+        mut namespaces,
+        mut tables,
+        mut columns,
+        mut indexes,
+        mut functions,
+        mut operators,
+        mut sequences,
+    ) = bootstrap_info().desugar();
 
     let mut namespace_table =
         SystemTableView::<S, ReadWriteExecutionMode, Namespace>::new_bootstrap(storage, tx)?;
@@ -74,26 +82,37 @@ pub(crate) fn bootstrap<'env, S: StorageEngine>(
         }
         table_table.insert(catalog, tx, table)
     })?;
+    drop(table_table);
+
+    tracing::debug!("bootstrapping sequences");
+    let mut sequence_table =
+        SystemTableView::<S, ReadWriteExecutionMode, Sequence>::new_bootstrap(storage, tx)?;
+    sequences.try_for_each(|sequence| sequence_table.insert(catalog, tx, sequence))?;
+    drop(sequence_table);
 
     tracing::debug!("bootstrapping columns");
     let mut column_table =
         SystemTableView::<S, ReadWriteExecutionMode, Column>::new_bootstrap(storage, tx)?;
     columns.try_for_each(|column| column_table.insert(catalog, tx, column))?;
+    drop(column_table);
 
     tracing::debug!("bootstrapping indexes");
     let mut index_table =
         SystemTableView::<S, ReadWriteExecutionMode, Index>::new_bootstrap(storage, tx)?;
     indexes.try_for_each(|index| index_table.insert(catalog, tx, index))?;
+    drop(index_table);
 
     tracing::debug!("bootstrapping functions");
     let mut functions_table =
         SystemTableView::<S, ReadWriteExecutionMode, Function>::new_bootstrap(storage, tx)?;
     functions.try_for_each(|function| functions_table.insert(catalog, tx, function))?;
+    drop(functions_table);
 
     tracing::debug!("bootstrapping operators");
     let mut operators_table =
         SystemTableView::<S, ReadWriteExecutionMode, Operator>::new_bootstrap(storage, tx)?;
     operators.try_for_each(|operator| operators_table.insert(catalog, tx, operator))?;
+    drop(operators_table);
 
     Ok(())
 }
@@ -124,6 +143,7 @@ impl BootstrapData {
         impl Iterator<Item = Index>,
         impl Iterator<Item = Function>,
         impl Iterator<Item = Operator>,
+        impl Iterator<Item = Sequence>,
     ) {
         let namespaces = self
             .namespaces
@@ -169,6 +189,7 @@ impl BootstrapData {
         let mut tables = vec![];
         let mut columns = vec![];
         let mut indexes = vec![];
+        let mut sequences = vec![];
 
         for table in self.tables.into_vec() {
             tables.push(Table {
@@ -205,8 +226,8 @@ impl BootstrapData {
                             columns.push(Column {
                                 table: index.table,
                                 index: ColumnIndex::new(col_index.try_into().unwrap()),
-                                ty: target_column.logical_type(),
-                                name: target_column.name.clone(),
+                                ty: target_column.ty.clone(),
+                                name: target_column.name.into(),
                                 // all columns in an index are part of the primary key (for now) as
                                 // we only have unique indexes
                                 is_primary_key: true,
@@ -233,10 +254,28 @@ impl BootstrapData {
                 });
             }
 
-            for (idx, column) in table.columns.into_iter().enumerate() {
-                assert_eq!(column.table, table.oid);
-                assert_eq!(column.index.as_usize(), idx);
-                columns.push(column);
+            for (idx, col) in table.columns.into_iter().enumerate() {
+                match col.seq {
+                    Some(seq) => {
+                        assert!(!matches!(col.identity, ColumnIdentity::None));
+                        tables.push(Table {
+                            oid: seq.table,
+                            namespace: Namespace::CATALOG,
+                            name: seq.name.into(),
+                        });
+                        sequences.push(Sequence { table: seq.table });
+                    }
+                    None => assert!(matches!(col.identity, ColumnIdentity::None)),
+                }
+                columns.push(Column {
+                    table: table.oid,
+                    index: ColumnIndex::new(idx.try_into().unwrap()),
+                    ty: col.ty,
+                    name: col.name.into(),
+                    is_primary_key: col.is_primary_key,
+                    identity: col.identity,
+                    default_expr: col.default_expr,
+                });
             }
         }
 
@@ -247,6 +286,7 @@ impl BootstrapData {
             indexes.into_iter(),
             functions.into_iter(),
             operators.into_iter(),
+            sequences.into_iter(),
         )
     }
 }

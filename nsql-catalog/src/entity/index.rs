@@ -2,7 +2,7 @@ use nsql_storage::eval::{Expr, TupleExpr};
 use nsql_storage::IndexStorageInfo;
 
 use super::*;
-use crate::{Column, ColumnIdentity, ColumnIndex, Namespace};
+use crate::{ColumnIdentity, Namespace, SystemEntityPrivate};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, FromTuple)]
 pub struct Index {
@@ -98,46 +98,42 @@ impl SystemEntity for Index {
     ) -> Result<Option<Oid<Self::Parent>>> {
         catalog.get::<Table>(tx, self.table)?.parent_oid(catalog, tx)
     }
+}
 
-    fn bootstrap_column_info() -> Vec<Column> {
-        let table = Self::table();
-
+impl SystemEntityPrivate for Index {
+    fn bootstrap_column_info() -> Vec<BootstrapColumn> {
         vec![
-            Column {
-                table,
-                index: ColumnIndex::new(0),
+            BootstrapColumn {
                 ty: LogicalType::Oid,
-                name: "table".into(),
+                name: "table",
                 is_primary_key: true,
                 identity: ColumnIdentity::None,
                 default_expr: Expr::null(),
+                seq: None,
             },
-            Column {
-                table,
-                index: ColumnIndex::new(1),
+            BootstrapColumn {
                 ty: LogicalType::Oid,
-                name: "target".into(),
+                name: "target",
                 is_primary_key: false,
                 identity: ColumnIdentity::None,
                 default_expr: Expr::null(),
+                seq: None,
             },
-            Column {
-                table,
-                index: ColumnIndex::new(2),
+            BootstrapColumn {
                 ty: LogicalType::Int64,
-                name: "kind".into(),
+                name: "kind",
                 is_primary_key: false,
                 identity: ColumnIdentity::None,
                 default_expr: Expr::null(),
+                seq: None,
             },
-            Column {
-                table,
-                index: ColumnIndex::new(3),
+            BootstrapColumn {
                 ty: LogicalType::TupleExpr,
-                name: "index_expr".into(),
+                name: "index_expr",
                 is_primary_key: false,
                 identity: ColumnIdentity::None,
                 default_expr: Expr::null(),
+                seq: None,
             },
         ]
     }

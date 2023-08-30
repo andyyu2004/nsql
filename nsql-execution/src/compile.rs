@@ -47,7 +47,10 @@ impl Compiler {
     ) -> Result<()> {
         match &expr {
             opt::Expr::Compiled(expr) => {
-                assert!(self.ops.is_empty());
+                assert!(
+                    self.ops.is_empty(),
+                    "compiled expressions are expected to be at the top level"
+                );
                 let expr = (*expr).clone();
                 self.ops.extend_from_slice(expr.prepare(catalog, tx)?.ops());
             }

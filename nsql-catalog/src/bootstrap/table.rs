@@ -1,4 +1,7 @@
+use nsql_storage::ColumnStorageInfo;
+
 use super::*;
+use crate::SystemEntityPrivate;
 
 impl Table {
     mk_consts![
@@ -8,19 +11,46 @@ impl Table {
         INDEX,
         FUNCTION,
         OPERATOR,
+        SEQUENCE,
         NAMESPACE_NAME_UNIQUE_INDEX,
         TABLE_NAME_UNIQUE_INDEX,
         ATTRIBUTE_NAME_UNIQUE_INDEX,
         FUNCTION_NAME_ARGS_UNIQUE_INDEX,
-        OPERATOR_NAME_FN_UNIQUE_INDEX
+        OPERATOR_NAME_FN_UNIQUE_INDEX,
+        NAMESPACE_OID_SEQ
     ];
 }
 
 pub(super) struct BootstrapTable {
     pub oid: Oid<Table>,
     pub name: &'static str,
-    pub columns: Vec<Column>,
+    pub columns: Vec<BootstrapColumn>,
     pub indexes: Vec<BootstrapIndex>,
+}
+
+pub struct BootstrapColumn {
+    pub(crate) ty: LogicalType,
+    pub(crate) name: &'static str,
+    pub(crate) is_primary_key: bool,
+    pub(crate) identity: ColumnIdentity,
+    pub(crate) default_expr: Expr,
+    pub(crate) seq: Option<BootstrapSequence>,
+}
+
+impl From<BootstrapColumn> for ColumnStorageInfo {
+    #[inline]
+    fn from(col: BootstrapColumn) -> Self {
+        ColumnStorageInfo {
+            name: col.name.into(),
+            logical_type: col.ty.clone(),
+            is_primary_key: col.is_primary_key,
+        }
+    }
+}
+
+pub(crate) struct BootstrapSequence {
+    pub table: Oid<Table>,
+    pub name: &'static str,
 }
 
 pub(super) struct BootstrapIndex {
@@ -69,6 +99,12 @@ pub(super) fn bootstrap_data() -> Box<[BootstrapTable]> {
             oid: Table::INDEX,
             name: "nsql_index",
             columns: Index::bootstrap_column_info(),
+            indexes: vec![],
+        },
+        BootstrapTable {
+            oid: Table::SEQUENCE,
+            name: "nsql_sequence",
+            columns: Sequence::bootstrap_column_info(),
             indexes: vec![],
         },
         BootstrapTable {

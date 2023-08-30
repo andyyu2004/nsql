@@ -3,6 +3,7 @@ use std::fmt;
 use nsql_storage::eval::Expr;
 
 use super::*;
+use crate::SystemEntityPrivate;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, FromTuple, IntoTuple)]
 pub struct Column {
@@ -17,11 +18,11 @@ pub struct Column {
 
 impl From<Column> for ColumnStorageInfo {
     #[inline]
-    fn from(val: Column) -> Self {
+    fn from(col: Column) -> Self {
         ColumnStorageInfo {
-            name: val.name.clone(),
-            logical_type: val.logical_type(),
-            is_primary_key: val.is_primary_key(),
+            name: col.name.clone(),
+            logical_type: col.logical_type(),
+            is_primary_key: col.is_primary_key(),
         }
     }
 }
@@ -195,72 +196,66 @@ impl SystemEntity for Column {
     ) -> Result<Option<Oid<Self::Parent>>> {
         Ok(Some(self.table))
     }
+}
 
-    fn bootstrap_column_info() -> Vec<Column> {
-        let table = Self::table();
+impl SystemEntityPrivate for Column {
+    fn bootstrap_column_info() -> Vec<BootstrapColumn> {
         vec![
-            Column {
-                table,
-                index: ColumnIndex::new(0),
+            BootstrapColumn {
                 ty: LogicalType::Oid,
-                name: "table".into(),
+                name: "table",
                 is_primary_key: true,
                 identity: ColumnIdentity::None,
                 default_expr: Expr::null(),
+                seq: None,
             },
-            Column {
-                table,
-                index: ColumnIndex::new(1),
+            BootstrapColumn {
                 ty: LogicalType::Int64,
-                name: "index".into(),
+                name: "index",
                 is_primary_key: true,
                 identity: ColumnIdentity::None,
                 default_expr: Expr::null(),
+                seq: None,
             },
-            Column {
-                table,
-                index: ColumnIndex::new(2),
+            BootstrapColumn {
                 ty: LogicalType::Type,
-                name: "ty".into(),
+                name: "ty",
                 is_primary_key: false,
                 identity: ColumnIdentity::None,
                 default_expr: Expr::null(),
+                seq: None,
             },
-            Column {
-                table,
-                index: ColumnIndex::new(3),
+            BootstrapColumn {
                 ty: LogicalType::Text,
-                name: "name".into(),
+                name: "name",
                 is_primary_key: false,
                 identity: ColumnIdentity::None,
                 default_expr: Expr::null(),
+                seq: None,
             },
-            Column {
-                table,
-                index: ColumnIndex::new(4),
+            BootstrapColumn {
                 ty: LogicalType::Bool,
-                name: "is_primary_key".into(),
+                name: "is_primary_key",
                 is_primary_key: false,
                 identity: ColumnIdentity::None,
                 default_expr: Expr::null(),
+                seq: None,
             },
-            Column {
-                table,
-                index: ColumnIndex::new(5),
+            BootstrapColumn {
                 ty: LogicalType::Byte,
-                name: "identity".into(),
+                name: "identity",
                 is_primary_key: false,
                 identity: ColumnIdentity::None,
                 default_expr: Expr::null(),
+                seq: None,
             },
-            Column {
-                table,
-                index: ColumnIndex::new(6),
+            BootstrapColumn {
                 ty: LogicalType::Expr,
-                name: "default_expr".into(),
+                name: "default_expr",
                 is_primary_key: false,
                 identity: ColumnIdentity::None,
                 default_expr: Expr::null(),
+                seq: None,
             },
         ]
     }

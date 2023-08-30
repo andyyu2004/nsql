@@ -1,7 +1,7 @@
 use nsql_storage::eval::Expr;
 
 use super::*;
-use crate::{Column, ColumnIdentity, ColumnIndex};
+use crate::{ColumnIdentity, SystemEntityPrivate};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, FromTuple, IntoTuple)]
 pub struct Namespace {
@@ -52,31 +52,6 @@ impl SystemEntity for Namespace {
         "namespace"
     }
 
-    fn bootstrap_column_info() -> Vec<Column> {
-        let table = Self::table();
-
-        vec![
-            Column {
-                table,
-                index: ColumnIndex::new(0),
-                ty: LogicalType::Oid,
-                name: "oid".into(),
-                is_primary_key: true,
-                identity: ColumnIdentity::None,
-                default_expr: Expr::null(),
-            },
-            Column {
-                table,
-                index: ColumnIndex::new(1),
-                ty: LogicalType::Text,
-                name: "name".into(),
-                is_primary_key: false,
-                identity: ColumnIdentity::None,
-                default_expr: Expr::null(),
-            },
-        ]
-    }
-
     #[inline]
     fn parent_oid<'env, S: StorageEngine>(
         &self,
@@ -84,6 +59,32 @@ impl SystemEntity for Namespace {
         _tx: &dyn Transaction<'env, S>,
     ) -> Result<Option<Oid<Self::Parent>>> {
         Ok(None)
+    }
+}
+
+impl SystemEntityPrivate for Namespace {
+    fn bootstrap_column_info() -> Vec<BootstrapColumn> {
+        vec![
+            BootstrapColumn {
+                ty: LogicalType::Oid,
+                name: "oid",
+                is_primary_key: true,
+                identity: ColumnIdentity::Always,
+                default_expr: Expr::null(),
+                seq: Some(BootstrapSequence {
+                    table: Table::NAMESPACE_OID_SEQ,
+                    name: "nsql_namespace_oid_seq",
+                }),
+            },
+            BootstrapColumn {
+                ty: LogicalType::Text,
+                name: "name",
+                is_primary_key: false,
+                identity: ColumnIdentity::None,
+                default_expr: Expr::null(),
+                seq: None,
+            },
+        ]
     }
 
     #[inline]

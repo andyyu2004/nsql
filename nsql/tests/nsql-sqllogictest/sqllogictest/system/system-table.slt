@@ -16,6 +16,9 @@ SELECT * FROM nsql_catalog.nsql_operator
 statement ok
 SELECT * FROM nsql_catalog.nsql_index
 
+statement ok
+SELECT * FROM nsql_catalog.nsql_sequence
+
 query T rowsort
 SELECT * EXCLUDE (oid, namespace) FROM nsql_catalog.nsql_table
 ----
@@ -26,8 +29,10 @@ nsql_function_namespace_name_args_index
 nsql_index
 nsql_namespace
 nsql_namespace_name_index
+nsql_namespace_oid_seq
 nsql_operator
 nsql_operator_namespace_name_function_index
+nsql_sequence
 nsql_table
 nsql_table_namespace_name_index
 

@@ -9,7 +9,7 @@ use nsql_storage_engine::{
 
 use super::*;
 use crate::{
-    Catalog, Column, ColumnIdentity, ColumnIndex, Index, Name, Namespace, Oid, SystemEntity,
+    Catalog, Column, ColumnIdentity, Index, Name, Namespace, Oid, SystemEntity, SystemEntityPrivate,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, FromTuple, IntoTuple)]
@@ -20,8 +20,8 @@ pub struct Table {
 }
 
 impl Table {
-    pub fn new(namespace: Oid<Namespace>, name: Name) -> Self {
-        Self { oid: crate::hack_new_oid_tmp(), namespace, name }
+    pub fn new(namespace: Oid<Namespace>, name: impl Into<Name>) -> Self {
+        Self { oid: crate::hack_new_oid_tmp(), namespace, name: name.into() }
     }
 
     #[inline]
@@ -173,38 +173,35 @@ impl SystemEntity for Table {
     ) -> Result<Option<Oid<Self::Parent>>> {
         Ok(Some(self.namespace))
     }
+}
 
+impl SystemEntityPrivate for Table {
     #[inline]
-    fn bootstrap_column_info() -> Vec<Column> {
-        let table = Self::table();
-
+    fn bootstrap_column_info() -> Vec<BootstrapColumn> {
         vec![
-            Column {
-                table,
-                index: ColumnIndex::new(0),
+            BootstrapColumn {
                 ty: LogicalType::Oid,
-                name: "oid".into(),
+                name: "oid",
                 is_primary_key: true,
                 identity: ColumnIdentity::None,
                 default_expr: Expr::null(),
+                seq: None,
             },
-            Column {
-                table,
-                index: ColumnIndex::new(1),
+            BootstrapColumn {
                 ty: LogicalType::Oid,
-                name: "namespace".into(),
+                name: "namespace",
                 is_primary_key: false,
                 identity: ColumnIdentity::None,
                 default_expr: Expr::null(),
+                seq: None,
             },
-            Column {
-                table,
-                index: ColumnIndex::new(2),
+            BootstrapColumn {
                 ty: LogicalType::Text,
-                name: "name".into(),
+                name: "name",
                 is_primary_key: false,
                 identity: ColumnIdentity::None,
                 default_expr: Expr::null(),
+                seq: None,
             },
         ]
     }
