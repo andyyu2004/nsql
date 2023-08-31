@@ -12,7 +12,7 @@ use crate::pipeline::{MetaPipelineBuilder, PipelineBuilder, PipelineBuilderArena
 pub(crate) struct PhysicalNestedLoopJoin<'env, 'txn, S, M> {
     children: [Arc<dyn PhysicalNode<'env, 'txn, S, M>>; 2],
     join_kind: ir::JoinKind,
-    join_predicate: ExecutableExpr,
+    join_predicate: ExecutableExpr<S>,
     // mutex is only used during build phase
     rhs_tuples_build: Mutex<Vec<Tuple>>,
     // tuples are moved into this vector during finalization (to avoid unnecessary locks)
@@ -26,7 +26,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
 {
     pub fn plan(
         join_kind: ir::JoinKind,
-        join_predicate: ExecutableExpr,
+        join_predicate: ExecutableExpr<S>,
         probe_node: Arc<dyn PhysicalNode<'env, 'txn, S, M>>,
         build_node: Arc<dyn PhysicalNode<'env, 'txn, S, M>>,
     ) -> Arc<dyn PhysicalNode<'env, 'txn, S, M>> {
@@ -102,9 +102,11 @@ impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalOperator<'
 {
     fn execute(
         &self,
-        _ecx: &'txn ExecutionContext<'_, 'env, S, M>,
+        ecx: &'txn ExecutionContext<'_, 'env, S, M>,
         lhs_tuple: Tuple,
     ) -> ExecutionResult<OperatorState<Tuple>> {
+        let storage = ecx.storage();
+        let tx = ecx.tx();
         let lhs_width = lhs_tuple.width();
         let rhs_tuples = self.rhs_tuples.get().expect("probing before build is finished");
         if rhs_tuples.is_empty() {
@@ -137,8 +139,11 @@ impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalOperator<'
         let rhs_tuple = &rhs_tuples[rhs_index];
         let joint_tuple = lhs_tuple.join(rhs_tuple);
 
-        let keep =
-            self.join_predicate.execute(&joint_tuple).cast::<Option<bool>>()?.unwrap_or(false);
+        let keep = self
+            .join_predicate
+            .execute(storage, &tx, &joint_tuple)
+            .cast::<Option<bool>>()?
+            .unwrap_or(false);
 
         if keep {
             self.found_match_for_tuple.store(true, atomic::Ordering::Relaxed);

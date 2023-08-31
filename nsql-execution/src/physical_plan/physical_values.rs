@@ -3,33 +3,35 @@ use nsql_storage_engine::fallible_iterator;
 use super::*;
 
 #[derive(Debug)]
-pub struct PhysicalValues {
-    values: Box<[ExecutableTupleExpr]>,
+pub struct PhysicalValues<S> {
+    values: Box<[ExecutableTupleExpr<S>]>,
 }
 
-impl PhysicalValues {
-    pub(crate) fn plan<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
-        values: Box<[ExecutableTupleExpr]>,
+impl<S: StorageEngine> PhysicalValues<S> {
+    pub(crate) fn plan<'env: 'txn, 'txn, M: ExecutionMode<'env, S>>(
+        values: Box<[ExecutableTupleExpr<S>]>,
     ) -> Arc<dyn PhysicalNode<'env, 'txn, S, M>> {
         Arc::new(PhysicalValues { values })
     }
 }
 
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSource<'env, 'txn, S, M>
-    for PhysicalValues
+    for PhysicalValues<S>
 {
     fn source(
         self: Arc<Self>,
-        _ecx: &'txn ExecutionContext<'_, 'env, S, M>,
+        ecx: &'txn ExecutionContext<'_, 'env, S, M>,
     ) -> ExecutionResult<TupleStream<'txn>> {
+        let storage = ecx.storage();
+        let tx = ecx.tx();
         let mut index = 0;
         let iter = fallible_iterator::from_fn(move || {
             if index >= self.values.len() {
                 return Ok(None);
             }
 
-            let exprs: &ExecutableTupleExpr = &self.values[index];
-            let tuple = exprs.execute(&Tuple::empty());
+            let exprs: &ExecutableTupleExpr<S> = &self.values[index];
+            let tuple = exprs.execute(storage, &tx, &Tuple::empty());
             index += 1;
 
             Ok(Some(tuple))
@@ -39,7 +41,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
 }
 
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode<'env, 'txn, S, M>
-    for PhysicalValues
+    for PhysicalValues<S>
 {
     #[inline]
     fn children(&self) -> &[Arc<dyn PhysicalNode<'env, 'txn, S, M>>] {
@@ -71,7 +73,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine> Explain<'_, S> for PhysicalValues {
+impl<'env: 'txn, 'txn, S: StorageEngine> Explain<'_, S> for PhysicalValues<S> {
     fn explain(
         &self,
         _catalog: Catalog<'_, S>,

@@ -1,6 +1,6 @@
 use egg::{define_language, Id};
 use ir::Value;
-use nsql_core::{Name, Oid, Oid};
+use nsql_core::{Name, Oid};
 use nsql_storage::eval;
 
 use crate::Query;

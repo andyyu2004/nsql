@@ -7,7 +7,7 @@ use std::{fmt, mem};
 use anyhow::Result;
 use itertools::Itertools;
 use nsql_core::{LogicalType, UntypedOid};
-use nsql_storage_engine::Transaction;
+use nsql_storage_engine::{StorageEngine, Transaction};
 use nsql_util::static_assert_eq;
 use rkyv::{Archive, Deserialize, Serialize};
 
@@ -15,18 +15,25 @@ use crate::tuple::{Tuple, TupleIndex};
 use crate::value::{CastError, FromValue, Value};
 
 pub trait FunctionCatalog<'env, S> {
+    fn storage(&self) -> &'env S;
+
     fn get_function(
         &self,
         tx: &dyn Transaction<'env, S>,
         oid: UntypedOid,
-    ) -> Result<Arc<dyn ScalarFunction>>;
+    ) -> Result<Arc<dyn ScalarFunction<S>>>;
 }
 
-pub trait ScalarFunction: fmt::Debug + Send + Sync + 'static {
+pub trait ScalarFunction<S: StorageEngine>: fmt::Debug + Send + Sync + 'static {
+    fn invoke<'env>(
+        &self,
+        storage: &'env S,
+        tx: &dyn Transaction<'env, S>,
+        args: Box<[Value]>,
+    ) -> Value;
+
     /// The number f arguments this function takes.
     fn arity(&self) -> usize;
-
-    fn call(&self, args: Box<[Value]>) -> Value;
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Archive, Serialize, Deserialize)]
@@ -36,7 +43,7 @@ pub struct TupleExpr<F = UntypedOid> {
     exprs: Box<[Expr<F>]>,
 }
 
-pub type ExecutableTupleExpr = TupleExpr<Arc<dyn ScalarFunction>>;
+pub type ExecutableTupleExpr<S> = TupleExpr<Arc<dyn ScalarFunction<S>>>;
 
 impl<F> fmt::Display for TupleExpr<F> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -63,7 +70,7 @@ impl TupleExpr {
         self,
         catalog: &dyn FunctionCatalog<'env, S>,
         tx: &dyn Transaction<'env, S>,
-    ) -> Result<ExecutableTupleExpr> {
+    ) -> Result<ExecutableTupleExpr<S>> {
         self.map(|oid| catalog.get_function(tx, oid))
     }
 }
@@ -75,15 +82,20 @@ impl Expr {
         self,
         catalog: &dyn FunctionCatalog<'env, S>,
         tx: &dyn Transaction<'env, S>,
-    ) -> Result<ExecutableExpr> {
+    ) -> Result<ExecutableExpr<S>> {
         self.map(|oid| catalog.get_function(tx, oid))
     }
 }
 
-impl ExecutableTupleExpr {
+impl<S: StorageEngine> ExecutableTupleExpr<S> {
     #[inline]
-    pub fn execute(&self, tuple: &Tuple) -> Tuple {
-        self.exprs.iter().map(|expr| expr.execute(tuple)).collect()
+    pub fn execute<'env>(
+        &self,
+        storage: &'env S,
+        tx: &dyn Transaction<'env, S>,
+        tuple: &Tuple,
+    ) -> Tuple {
+        self.exprs.iter().map(|expr| expr.execute(storage, tx, tuple)).collect()
     }
 }
 
@@ -114,7 +126,7 @@ impl From<TupleExpr> for Value {
     }
 }
 
-pub type ExecutableExpr = Expr<Arc<dyn ScalarFunction>>;
+pub type ExecutableExpr<S> = Expr<Arc<dyn ScalarFunction<S>>>;
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Archive, Serialize, Deserialize)]
 pub struct Expr<F = UntypedOid> {
@@ -173,8 +185,13 @@ impl<F> Expr<F> {
     }
 }
 
-impl ExecutableExpr {
-    pub fn execute(&self, tuple: &Tuple) -> Value {
+impl<S: StorageEngine> ExecutableExpr<S> {
+    pub fn execute<'env>(
+        &self,
+        storage: &'env S,
+        tx: &dyn Transaction<'env, S>,
+        tuple: &Tuple,
+    ) -> Value {
         let mut ip = 0;
         let mut stack = vec![];
         loop {
@@ -182,7 +199,7 @@ impl ExecutableExpr {
             if matches!(op, ExprOp::Return) {
                 break;
             }
-            op.execute(&mut stack, &mut ip, tuple);
+            op.execute(storage, tx, &mut stack, &mut ip, tuple);
         }
 
         assert_eq!(
@@ -196,7 +213,7 @@ impl ExecutableExpr {
     }
 }
 
-pub type ExecutableExprOp = ExprOp<Arc<dyn ScalarFunction>>;
+pub type ExecutableExprOp<S> = ExprOp<Arc<dyn ScalarFunction<S>>>;
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Archive, Serialize, Deserialize)]
 #[omit_bounds]
@@ -213,8 +230,15 @@ pub enum ExprOp<F = UntypedOid> {
 
 static_assert_eq!(mem::size_of::<ExprOp>(), 40);
 
-impl ExprOp<Arc<dyn ScalarFunction>> {
-    fn execute(&self, stack: &mut Vec<Value>, ip: &mut usize, tuple: &Tuple) {
+impl<S: StorageEngine> ExprOp<Arc<dyn ScalarFunction<S>>> {
+    fn execute<'env>(
+        &self,
+        storage: &'env S,
+        tx: &dyn Transaction<'env, S>,
+        stack: &mut Vec<Value>,
+        ip: &mut usize,
+        tuple: &Tuple,
+    ) {
         let value = match self {
             ExprOp::Project { index } => tuple[*index].clone(),
             ExprOp::Push(value) => value.clone(),
@@ -224,7 +248,7 @@ impl ExprOp<Arc<dyn ScalarFunction>> {
             }
             ExprOp::Call { function } => {
                 let args = stack.drain(stack.len() - function.arity()..).collect::<Box<[Value]>>();
-                function.call(args)
+                function.invoke(storage, tx, args)
             }
             ExprOp::IfNeJmp { offset } => {
                 let rhs = stack.pop().unwrap();

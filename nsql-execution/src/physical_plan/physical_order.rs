@@ -3,14 +3,13 @@ use std::{cmp, mem};
 use itertools::Itertools;
 use nsql_storage_engine::fallible_iterator;
 use parking_lot::RwLock;
-use rayon::prelude::*;
 
 use super::*;
 
 #[derive(Debug)]
 pub struct PhysicalOrder<'env, 'txn, S, M> {
     children: [Arc<dyn PhysicalNode<'env, 'txn, S, M>>; 1],
-    ordering: Box<[ir::OrderExpr<ExecutableExpr>]>,
+    ordering: Box<[ir::OrderExpr<ExecutableExpr<S>>]>,
     tuples: RwLock<Vec<Tuple>>,
 }
 
@@ -19,7 +18,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
 {
     pub(crate) fn plan(
         source: Arc<dyn PhysicalNode<'env, 'txn, S, M>>,
-        ordering: Box<[ir::OrderExpr<ExecutableExpr>]>,
+        ordering: Box<[ir::OrderExpr<ExecutableExpr<S>>]>,
     ) -> Arc<dyn PhysicalNode<'env, 'txn, S, M>> {
         Arc::new(Self { children: [source], ordering, tuples: Default::default() })
     }
@@ -49,15 +48,19 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSink
         Ok(())
     }
 
-    fn finalize(&self, _ecx: &'txn ExecutionContext<'_, 'env, S, M>) -> ExecutionResult<()> {
+    fn finalize(&self, ecx: &'txn ExecutionContext<'_, 'env, S, M>) -> ExecutionResult<()> {
         // sort tuples when the sink is finalized
         let tuples: &mut [Tuple] = &mut self.tuples.write();
         let ordering = &self.ordering;
 
-        tuples.par_sort_unstable_by(|a, b| {
+        let storage = ecx.storage();
+        let tx = ecx.tx();
+
+        // FIXME can't use rayon's parallel sort as tx is not necessarily Sync
+        tuples.sort_unstable_by(|a, b| {
             for order in ordering.iter() {
-                let a = order.expr.execute(a);
-                let b = order.expr.execute(b);
+                let a = order.expr.execute(storage, &tx, a);
+                let b = order.expr.execute(storage, &tx, b);
                 let cmp = a.partial_cmp(&b).unwrap();
                 if cmp != cmp::Ordering::Equal {
                     return if order.asc { cmp } else { cmp.reverse() };

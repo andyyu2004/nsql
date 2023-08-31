@@ -9,9 +9,9 @@ use super::*;
 
 #[derive(Debug)]
 pub struct PhysicalHashAggregate<'env, 'txn, S, M> {
-    functions: Box<[(ir::Function, Option<ExecutableExpr>)]>,
+    functions: Box<[(ir::Function, Option<ExecutableExpr<S>>)]>,
     children: [Arc<dyn PhysicalNode<'env, 'txn, S, M>>; 1],
-    group_expr: ExecutableTupleExpr,
+    group_expr: ExecutableTupleExpr<S>,
     output_groups: DashMap<Tuple, Mutex<Vec<Box<dyn AggregateFunctionInstance>>>>,
 }
 
@@ -19,9 +19,9 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     PhysicalHashAggregate<'env, 'txn, S, M>
 {
     pub(crate) fn plan(
-        functions: Box<[(ir::Function, Option<ExecutableExpr>)]>,
+        functions: Box<[(ir::Function, Option<ExecutableExpr<S>>)]>,
         source: Arc<dyn PhysicalNode<'env, 'txn, S, M>>,
-        group_expr: ExecutableTupleExpr,
+        group_expr: ExecutableTupleExpr<S>,
     ) -> Arc<dyn PhysicalNode<'env, 'txn, S, M>> {
         Arc::new(Self {
             functions,
@@ -57,17 +57,19 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSink
 {
     fn sink(
         &self,
-        _ecx: &'txn ExecutionContext<'_, 'env, S, M>,
+        ecx: &'txn ExecutionContext<'_, 'env, S, M>,
         tuple: Tuple,
     ) -> ExecutionResult<()> {
-        let group = self.group_expr.execute(&tuple);
+        let storage = ecx.storage();
+        let tx = ecx.tx();
+        let group = self.group_expr.execute(storage, &tx, &tuple);
         let functions = self.output_groups.entry(group).or_insert_with(|| {
             Mutex::new(self.functions.iter().map(|(f, _expr)| f.get_aggregate_instance()).collect())
         });
 
         let mut aggregate_functions = functions.lock();
         for (state, (_f, expr)) in aggregate_functions.iter_mut().zip(&self.functions[..]) {
-            let value = expr.as_ref().map(|expr| expr.execute(&tuple));
+            let value = expr.as_ref().map(|expr| expr.execute(storage, &tx, &tuple));
             state.update(value);
         }
 

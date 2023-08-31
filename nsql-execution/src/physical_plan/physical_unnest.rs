@@ -5,26 +5,28 @@ use super::*;
 use crate::TupleStream;
 
 #[derive(Debug)]
-pub struct PhysicalUnnest {
-    expr: ExecutableExpr,
+pub struct PhysicalUnnest<S> {
+    expr: ExecutableExpr<S>,
 }
 
-impl PhysicalUnnest {
-    pub(crate) fn plan<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
-        expr: ExecutableExpr,
+impl<S: StorageEngine> PhysicalUnnest<S> {
+    pub(crate) fn plan<'env: 'txn, 'txn, M: ExecutionMode<'env, S>>(
+        expr: ExecutableExpr<S>,
     ) -> Arc<dyn PhysicalNode<'env, 'txn, S, M>> {
         Arc::new(Self { expr })
     }
 }
 
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSource<'env, 'txn, S, M>
-    for PhysicalUnnest
+    for PhysicalUnnest<S>
 {
     fn source(
         self: Arc<Self>,
-        _ecx: &'txn ExecutionContext<'_, 'env, S, M>,
+        ecx: &'txn ExecutionContext<'_, 'env, S, M>,
     ) -> ExecutionResult<TupleStream<'txn>> {
-        let values = match self.expr.execute(&Tuple::empty()) {
+        let storage = ecx.storage();
+        let tx = ecx.tx();
+        let values = match self.expr.execute(storage, &tx, &Tuple::empty()) {
             Value::Array(values) => values,
             Value::Null => Box::new([]),
             _ => panic!("unnest expression should evaluate to an array"),
@@ -37,7 +39,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
 }
 
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode<'env, 'txn, S, M>
-    for PhysicalUnnest
+    for PhysicalUnnest<S>
 {
     fn children(&self) -> &[Arc<dyn PhysicalNode<'env, 'txn, S, M>>] {
         &[]
@@ -65,7 +67,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine> Explain<'_, S> for PhysicalUnnest {
+impl<'env: 'txn, 'txn, S: StorageEngine> Explain<'_, S> for PhysicalUnnest<S> {
     fn explain(
         &self,
         _catalog: Catalog<'_, S>,

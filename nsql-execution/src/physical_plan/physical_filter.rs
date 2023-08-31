@@ -3,7 +3,7 @@ use super::*;
 #[derive(Debug)]
 pub struct PhysicalFilter<'env, 'txn, S, M> {
     children: [Arc<dyn PhysicalNode<'env, 'txn, S, M>>; 1],
-    predicate: ExecutableExpr,
+    predicate: ExecutableExpr<S>,
 }
 
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
@@ -11,7 +11,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
 {
     pub(crate) fn plan(
         source: Arc<dyn PhysicalNode<'env, 'txn, S, M>>,
-        predicate: ExecutableExpr,
+        predicate: ExecutableExpr<S>,
     ) -> Arc<dyn PhysicalNode<'env, 'txn, S, M>> {
         Arc::new(Self { children: [source], predicate })
     }
@@ -20,13 +20,15 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     PhysicalOperator<'env, 'txn, S, M> for PhysicalFilter<'env, 'txn, S, M>
 {
-    #[tracing::instrument(skip(self, _ecx, input))]
+    #[tracing::instrument(skip(self, ecx, input))]
     fn execute(
         &self,
-        _ecx: &'txn ExecutionContext<'_, 'env, S, M>,
+        ecx: &'txn ExecutionContext<'_, 'env, S, M>,
         input: Tuple,
     ) -> ExecutionResult<OperatorState<Tuple>> {
-        let value = self.predicate.execute(&input);
+        let storage = ecx.storage();
+        let tx = ecx.tx();
+        let value = self.predicate.execute(storage, &tx, &input);
         let keep = value
             .cast::<Option<bool>>()
             .expect("this should have failed during planning")

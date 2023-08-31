@@ -40,11 +40,15 @@ use mk_consts;
 struct BootstrapFunctionCatalog;
 
 impl<'env, S> FunctionCatalog<'env, S> for BootstrapFunctionCatalog {
+    fn storage(&self) -> &'env S {
+        panic!("cannot get storage during bootstrap")
+    }
+
     fn get_function(
         &self,
         _tx: &dyn Transaction<'env, S>,
         _oid: UntypedOid,
-    ) -> Result<Arc<dyn nsql_storage::eval::ScalarFunction>> {
+    ) -> Result<Arc<dyn nsql_storage::eval::ScalarFunction<S>>> {
         bail!("cannot get function during bootstrap")
     }
 }

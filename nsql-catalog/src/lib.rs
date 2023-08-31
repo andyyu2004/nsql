@@ -231,7 +231,7 @@ impl<'env, S: StorageEngine> Catalog<'env, S> {
 pub const MAIN_SCHEMA: &str = "main";
 
 impl<'env, S: StorageEngine> Catalog<'env, S> {
-    pub fn open(storage: &'env S) -> Self {
+    pub fn new(storage: &'env S) -> Self {
         Self { storage }
     }
 

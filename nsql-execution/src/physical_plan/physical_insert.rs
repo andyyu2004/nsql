@@ -15,7 +15,7 @@ pub(crate) struct PhysicalInsert<'env, 'txn, S: StorageEngine> {
     table_oid: Oid<Table>,
     storage: OnceLock<Mutex<TableStorage<'env, 'txn, S, ReadWriteExecutionMode>>>,
     table: OnceLock<Table>,
-    returning: ExecutableTupleExpr,
+    returning: ExecutableTupleExpr<S>,
     returning_tuples: RwLock<Vec<Tuple>>,
 }
 
@@ -23,7 +23,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalInsert<'env, 'txn, S> {
     pub fn plan(
         table_oid: Oid<Table>,
         source: Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode>>,
-        returning: ExecutableTupleExpr,
+        returning: ExecutableTupleExpr<S>,
     ) -> Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode>> {
         Arc::new(Self {
             table_oid,
@@ -94,7 +94,11 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSink<'env, 'txn, S, ReadWriteEx
         })?;
 
         if !self.returning.is_empty() {
-            self.returning_tuples.write().push(self.returning.execute(&tuple));
+            self.returning_tuples.write().push(self.returning.execute(
+                catalog.storage(),
+                &tx,
+                &tuple,
+            ));
         }
 
         Ok(())

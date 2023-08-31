@@ -507,7 +507,8 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                     sequence_options,
                     generation_expr,
                 } => {
-                    not_implemented!(generation_expr.is_some());
+                    not_implemented_if!(generation_expr.is_some());
+
                     match generated_as {
                         ast::GeneratedAs::Always => identity = ColumnIdentity::Always,
                         ast::GeneratedAs::ByDefault => identity = ColumnIdentity::ByDefault,

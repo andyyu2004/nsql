@@ -275,6 +275,11 @@ impl<'a, 'env, S: StorageEngine, M: ExecutionMode<'env, S>> ExecutionContext<'a,
     pub fn instantiate_materialized_cte(&self, name: Name, tuples: impl Into<Arc<[Tuple]>>) {
         self.materialized_ctes.insert(name, tuples.into());
     }
+
+    #[inline]
+    pub fn storage(&self) -> &'env S {
+        self.catalog.storage()
+    }
 }
 
 struct RootPipeline<'env, 'txn, S, M> {

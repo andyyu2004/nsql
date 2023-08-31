@@ -9,7 +9,8 @@ use crate::{ColumnIdentity, SystemEntityPrivate};
 
 mod builtins;
 
-pub type ScalarFunction = fn(Box<[Value]>) -> Value;
+pub type ScalarFunction<S> =
+    for<'env, 'txn> fn(Catalog<'env, S>, &'txn dyn Transaction<'env, S>, Box<[Value]>) -> Value;
 
 pub trait AggregateFunctionInstance: fmt::Debug {
     fn update(&mut self, value: Option<Value>);
@@ -50,20 +51,30 @@ impl From<FunctionKind> for Value {
 
 impl<'env, S: StorageEngine> nsql_storage::eval::FunctionCatalog<'env, S> for Catalog<'env, S> {
     #[inline]
+    fn storage(&self) -> &'env S {
+        self.storage
+    }
+
+    #[inline]
     fn get_function(
         &self,
         tx: &dyn Transaction<'env, S>,
         oid: UntypedOid,
-    ) -> Result<Arc<dyn nsql_storage::eval::ScalarFunction>> {
+    ) -> Result<Arc<dyn nsql_storage::eval::ScalarFunction<S>>> {
         let f = self.get::<Function>(tx, oid.cast())?;
         Ok(Arc::new(f))
     }
 }
 
-impl nsql_storage::eval::ScalarFunction for Function {
+impl<S: StorageEngine> nsql_storage::eval::ScalarFunction<S> for Function {
     #[inline]
-    fn call(&self, args: Box<[Value]>) -> Value {
-        self.get_scalar_function()(args)
+    fn invoke<'env>(
+        &self,
+        storage: &'env S,
+        tx: &dyn Transaction<'env, S>,
+        args: Box<[Value]>,
+    ) -> Value {
+        self.get_scalar_function()(Catalog::new(storage), tx, args)
     }
 
     #[inline]
@@ -94,7 +105,7 @@ impl Function {
     }
 
     #[inline]
-    pub fn get_scalar_function(&self) -> ScalarFunction {
+    pub fn get_scalar_function<S: StorageEngine>(&self) -> ScalarFunction<S> {
         assert!(matches!(self.kind, FunctionKind::Scalar));
         if let Some(f) = builtins::get_scalar_function(self.oid) {
             return f;

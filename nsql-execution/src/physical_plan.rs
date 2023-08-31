@@ -63,7 +63,7 @@ use crate::{
 
 pub struct PhysicalPlanner<'env, S> {
     catalog: Catalog<'env, S>,
-    compiler: Compiler,
+    compiler: Compiler<S>,
 }
 
 /// Opaque physical plan that is ready to be executed
@@ -245,7 +245,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalPlanner<'env, S> {
         tx: &dyn Transaction<'env, S>,
         q: &opt::Query,
         exprs: impl Iterator<Item = ir::OrderExpr<opt::Expr<'_>>>,
-    ) -> Result<Box<[ir::OrderExpr<ExecutableExpr>]>> {
+    ) -> Result<Box<[ir::OrderExpr<ExecutableExpr<S>>]>> {
         exprs.map(|expr| self.compile_order_expr(tx, q, expr)).collect()
     }
 
@@ -254,7 +254,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalPlanner<'env, S> {
         tx: &dyn Transaction<'env, S>,
         q: &opt::Query,
         expr: ir::OrderExpr<opt::Expr<'_>>,
-    ) -> Result<ir::OrderExpr<ExecutableExpr>> {
+    ) -> Result<ir::OrderExpr<ExecutableExpr<S>>> {
         Ok(ir::OrderExpr { expr: self.compile_expr(tx, q, expr.expr)?, asc: expr.asc })
     }
 
@@ -263,7 +263,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalPlanner<'env, S> {
         tx: &dyn Transaction<'env, S>,
         q: &opt::Query,
         exprs: impl Iterator<Item = opt::Expr<'_>>,
-    ) -> Result<ExecutableTupleExpr> {
+    ) -> Result<ExecutableTupleExpr<S>> {
         self.compiler.compile_many(&self.catalog, tx, q, exprs)
     }
 
@@ -272,7 +272,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalPlanner<'env, S> {
         tx: &dyn Transaction<'env, S>,
         q: &opt::Query,
         expr: opt::Expr<'_>,
-    ) -> Result<ExecutableExpr> {
+    ) -> Result<ExecutableExpr<S>> {
         self.compiler.compile(&self.catalog, tx, q, expr)
     }
 
@@ -282,7 +282,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalPlanner<'env, S> {
         tx: &dyn Transaction<'env, S>,
         q: &opt::Query,
         functions: impl IntoIterator<Item = opt::CallExpr<'_>>,
-    ) -> Result<Box<[(ir::Function, Option<ExecutableExpr>)]>> {
+    ) -> Result<Box<[(ir::Function, Option<ExecutableExpr<S>>)]>> {
         functions
             .into_iter()
             .map(|call| {

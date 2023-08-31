@@ -8,7 +8,7 @@ use super::*;
 
 #[derive(Debug)]
 pub struct PhysicalUngroupedAggregate<'env, 'txn, S, M> {
-    functions: Box<[(ir::Function, Option<ExecutableExpr>)]>,
+    functions: Box<[(ir::Function, Option<ExecutableExpr<S>>)]>,
     aggregate_functions: Mutex<Vec<Box<dyn AggregateFunctionInstance>>>,
     children: [Arc<dyn PhysicalNode<'env, 'txn, S, M>>; 1],
 }
@@ -17,7 +17,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     PhysicalUngroupedAggregate<'env, 'txn, S, M>
 {
     pub(crate) fn plan(
-        functions: Box<[(ir::Function, Option<ExecutableExpr>)]>,
+        functions: Box<[(ir::Function, Option<ExecutableExpr<S>>)]>,
         source: Arc<dyn PhysicalNode<'env, 'txn, S, M>>,
     ) -> Arc<dyn PhysicalNode<'env, 'txn, S, M>> {
         Arc::new(Self {
@@ -50,12 +50,14 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSink
 {
     fn sink(
         &self,
-        _ecx: &'txn ExecutionContext<'_, 'env, S, M>,
+        ecx: &'txn ExecutionContext<'_, 'env, S, M>,
         tuple: Tuple,
     ) -> ExecutionResult<()> {
+        let storage = ecx.storage();
+        let tx = ecx.tx();
         let mut aggregate_functions = self.aggregate_functions.lock();
         for (state, (_f, expr)) in aggregate_functions.iter_mut().zip(&self.functions[..]) {
-            let v = expr.as_ref().map(|expr| expr.execute(&tuple));
+            let v = expr.as_ref().map(|expr| expr.execute(storage, &tx, &tuple));
             state.update(v);
         }
 

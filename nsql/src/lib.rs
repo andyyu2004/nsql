@@ -132,7 +132,7 @@ impl<S: StorageEngine> Shared<S> {
         });
 
         let storage = self.storage.storage();
-        let catalog = Catalog::open(storage);
+        let catalog = Catalog::new(storage);
         let stmt = &statements[0];
 
         let binder = Binder::new(catalog);

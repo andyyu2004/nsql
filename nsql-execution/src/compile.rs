@@ -6,19 +6,25 @@ use nsql_storage::eval::{
 };
 use nsql_storage_engine::{StorageEngine, Transaction};
 
-#[derive(Default, Debug)]
-pub(crate) struct Compiler {
-    ops: Vec<ExecutableExprOp>,
+#[derive(Debug)]
+pub(crate) struct Compiler<S> {
+    ops: Vec<ExecutableExprOp<S>>,
 }
 
-impl Compiler {
-    pub fn compile_many<'env, S: StorageEngine>(
+impl<S> Default for Compiler<S> {
+    fn default() -> Self {
+        Self { ops: Vec::new() }
+    }
+}
+
+impl<S: StorageEngine> Compiler<S> {
+    pub fn compile_many<'env>(
         &mut self,
         catalog: &dyn FunctionCatalog<'env, S>,
         tx: &dyn Transaction<'env, S>,
         q: &opt::Query,
         exprs: impl IntoIterator<Item = opt::Expr<'_>>,
-    ) -> Result<ExecutableTupleExpr> {
+    ) -> Result<ExecutableTupleExpr<S>> {
         exprs
             .into_iter()
             .map(|expr| self.compile(catalog, tx, q, expr))
@@ -26,19 +32,19 @@ impl Compiler {
             .map(TupleExpr::new)
     }
 
-    pub fn compile<'env, S: StorageEngine>(
+    pub fn compile<'env>(
         &mut self,
         catalog: &dyn FunctionCatalog<'env, S>,
         tx: &dyn Transaction<'env, S>,
         q: &opt::Query,
         expr: opt::Expr<'_>,
-    ) -> Result<ExecutableExpr> {
+    ) -> Result<ExecutableExpr<S>> {
         self.build(catalog, tx, q, &expr)?;
         self.emit(ExprOp::Return);
         Ok(Expr::new(expr.display(q), mem::take(&mut self.ops)))
     }
 
-    fn build<'env, S: StorageEngine>(
+    fn build<'env>(
         &mut self,
         catalog: &dyn FunctionCatalog<'env, S>,
         tx: &dyn Transaction<'env, S>,
@@ -78,7 +84,7 @@ impl Compiler {
                 let cases = case.cases(q);
                 let else_expr = case.else_expr(q);
 
-                let mut next_branch_marker: Option<JumpMarker> = None;
+                let mut next_branch_marker: Option<JumpMarker<S>> = None;
                 let mut end_markers = Vec::with_capacity(cases.len());
 
                 for (when, then) in cases {
@@ -119,29 +125,29 @@ impl Compiler {
         Ok(())
     }
 
-    fn emit(&mut self, op: ExecutableExprOp) {
+    fn emit(&mut self, op: ExecutableExprOp<S>) {
         self.ops.push(op);
     }
 
-    fn emit_jmp(&mut self, mk_jmp: fn(u32) -> ExecutableExprOp) -> JumpMarker {
+    fn emit_jmp(&mut self, mk_jmp: fn(u32) -> ExecutableExprOp<S>) -> JumpMarker<S> {
         JumpMarker::new(self, mk_jmp)
     }
 }
 
-struct JumpMarker {
+struct JumpMarker<S> {
     /// The offset of the jump instruction to backpatch
     offset: usize,
-    mk_jmp: fn(u32) -> ExecutableExprOp,
+    mk_jmp: fn(u32) -> ExecutableExprOp<S>,
 }
 
-impl JumpMarker {
-    fn new(compiler: &mut Compiler, mk_jmp: fn(u32) -> ExecutableExprOp) -> Self {
+impl<S: StorageEngine> JumpMarker<S> {
+    fn new(compiler: &mut Compiler<S>, mk_jmp: fn(u32) -> ExecutableExprOp<S>) -> Self {
         let offset = compiler.ops.len();
         compiler.emit(mk_jmp(u32::MAX));
         JumpMarker { offset, mk_jmp }
     }
 
-    fn backpatch(self, compiler: &mut Compiler) {
+    fn backpatch(self, compiler: &mut Compiler<S>) {
         let offset = compiler.ops.len() - self.offset;
         compiler.ops[self.offset] = (self.mk_jmp)(offset as u32);
     }

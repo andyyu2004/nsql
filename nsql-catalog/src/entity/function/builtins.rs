@@ -5,7 +5,7 @@ use super::*;
 
 macro_rules! cast {
     ($to:ty) => {
-        |mut args| {
+        |_catalog, _tx, mut args| {
             assert_eq!(args.len(), 2);
             // ensure the necessary `FromValue` cases are there for this cast to succeed
             // in particular, the rust level `to` types `FromValue` impl needs a case for the `from` type.
@@ -19,7 +19,7 @@ macro_rules! cast {
 
 macro_rules! comparison {
     ($op:tt: $ty:ty) => {
-        |mut args| {
+        |_catalog, _tx, mut args| {
             assert_eq!(args.len(), 2);
             let a: Option<$ty> = args[0].take().cast().unwrap();
             let b: Option<$ty> = args[1].take().cast().unwrap();
@@ -33,7 +33,7 @@ macro_rules! comparison {
 
 macro_rules! infix_op {
     ($op:tt: $ty:ty) => {
-        |mut args| {
+        |_catalog, _tx, mut args| {
             assert_eq!(args.len(), 2);
             let a: Option<$ty> = args[0].take().cast().unwrap();
             let b: Option<$ty> = args[1].take().cast().unwrap();
@@ -47,7 +47,7 @@ macro_rules! infix_op {
 
 macro_rules! prefix_op {
     ($op:tt: $ty:ty) => {
-        |mut args| {
+        |_catalog, _tx, mut args| {
             assert_eq!(args.len(), 1);
             let x: Option<$ty> = args[0].take().cast().unwrap();
             match x {
@@ -59,7 +59,7 @@ macro_rules! prefix_op {
 }
 
 #[rustfmt::skip]
-pub(crate) fn get_scalar_function(oid: Oid<Function>) -> Option<ScalarFunction> {
+pub(crate) fn get_scalar_function<S: StorageEngine>(oid: Oid<Function>) -> Option<ScalarFunction<S>> {
     Some(match oid {
         _ if oid == Function::NEG_INT   => prefix_op!(- : i64),
         _ if oid == Function::NOT_BOOL  => prefix_op!(! : bool),
@@ -86,8 +86,9 @@ pub(crate) fn get_scalar_function(oid: Oid<Function>) -> Option<ScalarFunction> 
         _ if oid == Function::CAST_SELF         => cast!(Value),
         _ if oid == Function::CAST_INT_TO_DEC   => cast!(Decimal),
         _ if oid == Function::CAST_INT_TO_FLOAT => cast!(f64),
+        _ if oid == Function::NEXTVAL => todo!(),
         // misc
-        _ if oid == Function::RANGE2 => |mut args| {
+        _ if oid == Function::RANGE2 => |_, _, mut args| {
             assert_eq!(args.len(), 2);
             let start: Option<i64> = args[0].take().cast().unwrap();
             let end: Option<i64> = args[1].take().cast().unwrap();
@@ -96,7 +97,7 @@ pub(crate) fn get_scalar_function(oid: Oid<Function>) -> Option<ScalarFunction> 
                 _ => Value::Null,
             }
         },
-        _ if oid == Function::ARRAY_ELEMENT => |mut args| {
+        _ if oid == Function::ARRAY_ELEMENT => |_, _, mut args| {
             assert_eq!(args.len(), 2);
             let array = match args[0].take() {
                 Value::Array(xs) => xs,
@@ -116,7 +117,7 @@ pub(crate) fn get_scalar_function(oid: Oid<Function>) -> Option<ScalarFunction> 
                 }
             }
         },
-        _ if oid == Function::ARRAY_POSITION => |mut args| {
+        _ if oid == Function::ARRAY_POSITION => |_, _, mut args| {
             assert_eq!(args.len(), 2);
             let array = match args[0].take() {
                 Value::Array(xs) => xs,

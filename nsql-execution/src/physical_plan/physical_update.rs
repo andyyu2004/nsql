@@ -11,7 +11,7 @@ pub(crate) struct PhysicalUpdate<'env, 'txn, S> {
     children: [Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode>>; 1],
     table: Oid<Table>,
     tuples: RwLock<Vec<Tuple>>,
-    returning: ExecutableTupleExpr,
+    returning: ExecutableTupleExpr<S>,
     returning_tuples: RwLock<Vec<Tuple>>,
 }
 
@@ -21,7 +21,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalUpdate<'env, 'txn, S> {
         // This is the source of the updates.
         // The schema should be that of the table being updated + the `tid` in the rightmost column
         source: Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode>>,
-        returning: ExecutableTupleExpr,
+        returning: ExecutableTupleExpr<S>,
     ) -> Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode>> {
         Arc::new(Self {
             table,
@@ -100,7 +100,11 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSink<'env, 'txn, S, ReadWriteEx
             storage.update(tuple)?;
 
             if !self.returning.is_empty() {
-                self.returning_tuples.write().push(self.returning.execute(tuple));
+                self.returning_tuples.write().push(self.returning.execute(
+                    catalog.storage(),
+                    tx,
+                    tuple,
+                ));
             }
         }
 

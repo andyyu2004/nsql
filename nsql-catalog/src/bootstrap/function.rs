@@ -87,7 +87,8 @@ impl Function {
         COUNT_STAR,
         CAST_SELF,
         CAST_INT_TO_DEC,
-        CAST_INT_TO_FLOAT
+        CAST_INT_TO_FLOAT,
+        NEXTVAL
     ];
 
     pub fn count_star() -> Function {
@@ -139,9 +140,11 @@ impl Function {
             aggregate!(COUNT       count   : (Any)   -> Int64),
             aggregate!(COUNT_STAR  count   : ()      -> Int64),
             // casts
-            cast!(CAST_SELF          : Any => Any),
+            cast!(CAST_SELF          : Any   => Any),
             cast!(CAST_INT_TO_DEC    : Int64 => Decimal),
             cast!(CAST_INT_TO_FLOAT  : Int64 => Float64),
+            // sequences
+            scalar!(NEXTVAL nextval : (Int64) -> Int64),
         ]
         .into_boxed_slice()
     }
