@@ -23,7 +23,6 @@ pub fn optimize(plan: Box<ir::Plan>) -> Box<ir::Plan<Query>> {
         ir::Plan::Show(show) => ir::Plan::Show(show),
         ir::Plan::Drop(refs) => ir::Plan::Drop(refs),
         ir::Plan::Transaction(txn) => ir::Plan::Transaction(txn),
-        ir::Plan::CreateTable(info) => ir::Plan::CreateTable(info),
         ir::Plan::SetVariable { name, value, scope } => {
             ir::Plan::SetVariable { name, value, scope }
         }

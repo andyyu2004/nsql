@@ -62,8 +62,7 @@ impl PlanFold for Plan {
             Plan::Show(_)
             | Plan::Drop(_)
             | Plan::Transaction(_)
-            | Plan::SetVariable { name: _, value: _, scope: _ }
-            | Plan::CreateTable(_) => self,
+            | Plan::SetVariable { name: _, value: _, scope: _ } => self,
             Plan::Explain(query) => Plan::Explain(Box::new(query.super_fold_with(folder))),
             Plan::Query(query) => Plan::Query(Box::new(query.super_fold_with(folder))),
         }

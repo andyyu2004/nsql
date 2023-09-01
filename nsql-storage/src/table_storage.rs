@@ -119,6 +119,7 @@ impl<'env, 'txn, S: StorageEngine> TableStorage<'env, 'txn, S, ReadWriteExecutio
 
 #[fix_hidden_lifetime_bug]
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> TableStorage<'env, 'txn, S, M> {
+    #[track_caller]
     pub fn open(
         storage: &S,
         tx: M::TransactionRef<'txn>,

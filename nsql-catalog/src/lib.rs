@@ -7,7 +7,6 @@ mod system_table;
 
 use std::fmt;
 use std::hash::Hash;
-use std::sync::atomic::AtomicU64;
 
 pub use anyhow::Error;
 use nsql_core::{Name, Oid};
@@ -131,11 +130,6 @@ impl<'env, S> Clone for Catalog<'env, S> {
     }
 }
 
-fn hack_new_oid_tmp<T>() -> Oid<T> {
-    static NEXT: AtomicU64 = AtomicU64::new(1000);
-    Oid::new(NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed))
-}
-
 impl<'env, S> Copy for Catalog<'env, S> {}
 
 impl<'env, S: StorageEngine> Catalog<'env, S> {
@@ -216,6 +210,7 @@ impl<'env, S: StorageEngine> Catalog<'env, S> {
         // FIXME assert we can't drop system tables, maybe reserve a range for bootstrap oids or something
 
         // delete entry in `nsql_catalog.nsql_table`
+        // FIXME need to cleanup columns and any referencing data
         assert!(
             self.system_table_write::<Table>(tx)?.delete(Value::Oid(oid.untyped()))?,
             "attempted to drop non-existent table, this should fail earlier"

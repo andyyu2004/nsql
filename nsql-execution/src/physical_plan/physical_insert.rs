@@ -1,7 +1,9 @@
+use std::mem;
 use std::sync::OnceLock;
 
 use nsql_catalog::Table;
 use nsql_core::Oid;
+use nsql_storage::tuple::FromTuple;
 use nsql_storage::{PrimaryKeyConflict, TableStorage};
 use nsql_storage_engine::fallible_iterator;
 use parking_lot::{Mutex, RwLock};
@@ -13,7 +15,7 @@ use crate::ReadWriteExecutionMode;
 pub(crate) struct PhysicalInsert<'env, 'txn, S: StorageEngine> {
     children: [Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode>>; 1],
     table_oid: Oid<Table>,
-    storage: OnceLock<Mutex<TableStorage<'env, 'txn, S, ReadWriteExecutionMode>>>,
+    storage: OnceLock<Mutex<Option<TableStorage<'env, 'txn, S, ReadWriteExecutionMode>>>>,
     table: OnceLock<Table>,
     returning: ExecutableTupleExpr<S>,
     returning_tuples: RwLock<Vec<Tuple>>,
@@ -85,10 +87,12 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSink<'env, 'txn, S, ReadWriteEx
         let table = self.table.get_or_try_init(|| catalog.get(tx, self.table_oid))?;
 
         let storage = self.storage.get_or_try_init(|| {
-            table.storage::<S, ReadWriteExecutionMode>(catalog, tx).map(Mutex::new)
+            table.storage::<S, ReadWriteExecutionMode>(catalog, tx).map(Some).map(Mutex::new)
         })?;
 
-        let storage: &mut TableStorage<'env, 'txn, _, _> = &mut storage.lock();
+        let mut storage = storage.lock();
+        let storage: &mut TableStorage<'env, 'txn, _, _> =
+            storage.as_mut().expect("shouldn't be taken until finalize");
         storage.insert(&catalog, tx, &tuple)?.map_err(|PrimaryKeyConflict { key }| {
             anyhow::anyhow!("duplicate key `{key}` violates unique constraint")
         })?;
@@ -101,6 +105,22 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSink<'env, 'txn, S, ReadWriteEx
             )?);
         }
 
+        // hack, if this is the insert of a `CREATE TABLE` we need to create the table storage
+        if self.table_oid == Table::TABLE {
+            let table = Table::from_tuple(tuple).expect("should be a compatible tuple");
+            table.create_storage::<S>(catalog, tx)?;
+        }
+
+        Ok(())
+    }
+
+    fn finalize(
+        &self,
+        _ecx: &'txn ExecutionContext<'_, 'env, S, ReadWriteExecutionMode>,
+    ) -> ExecutionResult<()> {
+        // drop the storage on finalization as it is no longer needed by this node
+        // this helps avoids redb errors when the same table is opened by multiple nodes
+        mem::take(&mut *self.storage.get().unwrap().lock());
         Ok(())
     }
 }

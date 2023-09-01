@@ -1,0 +1,2 @@
+CREATE TABLE foo(id int PRIMARY KEY);
+DROP TABLE foo;

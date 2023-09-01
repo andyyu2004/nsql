@@ -9,7 +9,8 @@ use nsql_storage_engine::{
 
 use super::*;
 use crate::{
-    Catalog, Column, ColumnIdentity, Index, Name, Namespace, Oid, SystemEntity, SystemEntityPrivate,
+    Catalog, Column, ColumnIdentity, Function, Index, Name, Namespace, Oid, SystemEntity,
+    SystemEntityPrivate,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, FromTuple, IntoTuple)]
@@ -20,15 +21,12 @@ pub struct Table {
 }
 
 impl Table {
-    pub fn new(namespace: Oid<Namespace>, name: impl Into<Name>) -> Self {
-        Self { oid: crate::hack_new_oid_tmp(), namespace, name: name.into() }
-    }
-
     #[inline]
     pub fn name(&self) -> Name {
         Name::clone(&self.name)
     }
 
+    #[track_caller]
     pub fn storage<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
         &self,
         catalog: Catalog<'env, S>,
@@ -77,7 +75,7 @@ impl Table {
             .scan()?
             .filter(|col| Ok(col.table == self.oid))
             .collect::<Vec<_>>()?;
-        assert!(!columns.is_empty(), "no columns found for table `{}` {}`", self.oid, self.name);
+        assert!(!columns.is_empty(), "no columns found for table `{}` `{}`", self.oid, self.name);
 
         columns.sort_by_key(|col| col.index());
 
@@ -117,10 +115,17 @@ impl Table {
         &self,
         storage: &'env S,
         tx: &S::WriteTransaction<'env>,
-        oid: Oid<Table>,
     ) -> Result<(), S::Error> {
-        storage.open_write_tree(tx, &TableStorageInfo::derive_name(oid.untyped()))?;
+        storage.open_write_tree(tx, &TableStorageInfo::derive_name(self.oid.untyped()))?;
         Ok(())
+    }
+
+    pub fn create_storage<'env, S: StorageEngine>(
+        &self,
+        catalog: Catalog<'env, S>,
+        tx: &S::WriteTransaction<'env>,
+    ) -> Result<()> {
+        Ok(self.create_storage_for_bootstrap(catalog.storage, tx)?)
     }
 }
 
@@ -183,9 +188,15 @@ impl SystemEntityPrivate for Table {
                 ty: LogicalType::Oid,
                 name: "oid",
                 is_primary_key: true,
-                identity: ColumnIdentity::None,
-                default_expr: Expr::null(),
-                seq: None,
+                identity: ColumnIdentity::Always,
+                default_expr: Expr::call(
+                    Function::NEXTVAL_OID.untyped(),
+                    [Value::Oid(Table::TABLE_OID_SEQ.untyped())],
+                ),
+                seq: Some(BootstrapSequence {
+                    table: Table::TABLE_OID_SEQ,
+                    name: "nsql_table_oid_seq",
+                }),
             },
             BootstrapColumn {
                 ty: LogicalType::Oid,

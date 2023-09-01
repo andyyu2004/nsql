@@ -140,8 +140,87 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                     bail!("table must have a primary key defined")
                 }
 
-                let info = ir::CreateTableInfo { name: path.name(), namespace, columns };
-                ir::Plan::CreateTable(info)
+                let table_columns =
+                    self.catalog.get::<Table>(tx, Table::TABLE)?.columns(self.catalog, tx)?;
+                assert_eq!(table_columns.len(), 3);
+                let oid_column = &table_columns[0];
+
+                let name = path.name();
+
+                // logically, the query for creating a new table is roughly as follows:
+                // WITH t AS (INSERT INTO nsql_catalog.nsql_table VALUES (DEFAULT, 'namespace', 'name') RETURNING id)
+                // INSERT INTO nsql_catalog.nsql_attribute
+                // (SELECT id, 0 as index, name, etc.. from t UNION ALL col2... UNION ALL ...)
+                let insert_table_plan = Box::new(ir::QueryPlan::Insert {
+                    table: Table::TABLE,
+                    source: ir::QueryPlan::values(ir::Values::new(
+                        [[
+                            ir::Expr {
+                                ty: LogicalType::Oid,
+                                kind: ir::ExprKind::Compiled(oid_column.default_expr().clone()),
+                            },
+                            literal(namespace),
+                            literal(name),
+                        ]
+                        .into()]
+                        .into(),
+                    )),
+                    returning: Some(
+                        [ir::Expr {
+                            ty: LogicalType::Oid,
+                            kind: ir::ExprKind::ColumnRef(ir::ColumnRef {
+                                index: ir::TupleIndex::new(0),
+                                qpath: ir::QPath::new("nsql_table", "id"),
+                            }),
+                        }]
+                        .into(),
+                    ),
+                    schema: Schema::new([LogicalType::Oid]),
+                });
+
+                const CTE_NAME: &str = "t";
+
+                let table_cte_scan = Box::new(ir::QueryPlan::CteScan {
+                    name: CTE_NAME.into(),
+                    schema: Schema::new([LogicalType::Oid]),
+                });
+
+                ir::Plan::Query(
+                    Box::new(ir::QueryPlan::Insert {
+                        table: Table::ATTRIBUTE,
+                        source: columns
+                            .into_iter()
+                            .enumerate()
+                            .map(|(i, column)| {
+                                ir::QueryPlan::project(
+                                    table_cte_scan.clone(),
+                                    // order of these columns must match the order of the columns of the table
+                                    [
+                                        ir::Expr::new_column_ref(
+                                            LogicalType::Oid,
+                                            ir::QPath::new(CTE_NAME, "id"),
+                                            ir::TupleIndex::new(0),
+                                        ),
+                                        literal(i as i64),
+                                        literal(column.ty),
+                                        literal(column.name),
+                                        literal(column.is_primary_key),
+                                        literal(ColumnIdentity::None),
+                                        literal(column.default_expr),
+                                    ],
+                                )
+                            })
+                            .reduce(|a, b| {
+                                assert_eq!(a.schema(), b.schema());
+                                let schema = a.schema().clone();
+                                a.union(schema, b)
+                            })
+                            .ok_or_else(|| anyhow!("table must define at least one column"))?,
+                        returning: None,
+                        schema: Schema::empty(),
+                    })
+                    .with_cte(ir::Cte { name: CTE_NAME.into(), plan: insert_table_plan }),
+                )
             }
             ast::Statement::CreateSchema { schema_name, if_not_exists } => {
                 not_implemented_if!(*if_not_exists);
@@ -161,18 +240,16 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                 let table = Table::NAMESPACE;
                 let columns = self.catalog.get::<Table>(tx, table)?.columns(self.catalog, tx)?;
                 assert_eq!(columns.len(), 2);
-                let oid_column = &columns[0];
+                let table_oid_column = &columns[0];
+                assert_eq!(table_oid_column.name(), "oid");
 
                 let source = ir::QueryPlan::values(ir::Values::new(
                     [[
                         ir::Expr {
                             ty: LogicalType::Oid,
-                            kind: ir::ExprKind::Compiled(oid_column.default_expr().clone()),
+                            kind: ir::ExprKind::Compiled(table_oid_column.default_expr().clone()),
                         },
-                        ir::Expr {
-                            ty: LogicalType::Text,
-                            kind: ir::ExprKind::Literal(name.into()),
-                        },
+                        literal(name),
                     ]
                     .into()]
                     .into(),
@@ -530,7 +607,6 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                     generation_expr,
                 } => {
                     not_implemented_if!(generation_expr.is_some());
-
                     match generated_as {
                         ast::GeneratedAs::Always => identity = ColumnIdentity::Always,
                         ast::GeneratedAs::ByDefault => identity = ColumnIdentity::ByDefault,
@@ -1411,10 +1487,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                 let scrutinee = match operand {
                     Some(scrutinee) => f(scrutinee)?,
                     // if there is no scrutinee, we can just use a literal `true` to compare each branch against
-                    None => ir::Expr {
-                        ty: LogicalType::Bool,
-                        kind: ir::ExprKind::Literal(ir::Value::Bool(true)),
-                    },
+                    None => literal(true),
                 };
 
                 let cases = conditions
@@ -1470,35 +1543,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
 
     fn bind_value_expr(&self, value: &ast::Value) -> (LogicalType, ir::ExprKind) {
         let value = self.bind_value(value);
-        (Self::default_logical_type_of_value(&value), ir::ExprKind::Literal(value))
-    }
-
-    // resist moving this logic out of the binder.
-    // the array defaulting logic is a bit of a hack that will cause issues if used outside of here.
-    // i.e. if we have an empty array and someone decides to call say `val.logical_type()` it will
-    // be `int[]`, which is probably not the proper type.
-    fn default_logical_type_of_value(value: &ir::Value) -> LogicalType {
-        match value {
-            ir::Value::Null => LogicalType::Null,
-            ir::Value::Int64(_) => LogicalType::Int64,
-            ir::Value::Bool(_) => LogicalType::Bool,
-            ir::Value::Decimal(_) => LogicalType::Decimal,
-            ir::Value::Text(_) => LogicalType::Text,
-            ir::Value::Oid(_) => LogicalType::Oid,
-            ir::Value::Bytea(_) => LogicalType::Bytea,
-            ir::Value::Array(values) => LogicalType::array(
-                values
-                    .iter()
-                    .find(|val| !matches!(val, ir::Value::Null))
-                    .map(|val| Self::default_logical_type_of_value(val))
-                    .unwrap_or(LogicalType::Int64),
-            ),
-            ir::Value::Type(_) => LogicalType::Type,
-            ir::Value::Expr(_) => LogicalType::Expr,
-            ir::Value::TupleExpr(_) => LogicalType::TupleExpr,
-            ir::Value::Byte(_) => LogicalType::Byte,
-            ir::Value::Float64(_) => LogicalType::Float64,
-        }
+        (default_logical_type_of_value(&value), ir::ExprKind::Literal(value))
     }
 
     fn bind_value(&self, val: &ast::Value) -> ir::Value {
@@ -1561,4 +1606,38 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
 struct TableAlias {
     table_name: Name,
     columns: Vec<Name>,
+}
+
+fn literal(value: impl Into<ir::Value>) -> ir::Expr {
+    let value = value.into();
+    let ty = default_logical_type_of_value(&value);
+    ir::Expr { kind: ir::ExprKind::Literal(value), ty }
+}
+
+// resist moving this logic out of this module binder.
+// the array defaulting logic is a bit of a hack that will cause issues if used outside of here.
+// i.e. if we have an empty array and someone decides to call say `val.logical_type()` it will
+// be `int[]`, which is probably not the proper type.
+fn default_logical_type_of_value(value: &ir::Value) -> LogicalType {
+    match value {
+        ir::Value::Null => LogicalType::Null,
+        ir::Value::Int64(_) => LogicalType::Int64,
+        ir::Value::Bool(_) => LogicalType::Bool,
+        ir::Value::Decimal(_) => LogicalType::Decimal,
+        ir::Value::Text(_) => LogicalType::Text,
+        ir::Value::Oid(_) => LogicalType::Oid,
+        ir::Value::Bytea(_) => LogicalType::Bytea,
+        ir::Value::Array(values) => LogicalType::array(
+            values
+                .iter()
+                .find(|val| !matches!(val, ir::Value::Null))
+                .map(default_logical_type_of_value)
+                .unwrap_or(LogicalType::Int64),
+        ),
+        ir::Value::Type(_) => LogicalType::Type,
+        ir::Value::Expr(_) => LogicalType::Expr,
+        ir::Value::TupleExpr(_) => LogicalType::TupleExpr,
+        ir::Value::Byte(_) => LogicalType::Byte,
+        ir::Value::Float64(_) => LogicalType::Float64,
+    }
 }

@@ -35,4 +35,5 @@ nsql_operator_namespace_name_function_index
 nsql_sequence
 nsql_table
 nsql_table_namespace_name_index
+nsql_table_oid_seq
 

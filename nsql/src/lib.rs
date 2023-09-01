@@ -146,11 +146,11 @@ impl<S: StorageEngine> Shared<S> {
                 let plan = binder.bind(stmt)?;
                 let tx = match plan.required_transaction_mode() {
                     ir::TransactionMode::ReadOnly => {
-                        tracing::info!("beginning fresh write transaction");
+                        tracing::info!("beginning fresh read transaction");
                         ReadOrWriteTransaction::Read(storage.begin()?)
                     }
                     ir::TransactionMode::ReadWrite => {
-                        tracing::info!("beginning fresh read transaction");
+                        tracing::info!("beginning fresh write transaction");
                         ReadOrWriteTransaction::Write(storage.begin_write()?)
                     }
                 };
@@ -164,7 +164,7 @@ impl<S: StorageEngine> Shared<S> {
 
         let (tx, tuples) = match tx {
             ReadOrWriteTransaction::Read(tx) => {
-                tracing::info!("executing readonly query");
+                tracing::info!(query, "executing readonly query");
                 let physical_plan = planner.plan(&tx, plan)?;
                 let ecx =
                     ExecutionContext::new(catalog, TransactionContext::new(tx, auto_commit), state);
@@ -178,7 +178,7 @@ impl<S: StorageEngine> Shared<S> {
                 }
             }
             ReadOrWriteTransaction::Write(tx) => {
-                tracing::info!("executing write query");
+                tracing::info!(query, "executing write query");
                 let physical_plan = planner.plan_write(&tx, plan)?;
                 let ecx =
                     ExecutionContext::new(catalog, TransactionContext::new(tx, auto_commit), state);

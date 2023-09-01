@@ -96,6 +96,7 @@ impl nsql_storage_engine::StorageEngine for RedbStorageEngine {
     }
 
     #[inline]
+    #[track_caller]
     fn open_write_tree<'env, 'txn>(
         &self,
         txn: &'txn Self::WriteTransaction<'env>,
@@ -114,9 +115,12 @@ impl nsql_storage_engine::StorageEngine for RedbStorageEngine {
     fn drop_tree(&self, txn: &Self::WriteTransaction<'_>, name: &str) -> Result<(), Self::Error> {
         let ok = txn.0.delete_table(redb::TableDefinition::<(), ()>::new(name))?;
         if !ok {
-            let tables =
+            let mut tables =
                 txn.0.list_tables()?.map(|handle| handle.name().to_string()).collect::<Vec<_>>();
-            panic!("attempted to drop non-existent table `{name}`, available tables {tables:?}");
+            tables.sort();
+            panic!(
+                "attempted to drop non-existent redb table `{name}`, available tables {tables:?}"
+            );
         }
         Ok(())
     }

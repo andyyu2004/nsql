@@ -221,7 +221,6 @@ pub enum Plan<Q = Box<QueryPlan>> {
     Show(ObjectType),
     Drop(Vec<EntityRef>),
     Transaction(TransactionStmt),
-    CreateTable(CreateTableInfo),
     SetVariable { name: Name, value: Value, scope: VariableScope },
     Explain(Box<Plan<Q>>),
     Query(Q),
@@ -242,7 +241,7 @@ impl Plan {
 
     pub fn required_transaction_mode(&self) -> TransactionMode {
         match self {
-            Plan::Drop(_) | Plan::CreateTable(_) => TransactionMode::ReadWrite,
+            Plan::Drop(_) => TransactionMode::ReadWrite,
             Plan::Transaction(kind) => match kind {
                 TransactionStmt::Begin(mode) => *mode,
                 TransactionStmt::Commit | TransactionStmt::Abort => TransactionMode::ReadOnly,
@@ -360,9 +359,6 @@ impl<Q: fmt::Display> fmt::Display for Plan<Q> {
             Plan::Show(kind) => write!(f, "SHOW {kind}"),
             Plan::Drop(_refs) => write!(f, "DROP"),
             Plan::Transaction(tx) => write!(f, "{tx}"),
-            Plan::CreateTable(table) => {
-                write!(f, "CREATE TABLE {}.{}", table.namespace, table.name)
-            }
             Plan::SetVariable { name, value, scope } => write!(f, "SET {scope} {name} = {value}"),
             Plan::Explain(query) => write!(f, "EXPLAIN {query}"),
             Plan::Query(query) => write!(f, "{query}"),
@@ -584,10 +580,7 @@ impl Plan {
     pub fn schema(&self) -> &[LogicalType] {
         match self {
             Plan::Show(..) | Plan::Explain(..) => &[LogicalType::Text],
-            Plan::Drop(..)
-            | Plan::Transaction(..)
-            | Plan::CreateTable(..)
-            | Plan::SetVariable { .. } => &[],
+            Plan::Drop(..) | Plan::Transaction(..) | Plan::SetVariable { .. } => &[],
             Plan::Query(query) => query.schema(),
         }
     }

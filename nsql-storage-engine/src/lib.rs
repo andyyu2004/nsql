@@ -357,6 +357,7 @@ impl<'env, S: StorageEngine> ExecutionMode<'env, S> for ReadWriteExecutionMode {
         storage.begin_write()
     }
 
+    #[track_caller]
     fn open_tree<'txn>(
         storage: &S,
         txn: Self::TransactionRef<'txn>,

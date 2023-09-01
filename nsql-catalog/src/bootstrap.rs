@@ -18,7 +18,7 @@ use self::table::BootstrapTable;
 pub(crate) use self::table::{BootstrapColumn, BootstrapSequence};
 use crate::{
     Column, ColumnIdentity, ColumnIndex, Function, Index, IndexKind, Namespace, Oid, Operator,
-    OperatorKind, Sequence, SystemEntity, SystemTableView, Table, MAIN_SCHEMA,
+    OperatorKind, Sequence, SystemTableView, Table, MAIN_SCHEMA,
 };
 
 // The order matters as it will determine which id is assigned to each element
@@ -31,7 +31,7 @@ macro_rules! mk_consts {
         mk_consts!([$count + 1u64] $($rest),*);
     };
     ($($name:ident),*) => {
-        mk_consts!([0u64] $($name),*);
+        mk_consts!([1u64] $($name),*);
     };
 }
 
@@ -82,7 +82,7 @@ pub(crate) fn bootstrap<'env, S: StorageEngine>(
     tables.try_for_each(|table| {
         if table.oid != Table::TABLE {
             // can't do this as this table is currently open
-            table.create_storage_for_bootstrap(storage, tx, table.key())?;
+            table.create_storage_for_bootstrap(storage, tx)?;
         }
         table_table.insert(catalog, tx, table)
     })?;
