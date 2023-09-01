@@ -337,6 +337,13 @@ impl<T> FromValue for Oid<T> {
     fn from_value(value: Value) -> Result<Self, CastError> {
         match value {
             Value::Oid(oid) => Ok(oid.cast()),
+            Value::Int64(i) => {
+                if i < 0 {
+                    Err(CastError::new(value, LogicalType::Oid))
+                } else {
+                    Ok(Oid::new(i as u64))
+                }
+            }
             _ => Err(CastError::new(value, LogicalType::Oid)),
         }
     }

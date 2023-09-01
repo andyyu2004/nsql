@@ -110,6 +110,16 @@ pub trait Transaction<'env, S: StorageEngine> {
     fn as_read_or_write_ref(&self) -> ReadOrWriteTransactionRef<'env, '_, S>;
 
     fn as_dyn(&self) -> &dyn Transaction<'env, S>;
+
+    fn try_as_write<'txn>(&'txn self) -> Option<&'txn S::WriteTransaction<'env>>
+    where
+        'env: 'txn,
+    {
+        match self.as_read_or_write_ref() {
+            ReadOrWriteTransactionRef::Read(_) => None,
+            ReadOrWriteTransactionRef::Write(tx) => Some(tx),
+        }
+    }
 }
 
 impl<'a, 'env, S: StorageEngine> Transaction<'env, S> for &'a dyn Transaction<'env, S> {

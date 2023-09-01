@@ -62,14 +62,14 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSink
     ) -> ExecutionResult<()> {
         let storage = ecx.storage();
         let tx = ecx.tx();
-        let group = self.group_expr.execute(storage, &tx, &tuple);
+        let group = self.group_expr.execute(storage, &tx, &tuple)?;
         let functions = self.output_groups.entry(group).or_insert_with(|| {
             Mutex::new(self.functions.iter().map(|(f, _expr)| f.get_aggregate_instance()).collect())
         });
 
         let mut aggregate_functions = functions.lock();
         for (state, (_f, expr)) in aggregate_functions.iter_mut().zip(&self.functions[..]) {
-            let value = expr.as_ref().map(|expr| expr.execute(storage, &tx, &tuple));
+            let value = expr.as_ref().map(|expr| expr.execute(storage, &tx, &tuple)).transpose()?;
             state.update(value);
         }
 

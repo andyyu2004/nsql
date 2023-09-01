@@ -26,7 +26,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
     ) -> ExecutionResult<TupleStream<'txn>> {
         let storage = ecx.storage();
         let tx = ecx.tx();
-        let values = match self.expr.execute(storage, &tx, &Tuple::empty()) {
+        let values = match self.expr.execute(storage, &tx, &Tuple::empty())? {
             Value::Array(values) => values,
             Value::Null => Box::new([]),
             _ => panic!("unnest expression should evaluate to an array"),

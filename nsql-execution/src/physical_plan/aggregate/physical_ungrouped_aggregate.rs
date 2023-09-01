@@ -57,7 +57,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSink
         let tx = ecx.tx();
         let mut aggregate_functions = self.aggregate_functions.lock();
         for (state, (_f, expr)) in aggregate_functions.iter_mut().zip(&self.functions[..]) {
-            let v = expr.as_ref().map(|expr| expr.execute(storage, &tx, &tuple));
+            let v = expr.as_ref().map(|expr| expr.execute(storage, &tx, &tuple)).transpose()?;
             state.update(v);
         }
 

@@ -98,7 +98,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSink<'env, 'txn, S, ReadWriteEx
                 catalog.storage(),
                 &tx,
                 &tuple,
-            ));
+            )?);
         }
 
         Ok(())

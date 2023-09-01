@@ -1,7 +1,7 @@
 use nsql_storage::eval::Expr;
 
 use super::*;
-use crate::{ColumnIdentity, SystemEntityPrivate};
+use crate::{ColumnIdentity, Function, SystemEntityPrivate};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, FromTuple, IntoTuple)]
 pub struct Namespace {
@@ -70,7 +70,10 @@ impl SystemEntityPrivate for Namespace {
                 name: "oid",
                 is_primary_key: true,
                 identity: ColumnIdentity::Always,
-                default_expr: Expr::null(),
+                default_expr: Expr::call(
+                    Function::NEXTVAL_OID.untyped(),
+                    [Value::Oid(Table::NAMESPACE_OID_SEQ.untyped())],
+                ),
                 seq: Some(BootstrapSequence {
                     table: Table::NAMESPACE_OID_SEQ,
                     name: "nsql_namespace_oid_seq",
@@ -93,6 +96,7 @@ impl SystemEntityPrivate for Namespace {
     }
 }
 
+// FIXME remove
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct CreateNamespaceInfo {
     pub name: Name,

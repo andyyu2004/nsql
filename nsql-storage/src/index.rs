@@ -43,7 +43,7 @@ impl<'env, 'txn, S: StorageEngine> IndexStorage<'env, 'txn, S, ReadWriteExecutio
             .prepared_expr
             .get_or_try_init(|| self.index_expr.take().unwrap().prepare(catalog, tx))?;
 
-        let tuple = expr.execute(catalog.storage(), tx, tuple);
+        let tuple = expr.execute(catalog.storage(), tx, tuple)?;
         self.storage
             .insert(catalog, tx, &tuple)?
             .map_err(|PrimaryKeyConflict { key }| anyhow::anyhow!("unique index conflict: {key}"))

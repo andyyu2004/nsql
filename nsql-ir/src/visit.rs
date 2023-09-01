@@ -21,7 +21,6 @@ pub trait Visitor {
             Plan::Show(_typ) => ControlFlow::Continue(()),
             Plan::Drop(_refs) => ControlFlow::Continue(()),
             Plan::Transaction(_tx) => ControlFlow::Continue(()),
-            Plan::CreateNamespace(_info) => ControlFlow::Continue(()),
             Plan::CreateTable(_info) => ControlFlow::Continue(()),
             Plan::SetVariable { .. } => ControlFlow::Continue(()),
             Plan::Explain(plan) => self.walk_plan(plan),

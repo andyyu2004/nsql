@@ -134,6 +134,14 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> TableStorage
     }
 
     #[inline]
+    pub fn get(&self, key: impl IntoTuple) -> Result<Option<Tuple>, S::Error> {
+        let k = key.into_tuple();
+        let k = nsql_rkyv::to_bytes(&k);
+        let v = self.tree.get(&k)?;
+        Ok(v.map(|v| unsplit_tuple(&self.info, None, &k, &v)))
+    }
+
+    #[inline]
     #[fix_hidden_lifetime_bug]
     pub fn scan(
         &self,

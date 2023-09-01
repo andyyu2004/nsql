@@ -141,7 +141,7 @@ impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalOperator<'
 
         let keep = self
             .join_predicate
-            .execute(storage, &tx, &joint_tuple)
+            .execute(storage, &tx, &joint_tuple)?
             .cast::<Option<bool>>()?
             .unwrap_or(false);
 

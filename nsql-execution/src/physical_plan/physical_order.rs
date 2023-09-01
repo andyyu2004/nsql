@@ -59,8 +59,15 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSink
         // FIXME can't use rayon's parallel sort as tx is not necessarily Sync
         tuples.sort_unstable_by(|a, b| {
             for order in ordering.iter() {
-                let a = order.expr.execute(storage, &tx, a);
-                let b = order.expr.execute(storage, &tx, b);
+                // todo need a way to propogate error
+                let a = order
+                    .expr
+                    .execute(storage, &tx, a)
+                    .expect("failed to execute order expression");
+                let b = order
+                    .expr
+                    .execute(storage, &tx, b)
+                    .expect("failed to execute order expression");
                 let cmp = a.partial_cmp(&b).unwrap();
                 if cmp != cmp::Ordering::Equal {
                     return if order.asc { cmp } else { cmp.reverse() };

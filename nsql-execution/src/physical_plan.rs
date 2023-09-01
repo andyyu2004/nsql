@@ -1,7 +1,6 @@
 mod aggregate;
 pub(crate) mod explain;
 mod join;
-mod physical_create_namespace;
 mod physical_create_table;
 mod physical_cte;
 mod physical_cte_scan;
@@ -33,7 +32,6 @@ use nsql_storage_engine::{StorageEngine, Transaction};
 use self::aggregate::{PhysicalHashAggregate, PhysicalUngroupedAggregate};
 pub use self::explain::Explain;
 use self::join::PhysicalNestedLoopJoin;
-use self::physical_create_namespace::PhysicalCreateNamespace;
 use self::physical_create_table::PhysicalCreateTable;
 use self::physical_cte::PhysicalCte;
 use self::physical_cte_scan::PhysicalCteScan;
@@ -96,7 +94,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalPlanner<'env, S> {
                 let physical_plan = self.plan(tx, logical_plan)?;
                 PhysicalExplain::plan(logical_explain, physical_plan.0)
             }
-            ir::Plan::Drop(..) | ir::Plan::CreateNamespace(_) | ir::Plan::CreateTable(_) => {
+            ir::Plan::Drop(..) | ir::Plan::CreateTable(_) => {
                 unreachable!("write plans should go through plan_write_node")
             }
         };
@@ -114,7 +112,6 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalPlanner<'env, S> {
             ir::Plan::SetVariable { name, value, scope } => PhysicalSet::plan(name, value, scope),
             ir::Plan::Show(object_type) => PhysicalShow::plan(object_type),
             ir::Plan::CreateTable(info) => PhysicalCreateTable::plan(info),
-            ir::Plan::CreateNamespace(info) => PhysicalCreateNamespace::plan(info),
             ir::Plan::Drop(refs) => PhysicalDrop::plan(refs),
             ir::Plan::Query(q) => self.plan_write_query(tx, &q, q.root())?,
             ir::Plan::Explain(logical_plan) => {

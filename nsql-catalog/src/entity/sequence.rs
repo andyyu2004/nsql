@@ -3,19 +3,40 @@ use nsql_storage::eval::Expr;
 use super::*;
 use crate::{ColumnIdentity, SystemEntityPrivate};
 
+/// Model of a row that lives in `nsql_catalog.nsql_sequence`
 #[derive(Debug, Clone, PartialEq, Eq, Hash, FromTuple, IntoTuple)]
 pub struct Sequence {
-    pub(crate) table: Oid<Table>,
+    pub(crate) oid: Oid<Table>,
+    pub(crate) start: i64,
+    pub(crate) increment: i64,
 }
 
 impl Sequence {
-    pub fn new(table: Oid<Table>) -> Self {
-        Self { table }
+    pub fn new(oid: Oid<Table>) -> Self {
+        Self { oid, start: 1, increment: 1 }
     }
 
     #[inline]
     pub fn oid(&self) -> Oid<Table> {
-        self.table
+        self.oid
+    }
+}
+
+/// Model of the data that lives in the backing table of a particular sequence
+// This needs to match the column definitions in bootstrap
+#[derive(Debug, Clone, PartialEq, Eq, Hash, FromTuple, IntoTuple)]
+pub struct SequenceData {
+    pub key: Oid<SequenceData>,
+    pub(crate) value: i64,
+}
+
+impl SequenceData {
+    // There is only one row in a sequence backing table, so we just use a constant
+    pub(crate) const KEY: Oid<SequenceData> = Oid::new(42);
+
+    #[inline]
+    pub fn new(value: i64) -> Self {
+        Self { key: Self::KEY, value }
     }
 }
 
@@ -28,7 +49,7 @@ impl SystemEntity for Sequence {
 
     #[inline]
     fn key(&self) -> Self::Key {
-        self.table
+        self.oid
     }
 
     #[inline]
@@ -42,7 +63,7 @@ impl SystemEntity for Sequence {
         catalog: Catalog<'env, S>,
         tx: &dyn Transaction<'env, S>,
     ) -> Result<Name> {
-        Ok(catalog.get::<Table>(tx, self.table)?.name())
+        Ok(catalog.get::<Table>(tx, self.oid)?.name())
     }
 
     #[inline]
@@ -56,21 +77,39 @@ impl SystemEntity for Sequence {
         catalog: Catalog<'env, S>,
         tx: &dyn Transaction<'env, S>,
     ) -> Result<Option<Oid<Self::Parent>>> {
-        catalog.get::<Table>(tx, self.table)?.parent_oid(catalog, tx)
+        catalog.get::<Table>(tx, self.oid)?.parent_oid(catalog, tx)
     }
 }
 
 impl SystemEntityPrivate for Sequence {
     #[inline]
     fn bootstrap_column_info() -> Vec<BootstrapColumn> {
-        vec![BootstrapColumn {
-            ty: LogicalType::Oid,
-            name: "oid",
-            is_primary_key: true,
-            identity: ColumnIdentity::None,
-            default_expr: Expr::null(),
-            seq: None,
-        }]
+        vec![
+            BootstrapColumn {
+                ty: LogicalType::Oid,
+                name: "oid",
+                is_primary_key: true,
+                identity: ColumnIdentity::None,
+                default_expr: Expr::null(),
+                seq: None,
+            },
+            BootstrapColumn {
+                ty: LogicalType::Int64,
+                name: "start",
+                is_primary_key: false,
+                identity: ColumnIdentity::None,
+                default_expr: Expr::null(),
+                seq: None,
+            },
+            BootstrapColumn {
+                ty: LogicalType::Int64,
+                name: "increment",
+                is_primary_key: false,
+                identity: ColumnIdentity::None,
+                default_expr: Expr::null(),
+                seq: None,
+            },
+        ]
     }
 
     #[inline]

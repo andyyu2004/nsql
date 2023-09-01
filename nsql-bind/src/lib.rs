@@ -17,9 +17,8 @@ use ir::expr::EvalNotConst;
 use ir::{Decimal, Path, QPath, TupleIndex};
 use itertools::Itertools;
 use nsql_catalog::{
-    Catalog, ColumnIdentity, ColumnIndex, CreateColumnInfo, CreateNamespaceInfo, Function,
-    FunctionKind, Namespace, Operator, OperatorKind, SystemEntity, SystemTableView, Table,
-    MAIN_SCHEMA,
+    Catalog, ColumnIdentity, ColumnIndex, CreateColumnInfo, Function, FunctionKind, Namespace,
+    Operator, OperatorKind, SystemEntity, SystemTableView, Table, MAIN_SCHEMA,
 };
 use nsql_core::{LogicalType, Name, Oid, Schema};
 use nsql_parse::ast;
@@ -158,9 +157,32 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                         not_implemented!("schema name with authorization")
                     }
                 };
-                ir::Plan::CreateNamespace(CreateNamespaceInfo {
-                    name,
-                    if_not_exists: *if_not_exists,
+
+                let table = Table::NAMESPACE;
+                let columns = self.catalog.get::<Table>(tx, table)?.columns(self.catalog, tx)?;
+                assert_eq!(columns.len(), 2);
+                let oid_column = &columns[0];
+
+                let source = ir::QueryPlan::values(ir::Values::new(
+                    [[
+                        ir::Expr {
+                            ty: LogicalType::Oid,
+                            kind: ir::ExprKind::Compiled(oid_column.default_expr().clone()),
+                        },
+                        ir::Expr {
+                            ty: LogicalType::Text,
+                            kind: ir::ExprKind::Literal(name.into()),
+                        },
+                    ]
+                    .into()]
+                    .into(),
+                ));
+
+                ir::Plan::query(ir::QueryPlan::Insert {
+                    table,
+                    source,
+                    returning: None,
+                    schema: Schema::empty(),
                 })
             }
             ast::Statement::Insert {

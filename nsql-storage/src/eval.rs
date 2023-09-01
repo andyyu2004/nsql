@@ -30,7 +30,7 @@ pub trait ScalarFunction<S: StorageEngine>: fmt::Debug + Send + Sync + 'static {
         storage: &'env S,
         tx: &dyn Transaction<'env, S>,
         args: Box<[Value]>,
-    ) -> Value;
+    ) -> Result<Value>;
 
     /// The number f arguments this function takes.
     fn arity(&self) -> usize;
@@ -94,7 +94,7 @@ impl<S: StorageEngine> ExecutableTupleExpr<S> {
         storage: &'env S,
         tx: &dyn Transaction<'env, S>,
         tuple: &Tuple,
-    ) -> Tuple {
+    ) -> Result<Tuple> {
         self.exprs.iter().map(|expr| expr.execute(storage, tx, tuple)).collect()
     }
 }
@@ -173,6 +173,13 @@ impl<F> Expr<F> {
         Self { pretty: "NULL".into(), ops: Box::new([ExprOp::Push(Value::Null), ExprOp::Return]) }
     }
 
+    pub fn call(function: F, args: impl IntoIterator<Item = Value>) -> Self {
+        let mut ops = vec![];
+        ops.extend(args.into_iter().map(ExprOp::Push));
+        ops.push(ExprOp::Call { function });
+        Self { pretty: "call".into(), ops: ops.into_boxed_slice() }
+    }
+
     pub fn new(pretty: impl fmt::Display, ops: impl Into<Box<[ExprOp<F>]>>) -> Self {
         let ops = ops.into();
         assert!(ops.len() > 1, "should have at least one value and one return");
@@ -191,7 +198,7 @@ impl<S: StorageEngine> ExecutableExpr<S> {
         storage: &'env S,
         tx: &dyn Transaction<'env, S>,
         tuple: &Tuple,
-    ) -> Value {
+    ) -> Result<Value> {
         let mut ip = 0;
         let mut stack = vec![];
         loop {
@@ -199,7 +206,7 @@ impl<S: StorageEngine> ExecutableExpr<S> {
             if matches!(op, ExprOp::Return) {
                 break;
             }
-            op.execute(storage, tx, &mut stack, &mut ip, tuple);
+            op.execute(storage, tx, &mut stack, &mut ip, tuple)?;
         }
 
         assert_eq!(
@@ -209,7 +216,7 @@ impl<S: StorageEngine> ExecutableExpr<S> {
             stack.len()
         );
 
-        stack.pop().unwrap()
+        Ok(stack.pop().unwrap())
     }
 }
 
@@ -238,7 +245,7 @@ impl<S: StorageEngine> ExprOp<Arc<dyn ScalarFunction<S>>> {
         stack: &mut Vec<Value>,
         ip: &mut usize,
         tuple: &Tuple,
-    ) {
+    ) -> Result<()> {
         let value = match self {
             ExprOp::Project { index } => tuple[*index].clone(),
             ExprOp::Push(value) => value.clone(),
@@ -248,19 +255,24 @@ impl<S: StorageEngine> ExprOp<Arc<dyn ScalarFunction<S>>> {
             }
             ExprOp::Call { function } => {
                 let args = stack.drain(stack.len() - function.arity()..).collect::<Box<[Value]>>();
-                function.invoke(storage, tx, args)
+                function.invoke(storage, tx, args)?
             }
             ExprOp::IfNeJmp { offset } => {
                 let rhs = stack.pop().unwrap();
                 let lhs = stack.pop().unwrap();
-                return *ip += if lhs != rhs { *offset as usize } else { 1 };
+                *ip += if lhs != rhs { *offset as usize } else { 1 };
+                return Ok(());
             }
-            ExprOp::Jmp { offset } => return *ip += *offset as usize,
-            ExprOp::Return => return,
+            ExprOp::Jmp { offset } => {
+                *ip += *offset as usize;
+                return Ok(());
+            }
+            ExprOp::Return => return Ok(()),
         };
 
         stack.push(value);
         *ip += 1;
+        Ok(())
     }
 }
 

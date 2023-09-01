@@ -24,10 +24,10 @@ use crate::{
 // The order matters as it will determine which id is assigned to each element
 macro_rules! mk_consts {
     ([$count:expr] $name:ident) => {
-        pub(crate) const $name: Oid<Self> = Oid::new($count);
+        pub const $name: Oid<Self> = Oid::new($count);
     };
     ([$count:expr] $name:ident, $($rest:ident),*) => {
-        pub(crate) const $name: Oid<Self> = Oid::new($count);
+        pub const $name: Oid<Self> = Oid::new($count);
         mk_consts!([$count + 1u64] $($rest),*);
     };
     ($($name:ident),*) => {
@@ -267,7 +267,33 @@ impl BootstrapData {
                             namespace: Namespace::CATALOG,
                             name: seq.name.into(),
                         });
-                        sequences.push(Sequence { table: seq.table });
+                        sequences.push(Sequence {
+                            oid: seq.table,
+                            // provide some space for bootstrap oids
+                            start: 1000,
+                            increment: 1,
+                        });
+
+                        // the backing table of a sequence has one column, the value of the sequence
+                        // This needs to match the `SequenceData`
+                        columns.push(Column {
+                            table: seq.table,
+                            index: ColumnIndex::new(0),
+                            ty: LogicalType::Oid,
+                            name: "key".into(),
+                            is_primary_key: true,
+                            identity: ColumnIdentity::None,
+                            default_expr: Expr::null(),
+                        });
+                        columns.push(Column {
+                            table: seq.table,
+                            index: ColumnIndex::new(1),
+                            ty: LogicalType::Int64,
+                            name: "value".into(),
+                            is_primary_key: false,
+                            identity: ColumnIdentity::None,
+                            default_expr: Expr::null(),
+                        });
                     }
                     None => assert!(matches!(col.identity, ColumnIdentity::None)),
                 }

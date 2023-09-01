@@ -88,7 +88,9 @@ impl Function {
         CAST_SELF,
         CAST_INT_TO_DEC,
         CAST_INT_TO_FLOAT,
-        NEXTVAL
+        CAST_INT_TO_OID,
+        NEXTVAL,
+        NEXTVAL_OID
     ];
 
     pub fn count_star() -> Function {
@@ -144,7 +146,8 @@ impl Function {
             cast!(CAST_INT_TO_DEC    : Int64 => Decimal),
             cast!(CAST_INT_TO_FLOAT  : Int64 => Float64),
             // sequences
-            scalar!(NEXTVAL nextval : (Int64) -> Int64),
+            scalar!(NEXTVAL     nextval     : (Oid) -> Int64),
+            scalar!(NEXTVAL_OID nextval_oid : (Oid) -> Oid),
         ]
         .into_boxed_slice()
     }

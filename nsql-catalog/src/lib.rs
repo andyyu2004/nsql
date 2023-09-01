@@ -26,7 +26,7 @@ pub use self::entity::function::{
 pub use self::entity::index::{Index, IndexKind};
 pub use self::entity::namespace::{CreateNamespaceInfo, Namespace};
 pub use self::entity::operator::{Operator, OperatorKind};
-pub use self::entity::sequence::Sequence;
+pub use self::entity::sequence::{Sequence, SequenceData};
 pub use self::entity::table::{CreateTableInfo, Table};
 use self::private::SystemEntityPrivate;
 pub use self::system_table::SystemTableView;

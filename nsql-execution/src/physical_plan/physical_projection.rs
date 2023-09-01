@@ -28,7 +28,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     ) -> ExecutionResult<OperatorState<Tuple>> {
         let storage = ecx.storage();
         let tx = ecx.tx();
-        let output = self.projection.execute(storage, &tx, &input);
+        let output = self.projection.execute(storage, &tx, &input)?;
         tracing::debug!(%input, %output, "evaluating projection");
         Ok(OperatorState::Yield(output))
     }

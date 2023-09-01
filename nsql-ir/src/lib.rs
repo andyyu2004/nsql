@@ -9,7 +9,7 @@ use std::{fmt, mem};
 
 use anyhow::bail;
 use itertools::Itertools;
-use nsql_catalog::{ColumnIndex, CreateColumnInfo, CreateNamespaceInfo, Namespace};
+use nsql_catalog::{ColumnIndex, CreateColumnInfo, Namespace};
 pub use nsql_catalog::{Function, Operator, Table};
 use nsql_core::{LogicalType, Name, Oid, Schema};
 pub use nsql_storage::tuple::TupleIndex;
@@ -221,7 +221,6 @@ pub enum Plan<Q = Box<QueryPlan>> {
     Show(ObjectType),
     Drop(Vec<EntityRef>),
     Transaction(TransactionStmt),
-    CreateNamespace(CreateNamespaceInfo),
     CreateTable(CreateTableInfo),
     SetVariable { name: Name, value: Value, scope: VariableScope },
     Explain(Box<Plan<Q>>),
@@ -243,9 +242,7 @@ impl Plan {
 
     pub fn required_transaction_mode(&self) -> TransactionMode {
         match self {
-            Plan::Drop(_) | Plan::CreateNamespace(_) | Plan::CreateTable(_) => {
-                TransactionMode::ReadWrite
-            }
+            Plan::Drop(_) | Plan::CreateTable(_) => TransactionMode::ReadWrite,
             Plan::Transaction(kind) => match kind {
                 TransactionStmt::Begin(mode) => *mode,
                 TransactionStmt::Commit | TransactionStmt::Abort => TransactionMode::ReadOnly,
@@ -363,13 +360,6 @@ impl<Q: fmt::Display> fmt::Display for Plan<Q> {
             Plan::Show(kind) => write!(f, "SHOW {kind}"),
             Plan::Drop(_refs) => write!(f, "DROP"),
             Plan::Transaction(tx) => write!(f, "{tx}"),
-            Plan::CreateNamespace(ns) => {
-                write!(f, "CREATE NAMESPACE ")?;
-                if ns.if_not_exists {
-                    write!(f, "IF NOT EXISTS ")?;
-                }
-                write!(f, "{}", ns.name)
-            }
             Plan::CreateTable(table) => {
                 write!(f, "CREATE TABLE {}.{}", table.namespace, table.name)
             }
@@ -596,7 +586,6 @@ impl Plan {
             Plan::Show(..) | Plan::Explain(..) => &[LogicalType::Text],
             Plan::Drop(..)
             | Plan::Transaction(..)
-            | Plan::CreateNamespace(..)
             | Plan::CreateTable(..)
             | Plan::SetVariable { .. } => &[],
             Plan::Query(query) => query.schema(),

@@ -9,8 +9,11 @@ use crate::{ColumnIdentity, SystemEntityPrivate};
 
 mod builtins;
 
-pub type ScalarFunction<S> =
-    for<'env, 'txn> fn(Catalog<'env, S>, &'txn dyn Transaction<'env, S>, Box<[Value]>) -> Value;
+pub type ScalarFunction<S> = for<'env, 'txn> fn(
+    Catalog<'env, S>,
+    &'txn dyn Transaction<'env, S>,
+    Box<[Value]>,
+) -> Result<Value>;
 
 pub trait AggregateFunctionInstance: fmt::Debug {
     fn update(&mut self, value: Option<Value>);
@@ -73,7 +76,7 @@ impl<S: StorageEngine> nsql_storage::eval::ScalarFunction<S> for Function {
         storage: &'env S,
         tx: &dyn Transaction<'env, S>,
         args: Box<[Value]>,
-    ) -> Value {
+    ) -> Result<Value> {
         self.get_scalar_function()(Catalog::new(storage), tx, args)
     }
 
