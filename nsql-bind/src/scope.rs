@@ -9,7 +9,7 @@ use nsql_storage_engine::{StorageEngine, Transaction};
 use super::unbound;
 use crate::{Binder, Path, Result, TableAlias};
 
-#[derive(Default)]
+#[derive(Default, PartialEq, Eq)]
 pub(crate) struct Scope {
     columns: rpds::Vector<(QPath, LogicalType)>,
 }

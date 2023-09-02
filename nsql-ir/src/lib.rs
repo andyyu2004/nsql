@@ -140,6 +140,11 @@ pub enum QueryPlan {
         schema: Schema,
         values: Values,
     },
+    Union {
+        schema: Schema,
+        lhs: Box<QueryPlan>,
+        rhs: Box<QueryPlan>,
+    },
     Join {
         schema: Schema,
         join: JoinKind,
@@ -172,17 +177,17 @@ pub enum QueryPlan {
 impl QueryPlan {
     pub fn required_transaction_mode(&self) -> TransactionMode {
         match self {
-            Self::Update { .. } | Self::Insert { .. } => TransactionMode::ReadWrite,
-            Self::Limit { source, .. }
-            | Self::Aggregate { source, .. }
-            | Self::Order { source, .. }
-            | Self::Projection { source, .. }
-            | Self::Filter { source, .. } => source.required_transaction_mode(),
-            Self::TableScan { .. }
-            | Self::DummyScan
-            | Self::Unnest { .. }
-            | Self::Values { .. } => TransactionMode::ReadOnly,
-            Self::Join { lhs, rhs, .. } => {
+            QueryPlan::Update { .. } | QueryPlan::Insert { .. } => TransactionMode::ReadWrite,
+            QueryPlan::Limit { source, .. }
+            | QueryPlan::Aggregate { source, .. }
+            | QueryPlan::Order { source, .. }
+            | QueryPlan::Projection { source, .. }
+            | QueryPlan::Filter { source, .. } => source.required_transaction_mode(),
+            QueryPlan::TableScan { .. }
+            | QueryPlan::DummyScan
+            | QueryPlan::Unnest { .. }
+            | QueryPlan::Values { .. } => TransactionMode::ReadOnly,
+            QueryPlan::Union { lhs, rhs, .. } | QueryPlan::Join { lhs, rhs, .. } => {
                 lhs.required_transaction_mode().max(rhs.required_transaction_mode())
             }
         }
@@ -323,6 +328,11 @@ impl fmt::Display for PlanFormatter<'_> {
                 }
                 writeln!(f, "  {source}")
             }
+            QueryPlan::Union { schema: _, lhs, rhs } => {
+                writeln!(f, "{:indent$}UNION", "", indent = self.indent)?;
+                self.child(lhs).fmt(f)?;
+                self.child(rhs).fmt(f)
+            }
         }
     }
 }
@@ -418,11 +428,12 @@ impl<E: fmt::Display> fmt::Display for OrderExpr<E> {
 }
 
 impl QueryPlan {
-    pub fn schema(&self) -> &[LogicalType] {
+    pub fn schema(&self) -> &Schema {
         match self {
             QueryPlan::TableScan { projected_schema, .. }
             | QueryPlan::Projection { projected_schema, .. } => projected_schema,
-            QueryPlan::Aggregate { schema, .. }
+            QueryPlan::Union { schema, .. }
+            | QueryPlan::Aggregate { schema, .. }
             | QueryPlan::Join { schema, .. }
             | QueryPlan::Unnest { schema, .. }
             | QueryPlan::Insert { schema, .. }
@@ -431,7 +442,7 @@ impl QueryPlan {
             QueryPlan::Filter { source, .. }
             | QueryPlan::Limit { source, .. }
             | QueryPlan::Order { source, .. } => source.schema(),
-            QueryPlan::DummyScan => &[],
+            QueryPlan::DummyScan => Schema::empty_ref(),
         }
     }
 
@@ -494,7 +505,7 @@ impl QueryPlan {
 
     #[inline]
     pub fn join(self: Box<Self>, join: JoinKind, rhs: Box<Self>, predicate: Expr) -> Box<Self> {
-        let schema = self.schema().iter().chain(rhs.schema()).cloned().collect();
+        let schema = self.schema().iter().chain(rhs.schema().iter()).cloned().collect();
         Box::new(Self::Join { schema, join, lhs: self, rhs }).filter(predicate)
     }
 
@@ -545,6 +556,11 @@ impl QueryPlan {
             }
             _ => panic!("unnest expression must be an array"),
         }
+    }
+
+    pub fn union(self: Box<Self>, schema: Schema, rhs: Box<Self>) -> Box<Self> {
+        assert_eq!(self.schema(), rhs.schema());
+        Box::new(Self::Union { schema, lhs: self, rhs })
     }
 }
 

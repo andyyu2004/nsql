@@ -1,6 +1,7 @@
 use std::fmt;
 use std::ops::Deref;
 use std::str::FromStr;
+use std::sync::LazyLock;
 
 use anyhow::bail;
 use rkyv::{Archive, Deserialize, Serialize};
@@ -89,10 +90,26 @@ pub struct Schema {
     types: Box<[LogicalType]>,
 }
 
+impl<'a> IntoIterator for &'a Schema {
+    type Item = &'a LogicalType;
+    type IntoIter = std::slice::Iter<'a, LogicalType>;
+
+    #[inline]
+    fn into_iter(self) -> Self::IntoIter {
+        self.types.iter()
+    }
+}
+
 impl Schema {
     #[inline]
     pub fn new(types: impl Into<Box<[LogicalType]>>) -> Self {
         Self { types: types.into() }
+    }
+
+    #[inline]
+    pub fn empty_ref<'a>() -> &'a Self {
+        static EMPTY: LazyLock<Schema> = LazyLock::new(|| Schema { types: Box::new([]) });
+        &EMPTY
     }
 
     #[inline]
@@ -116,7 +133,7 @@ impl Schema {
     }
 
     #[inline]
-    pub fn is_subtype_of(&self, supertype: &[LogicalType]) -> bool {
+    pub fn is_subschema_of(&self, supertype: &[LogicalType]) -> bool {
         self.types.len() == supertype.len()
             && self.types.iter().zip(supertype.iter()).all(|(a, b)| a.is_subtype_of(b))
     }

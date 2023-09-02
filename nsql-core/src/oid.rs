@@ -40,8 +40,6 @@ impl<T: ?Sized> Ord for Oid<T> {
     }
 }
 
-impl<T: ?Sized> std::marker::StructuralEq for Oid<T> {}
-
 impl<T> Oid<T> {
     pub const NULL: Self = Self::new(0);
 }

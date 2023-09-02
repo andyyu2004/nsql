@@ -94,7 +94,8 @@ impl Query {
             | Node::Update(_)
             | Node::Desc(_)
             | Node::Table(_)
-            | Node::Function(_)) => panic!("expected `Expr` node, got `{node}`"),
+            | Node::Function(_)
+            | Node::Union(..)) => panic!("expected `Expr` node, got `{node}`"),
         }
     }
 
@@ -124,6 +125,8 @@ impl Query {
             Node::Update([table, source, returning]) => {
                 Plan::Update(Update { table, source, returning })
             }
+
+            Node::Union([lhs, rhs]) => Plan::Union(Union { lhs, rhs }),
             Node::Desc(_)
             | Node::Nodes(_)
             | Node::Table(_)
@@ -149,11 +152,11 @@ pub enum Plan<'a> {
     Filter(Filter),
     Values(Values<'a>),
     Order(Order),
+    Union(Union),
     TableScan(TableScan),
     Unnest(Unnest),
     DummyScan,
 }
-
 
 #[derive(Debug, Copy, Clone)]
 pub struct Projection {
@@ -367,6 +370,24 @@ impl<'a> Values<'a> {
         g: &'a Query,
     ) -> impl ExactSizeIterator<Item = impl ExactSizeIterator<Item = Expr<'a>> + 'a> + 'a {
         self.values.iter().map(move |&row| g.exprs(row))
+    }
+}
+
+#[derive(Debug, Copy, Clone)]
+pub struct Union {
+    lhs: Id,
+    rhs: Id,
+}
+
+impl Union {
+    #[inline]
+    pub fn lhs(self, q: &Query) -> Plan<'_> {
+        q.plan(self.lhs)
+    }
+
+    #[inline]
+    pub fn rhs(self, q: &Query) -> Plan<'_> {
+        q.plan(self.rhs)
     }
 }
 

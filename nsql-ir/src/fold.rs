@@ -157,6 +157,11 @@ impl PlanFold for QueryPlan {
                     schema,
                 }
             }
+            QueryPlan::Union { schema, lhs, rhs } => QueryPlan::Union {
+                schema,
+                lhs: folder.fold_boxed_plan(lhs),
+                rhs: folder.fold_boxed_plan(rhs),
+            },
         }
     }
 }

@@ -14,6 +14,7 @@ pub(crate) struct MetaPipeline<'env, 'txn, S, M> {
 pub(crate) struct MetaPipelineBuilder<'env, 'txn, S, M> {
     pipelines: Vec<Idx<PipelineBuilder<'env, 'txn, S, M>>>,
     children: Vec<Idx<MetaPipelineBuilder<'env, 'txn, S, M>>>,
+    // sink: Arc<dyn PhysicalSink<'env, 'txn, S, M>>,
 }
 
 #[derive(Debug)]
@@ -116,6 +117,7 @@ impl<'env, 'txn, S, M> MetaPipelineBuilder<'env, 'txn, S, M> {
         arena.meta_pipelines.alloc(Self {
             pipelines: vec![arena.pipelines.alloc(PipelineBuilder::new(Arc::clone(&sink)))],
             children: Default::default(),
+            // sink,
         })
     }
 
@@ -124,6 +126,10 @@ impl<'env, 'txn, S, M> MetaPipelineBuilder<'env, 'txn, S, M> {
         let children = self.children.iter().map(|idx| idx.cast()).collect();
         MetaPipeline { pipelines, children }
     }
+
+    // pub(crate) fn sink(&self) -> Arc<dyn PhysicalSink<'env, 'txn, S, M>> {
+    //     Arc::clone(&self.sink)
+    // }
 }
 
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
@@ -147,12 +153,12 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
 
     pub(crate) fn build(
         &mut self,
-        idx: Idx<MetaPipelineBuilder<'env, 'txn, S, M>>,
+        meta_pipeline: Idx<MetaPipelineBuilder<'env, 'txn, S, M>>,
         node: Arc<dyn PhysicalNode<'env, 'txn, S, M>>,
     ) {
-        assert_eq!(self[idx].pipelines.len(), 1);
-        assert!(self[idx].children.is_empty());
-        node.build_pipelines(self, idx, self[idx].pipelines[0])
+        assert_eq!(self[meta_pipeline].pipelines.len(), 1);
+        assert!(self[meta_pipeline].children.is_empty());
+        node.build_pipelines(self, meta_pipeline, self[meta_pipeline].pipelines[0])
     }
 }
 

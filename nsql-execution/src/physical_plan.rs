@@ -15,6 +15,7 @@ mod physical_set;
 mod physical_show;
 mod physical_table_scan;
 mod physical_transaction;
+mod physical_union;
 mod physical_unnest;
 mod physical_update;
 mod physical_values;
@@ -44,6 +45,7 @@ use self::physical_set::PhysicalSet;
 use self::physical_show::PhysicalShow;
 use self::physical_table_scan::PhysicalTableScan;
 use self::physical_transaction::PhysicalTransaction;
+use self::physical_union::PhysicalUnion;
 use self::physical_unnest::PhysicalUnnest;
 use self::physical_update::PhysicalUpdate;
 use self::physical_values::PhysicalValues;
@@ -214,6 +216,9 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalPlanner<'env, S> {
             ),
             opt::Plan::TableScan(scan) => PhysicalTableScan::plan(scan.table(q), None),
             opt::Plan::DummyScan => PhysicalDummyScan::plan(),
+            opt::Plan::Union(union) => {
+                PhysicalUnion::plan(f(self, union.lhs(q))?, f(self, union.rhs(q))?)
+            }
             opt::Plan::Unnest(unnest) => {
                 PhysicalUnnest::plan(self.compile_expr(tx, q, unnest.expr(q))?)
             }

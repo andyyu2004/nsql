@@ -14,6 +14,7 @@ define_language! {
         Literal(Value),
         // We pass the plan id here so column refs with the same index don't get merged into the same eclass
         ColumnRef(ir::ColumnRef, Id),           // (column-ref <index> <plan>)
+        "union" = Union( [Id; 2]),              // (union <lhs> <rhs>)
         "array" = Array(Box<[Id]>),
         "subquery" = Subquery(Id),
         "exists" = Exists(Id),
@@ -169,6 +170,11 @@ impl Builder {
                 let returning = self.build_exprs(source, returning.as_deref().unwrap_or(&[]));
                 let table = self.add(Node::Table(*table));
                 Node::Update([table, source, returning])
+            }
+            ir::QueryPlan::Union { schema: _, lhs, rhs } => {
+                let lhs = self.build_query(lhs);
+                let rhs = self.build_query(rhs);
+                Node::Union([lhs, rhs])
             }
         };
 

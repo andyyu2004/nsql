@@ -84,7 +84,13 @@ trait PhysicalNode<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>
                 arena.build(child_meta_builder, child);
             }
             Err(node) => match node.as_source() {
-                Ok(source) => arena[current].set_source(source),
+                Ok(source) => {
+                    assert!(
+                        source.children().is_empty(),
+                        "default `build_pipelines` implementation only supports sources at the leaf"
+                    );
+                    arena[current].set_source(source)
+                }
                 Err(operator) => {
                     let operator = operator
                         .as_operator()

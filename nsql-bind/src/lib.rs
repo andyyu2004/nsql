@@ -658,9 +658,37 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                 (scope, ir::QueryPlan::values(values))
             }
             ast::SetExpr::Query(query) => self.bind_query(tx, scope, query)?,
-            ast::SetExpr::SetOperation { .. } => {
+            ast::SetExpr::SetOperation { op, set_quantifier, left, right } => {
                 not_implemented_if!(!order_by.is_empty());
-                todo!()
+                let (lhs_scope, lhs) = self.bind_table_expr(tx, scope, left, &[])?;
+                let (_rhs_scope, rhs) = self.bind_table_expr(tx, scope, right, &[])?;
+                let schema = if lhs.schema().is_subschema_of(rhs.schema()) {
+                    rhs.schema().clone()
+                } else if rhs.schema().is_subschema_of(lhs.schema()) {
+                    lhs.schema().clone()
+                } else {
+                    bail!("schemas of set operation operands are not compatible")
+                };
+
+                let plan = match op {
+                    ast::SetOperator::Union => lhs.union(schema, rhs),
+                    // the others can be implemented as semi and anti joins
+                    ast::SetOperator::Except => not_implemented!("except"),
+                    ast::SetOperator::Intersect => not_implemented!("intersect"),
+                };
+
+                match set_quantifier {
+                    ast::SetQuantifier::All => {}
+                    ast::SetQuantifier::Distinct | ast::SetQuantifier::None => {
+                        // push a distinct operation on top of the set operation
+                        not_implemented!("distinct")
+                    }
+                    ast::SetQuantifier::ByName => not_implemented!("by name"),
+                    ast::SetQuantifier::AllByName => not_implemented!("all by name"),
+                }
+
+                // we just pick the left scope arbitrarily
+                (lhs_scope, plan)
             }
             ast::SetExpr::Insert(_) | ast::SetExpr::Table(_) | ast::SetExpr::Update(_) => {
                 not_implemented_if!(!order_by.is_empty());

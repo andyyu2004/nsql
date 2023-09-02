@@ -91,6 +91,10 @@ pub trait Visitor {
 
                 self.visit_query_plan(source)
             }
+            QueryPlan::Union { schema: _, lhs, rhs } => {
+                self.visit_query_plan(lhs)?;
+                self.visit_query_plan(rhs)
+            }
         }
     }
 
