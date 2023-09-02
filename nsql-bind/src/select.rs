@@ -224,7 +224,7 @@ impl<'a, 'env, S: StorageEngine> SelectBinder<'a, 'env, S> {
         scope: &Scope,
         order_expr: &ast::OrderByExpr,
     ) -> Result<ir::OrderExpr> {
-        not_implemented!(!order_expr.nulls_first.unwrap_or(true));
+        not_implemented_if!(!order_expr.nulls_first.unwrap_or(true));
         let expr = self.bind_maybe_aggregate_expr(tx, scope, &order_expr.expr)?;
         let expr = match expr.kind {
             ir::ExprKind::Literal(ir::Value::Int64(i)) => {

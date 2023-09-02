@@ -1,0 +1,9 @@
+query I rowsort
+SELECT * FROM (VALUES (1), (2), (3)) UNION ALL SELECT * FROM (VALUES (4), (5), (6))
+----
+1
+2
+3
+4
+5
+6

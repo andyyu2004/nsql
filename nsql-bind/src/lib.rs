@@ -33,6 +33,9 @@ macro_rules! not_implemented {
     ($msg:literal) => {
         anyhow::bail!("not implemented: {}", $msg)
     };
+}
+
+macro_rules! not_implemented_if {
     ($cond:expr) => {
         if $cond {
             anyhow::bail!("not implemented: {}", stringify!($cond))
@@ -40,7 +43,7 @@ macro_rules! not_implemented {
     };
 }
 
-use not_implemented;
+use not_implemented_if;
 
 macro_rules! unbound {
     ($ty:ty, $path:expr) => {
@@ -101,29 +104,29 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                 transient,
                 order_by,
             } => {
-                not_implemented!(*strict);
-                not_implemented!(*or_replace);
-                not_implemented!(*temporary);
-                not_implemented!(*external);
-                not_implemented!(global.is_some());
-                not_implemented!(*if_not_exists);
-                not_implemented!(!constraints.is_empty());
-                not_implemented!(*hive_distribution != ast::HiveDistributionStyle::NONE);
-                not_implemented!(!table_properties.is_empty());
-                not_implemented!(!with_options.is_empty());
-                not_implemented!(file_format.is_some());
-                not_implemented!(location.is_some());
-                not_implemented!(query.is_some());
-                not_implemented!(*without_rowid);
-                not_implemented!(like.is_some());
-                not_implemented!(clone.is_some());
-                not_implemented!(engine.is_some());
-                not_implemented!(default_charset.is_some());
-                not_implemented!(collation.is_some());
-                not_implemented!(on_commit.is_some());
-                not_implemented!(on_cluster.is_some());
-                not_implemented!(*transient);
-                not_implemented!(order_by.is_some());
+                not_implemented_if!(*strict);
+                not_implemented_if!(*or_replace);
+                not_implemented_if!(*temporary);
+                not_implemented_if!(*external);
+                not_implemented_if!(global.is_some());
+                not_implemented_if!(*if_not_exists);
+                not_implemented_if!(!constraints.is_empty());
+                not_implemented_if!(*hive_distribution != ast::HiveDistributionStyle::NONE);
+                not_implemented_if!(!table_properties.is_empty());
+                not_implemented_if!(!with_options.is_empty());
+                not_implemented_if!(file_format.is_some());
+                not_implemented_if!(location.is_some());
+                not_implemented_if!(query.is_some());
+                not_implemented_if!(*without_rowid);
+                not_implemented_if!(like.is_some());
+                not_implemented_if!(clone.is_some());
+                not_implemented_if!(engine.is_some());
+                not_implemented_if!(default_charset.is_some());
+                not_implemented_if!(collation.is_some());
+                not_implemented_if!(on_commit.is_some());
+                not_implemented_if!(on_cluster.is_some());
+                not_implemented_if!(*transient);
+                not_implemented_if!(order_by.is_some());
 
                 let path = self.lower_path(&name.0)?;
                 let namespace = self.bind_namespace(tx, &path)?;
@@ -136,7 +139,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                 ir::Plan::CreateTable(info)
             }
             ast::Statement::CreateSchema { schema_name, if_not_exists } => {
-                not_implemented!(*if_not_exists);
+                not_implemented_if!(*if_not_exists);
                 let name = match schema_name {
                     ast::SchemaName::Simple(ident) => match self.lower_path(&ident.0)? {
                         Path::Qualified { .. } => {
@@ -167,11 +170,11 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                 on,
                 returning,
             } => {
-                not_implemented!(or.is_some());
-                not_implemented!(*overwrite);
-                not_implemented!(partitioned.is_some());
-                not_implemented!(!after_columns.is_empty());
-                not_implemented!(on.is_some());
+                not_implemented_if!(or.is_some());
+                not_implemented_if!(*overwrite);
+                not_implemented_if!(partitioned.is_some());
+                not_implemented_if!(!after_columns.is_empty());
+                not_implemented_if!(on.is_some());
 
                 let mut unique_columns = HashSet::with_capacity(columns.len());
                 for column in columns {
@@ -289,25 +292,25 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                 ir::Plan::Transaction(ir::TransactionStmt::Begin(mode))
             }
             ast::Statement::Rollback { chain } => {
-                not_implemented!(*chain);
+                not_implemented_if!(*chain);
                 ir::Plan::Transaction(ir::TransactionStmt::Abort)
             }
             ast::Statement::Commit { chain } => {
-                not_implemented!(*chain);
+                not_implemented_if!(*chain);
                 ir::Plan::Transaction(ir::TransactionStmt::Commit)
             }
             ast::Statement::ShowTables { extended, full, db_name, filter } => {
-                not_implemented!(*extended);
-                not_implemented!(*full);
-                not_implemented!(db_name.is_some());
-                not_implemented!(filter.is_some());
+                not_implemented_if!(*extended);
+                not_implemented_if!(*full);
+                not_implemented_if!(db_name.is_some());
+                not_implemented_if!(filter.is_some());
                 ir::Plan::Show(ir::ObjectType::Table)
             }
             ast::Statement::Drop { object_type, if_exists, names, cascade, restrict, purge } => {
-                not_implemented!(*if_exists);
-                not_implemented!(*cascade);
-                not_implemented!(*restrict);
-                not_implemented!(*purge);
+                not_implemented_if!(*if_exists);
+                not_implemented_if!(*cascade);
+                not_implemented_if!(*restrict);
+                not_implemented_if!(*purge);
 
                 let names = names
                     .iter()
@@ -334,14 +337,14 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
             }
             ast::Statement::Update { table, assignments, from, selection, returning } => {
                 // What does it mean to update a table with joins?
-                not_implemented!(!table.joins.is_empty());
-                not_implemented!(from.is_some());
+                not_implemented_if!(!table.joins.is_empty());
+                not_implemented_if!(from.is_some());
 
                 let (scope, table) = match &table.relation {
                     ast::TableFactor::Table { name, alias, args, with_hints } => {
-                        not_implemented!(alias.is_some());
-                        not_implemented!(args.is_some());
-                        not_implemented!(!with_hints.is_empty());
+                        not_implemented_if!(alias.is_some());
+                        not_implemented_if!(args.is_some());
+                        not_implemented_if!(!with_hints.is_empty());
                         self.bind_table(tx, scope, name, alias.as_ref())?
                     }
                     _ => not_implemented!("update with non-table relation"),
@@ -378,15 +381,15 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                 ir::Plan::query(ir::QueryPlan::Update { table, source, returning, schema })
             }
             ast::Statement::Explain { describe_alias: _, analyze, verbose, statement, format } => {
-                not_implemented!(*analyze);
-                not_implemented!(format.is_some());
-                not_implemented!(*verbose);
+                not_implemented_if!(*analyze);
+                not_implemented_if!(format.is_some());
+                not_implemented_if!(*verbose);
                 ir::Plan::Explain(self.bind_with(tx, statement)?)
             }
             ast::Statement::SetVariable { local, hivevar, variable, value } => {
-                not_implemented!(*hivevar);
-                not_implemented!(variable.0.len() > 1);
-                not_implemented!(value.len() > 1);
+                not_implemented_if!(*hivevar);
+                not_implemented_if!(variable.0.len() > 1);
+                not_implemented_if!(value.len() > 1);
 
                 let name = variable.0[0].value.as_str().into();
                 let expr = self.bind_expr(tx, scope, &value[0])?;
@@ -484,7 +487,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
     }
 
     fn lower_column(&self, idx: usize, column: &ast::ColumnDef) -> Result<CreateColumnInfo> {
-        not_implemented!(column.collation.is_some());
+        not_implemented_if!(column.collation.is_some());
         ensure!(idx < u8::MAX as usize, "too many columns (max 256)");
 
         let mut is_primary_key = false;
@@ -615,10 +618,10 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
         query: &ast::Query,
     ) -> Result<(Scope, Box<ir::QueryPlan>)> {
         let ast::Query { with, body, order_by, limit, offset, fetch, locks } = query;
-        not_implemented!(with.is_some());
-        not_implemented!(offset.is_some());
-        not_implemented!(fetch.is_some());
-        not_implemented!(!locks.is_empty());
+        not_implemented_if!(with.is_some());
+        not_implemented_if!(offset.is_some());
+        not_implemented_if!(fetch.is_some());
+        not_implemented_if!(!locks.is_empty());
 
         let (scope, mut table_expr) = self.bind_table_expr(tx, scope, body, order_by)?;
 
@@ -650,16 +653,17 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
             // occurs before the order by which doesn't make sense (the order by won't have access to the required scope)
             // However, it also doesn't make sense to pass in the order_by for the following cases :/
             ast::SetExpr::Values(values) => {
-                assert!(order_by.is_empty());
+                not_implemented_if!(!order_by.is_empty());
                 let (scope, values) = self.bind_values(tx, scope, values)?;
                 (scope, ir::QueryPlan::values(values))
             }
             ast::SetExpr::Query(query) => self.bind_query(tx, scope, query)?,
-            ast::SetExpr::SetOperation { .. }
-            | ast::SetExpr::Insert(_)
-            | ast::SetExpr::Table(_)
-            | ast::SetExpr::Update(_) => {
-                assert!(order_by.is_empty());
+            ast::SetExpr::SetOperation { .. } => {
+                not_implemented_if!(!order_by.is_empty());
+                todo!()
+            }
+            ast::SetExpr::Insert(_) | ast::SetExpr::Table(_) | ast::SetExpr::Update(_) => {
+                not_implemented_if!(!order_by.is_empty());
                 todo!()
             }
         };
@@ -690,15 +694,15 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
             qualify,
             named_window,
         } = select;
-        not_implemented!(!named_window.is_empty());
-        not_implemented!(distinct.is_some());
-        not_implemented!(top.is_some());
-        not_implemented!(into.is_some());
-        not_implemented!(!lateral_views.is_empty());
-        not_implemented!(!cluster_by.is_empty());
-        not_implemented!(!distribute_by.is_empty());
-        not_implemented!(!sort_by.is_empty());
-        not_implemented!(qualify.is_some());
+        not_implemented_if!(!named_window.is_empty());
+        not_implemented_if!(distinct.is_some());
+        not_implemented_if!(top.is_some());
+        not_implemented_if!(into.is_some());
+        not_implemented_if!(!lateral_views.is_empty());
+        not_implemented_if!(!cluster_by.is_empty());
+        not_implemented_if!(!distribute_by.is_empty());
+        not_implemented_if!(!sort_by.is_empty());
+        not_implemented_if!(qualify.is_some());
 
         let (scope, mut source) = match &from[..] {
             [] => (scope.clone(), Box::new(ir::QueryPlan::DummyScan)),
@@ -796,14 +800,14 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
     ) -> Result<(Scope, Box<ir::QueryPlan>)> {
         let (scope, table_expr) = match table {
             ast::TableFactor::Table { name, alias, args, with_hints } => {
-                not_implemented!(args.is_some());
-                not_implemented!(!with_hints.is_empty());
+                not_implemented_if!(args.is_some());
+                not_implemented_if!(!with_hints.is_empty());
 
                 let (scope, table) = self.bind_table(tx, scope, name, alias.as_ref())?;
                 (scope, self.build_table_scan(tx, table, None)?)
             }
             ast::TableFactor::Derived { lateral, subquery, alias } => {
-                not_implemented!(*lateral);
+                not_implemented_if!(*lateral);
 
                 // subqueries get a fresh empty scope to prevent correlated subqueries for now
                 let (mut scope, subquery) = self.bind_query(tx, &Scope::default(), subquery)?;
@@ -815,9 +819,9 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
             }
             ast::TableFactor::TableFunction { .. } => todo!(),
             ast::TableFactor::UNNEST { alias, array_exprs, with_offset, with_offset_alias } => {
-                not_implemented!(*with_offset);
-                not_implemented!(with_offset_alias.is_some());
-                not_implemented!(array_exprs.len() != 1);
+                not_implemented_if!(*with_offset);
+                not_implemented_if!(with_offset_alias.is_some());
+                not_implemented_if!(array_exprs.len() != 1);
 
                 let expr = self.bind_expr(tx, scope, &array_exprs[0])?;
 
@@ -879,9 +883,9 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                 opt_rename,
                 opt_replace,
             }) => {
-                not_implemented!(opt_except.is_some());
-                not_implemented!(opt_rename.is_some());
-                not_implemented!(opt_replace.is_some());
+                not_implemented_if!(opt_except.is_some());
+                not_implemented_if!(opt_rename.is_some());
+                not_implemented_if!(opt_replace.is_some());
 
                 let excludes = opt_exclude.as_ref().map_or(&[][..], |exclude| match exclude {
                     ast::ExcludeSelectItem::Single(name) => std::slice::from_ref(name),
@@ -978,10 +982,10 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
         f: &ast::Function,
     ) -> Result<(ir::MonoFunction, Box<[ir::Expr]>)> {
         let ast::Function { name, args, over, distinct, special, order_by } = f;
-        not_implemented!(over.is_some());
-        not_implemented!(*distinct);
-        not_implemented!(*special);
-        not_implemented!(!order_by.is_empty());
+        not_implemented_if!(over.is_some());
+        not_implemented_if!(*distinct);
+        not_implemented_if!(*special);
+        not_implemented_if!(!order_by.is_empty());
 
         let args = args
             .iter()
