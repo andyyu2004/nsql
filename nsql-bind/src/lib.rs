@@ -628,13 +628,13 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
         if let Some(limit) = limit {
             // LIMIT is currently not allowed to reference any columns
             let limit_expr = self.bind_expr(tx, &Scope::default(), limit)?;
-            let limit = limit_expr
+            if let Some(limit) = limit_expr
                 .const_eval()
                 .map_err(|EvalNotConst| anyhow!("LIMIT expression must be constant"))?
                 .cast::<Option<u64>>()?
-                // if the limit is `NULL` we treat is as unlimited (i.e. `u64::MAX`)
-                .unwrap_or(u64::MAX);
-            table_expr = table_expr.limit(limit);
+            {
+                table_expr = table_expr.limit(limit);
+            };
         }
 
         Ok((scope, table_expr))
