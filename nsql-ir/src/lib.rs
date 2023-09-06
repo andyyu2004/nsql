@@ -107,10 +107,28 @@ impl fmt::Display for VariableScope {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Cte {
+    /// The name of the cte
+    pub name: Name,
+    /// The plan to populate the materialized cte
+    pub plan: Box<QueryPlan>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
 pub enum QueryPlan {
     #[default]
     DummyScan,
+    // introduce a cte
+    Cte {
+        cte: Cte,
+        child: Box<QueryPlan>,
+    },
+    // consume a cte
+    CteScan {
+        name: Name,
+        schema: Schema,
+    },
     Aggregate {
         aggregates: Box<[FunctionCall]>,
         source: Box<QueryPlan>,
@@ -190,6 +208,8 @@ impl QueryPlan {
             QueryPlan::Union { lhs, rhs, .. } | QueryPlan::Join { lhs, rhs, .. } => {
                 lhs.required_transaction_mode().max(rhs.required_transaction_mode())
             }
+            QueryPlan::CteScan { .. } => TransactionMode::ReadOnly,
+            QueryPlan::Cte { cte: _, child } => child.required_transaction_mode(),
         }
     }
 }
@@ -251,6 +271,7 @@ impl<'p> PlanFormatter<'p> {
 
 impl fmt::Display for PlanFormatter<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:indent$}", "", indent = self.indent)?;
         match self.plan {
             QueryPlan::Aggregate { aggregates: functions, source, group_by, schema: _ } => {
                 writeln!(
@@ -270,68 +291,59 @@ impl fmt::Display for PlanFormatter<'_> {
                 self.child(source).fmt(f)
             }
             QueryPlan::TableScan { table, projection, projected_schema: _ } => {
-                write!(f, "{:indent$}table scan {}", "", table, indent = self.indent)?;
+                write!(f, "table scan {}", table)?;
                 if let Some(projection) = projection {
                     write!(f, "({})", projection.iter().format(","))?;
                 }
                 writeln!(f)
             }
             QueryPlan::Projection { source, projection, projected_schema: _ } => {
-                writeln!(
-                    f,
-                    "{:indent$}projection ({})",
-                    "",
-                    projection.iter().format(","),
-                    indent = self.indent
-                )?;
+                writeln!(f, "projection ({})", projection.iter().format(","),)?;
                 self.child(source).fmt(f)
             }
             QueryPlan::Filter { source, predicate } => {
-                writeln!(f, "{:indent$}filter ({})", "", predicate, indent = self.indent)?;
+                writeln!(f, "filter ({})", predicate)?;
                 self.child(source).fmt(f)
             }
             QueryPlan::Unnest { schema: _, expr } => write!(f, "UNNEST ({})", expr),
-            QueryPlan::Values { values: _, schema: _ } => {
-                writeln!(f, "{:indent$}VALUES", "", indent = self.indent)
-            }
+            QueryPlan::Values { values: _, schema: _ } => writeln!(f, "VALUES"),
             QueryPlan::Join { schema: _, join, lhs, rhs } => {
-                writeln!(f, "{:indent$}join ({})", "", join, indent = self.indent)?;
+                writeln!(f, "join ({})", join)?;
                 self.child(lhs).fmt(f)?;
                 self.child(rhs).fmt(f)
             }
             QueryPlan::Limit { source, limit, exceeded_message: _ } => {
-                writeln!(f, "{:indent$}limit ({})", "", limit, indent = self.indent)?;
+                writeln!(f, "limit ({})", limit)?;
                 self.child(source).fmt(f)
             }
             QueryPlan::Order { source, order } => {
-                write!(
-                    f,
-                    "{:indent$}order ({})",
-                    "",
-                    order.iter().format(","),
-                    indent = self.indent
-                )?;
+                write!(f, "order ({})", order.iter().format(","),)?;
                 self.child(source).fmt(f)
             }
-            QueryPlan::DummyScan => write!(f, "{:indent$}dummy scan", "", indent = self.indent),
+            QueryPlan::DummyScan => write!(f, "dummy scan"),
             QueryPlan::Insert { table, source, returning, schema: _ } => {
                 write!(f, "INSERT INTO {table}")?;
                 if let Some(returning) = returning {
                     write!(f, " RETURNING ({})", returning.iter().format(","))?;
                 }
-                writeln!(f, "  {source}")
+                self.child(source).fmt(f)
             }
             QueryPlan::Update { table, source, returning, schema: _ } => {
                 write!(f, "UPDATE {table} SET", table = table)?;
                 if let Some(returning) = returning {
                     write!(f, " RETURNING ({})", returning.iter().format(","))?;
                 }
-                writeln!(f, "  {source}")
+                self.child(source).fmt(f)
             }
             QueryPlan::Union { schema: _, lhs, rhs } => {
-                writeln!(f, "{:indent$}UNION", "", indent = self.indent)?;
+                writeln!(f, "UNION")?;
                 self.child(lhs).fmt(f)?;
                 self.child(rhs).fmt(f)
+            }
+            QueryPlan::CteScan { name, schema: _ } => writeln!(f, "CTE scan on `{name}`"),
+            QueryPlan::Cte { cte, child } => {
+                writeln!(f, "CTE {}", cte.name)?;
+                self.child(child).fmt(f)
             }
         }
     }
@@ -438,10 +450,12 @@ impl QueryPlan {
             | QueryPlan::Unnest { schema, .. }
             | QueryPlan::Insert { schema, .. }
             | QueryPlan::Update { schema, .. }
+            | QueryPlan::CteScan { schema, .. }
             | QueryPlan::Values { schema, .. } => schema,
             QueryPlan::Filter { source, .. }
             | QueryPlan::Limit { source, .. }
             | QueryPlan::Order { source, .. } => source.schema(),
+            QueryPlan::Cte { cte: _, child } => child.schema(),
             QueryPlan::DummyScan => Schema::empty_ref(),
         }
     }
@@ -480,6 +494,11 @@ impl QueryPlan {
     }
 
     #[inline]
+    pub fn with_cte(self: Box<Self>, cte: Cte) -> Box<Self> {
+        Box::new(Self::Cte { cte, child: self })
+    }
+
+    #[inline]
     pub fn strict_limit(self: Box<Self>, limit: u64, exceeded_message: &'static str) -> Box<Self> {
         Box::new(Self::Limit { source: self, limit, exceeded_message: Some(exceeded_message) })
     }
@@ -513,6 +532,11 @@ impl QueryPlan {
     pub fn filter(self: Box<Self>, predicate: Expr) -> Box<Self> {
         assert!(matches!(predicate.ty, LogicalType::Bool | LogicalType::Null));
         Box::new(Self::Filter { source: self, predicate })
+    }
+
+    #[inline]
+    pub fn cte_scan(name: Name, schema: Schema) -> Box<Self> {
+        Box::new(Self::CteScan { name, schema })
     }
 
     #[inline]

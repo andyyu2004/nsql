@@ -1,6 +1,6 @@
 use egg::{define_language, Id};
 use ir::Value;
-use nsql_core::Oid;
+use nsql_core::{Name, Oid};
 
 use crate::Query;
 
@@ -12,9 +12,11 @@ define_language! {
     pub(crate) enum Node {
         // scalar expressions
         Literal(Value),
+        Cte(Name, [Id; 2]), // (cte-name (cte-plan child-plan))
+        CteScan(Name),
         // We pass the plan id here so column refs with the same index don't get merged into the same eclass
         ColumnRef(ir::ColumnRef, Id),           // (column-ref <index> <plan>)
-        "union" = Union( [Id; 2]),              // (union <lhs> <rhs>)
+        "union" = Union([Id; 2]),               // (union <lhs> <rhs>)
         "array" = Array(Box<[Id]>),
         "subquery" = Subquery(Id),
         "exists" = Exists(Id),
@@ -175,6 +177,12 @@ impl Builder {
                 let lhs = self.build_query(lhs);
                 let rhs = self.build_query(rhs);
                 Node::Union([lhs, rhs])
+            }
+            ir::QueryPlan::CteScan { name, schema: _ } => Node::CteScan(name.clone()),
+            ir::QueryPlan::Cte { cte, child } => {
+                let cte_plan = self.build_query(&cte.plan);
+                let child = self.build_query(child);
+                Node::Cte(Name::clone(&cte.name), [cte_plan, child])
             }
         };
 

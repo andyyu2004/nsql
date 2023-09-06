@@ -95,6 +95,11 @@ pub trait Visitor {
                 self.visit_query_plan(lhs)?;
                 self.visit_query_plan(rhs)
             }
+            QueryPlan::CteScan { name: _, schema: _ } => ControlFlow::Continue(()),
+            QueryPlan::Cte { cte, child } => {
+                self.visit_query_plan(&cte.plan)?;
+                self.visit_query_plan(child)
+            }
         }
     }
 

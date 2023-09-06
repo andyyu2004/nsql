@@ -7,6 +7,7 @@ pub mod ty;
 use std::borrow::Borrow;
 use std::fmt;
 use std::ops::Deref;
+use std::str::FromStr;
 
 pub use oid::{Oid, UntypedOid};
 use smol_str::SmolStr;
@@ -16,6 +17,15 @@ pub use ty::{LogicalType, Schema};
 #[derive(Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Name {
     name: SmolStr,
+}
+
+impl FromStr for Name {
+    type Err = std::convert::Infallible;
+
+    #[inline]
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(s.into())
+    }
 }
 
 impl PartialEq<&str> for Name {

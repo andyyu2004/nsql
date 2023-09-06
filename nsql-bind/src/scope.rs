@@ -3,15 +3,16 @@ use std::fmt;
 use anyhow::{bail, ensure};
 use ir::QPath;
 use nsql_catalog::{Column, SystemEntity, Table};
-use nsql_core::{LogicalType, Name, Oid};
+use nsql_core::{LogicalType, Name, Oid, Schema};
 use nsql_storage_engine::{StorageEngine, Transaction};
 
 use super::unbound;
 use crate::{Binder, Path, Result, TableAlias};
 
-#[derive(Default, PartialEq, Eq)]
+#[derive(Default, Clone, PartialEq, Eq)]
 pub(crate) struct Scope {
     columns: rpds::Vector<(QPath, LogicalType)>,
+    ctes: rpds::HashTrieMap<Name, (CteKind, Scope, Box<ir::QueryPlan>)>,
 }
 
 impl fmt::Debug for Scope {
@@ -24,12 +25,6 @@ impl fmt::Debug for Scope {
             write!(f, "{}: {}", path, ty)?;
         }
         write!(f, "]")
-    }
-}
-
-impl Clone for Scope {
-    fn clone(&self) -> Self {
-        Self { columns: self.columns.clone() }
     }
 }
 
@@ -49,23 +44,69 @@ impl Scope {
             })
             .collect();
 
-        Self { columns }
+        Self { columns, ..self.clone() }
     }
 
-    /// Insert a table and its columns to the scope
-    #[tracing::instrument(skip(self, tx, binder))]
+    /// Add a cte into scope
+    /// * `alias`: the alias of the CTE (i.e. WITH t(x,y,z))
+    /// * `scope`: the scope of the bound plan (without the alias applied)
+    /// * `plan` : the plan of the cte's query
+    #[tracing::instrument(skip_all)]
+    pub fn with_cte(
+        &self,
+        kind: CteKind,
+        scope: Scope,
+        plan: Box<ir::QueryPlan>,
+        alias: TableAlias,
+    ) -> Result<Scope> {
+        tracing::debug!("binding cte");
+        let name = Name::clone(&alias.table_name);
+        let scope = scope.alias(alias)?;
+
+        if self.ctes.contains_key(&name) {
+            bail!("common table expression with name `{name}` specified more than once")
+        }
+
+        let ctes = self.ctes.insert(name, (kind, scope, plan));
+        Ok(Self { ctes, ..self.clone() })
+    }
+
+    /// Find a reference to a table:
+    /// If it is a cte, return a reference to the cte and it's scope.
+    /// Otherwise, add a new table and its columns to the scope.
     pub fn bind_table<'env, S: StorageEngine>(
         &self,
         binder: &Binder<'env, S>,
         tx: &dyn Transaction<'env, S>,
-        table_path: Path,
-        table: Oid<Table>,
+        path: Path,
         alias: Option<&TableAlias>,
-    ) -> Result<Scope> {
+    ) -> Result<(Scope, TableBinding)> {
+        match path {
+            Path::Unqualified(name) if let Some((kind, scope, plan)) = self.ctes.get(&name) => match kind {
+                CteKind::Inline => Ok((scope.clone(), TableBinding::InlineCte(plan.clone()))),
+                CteKind::Materialized => Ok((scope.clone(), TableBinding::MaterializedCte(name, plan.schema().clone()))),
+            }
+            _ => {
+                let (scope, table) = self.bind_base_table(binder, tx, path, alias)?;
+                Ok((scope, TableBinding::Table(table)))
+            }
+        }
+    }
+
+    /// Find a reference to a base table
+    #[tracing::instrument(skip(self, tx, binder))]
+    pub fn bind_base_table<'env, S: StorageEngine>(
+        &self,
+        binder: &Binder<'env, S>,
+        tx: &dyn Transaction<'env, S>,
+        path: Path,
+        alias: Option<&TableAlias>,
+    ) -> Result<(Scope, Oid<Table>)> {
         tracing::debug!("binding table");
         let mut columns = self.columns.clone();
 
-        let table = binder.catalog.table(tx, table)?;
+        let table_oid = binder.bind_namespaced_entity::<Table>(tx, &path)?;
+        let table = binder.catalog.table(tx, table_oid)?;
         let table_columns = table.columns(binder.catalog, tx)?;
 
         if let Some(alias) = alias {
@@ -73,16 +114,16 @@ impl Scope {
             if !alias.columns.is_empty() && table_columns.len() != alias.columns.len() {
                 bail!(
                     "table `{}` has {} columns, but {} columns were specified in alias",
-                    table_path,
+                    path,
                     table_columns.len(),
                     alias.columns.len()
                 );
             }
         }
 
-        let table_path = match alias {
+        let path = match alias {
             Some(alias) => Path::Unqualified(alias.table_name.clone()),
-            None => table_path,
+            None => path,
         };
 
         for (i, column) in table_columns.into_iter().enumerate() {
@@ -91,10 +132,10 @@ impl Scope {
                 _ => column.name(),
             };
 
-            columns.push_back_mut((QPath::new(table_path.clone(), name), column.logical_type()));
+            columns.push_back_mut((QPath::new(path.clone(), name), column.logical_type()));
         }
 
-        Ok(Self { columns })
+        Ok((Self { columns, ..self.clone() }, table_oid))
     }
 
     pub fn lookup_by_index(&self, index: usize) -> (QPath, LogicalType) {
@@ -151,7 +192,7 @@ impl Scope {
             columns.push_back_mut((QPath::new("values", name), expr.ty.clone()));
         }
 
-        Self { columns }
+        Self { columns, ..self.clone() }
     }
 
     pub fn bind_unnest(&self, expr: &ir::Expr) -> Result<Scope> {
@@ -166,7 +207,7 @@ impl Scope {
             _ => unreachable!(),
         };
 
-        Ok(Self { columns: self.columns.push_back((QPath::new("", "unnest"), ty)) })
+        Ok(Self { columns: self.columns.push_back((QPath::new("", "unnest"), ty)), ..self.clone() })
     }
 
     pub fn len(&self) -> usize {
@@ -195,7 +236,7 @@ impl Scope {
             columns.push_back_mut((path.clone(), ty.clone()));
         }
 
-        Self { columns }
+        Self { columns, ..self.clone() }
     }
 
     pub fn alias(&self, alias: TableAlias) -> Result<Self> {
@@ -215,13 +256,28 @@ impl Scope {
                 None => qpath.clone(),
             };
 
-            if self.columns.iter().any(|(p, _)| p == &path) {
-                todo!("handle duplicate names (this will not work with current impl correctly)")
-            }
-
             columns = columns.push_back((path, ty.clone()));
         }
 
-        Ok(Scope { columns })
+        Ok(Scope { columns, ..self.clone() })
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) enum CteKind {
+    // FIXME there is no syntax supported by the parser to specify materialized/not materialized yet.
+    // We should be smart enough and use an inline cte if there is only one reference to it.
+    #[allow(dead_code)]
+    Inline,
+    Materialized,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum TableBinding {
+    /// A materialized cte materializes into a pseudo-table and is read by a `CTE scan` node.
+    MaterializedCte(Name, Schema),
+    /// An inline (NOT MATERIALIZED) CTE is where the plan gets "inlined" into its use-sites.
+    InlineCte(Box<ir::QueryPlan>),
+    /// A standard base table
+    Table(Oid<Table>),
 }

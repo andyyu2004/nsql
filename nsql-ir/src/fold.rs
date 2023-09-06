@@ -162,6 +162,11 @@ impl PlanFold for QueryPlan {
                 lhs: folder.fold_boxed_plan(lhs),
                 rhs: folder.fold_boxed_plan(rhs),
             },
+            QueryPlan::CteScan { name, schema } => QueryPlan::CteScan { name, schema },
+            QueryPlan::Cte { cte, child } => QueryPlan::Cte {
+                cte: Cte { name: cte.name, plan: folder.fold_boxed_plan(cte.plan) },
+                child: folder.fold_boxed_plan(child),
+            },
         }
     }
 }

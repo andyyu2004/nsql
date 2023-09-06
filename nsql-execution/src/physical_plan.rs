@@ -3,6 +3,7 @@ pub(crate) mod explain;
 mod join;
 mod physical_create_namespace;
 mod physical_create_table;
+mod physical_cte_scan;
 mod physical_drop;
 mod physical_dummy_scan;
 mod physical_explain;
@@ -33,6 +34,7 @@ pub use self::explain::Explain;
 use self::join::PhysicalNestedLoopJoin;
 use self::physical_create_namespace::PhysicalCreateNamespace;
 use self::physical_create_table::PhysicalCreateTable;
+use self::physical_cte_scan::PhysicalCteScan;
 use self::physical_drop::PhysicalDrop;
 use self::physical_dummy_scan::PhysicalDummyScan;
 use self::physical_explain::PhysicalExplain;
@@ -226,6 +228,8 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalPlanner<'env, S> {
                 "write query plans should go through plan_write_query_node, got plan {:?}",
                 plan,
             ),
+            opt::Plan::CteScan(scan) => PhysicalCteScan::plan(scan.name()),
+            opt::Plan::Cte(cte) => todo!(),
         };
 
         Ok(plan)

@@ -2,7 +2,7 @@ use std::fmt;
 
 use egg::Id;
 use itertools::Itertools;
-use nsql_core::Oid;
+use nsql_core::{Name, Oid};
 
 use crate::node::{EGraph, Node};
 
@@ -95,13 +95,14 @@ impl Query {
             | Node::Desc(_)
             | Node::Table(_)
             | Node::Function(_)
+            | Node::CteScan(..)
+            | Node::Cte(..)
             | Node::Union(..)) => panic!("expected `Expr` node, got `{node}`"),
         }
     }
 
     fn plan(&self, id: Id) -> Plan<'_> {
         match *self.node(id) {
-            Node::Case(_) => todo!(),
             Node::DummyScan => Plan::DummyScan,
             Node::Project([source, projection]) => {
                 Plan::Projection(Projection { projection, source })
@@ -127,6 +128,8 @@ impl Query {
             }
 
             Node::Union([lhs, rhs]) => Plan::Union(Union { lhs, rhs }),
+            Node::Cte(ref name, [cte_plan, child]) => Plan::Cte(Cte { name, cte_plan, child }),
+            Node::CteScan(ref name) => Plan::CteScan(CteScan { name }),
             Node::Desc(_)
             | Node::Nodes(_)
             | Node::Table(_)
@@ -136,6 +139,7 @@ impl Query {
             | Node::ColumnRef(..)
             | Node::Array(_)
             | Node::Exists(_)
+            | Node::Case(_)
             | Node::Subquery(_) => unreachable!("not a plan node"),
         }
     }
@@ -155,6 +159,8 @@ pub enum Plan<'a> {
     Union(Union),
     TableScan(TableScan),
     Unnest(Unnest),
+    CteScan(CteScan<'a>),
+    Cte(Cte<'a>),
     DummyScan,
 }
 
@@ -370,6 +376,42 @@ impl<'a> Values<'a> {
         g: &'a Query,
     ) -> impl ExactSizeIterator<Item = impl ExactSizeIterator<Item = Expr<'a>> + 'a> + 'a {
         self.values.iter().map(move |&row| g.exprs(row))
+    }
+}
+
+#[derive(Debug, Copy, Clone)]
+pub struct Cte<'a> {
+    name: &'a Name,
+    cte_plan: Id,
+    child: Id,
+}
+
+impl Cte<'_> {
+    #[inline]
+    pub fn name(self) -> Name {
+        Name::clone(self.name)
+    }
+
+    #[inline]
+    pub fn cte_plan(self, q: &Query) -> Plan<'_> {
+        q.plan(self.cte_plan)
+    }
+
+    #[inline]
+    pub fn child(self, q: &Query) -> Plan<'_> {
+        q.plan(self.child)
+    }
+}
+
+#[derive(Debug, Copy, Clone)]
+pub struct CteScan<'a> {
+    name: &'a Name,
+}
+
+impl CteScan<'_> {
+    #[inline]
+    pub fn name(self) -> Name {
+        Name::clone(self.name)
     }
 }
 

@@ -22,7 +22,7 @@ use nsql_core::{LogicalType, Name, Oid, Schema};
 use nsql_parse::ast;
 use nsql_storage_engine::{FallibleIterator, ReadonlyExecutionMode, StorageEngine, Transaction};
 
-use self::scope::Scope;
+use self::scope::{CteKind, Scope, TableBinding};
 use self::select::SelectBinder;
 
 pub struct Binder<'env, S> {
@@ -185,7 +185,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
 
                 let (_, mut source) = self.bind_query(tx, scope, source)?;
 
-                let (scope, table) = self.bind_table(tx, scope, table_name, None)?;
+                let (scope, table) = self.bind_base_table(tx, scope, table_name, None)?;
 
                 let table_columns =
                     self.catalog.get::<Table>(tx, table)?.columns(self.catalog, tx)?;
@@ -345,7 +345,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                         not_implemented_if!(alias.is_some());
                         not_implemented_if!(args.is_some());
                         not_implemented_if!(!with_hints.is_empty());
-                        self.bind_table(tx, scope, name, alias.as_ref())?
+                        self.bind_base_table(tx, scope, name, alias.as_ref())?
                     }
                     _ => not_implemented!("update with non-table relation"),
                 };
@@ -618,12 +618,28 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
         query: &ast::Query,
     ) -> Result<(Scope, Box<ir::QueryPlan>)> {
         let ast::Query { with, body, order_by, limit, offset, fetch, locks } = query;
-        not_implemented_if!(with.is_some());
         not_implemented_if!(offset.is_some());
         not_implemented_if!(fetch.is_some());
         not_implemented_if!(!locks.is_empty());
 
-        let (scope, mut table_expr) = self.bind_table_expr(tx, scope, body, order_by)?;
+        let mut scope = scope.clone();
+        let mut ctes = Vec::with_capacity(with.as_ref().map_or(0, |with| with.cte_tables.len()));
+        if let Some(with) = with {
+            not_implemented_if!(with.recursive);
+            for cte in &with.cte_tables {
+                not_implemented_if!(cte.from.is_some());
+                let kind = CteKind::Materialized;
+                let plan;
+                (scope, plan) = self.bind_cte(tx, kind, &scope, cte)?;
+                ctes.push(plan);
+            }
+        }
+
+        let (scope, mut plan) = self.bind_table_expr(tx, &scope, body, order_by)?;
+
+        for cte in ctes {
+            plan = plan.with_cte(cte);
+        }
 
         if let Some(limit) = limit {
             // LIMIT is currently not allowed to reference any columns
@@ -633,11 +649,27 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                 .map_err(|EvalNotConst| anyhow!("LIMIT expression must be constant"))?
                 .cast::<Option<u64>>()?
             {
-                table_expr = table_expr.limit(limit);
+                plan = plan.limit(limit);
             };
         }
 
-        Ok((scope, table_expr))
+        Ok((scope, plan))
+    }
+
+    fn bind_cte(
+        &self,
+        tx: &dyn Transaction<'env, S>,
+        kind: CteKind,
+        scope: &Scope,
+        cte: &ast::Cte,
+    ) -> Result<(Scope, ir::Cte)> {
+        // not sure what the `from` is even about for a cte
+        not_implemented_if!(cte.from.is_some());
+        let alias = self.lower_table_alias(&cte.alias);
+        let (cte_scope, cte_plan) = self.bind_query(tx, scope, &cte.query)?;
+        let cte = ir::Cte { name: Name::clone(&alias.table_name), plan: cte_plan.clone() };
+        let scope = scope.with_cte(kind, cte_scope, cte_plan, alias)?;
+        Ok((scope, cte))
     }
 
     fn bind_table_expr(
@@ -832,7 +864,14 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                 not_implemented_if!(!with_hints.is_empty());
 
                 let (scope, table) = self.bind_table(tx, scope, name, alias.as_ref())?;
-                (scope, self.build_table_scan(tx, table, None)?)
+                let plan = match table {
+                    TableBinding::MaterializedCte(name, schema) => {
+                        ir::QueryPlan::cte_scan(name, schema)
+                    }
+                    TableBinding::InlineCte(plan) => plan,
+                    TableBinding::Table(table) => self.build_table_scan(tx, table, None)?,
+                };
+                (scope, plan)
             }
             ast::TableFactor::Derived { lateral, subquery, alias } => {
                 not_implemented_if!(*lateral);
@@ -874,12 +913,24 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
         scope: &Scope,
         table_name: &ast::ObjectName,
         alias: Option<&ast::TableAlias>,
+    ) -> Result<(Scope, TableBinding)> {
+        let alias = alias.map(|alias| self.lower_table_alias(alias));
+        let path = self.lower_path(&table_name.0)?;
+
+        scope.bind_table(self, tx, path, alias.as_ref())
+    }
+
+    fn bind_base_table(
+        &self,
+        tx: &dyn Transaction<'env, S>,
+        scope: &Scope,
+        table_name: &ast::ObjectName,
+        alias: Option<&ast::TableAlias>,
     ) -> Result<(Scope, Oid<Table>)> {
         let alias = alias.map(|alias| self.lower_table_alias(alias));
-        let table_name = self.lower_path(&table_name.0)?;
-        let table = self.bind_namespaced_entity::<Table>(tx, &table_name)?;
+        let path = self.lower_path(&table_name.0)?;
 
-        Ok((scope.bind_table(self, tx, table_name, table, alias.as_ref())?, table))
+        scope.bind_base_table(self, tx, path, alias.as_ref())
     }
 
     fn lower_table_alias(&self, alias: &ast::TableAlias) -> TableAlias {
