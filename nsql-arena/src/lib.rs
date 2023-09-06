@@ -189,28 +189,24 @@ impl<T> Arena<T> {
         idx
     }
 
-    pub fn iter(
-        &self,
-    ) -> impl Iterator<Item = (Idx<T>, &T)> + ExactSizeIterator + DoubleEndedIterator {
+    pub fn iter(&self) -> impl ExactSizeIterator<Item = (Idx<T>, &T)> + DoubleEndedIterator {
         self.data.iter().enumerate().map(|(idx, value)| (Idx::from_raw(RawIdx(idx as u32)), value))
     }
 
     pub fn iter_mut(
         &mut self,
-    ) -> impl Iterator<Item = (Idx<T>, &mut T)> + ExactSizeIterator + DoubleEndedIterator {
+    ) -> impl ExactSizeIterator<Item = (Idx<T>, &mut T)> + DoubleEndedIterator {
         self.data
             .iter_mut()
             .enumerate()
             .map(|(idx, value)| (Idx::from_raw(RawIdx(idx as u32)), value))
     }
 
-    pub fn values(&mut self) -> impl Iterator<Item = &T> + ExactSizeIterator + DoubleEndedIterator {
+    pub fn values(&mut self) -> impl ExactSizeIterator<Item = &T> + DoubleEndedIterator {
         self.data.iter()
     }
 
-    pub fn values_mut(
-        &mut self,
-    ) -> impl Iterator<Item = &mut T> + ExactSizeIterator + DoubleEndedIterator {
+    pub fn values_mut(&mut self) -> impl ExactSizeIterator<Item = &mut T> + DoubleEndedIterator {
         self.data.iter_mut()
     }
 
