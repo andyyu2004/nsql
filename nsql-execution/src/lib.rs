@@ -12,8 +12,10 @@ use std::sync::atomic::{self, AtomicBool};
 use std::sync::Arc;
 
 pub use anyhow::Error;
+use dashmap::DashMap;
 use nsql_arena::Idx;
 use nsql_catalog::Catalog;
+use nsql_core::Name;
 use nsql_storage::tuple::Tuple;
 use nsql_storage_engine::{
     ExecutionMode, FallibleIterator, ReadWriteExecutionMode, ReadonlyExecutionMode, StorageEngine,
@@ -92,9 +94,8 @@ trait PhysicalNode<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>
                     arena[current].set_source(source)
                 }
                 Err(operator) => {
-                    let operator = operator
-                        .as_operator()
-                        .expect("node is neither a source, sink, nor an operator");
+                    let operator =
+                        operator.as_operator().expect("node is not a source, sink, or operator");
                     let children = operator.children();
                     assert_eq!(
                         children.len(),
@@ -103,7 +104,7 @@ trait PhysicalNode<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>
                     );
                     let child = Arc::clone(&children[0]);
                     arena[current].add_operator(operator);
-                    arena.build(meta_builder, child);
+                    child.build_pipelines(arena, meta_builder, current)
                 }
             },
         }
@@ -223,6 +224,7 @@ pub struct ExecutionContext<'a, 'env, S: StorageEngine, M: ExecutionMode<'env, S
     catalog: Catalog<'env, S>,
     tcx: TransactionContext<'env, S, M>,
     scx: &'a (dyn SessionContext + 'a),
+    materialized_ctes: DashMap<Name, Arc<[Tuple]>>,
 }
 
 impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> ExecutionContext<'_, 'env, S, M> {
@@ -240,7 +242,7 @@ impl<'a, 'env, S: StorageEngine, M: ExecutionMode<'env, S>> ExecutionContext<'a,
         tcx: TransactionContext<'env, S, M>,
         scx: &'a (dyn SessionContext + 'a),
     ) -> Self {
-        Self { catalog, tcx, scx }
+        Self { catalog, tcx, scx, materialized_ctes: Default::default() }
     }
 
     #[inline]
@@ -261,6 +263,17 @@ impl<'a, 'env, S: StorageEngine, M: ExecutionMode<'env, S>> ExecutionContext<'a,
     #[inline]
     pub fn catalog(&self) -> Catalog<'env, S> {
         self.catalog
+    }
+
+    pub fn get_materialized_cte_data(&self, name: &Name) -> Arc<[Tuple]> {
+        self.materialized_ctes
+            .get(name)
+            .map(|tuples| Arc::clone(tuples.value()))
+            .expect("attempting to get materialized cte data before it is materialized")
+    }
+
+    pub fn instantiate_materialized_cte(&self, name: Name, tuples: impl Into<Arc<[Tuple]>>) {
+        self.materialized_ctes.insert(name, tuples.into());
     }
 }
 

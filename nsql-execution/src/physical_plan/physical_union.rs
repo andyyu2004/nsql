@@ -77,7 +77,8 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode
         arena.build(lhs_meta_builder, Arc::clone(&self.children[0]));
 
         let rhs_meta_builder = arena.new_child_meta_pipeline(meta_builder, sink);
-        arena.build(rhs_meta_builder, Arc::clone(&self.children[1].clone()));
+        arena.build(rhs_meta_builder, Arc::clone(&self.children[1]));
+
         arena[current].set_source(self);
     }
 }

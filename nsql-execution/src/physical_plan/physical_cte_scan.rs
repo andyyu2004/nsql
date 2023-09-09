@@ -1,4 +1,5 @@
 use nsql_core::Name;
+use nsql_storage_engine::fallible_iterator;
 
 use super::*;
 
@@ -18,12 +19,21 @@ impl<'env: 'txn, 'txn> PhysicalCteScan {
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSource<'env, 'txn, S, M>
     for PhysicalCteScan
 {
-    #[tracing::instrument(skip(self, _ecx))]
+    #[tracing::instrument(skip(self, ecx))]
     fn source(
         self: Arc<Self>,
-        _ecx: &'txn ExecutionContext<'_, 'env, S, M>,
+        ecx: &'txn ExecutionContext<'_, 'env, S, M>,
     ) -> ExecutionResult<TupleStream<'txn>> {
-        todo!()
+        // the materialized ctes should be populated by the `PhysicalCte` node
+        let tuples = ecx.get_materialized_cte_data(&self.cte_name);
+        let mut i = 0;
+        let iter = std::iter::from_fn(move || {
+            tuples.get(i).map(|tuple| {
+                i += 1;
+                Ok(tuple.clone())
+            })
+        });
+        Ok(Box::new(fallible_iterator::convert(iter)))
     }
 }
 

@@ -151,6 +151,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
         child
     }
 
+    #[track_caller]
     pub(crate) fn build(
         &mut self,
         meta_pipeline: Idx<MetaPipelineBuilder<'env, 'txn, S, M>>,
@@ -190,6 +191,11 @@ pub(crate) struct PipelineBuilder<'env, 'txn, S, M> {
 impl<'env, 'txn, S, M> PipelineBuilder<'env, 'txn, S, M> {
     pub(crate) fn new(sink: Arc<dyn PhysicalSink<'env, 'txn, S, M>>) -> Self {
         Self { source: None, operators: vec![], sink }
+    }
+
+    #[allow(dead_code)]
+    pub(crate) fn sink(&self) -> Arc<dyn PhysicalSink<'env, 'txn, S, M>> {
+        Arc::clone(&self.sink)
     }
 
     #[track_caller]

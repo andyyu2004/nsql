@@ -6,7 +6,6 @@ SELECT * FROM t
 common table expression with name `t` specified more than once
 
 query I
-WITH t AS (SELECT 1 AS x)
-SELECT x, x FROM t
+WITH t AS (SELECT 1 AS x) SELECT x, x FROM t
 ----
 1 1
