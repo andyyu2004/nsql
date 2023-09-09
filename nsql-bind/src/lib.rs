@@ -6,7 +6,9 @@ mod function;
 mod scope;
 mod select;
 
-use std::collections::HashSet;
+use std::cell::RefCell;
+use std::collections::hash_map::Entry;
+use std::collections::{HashMap, HashSet};
 use std::str::FromStr;
 
 pub use anyhow::Error;
@@ -27,7 +29,10 @@ use self::select::SelectBinder;
 
 pub struct Binder<'env, S> {
     catalog: Catalog<'env, S>,
+    ctes: RefCell<HashMap<Name, CteMeta>>,
 }
+
+type CteMeta = (CteKind, Scope, Box<ir::QueryPlan>);
 
 macro_rules! not_implemented {
     ($msg:literal) => {
@@ -60,7 +65,7 @@ pub type Result<T, E = Error> = std::result::Result<T, E>;
 
 impl<'env, S: StorageEngine> Binder<'env, S> {
     pub fn new(catalog: Catalog<'env, S>) -> Self {
-        Self { catalog }
+        Self { catalog, ctes: Default::default() }
     }
 
     pub fn bind(&self, stmt: &ast::Statement) -> Result<Box<ir::Plan>> {
@@ -622,20 +627,18 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
         not_implemented_if!(fetch.is_some());
         not_implemented_if!(!locks.is_empty());
 
-        let mut scope = scope.clone();
         let mut ctes = Vec::with_capacity(with.as_ref().map_or(0, |with| with.cte_tables.len()));
         if let Some(with) = with {
             not_implemented_if!(with.recursive);
             for cte in &with.cte_tables {
                 not_implemented_if!(cte.from.is_some());
                 let kind = CteKind::Materialized;
-                let plan;
-                (scope, plan) = self.bind_cte(tx, kind, &scope, cte)?;
+                let plan = self.bind_cte(tx, kind, scope, cte)?;
                 ctes.push(plan);
             }
         }
 
-        let (scope, mut plan) = self.bind_table_expr(tx, &scope, body, order_by)?;
+        let (scope, mut plan) = self.bind_table_expr(tx, scope, body, order_by)?;
 
         for cte in ctes {
             plan = plan.with_cte(cte);
@@ -654,22 +657,6 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
         }
 
         Ok((scope, plan))
-    }
-
-    fn bind_cte(
-        &self,
-        tx: &dyn Transaction<'env, S>,
-        kind: CteKind,
-        scope: &Scope,
-        cte: &ast::Cte,
-    ) -> Result<(Scope, ir::Cte)> {
-        // not sure what the `from` is even about for a cte
-        not_implemented_if!(cte.from.is_some());
-        let alias = self.lower_table_alias(&cte.alias);
-        let (cte_scope, cte_plan) = self.bind_query(tx, scope, &cte.query)?;
-        let cte = ir::Cte { name: Name::clone(&alias.table_name), plan: cte_plan.clone() };
-        let scope = scope.with_cte(kind, cte_scope, cte_plan, alias)?;
-        Ok((scope, cte))
     }
 
     fn bind_table_expr(
@@ -871,6 +858,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                     TableBinding::InlineCte(plan) => plan,
                     TableBinding::Table(table) => self.build_table_scan(tx, table, None)?,
                 };
+
                 (scope, plan)
             }
             ast::TableFactor::Derived { lateral, subquery, alias } => {
@@ -1488,6 +1476,33 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
             ast::Value::DoubleQuotedByteStringLiteral(_) => todo!(),
             ast::Value::RawStringLiteral(_) => todo!(),
         }
+    }
+
+    fn bind_cte(
+        &self,
+        tx: &dyn Transaction<'env, S>,
+        kind: CteKind,
+        scope: &Scope,
+        cte: &ast::Cte,
+    ) -> Result<ir::Cte> {
+        // not sure what the `from` is even about for a cte
+        not_implemented_if!(cte.from.is_some());
+        let alias = self.lower_table_alias(&cte.alias);
+        let (cte_scope, cte_plan) = self.bind_query(tx, scope, &cte.query)?;
+        let cte = ir::Cte { name: Name::clone(&alias.table_name), plan: cte_plan.clone() };
+
+        let name = Name::clone(&alias.table_name);
+        let scope = cte_scope.alias(alias)?;
+
+        match self.ctes.borrow_mut().entry(Name::clone(&name)) {
+            Entry::Occupied(_) => {
+                bail!("common table expression with name `{name}` specified more than once")
+            }
+            Entry::Vacant(entry) => {
+                entry.insert((kind, scope, cte_plan));
+            }
+        }
+        Ok(cte)
     }
 }
 

@@ -12,7 +12,6 @@ use crate::{Binder, Path, Result, TableAlias};
 #[derive(Default, Clone, PartialEq, Eq)]
 pub(crate) struct Scope {
     columns: rpds::Vector<(QPath, LogicalType)>,
-    ctes: rpds::HashTrieMap<Name, (CteKind, Scope, Box<ir::QueryPlan>)>,
 }
 
 impl fmt::Debug for Scope {
@@ -44,31 +43,7 @@ impl Scope {
             })
             .collect();
 
-        Self { columns, ..self.clone() }
-    }
-
-    /// Add a cte into scope
-    /// * `alias`: the alias of the CTE (i.e. WITH t(x,y,z))
-    /// * `scope`: the scope of the bound plan (without the alias applied)
-    /// * `plan` : the plan of the cte's query
-    #[tracing::instrument(skip_all)]
-    pub fn with_cte(
-        &self,
-        kind: CteKind,
-        scope: Scope,
-        plan: Box<ir::QueryPlan>,
-        alias: TableAlias,
-    ) -> Result<Scope> {
-        tracing::debug!("binding cte");
-        let name = Name::clone(&alias.table_name);
-        let scope = scope.alias(alias)?;
-
-        if self.ctes.contains_key(&name) {
-            bail!("common table expression with name `{name}` specified more than once")
-        }
-
-        let ctes = self.ctes.insert(name, (kind, scope, plan));
-        Ok(Self { ctes, ..self.clone() })
+        Self { columns }
     }
 
     /// Find a reference to a table:
@@ -82,7 +57,7 @@ impl Scope {
         alias: Option<&TableAlias>,
     ) -> Result<(Scope, TableBinding)> {
         match path {
-            Path::Unqualified(name) if let Some((kind, scope, plan)) = self.ctes.get(&name) => match kind {
+            Path::Unqualified(name) if let Some((kind, scope, plan)) = binder.ctes.borrow().get(&name) => match kind {
                 CteKind::Inline => Ok((scope.clone(), TableBinding::InlineCte(plan.clone()))),
                 CteKind::Materialized => Ok((scope.clone(), TableBinding::MaterializedCte(name, plan.schema().clone()))),
             }
@@ -135,7 +110,7 @@ impl Scope {
             columns.push_back_mut((QPath::new(path.clone(), name), column.logical_type()));
         }
 
-        Ok((Self { columns, ..self.clone() }, table_oid))
+        Ok((Self { columns }, table_oid))
     }
 
     pub fn lookup_by_index(&self, index: usize) -> (QPath, LogicalType) {
@@ -192,7 +167,7 @@ impl Scope {
             columns.push_back_mut((QPath::new("values", name), expr.ty.clone()));
         }
 
-        Self { columns, ..self.clone() }
+        Self { columns }
     }
 
     pub fn bind_unnest(&self, expr: &ir::Expr) -> Result<Scope> {
@@ -207,7 +182,7 @@ impl Scope {
             _ => unreachable!(),
         };
 
-        Ok(Self { columns: self.columns.push_back((QPath::new("", "unnest"), ty)), ..self.clone() })
+        Ok(Self { columns: self.columns.push_back((QPath::new("", "unnest"), ty)) })
     }
 
     pub fn len(&self) -> usize {
@@ -236,7 +211,7 @@ impl Scope {
             columns.push_back_mut((path.clone(), ty.clone()));
         }
 
-        Self { columns, ..self.clone() }
+        Self { columns }
     }
 
     pub fn alias(&self, alias: TableAlias) -> Result<Self> {
@@ -259,7 +234,7 @@ impl Scope {
             columns = columns.push_back((path, ty.clone()));
         }
 
-        Ok(Scope { columns, ..self.clone() })
+        Ok(Scope { columns })
     }
 }
 

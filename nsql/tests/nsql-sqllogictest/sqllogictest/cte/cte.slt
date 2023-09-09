@@ -9,3 +9,10 @@ query I
 WITH t AS (SELECT 1 AS x) SELECT x, x FROM t
 ----
 1 1
+
+query I
+WITH t AS (SELECT 1 AS x),
+     u AS (SELECT 2 AS y)
+SELECT x, y FROM t JOIN u
+----
+1 2
