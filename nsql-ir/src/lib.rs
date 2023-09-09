@@ -209,7 +209,9 @@ impl QueryPlan {
                 lhs.required_transaction_mode().max(rhs.required_transaction_mode())
             }
             QueryPlan::CteScan { .. } => TransactionMode::ReadOnly,
-            QueryPlan::Cte { cte: _, child } => child.required_transaction_mode(),
+            QueryPlan::Cte { cte, child } => {
+                child.required_transaction_mode().max(cte.plan.required_transaction_mode())
+            }
         }
     }
 }

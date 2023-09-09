@@ -66,7 +66,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode
         arena.build(cte_builder, Arc::clone(&self.children[0]));
 
         // recursively build onto `current` with the child plan
-        Arc::clone(&self.children[1]).build_pipelines(arena, meta_builder, current)
+        Arc::clone(&self.children[1]).build_pipelines(arena, meta_builder, current);
     }
 }
 

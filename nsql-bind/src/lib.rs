@@ -631,7 +631,6 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
         if let Some(with) = with {
             not_implemented_if!(with.recursive);
             for cte in &with.cte_tables {
-                not_implemented_if!(cte.from.is_some());
                 let kind = CteKind::Materialized;
                 let plan = self.bind_cte(tx, kind, scope, cte)?;
                 ctes.push(plan);
@@ -640,7 +639,9 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
 
         let (scope, mut plan) = self.bind_table_expr(tx, scope, body, order_by)?;
 
-        for cte in ctes {
+        // HACK: due to certain implementation details of how pipelines for the cte are currently built, this
+        // is the right order to push the ctes in to allow the ctes to depend on each other in order.
+        for cte in ctes.into_iter().rev() {
             plan = plan.with_cte(cte);
         }
 

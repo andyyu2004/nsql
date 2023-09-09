@@ -16,3 +16,20 @@ WITH t AS (SELECT 1 AS x),
 SELECT x, y FROM t JOIN u
 ----
 1 2
+
+
+query I
+WITH t AS (SELECT 1 AS x),
+     u AS (SELECT x + 1 AS y FROM t)
+SELECT x, y FROM t JOIN u
+----
+1 2
+
+query I
+WITH t AS (SELECT 1 AS x),
+     u AS (SELECT x + 1 AS y FROM t),
+     w AS (SELECT y + 1 AS z FROM u)
+SELECT x, y, z FROM t JOIN u JOIN w
+----
+1 2 3
+
