@@ -165,16 +165,14 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                         .into()]
                         .into(),
                     )),
-                    returning: Some(
-                        [ir::Expr {
-                            ty: LogicalType::Oid,
-                            kind: ir::ExprKind::ColumnRef(ir::ColumnRef {
-                                index: ir::TupleIndex::new(0),
-                                qpath: ir::QPath::new("nsql_table", "id"),
-                            }),
-                        }]
-                        .into(),
-                    ),
+                    returning: [ir::Expr {
+                        ty: LogicalType::Oid,
+                        kind: ir::ExprKind::ColumnRef(ir::ColumnRef {
+                            index: ir::TupleIndex::new(0),
+                            qpath: ir::QPath::new("nsql_table", "id"),
+                        }),
+                    }]
+                    .into(),
                     schema: Schema::new([LogicalType::Oid]),
                 });
 
@@ -216,7 +214,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                                 a.union(schema, b)
                             })
                             .ok_or_else(|| anyhow!("table must define at least one column"))?,
-                        returning: None,
+                        returning: [].into(),
                         schema: Schema::empty(),
                     })
                     .with_cte(ir::Cte { name: CTE_NAME.into(), plan: insert_table_plan }),
@@ -258,125 +256,13 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                 ir::Plan::query(ir::QueryPlan::Insert {
                     table,
                     source,
-                    returning: None,
+                    returning: [].into(),
                     schema: Schema::empty(),
                 })
             }
-            ast::Statement::Insert {
-                or,
-                into: _,
-                table_name,
-                columns,
-                overwrite,
-                source,
-                partitioned,
-                after_columns,
-                table: _,
-                on,
-                returning,
-            } => {
-                not_implemented_if!(or.is_some());
-                not_implemented_if!(*overwrite);
-                not_implemented_if!(partitioned.is_some());
-                not_implemented_if!(!after_columns.is_empty());
-                not_implemented_if!(on.is_some());
-
-                let mut unique_columns = HashSet::with_capacity(columns.len());
-                for column in columns {
-                    if !unique_columns.insert(column) {
-                        bail!("duplicate column name in insert column list: `{column}`")
-                    }
-                }
-
-                let (_, mut source) = self.bind_query(tx, scope, source)?;
-
-                let (scope, table) = self.bind_base_table(tx, scope, table_name, None)?;
-
-                let table_columns =
-                    self.catalog.get::<Table>(tx, table)?.columns(self.catalog, tx)?;
-
-                // if there are no columns specified, then we don't apply any projection to the source
-                if !columns.is_empty() {
-                    // We model the insertion columns list as a projection over the source, with missing columns filled in with nulls
-                    let target_column_indices = columns
-                        .iter()
-                        .map(|ident| ast::Expr::Identifier(ident.clone()))
-                        .map(|expr| match self.bind_expr(tx, &scope, &expr)?.kind {
-                            ir::ExprKind::ColumnRef(ir::ColumnRef { index, .. }) => Ok(index),
-                            _ => unreachable!("expected column reference"),
-                        })
-                        .collect::<Result<Vec<_>>>()?;
-
-                    let mut projection = Vec::with_capacity(table_columns.len());
-                    // loop over all columns in the table and find the corresponding column in the base projection,
-                    // if one does not exist then we fill it in with a null
-                    let source_schema = source.schema();
-                    for column in &table_columns {
-                        if let Some(expr) = target_column_indices.iter().enumerate().find_map(
-                            |(i, column_index)| {
-                                (column_index.as_usize() == column.index().as_usize()).then_some(
-                                    ir::Expr {
-                                        ty: source_schema[i].clone(),
-                                        kind: ir::ExprKind::ColumnRef(ir::ColumnRef {
-                                            qpath: QPath::new(
-                                                table.to_string().as_ref(),
-                                                column.name(),
-                                            ),
-                                            index: TupleIndex::new(i),
-                                        }),
-                                    },
-                                )
-                            },
-                        ) {
-                            projection.push(expr);
-                        } else {
-                            let ty = column.logical_type().clone();
-                            projection.push(ir::Expr {
-                                ty,
-                                kind: ir::ExprKind::Compiled(column.default_expr().clone()),
-                            });
-                        }
-                    }
-
-                    assert_eq!(projection.len(), table_columns.len());
-                    source = source.project(projection);
-                }
-
-                let source_schema = source.schema();
-                ensure!(
-                    table_columns.len() == source_schema.len(),
-                    "table `{}` has {} columns but {} columns were supplied",
-                    table_name,
-                    table_columns.len(),
-                    source_schema.len()
-                );
-
-                for (column, ty) in table_columns.iter().zip(source_schema) {
-                    ensure!(
-                        ty.is_subtype_of(&column.logical_type()),
-                        "cannot insert value of type `{ty}` into column `{}` of type `{}`",
-                        column.name(),
-                        column.logical_type()
-                    )
-                }
-
-                let returning = returning
-                    .as_ref()
-                    .map(|items| {
-                        items
-                            .iter()
-                            .map(|selection| self.bind_select_item(tx, &scope, selection))
-                            .flatten_ok()
-                            .collect::<Result<Box<_>>>()
-                    })
-                    .transpose()?;
-
-                let schema = match &returning {
-                    Some(exprs) => exprs.iter().map(|e| e.ty.clone()).collect::<Schema>(),
-                    None => Schema::empty(),
-                };
-
-                ir::Plan::query(ir::QueryPlan::Insert { table, source, returning, schema })
+            ast::Statement::Insert { .. } => {
+                let (_scope, query) = self.bind_insert(tx, scope, stmt)?;
+                ir::Plan::Query(query)
             }
             ast::Statement::Query(query) => {
                 let (_scope, query) = self.bind_query(tx, scope, query)?;
@@ -835,13 +721,133 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                 // we just pick the left scope arbitrarily
                 (lhs_scope, plan)
             }
-            ast::SetExpr::Insert(_) | ast::SetExpr::Table(_) | ast::SetExpr::Update(_) => {
+            ast::SetExpr::Insert(stmt) => {
+                not_implemented_if!(!order_by.is_empty());
+                self.bind_insert(tx, scope, stmt)?
+            }
+            ast::SetExpr::Table(_) | ast::SetExpr::Update(_) => {
                 not_implemented_if!(!order_by.is_empty());
                 todo!()
             }
         };
 
         Ok((scope, expr))
+    }
+
+    fn bind_insert(
+        &self,
+        tx: &dyn Transaction<'env, S>,
+        scope: &Scope,
+        stmt: &ast::Statement,
+    ) -> Result<(Scope, Box<ir::QueryPlan>)> {
+        let ast::Statement::Insert {
+            or,
+            into: _,
+            table_name,
+            columns,
+            overwrite,
+            source,
+            partitioned,
+            after_columns,
+            table: _,
+            on,
+            returning,
+        } = stmt
+        else {
+            panic!("expected insert statement")
+        };
+
+        not_implemented_if!(or.is_some());
+        not_implemented_if!(*overwrite);
+        not_implemented_if!(partitioned.is_some());
+        not_implemented_if!(!after_columns.is_empty());
+        not_implemented_if!(on.is_some());
+
+        let mut unique_columns = HashSet::with_capacity(columns.len());
+        for column in columns {
+            if !unique_columns.insert(column) {
+                bail!("duplicate column name in insert column list: `{column}`")
+            }
+        }
+
+        let (_, mut source) = self.bind_query(tx, scope, source)?;
+
+        let (scope, table) = self.bind_base_table(tx, scope, table_name, None)?;
+
+        let table_columns = self.catalog.get::<Table>(tx, table)?.columns(self.catalog, tx)?;
+
+        // if there are no columns specified, then we don't apply any projection to the source
+        if !columns.is_empty() {
+            // We model the insertion columns list as a projection over the source, with missing columns filled in with nulls
+            let target_column_indices = columns
+                .iter()
+                .map(|ident| ast::Expr::Identifier(ident.clone()))
+                .map(|expr| match self.bind_expr(tx, &scope, &expr)?.kind {
+                    ir::ExprKind::ColumnRef(ir::ColumnRef { index, .. }) => Ok(index),
+                    _ => unreachable!("expected column reference"),
+                })
+                .collect::<Result<Vec<_>>>()?;
+
+            let mut projection = Vec::with_capacity(table_columns.len());
+            // loop over all columns in the table and find the corresponding column in the base projection,
+            // if one does not exist then we fill it in with a null
+            let source_schema = source.schema();
+            for column in &table_columns {
+                if let Some(expr) =
+                    target_column_indices.iter().enumerate().find_map(|(i, column_index)| {
+                        (column_index.as_usize() == column.index().as_usize()).then_some(ir::Expr {
+                            ty: source_schema[i].clone(),
+                            kind: ir::ExprKind::ColumnRef(ir::ColumnRef {
+                                qpath: QPath::new(table.to_string().as_ref(), column.name()),
+                                index: TupleIndex::new(i),
+                            }),
+                        })
+                    })
+                {
+                    projection.push(expr);
+                } else {
+                    let ty = column.logical_type().clone();
+                    projection.push(ir::Expr {
+                        ty,
+                        kind: ir::ExprKind::Compiled(column.default_expr().clone()),
+                    });
+                }
+            }
+
+            assert_eq!(projection.len(), table_columns.len());
+            source = source.project(projection);
+        }
+
+        let source_schema = source.schema();
+        ensure!(
+            table_columns.len() == source_schema.len(),
+            "table `{}` has {} columns but {} columns were supplied",
+            table_name,
+            table_columns.len(),
+            source_schema.len()
+        );
+
+        for (column, ty) in table_columns.iter().zip(source_schema) {
+            ensure!(
+                ty.is_subtype_of(&column.logical_type()),
+                "cannot insert value of type `{ty}` into column `{}` of type `{}`",
+                column.name(),
+                column.logical_type()
+            )
+        }
+
+        let returning = returning.as_ref().map_or(Ok([].into()), |items| {
+            items
+                .iter()
+                .map(|selection| self.bind_select_item(tx, &scope, selection))
+                .flatten_ok()
+                .collect::<Result<Box<_>>>()
+        })?;
+
+        let schema = returning.iter().map(|e| e.ty.clone()).collect::<Schema>();
+        let scope = scope.project(&returning);
+
+        Ok((scope, Box::new(ir::QueryPlan::Insert { table, source, returning, schema })))
     }
 
     fn bind_select(

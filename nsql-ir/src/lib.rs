@@ -4,6 +4,7 @@ pub mod expr;
 pub mod fold;
 mod validate;
 pub mod visit;
+use std::ops::ControlFlow;
 use std::str::FromStr;
 use std::{fmt, mem};
 
@@ -16,6 +17,7 @@ pub use nsql_storage::tuple::TupleIndex;
 pub use nsql_storage::value::{Decimal, Value};
 
 pub use self::expr::*;
+use crate::visit::Visitor;
 
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub struct CreateTableInfo {
@@ -181,7 +183,7 @@ pub enum QueryPlan {
     Insert {
         table: Oid<Table>,
         source: Box<QueryPlan>,
-        returning: Option<Box<[Expr]>>,
+        returning: Box<[Expr]>,
         schema: Schema,
     },
     Update {
@@ -194,25 +196,25 @@ pub enum QueryPlan {
 
 impl QueryPlan {
     pub fn required_transaction_mode(&self) -> TransactionMode {
-        match self {
-            QueryPlan::Update { .. } | QueryPlan::Insert { .. } => TransactionMode::ReadWrite,
-            QueryPlan::Limit { source, .. }
-            | QueryPlan::Aggregate { source, .. }
-            | QueryPlan::Order { source, .. }
-            | QueryPlan::Projection { source, .. }
-            | QueryPlan::Filter { source, .. } => source.required_transaction_mode(),
-            QueryPlan::TableScan { .. }
-            | QueryPlan::DummyScan
-            | QueryPlan::Unnest { .. }
-            | QueryPlan::Values { .. } => TransactionMode::ReadOnly,
-            QueryPlan::Union { lhs, rhs, .. } | QueryPlan::Join { lhs, rhs, .. } => {
-                lhs.required_transaction_mode().max(rhs.required_transaction_mode())
-            }
-            QueryPlan::CteScan { .. } => TransactionMode::ReadOnly,
-            QueryPlan::Cte { cte, child } => {
-                child.required_transaction_mode().max(cte.plan.required_transaction_mode())
+        struct V {
+            requires_write: bool,
+        }
+
+        impl Visitor for V {
+            fn visit_query_plan(&mut self, plan: &QueryPlan) -> ControlFlow<()> {
+                match plan {
+                    QueryPlan::Update { .. } | QueryPlan::Insert { .. } => {
+                        self.requires_write = true;
+                        ControlFlow::Break(())
+                    }
+                    _ => self.walk_query_plan(plan),
+                }
             }
         }
+
+        let mut v = V { requires_write: false };
+        v.visit_query_plan(self);
+        if v.requires_write { TransactionMode::ReadWrite } else { TransactionMode::ReadOnly }
     }
 }
 
@@ -321,7 +323,7 @@ impl fmt::Display for PlanFormatter<'_> {
             QueryPlan::DummyScan => write!(f, "dummy scan"),
             QueryPlan::Insert { table, source, returning, schema: _ } => {
                 write!(f, "INSERT INTO {table}")?;
-                if let Some(returning) = returning {
+                if !returning.is_empty() {
                     write!(f, " RETURNING ({})", returning.iter().format(","))?;
                 }
                 self.child(source).fmt(f)

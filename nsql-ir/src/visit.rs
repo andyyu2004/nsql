@@ -65,9 +65,7 @@ pub trait Visitor {
             }
             QueryPlan::DummyScan => ControlFlow::Continue(()),
             QueryPlan::Insert { table: _, source, returning, schema: _ } => {
-                if let Some(returning) = returning {
-                    self.visit_exprs(source, returning)?;
-                }
+                self.visit_exprs(source, returning)?;
                 self.visit_query_plan(source)
             }
             QueryPlan::Update { table: _, source, returning, schema: _ } => {
