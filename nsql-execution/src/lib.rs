@@ -273,7 +273,10 @@ impl<'a, 'env, S: StorageEngine, M: ExecutionMode<'env, S>> ExecutionContext<'a,
     }
 
     pub fn instantiate_materialized_cte(&self, name: Name, tuples: impl Into<Arc<[Tuple]>>) {
-        self.materialized_ctes.insert(name, tuples.into());
+        assert!(
+            self.materialized_ctes.insert(name, tuples.into()).is_none(),
+            "cte was already materialized"
+        );
     }
 
     #[inline]

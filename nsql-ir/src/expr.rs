@@ -4,6 +4,7 @@ use std::ops::Deref;
 use std::str::FromStr;
 use std::{fmt, mem};
 
+use anyhow::ensure;
 pub use const_eval::EvalNotConst;
 use itertools::Itertools;
 use nsql_catalog::{Function, Operator};
@@ -33,8 +34,26 @@ impl Expr {
     pub const NULL: Expr = Expr { ty: LogicalType::Null, kind: ExprKind::Literal(Value::Null) };
 
     #[inline]
-    pub fn new_column_ref(ty: LogicalType, qpath: QPath, index: TupleIndex) -> Self {
+    pub fn column_ref(ty: LogicalType, qpath: QPath, index: TupleIndex) -> Self {
         Self { ty, kind: ExprKind::ColumnRef(ColumnRef { qpath, index }) }
+    }
+
+    pub fn call(function: MonoFunction, args: impl Into<Box<[Expr]>>) -> anyhow::Result<Expr> {
+        let args = args.into();
+        let ty = function.return_type();
+        Ok(Expr { ty, kind: ExprKind::FunctionCall { function, args } })
+    }
+
+    pub fn scalar_subquery(plan: Box<QueryPlan>) -> anyhow::Result<Expr> {
+        let schema = plan.schema();
+        ensure!(
+            schema.len() == 1,
+            "subquery expression must return exactly one column, got {}",
+            schema.len()
+        );
+
+        let ty = schema[0].clone();
+        Ok(Expr { ty, kind: ExprKind::Subquery(SubqueryKind::Scalar, plan) })
     }
 
     #[inline]
@@ -152,7 +171,17 @@ impl fmt::Display for MonoOperator {
 pub struct MonoFunction(Box<(Function, LogicalType)>);
 
 impl MonoFunction {
+    // FIXME should probably default the return_type to function.return_type()
+    // Then have another function that allows you to replace the `ANY` return if necessary
+    #[track_caller]
     pub fn new(function: Function, return_type: LogicalType) -> Self {
+        assert!(
+            matches!(function.return_type(), LogicalType::Any)
+                || function.return_type() == return_type,
+            "specified return type must match function return type, expected {}, got {}",
+            function.return_type(),
+            return_type
+        );
         Self(Box::new((function, return_type)))
     }
 

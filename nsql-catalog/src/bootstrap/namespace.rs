@@ -1,7 +1,7 @@
 use super::*;
 
 impl Namespace {
-    pub(crate) const CATALOG: Oid<Self> = Oid::new(0);
+    pub const CATALOG: Oid<Self> = Oid::new(0);
     pub const MAIN: Oid<Self> = Oid::new(1);
 }
 

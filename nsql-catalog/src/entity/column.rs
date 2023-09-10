@@ -94,7 +94,7 @@ impl FromValue for ColumnIndex {
 impl From<ColumnIndex> for Value {
     #[inline]
     fn from(val: ColumnIndex) -> Self {
-        Value::Int64(val.index as i64)
+        Value::Byte(val.index)
     }
 }
 
@@ -109,17 +109,6 @@ impl ColumnIndex {
     pub fn as_usize(self) -> usize {
         self.index as usize
     }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct CreateColumnInfo {
-    pub name: Name,
-    /// The index of the column in the table.
-    pub index: u8,
-    pub ty: LogicalType,
-    pub is_primary_key: bool,
-    pub identity: ColumnIdentity,
-    pub default_expr: Expr,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -206,7 +195,7 @@ impl SystemEntityPrivate for Column {
                 seq: None,
             },
             BootstrapColumn {
-                ty: LogicalType::Int64,
+                ty: LogicalType::Byte,
                 name: "index",
                 is_primary_key: true,
                 identity: ColumnIdentity::None,

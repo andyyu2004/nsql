@@ -1,5 +1,3 @@
-use std::fmt;
-
 use anyhow::Result;
 use nsql_storage::eval::Expr;
 use nsql_storage::{IndexStorageInfo, TableStorage, TableStorageInfo};
@@ -126,16 +124,6 @@ impl Table {
         tx: &S::WriteTransaction<'env>,
     ) -> Result<()> {
         Ok(self.create_storage_for_bootstrap(catalog.storage, tx)?)
-    }
-}
-
-pub struct CreateTableInfo {
-    pub name: Name,
-}
-
-impl fmt::Debug for CreateTableInfo {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("CreateTableInfo").field("name", &self.name).finish_non_exhaustive()
     }
 }
 

@@ -90,7 +90,8 @@ impl Function {
         CAST_INT_TO_FLOAT,
         CAST_INT_TO_OID,
         NEXTVAL,
-        NEXTVAL_OID
+        NEXTVAL_OID,
+        MK_NEXTVAL_EXPR
     ];
 
     pub fn count_star() -> Function {
@@ -98,7 +99,7 @@ impl Function {
     }
 
     pub fn first() -> Function {
-        aggregate!(FIRST first: (Any) -> Int64)
+        aggregate!(FIRST first: (Any) -> Any)
     }
 
     pub fn equal() -> Function {
@@ -145,9 +146,11 @@ impl Function {
             cast!(CAST_SELF          : Any   => Any),
             cast!(CAST_INT_TO_DEC    : Int64 => Decimal),
             cast!(CAST_INT_TO_FLOAT  : Int64 => Float64),
+            cast!(CAST_INT_TO_OID    : Int64 => Oid),
             // sequences
-            scalar!(NEXTVAL     nextval     : (Oid) -> Int64),
-            scalar!(NEXTVAL_OID nextval_oid : (Oid) -> Oid),
+            scalar!(NEXTVAL             nextval         : (Oid) -> Int64),
+            scalar!(NEXTVAL_OID         nextval_oid     : (Oid) -> Oid),
+            scalar!(MK_NEXTVAL_EXPR     mk_nextval_expr : (Oid) -> Expr),
         ]
         .into_boxed_slice()
     }

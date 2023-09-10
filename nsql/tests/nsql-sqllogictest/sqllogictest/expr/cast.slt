@@ -17,3 +17,9 @@ query I
 SELECT 1::int
 ----
 1
+
+
+query I
+SELECT 1::int::oid
+----
+#1

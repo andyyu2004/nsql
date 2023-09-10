@@ -1,6 +1,7 @@
 use std::marker::PhantomData;
 use std::sync::Arc;
 
+use anyhow::anyhow;
 use fix_hidden_lifetime_bug::fix_hidden_lifetime_bug;
 use nsql_core::Oid;
 use nsql_storage::eval::FunctionCatalog;
@@ -51,7 +52,9 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: SystemEnt
 {
     #[inline]
     pub fn get(&self, key: T::Key) -> Result<T> {
-        Ok(self.scan()?.find(|entry| Ok(entry.key() == key))?.expect("got invalid oid"))
+        self.scan()?
+            .find(|entry| Ok(entry.key() == key))?
+            .ok_or_else(|| anyhow!("got invalid key for {}: `{:?}", T::desc(), key))
     }
 
     #[inline]

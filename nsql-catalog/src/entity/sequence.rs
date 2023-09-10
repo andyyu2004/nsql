@@ -8,12 +8,12 @@ use crate::{ColumnIdentity, SystemEntityPrivate};
 pub struct Sequence {
     pub(crate) oid: Oid<Table>,
     pub(crate) start: i64,
-    pub(crate) increment: i64,
+    pub(crate) step: i64,
 }
 
 impl Sequence {
     pub fn new(oid: Oid<Table>) -> Self {
-        Self { oid, start: 1, increment: 1 }
+        Self { oid, start: 1, step: 1 }
     }
 
     #[inline]
@@ -98,15 +98,15 @@ impl SystemEntityPrivate for Sequence {
                 name: "start",
                 is_primary_key: false,
                 identity: ColumnIdentity::None,
-                default_expr: Expr::null(),
+                default_expr: Expr::literal(1),
                 seq: None,
             },
             BootstrapColumn {
                 ty: LogicalType::Int64,
-                name: "increment",
+                name: "step",
                 is_primary_key: false,
                 identity: ColumnIdentity::None,
-                default_expr: Expr::null(),
+                default_expr: Expr::literal(1),
                 seq: None,
             },
         ]

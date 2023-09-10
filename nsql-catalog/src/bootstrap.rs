@@ -271,10 +271,11 @@ impl BootstrapData {
                             oid: seq.table,
                             // provide some space for bootstrap oids
                             start: 1000,
-                            increment: 1,
+                            step: 1,
                         });
 
-                        // the backing table of a sequence has one column, the value of the sequence
+                        // The backing table of a sequence has two columns, the value of the sequence and an id.
+                        // The `id` is just some arbitary value as will only be one row.
                         // This needs to match the `SequenceData`
                         columns.push(Column {
                             table: seq.table,

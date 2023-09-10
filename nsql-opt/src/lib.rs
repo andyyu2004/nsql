@@ -101,7 +101,7 @@ impl Folder for SubqueryFlattener {
                                 // add a `FIRST(#0)` aggregate over the limit for when it returns no rows, we want to return `NULL` in that case
                                 .ungrouped_aggregate([(
                                     ir::MonoFunction::new(ir::Function::first(), ty.clone()),
-                                    [ir::Expr::new_column_ref(
+                                    [ir::Expr::column_ref(
                                         ty.clone(),
                                         ir::QPath::new("", "__scalar_subquery__"),
                                         ir::TupleIndex::new(0), // we know the subquery only has one column
@@ -114,11 +114,7 @@ impl Folder for SubqueryFlattener {
                             // This will add a new column to the parent plan's schema, which we will then reference
                             *plan = *Box::new(mem::take(plan)).cross_join(subquery_plan);
 
-                            ir::Expr::new_column_ref(
-                                ty,
-                                ir::QPath::new("", "__scalar_subquery__"),
-                                i,
-                            )
+                            ir::Expr::column_ref(ty, ir::QPath::new("", "__scalar_subquery__"), i)
                         }
                         ir::SubqueryKind::Exists => {
                             self.found_subquery |= true;
@@ -146,13 +142,11 @@ impl Folder for SubqueryFlattener {
                                                 LogicalType::Bool,
                                             ),
                                         ),
-                                        lhs: Box::new(ir::Expr {
-                                            ty: LogicalType::Int64,
-                                            kind: ir::ExprKind::ColumnRef(ir::ColumnRef {
-                                                index: ir::TupleIndex::new(0),
-                                                qpath: ir::QPath::new("", "count()"),
-                                            }),
-                                        }),
+                                        lhs: Box::new(ir::Expr::column_ref(
+                                            LogicalType::Int64,
+                                            ir::QPath::new("", "count()"),
+                                            ir::TupleIndex::new(0),
+                                        )),
                                         rhs: Box::new(ir::Expr {
                                             ty: LogicalType::Int64,
                                             kind: ir::ExprKind::Literal(ir::Value::Int64(1)),
@@ -164,7 +158,7 @@ impl Folder for SubqueryFlattener {
                             let i = ir::TupleIndex::new(plan.schema().len());
                             *plan = *Box::new(mem::take(plan)).cross_join(subquery_plan);
 
-                            ir::Expr::new_column_ref(
+                            ir::Expr::column_ref(
                                 LogicalType::Int64,
                                 ir::QPath::new("", "__exists_subquery__"),
                                 i,

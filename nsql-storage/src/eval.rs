@@ -173,6 +173,14 @@ impl<F> Expr<F> {
         Self { pretty: "NULL".into(), ops: Box::new([ExprOp::Push(Value::Null), ExprOp::Return]) }
     }
 
+    pub fn literal(value: impl Into<Value>) -> Self {
+        let value = value.into();
+        Self {
+            pretty: format!("{value}").into(),
+            ops: Box::new([ExprOp::Push(value), ExprOp::Return]),
+        }
+    }
+
     pub fn call(function: F, args: impl IntoIterator<Item = Value>) -> Self {
         let mut ops = vec![];
         ops.extend(args.into_iter().map(ExprOp::Push));

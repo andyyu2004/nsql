@@ -10,7 +10,7 @@ use std::{fmt, mem};
 
 use anyhow::bail;
 use itertools::Itertools;
-use nsql_catalog::{ColumnIndex, CreateColumnInfo, Namespace};
+use nsql_catalog::ColumnIndex;
 pub use nsql_catalog::{Function, Operator, Table};
 use nsql_core::{LogicalType, Name, Oid, Schema};
 pub use nsql_storage::tuple::TupleIndex;
@@ -18,23 +18,6 @@ pub use nsql_storage::value::{Decimal, Value};
 
 pub use self::expr::*;
 use crate::visit::Visitor;
-
-#[derive(Clone, PartialEq, Eq, Hash)]
-pub struct CreateTableInfo {
-    pub name: Name,
-    pub namespace: Oid<Namespace>,
-    pub columns: Vec<CreateColumnInfo>,
-}
-
-impl fmt::Debug for CreateTableInfo {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("CreateTableInfo")
-            .field("name", &self.name)
-            .field("namespace", &self.namespace)
-            .field("columns", &self.columns)
-            .finish()
-    }
-}
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum TransactionMode {

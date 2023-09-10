@@ -14,6 +14,11 @@ impl Namespace {
     pub fn name(&self) -> Name {
         Name::clone(&self.name)
     }
+
+    #[inline]
+    pub fn oid(&self) -> Oid<Namespace> {
+        self.oid
+    }
 }
 
 impl SystemEntity for Namespace {
@@ -89,11 +94,4 @@ impl SystemEntityPrivate for Namespace {
     fn table() -> Oid<Table> {
         Table::NAMESPACE
     }
-}
-
-// FIXME remove
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct CreateNamespaceInfo {
-    pub name: Name,
-    pub if_not_exists: bool,
 }

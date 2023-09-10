@@ -90,9 +90,10 @@ pub(crate) fn get_scalar_function<S: StorageEngine>(oid: Oid<Function>) -> Optio
         _ if oid == Function::CAST_SELF         => cast_to!(Value),
         _ if oid == Function::CAST_INT_TO_DEC   => cast_to!(Decimal),
         _ if oid == Function::CAST_INT_TO_FLOAT => cast_to!(f64),
-        // _ if oid == Function::CAST_INT_TO_OID   => cast_to!(UntypedOid),
+        _ if oid == Function::CAST_INT_TO_OID   => cast_to!(UntypedOid),
         _ if oid == Function::NEXTVAL => nextval,
         _ if oid == Function::NEXTVAL_OID => nextval_oid,
+        _ if oid == Function::MK_NEXTVAL_EXPR => mk_nextval_expr,
         // misc
         _ if oid == Function::RANGE2 => |_, _, mut args| {
             assert_eq!(args.len(), 2);
@@ -173,17 +174,13 @@ fn nextval<'env, S: StorageEngine>(
     let current = match storage.get(Value::from(SequenceData::KEY))? {
         Some(seq) => {
             let current = SequenceData::from_tuple(seq)?.value;
-            storage.update(&SequenceData::new(current + sequence.increment).into_tuple())?;
+            storage.update(&SequenceData::new(current + sequence.step).into_tuple())?;
             current
         }
         None => {
             let current = sequence.start;
             storage
-                .insert(
-                    &catalog,
-                    tx,
-                    &SequenceData::new(current + sequence.increment).into_tuple(),
-                )?
+                .insert(&catalog, tx, &SequenceData::new(current + sequence.step).into_tuple())?
                 .expect("insert shouldn't conflict");
             current
         }
@@ -199,4 +196,16 @@ fn nextval_oid<'env, S: StorageEngine>(
 ) -> Result<Value> {
     let next = nextval(catalog, tx, args)?;
     Ok(Value::Oid(next.cast().unwrap()))
+}
+
+/// A function that returns an expression that evaluates to the next value of the given sequence.
+/// This is used to create the `default_expr` value for a column with a generated identity.
+#[allow(clippy::boxed_local)]
+fn mk_nextval_expr<'env, S: StorageEngine>(
+    _catalog: Catalog<'env, S>,
+    _tx: &dyn Transaction<'env, S>,
+    mut args: Box<[Value]>,
+) -> Result<Value> {
+    let oid: UntypedOid = args[0].take().cast().unwrap();
+    Ok(Value::Expr(Expr::call(Function::NEXTVAL.untyped(), [oid.into()])))
 }

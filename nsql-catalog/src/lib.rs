@@ -18,15 +18,15 @@ use nsql_storage_engine::{
 };
 
 use self::bootstrap::{BootstrapColumn, BootstrapSequence};
-pub use self::entity::column::{Column, ColumnIdentity, ColumnIndex, CreateColumnInfo};
+pub use self::entity::column::{Column, ColumnIdentity, ColumnIndex};
 pub use self::entity::function::{
     AggregateFunctionInstance, Function, FunctionKind, ScalarFunction,
 };
 pub use self::entity::index::{Index, IndexKind};
-pub use self::entity::namespace::{CreateNamespaceInfo, Namespace};
+pub use self::entity::namespace::Namespace;
 pub use self::entity::operator::{Operator, OperatorKind};
 pub use self::entity::sequence::{Sequence, SequenceData};
-pub use self::entity::table::{CreateTableInfo, Table};
+pub use self::entity::table::Table;
 use self::private::SystemEntityPrivate;
 pub use self::system_table::SystemTableView;
 

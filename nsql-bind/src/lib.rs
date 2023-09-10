@@ -17,11 +17,12 @@ use ir::expr::EvalNotConst;
 use ir::{Decimal, Path, QPath, TupleIndex};
 use itertools::Itertools;
 use nsql_catalog::{
-    Catalog, ColumnIdentity, ColumnIndex, CreateColumnInfo, Function, FunctionKind, Namespace,
-    Operator, OperatorKind, SystemEntity, SystemTableView, Table, MAIN_SCHEMA,
+    Catalog, ColumnIdentity, ColumnIndex, Function, FunctionKind, Namespace, Operator,
+    OperatorKind, SystemEntity, SystemTableView, Table, MAIN_SCHEMA,
 };
 use nsql_core::{LogicalType, Name, Oid, Schema};
 use nsql_parse::ast;
+use nsql_storage::eval;
 use nsql_storage_engine::{FallibleIterator, ReadonlyExecutionMode, StorageEngine, Transaction};
 
 use self::scope::{CteKind, Scope, TableBinding};
@@ -81,145 +82,6 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
     ) -> Result<Box<ir::Plan>> {
         let scope = &Scope::default();
         let plan = match stmt {
-            ast::Statement::CreateTable {
-                strict,
-                or_replace,
-                temporary,
-                external,
-                global,
-                if_not_exists,
-                name,
-                columns,
-                constraints,
-                hive_distribution,
-                hive_formats: _,
-                table_properties,
-                with_options,
-                file_format,
-                location,
-                query,
-                without_rowid,
-                like,
-                clone,
-                engine,
-                default_charset,
-                collation,
-                on_commit,
-                on_cluster,
-                transient,
-                order_by,
-            } => {
-                not_implemented_if!(*strict);
-                not_implemented_if!(*or_replace);
-                not_implemented_if!(*temporary);
-                not_implemented_if!(*external);
-                not_implemented_if!(global.is_some());
-                not_implemented_if!(*if_not_exists);
-                not_implemented_if!(!constraints.is_empty());
-                not_implemented_if!(*hive_distribution != ast::HiveDistributionStyle::NONE);
-                not_implemented_if!(!table_properties.is_empty());
-                not_implemented_if!(!with_options.is_empty());
-                not_implemented_if!(file_format.is_some());
-                not_implemented_if!(location.is_some());
-                not_implemented_if!(query.is_some());
-                not_implemented_if!(*without_rowid);
-                not_implemented_if!(like.is_some());
-                not_implemented_if!(clone.is_some());
-                not_implemented_if!(engine.is_some());
-                not_implemented_if!(default_charset.is_some());
-                not_implemented_if!(collation.is_some());
-                not_implemented_if!(on_commit.is_some());
-                not_implemented_if!(on_cluster.is_some());
-                not_implemented_if!(*transient);
-                not_implemented_if!(order_by.is_some());
-
-                let path = self.lower_path(&name.0)?;
-                let namespace = self.bind_namespace(tx, &path)?;
-                let columns = self.lower_columns(columns)?;
-                if columns.iter().all(|c| !c.is_primary_key) {
-                    bail!("table must have a primary key defined")
-                }
-
-                let table_columns =
-                    self.catalog.get::<Table>(tx, Table::TABLE)?.columns(self.catalog, tx)?;
-                assert_eq!(table_columns.len(), 3);
-                let oid_column = &table_columns[0];
-
-                let name = path.name();
-
-                // logically, the query for creating a new table is roughly as follows:
-                // WITH t AS (INSERT INTO nsql_catalog.nsql_table VALUES (DEFAULT, 'namespace', 'name') RETURNING id)
-                // INSERT INTO nsql_catalog.nsql_attribute
-                // (SELECT id, 0 as index, name, etc.. from t UNION ALL col2... UNION ALL ...)
-                let insert_table_plan = Box::new(ir::QueryPlan::Insert {
-                    table: Table::TABLE,
-                    source: ir::QueryPlan::values(ir::Values::new(
-                        [[
-                            ir::Expr {
-                                ty: LogicalType::Oid,
-                                kind: ir::ExprKind::Compiled(oid_column.default_expr().clone()),
-                            },
-                            literal(namespace),
-                            literal(name),
-                        ]
-                        .into()]
-                        .into(),
-                    )),
-                    returning: [ir::Expr {
-                        ty: LogicalType::Oid,
-                        kind: ir::ExprKind::ColumnRef(ir::ColumnRef {
-                            index: ir::TupleIndex::new(0),
-                            qpath: ir::QPath::new("nsql_table", "id"),
-                        }),
-                    }]
-                    .into(),
-                    schema: Schema::new([LogicalType::Oid]),
-                });
-
-                const CTE_NAME: &str = "t";
-
-                let table_cte_scan = Box::new(ir::QueryPlan::CteScan {
-                    name: CTE_NAME.into(),
-                    schema: Schema::new([LogicalType::Oid]),
-                });
-
-                ir::Plan::Query(
-                    Box::new(ir::QueryPlan::Insert {
-                        table: Table::ATTRIBUTE,
-                        source: columns
-                            .into_iter()
-                            .enumerate()
-                            .map(|(i, column)| {
-                                ir::QueryPlan::project(
-                                    table_cte_scan.clone(),
-                                    // order of these columns must match the order of the columns of the table
-                                    [
-                                        ir::Expr::new_column_ref(
-                                            LogicalType::Oid,
-                                            ir::QPath::new(CTE_NAME, "id"),
-                                            ir::TupleIndex::new(0),
-                                        ),
-                                        literal(i as i64),
-                                        literal(column.ty),
-                                        literal(column.name),
-                                        literal(column.is_primary_key),
-                                        literal(ColumnIdentity::None),
-                                        literal(column.default_expr),
-                                    ],
-                                )
-                            })
-                            .reduce(|a, b| {
-                                assert_eq!(a.schema(), b.schema());
-                                let schema = a.schema().clone();
-                                a.union(schema, b)
-                            })
-                            .ok_or_else(|| anyhow!("table must define at least one column"))?,
-                        returning: [].into(),
-                        schema: Schema::empty(),
-                    })
-                    .with_cte(ir::Cte { name: CTE_NAME.into(), plan: insert_table_plan }),
-                )
-            }
             ast::Statement::CreateSchema { schema_name, if_not_exists } => {
                 not_implemented_if!(*if_not_exists);
                 let name = match schema_name {
@@ -259,6 +121,10 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                     returning: [].into(),
                     schema: Schema::empty(),
                 })
+            }
+
+            ast::Statement::CreateTable { .. } => {
+                ir::Plan::Query(self.bind_create_table(tx, stmt)?)
             }
             ast::Statement::Insert { .. } => {
                 let (_scope, query) = self.bind_insert(tx, scope, stmt)?;
@@ -433,12 +299,12 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
     }
 
     fn lower_columns(&self, columns: &[ast::ColumnDef]) -> Result<Vec<CreateColumnInfo>> {
-        columns.iter().enumerate().map(|(idx, col)| self.lower_column(idx, col)).collect()
+        ensure!(columns.len() < u8::MAX as usize, "too many columns (max 256)");
+        columns.iter().map(|col| self.lower_column(col)).collect()
     }
 
-    fn lower_column(&self, idx: usize, column: &ast::ColumnDef) -> Result<CreateColumnInfo> {
+    fn lower_column(&self, column: &ast::ColumnDef) -> Result<CreateColumnInfo> {
         not_implemented_if!(column.collation.is_some());
-        ensure!(idx < u8::MAX as usize, "too many columns (max 256)");
 
         let mut is_primary_key = false;
         let mut identity = ColumnIdentity::None;
@@ -473,11 +339,9 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
 
         Ok(CreateColumnInfo {
             name: self.lower_name(&column.name),
-            index: idx as u8,
             ty: self.lower_ty(&column.data_type)?,
             identity,
             is_primary_key,
-            default_expr: nsql_storage::eval::Expr::null(),
         })
     }
 
@@ -502,11 +366,17 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                 Some(_) => not_implemented!("float type precision"),
                 None => Ok(LogicalType::Float64),
             },
-            _ => bail!("type {ty} not implemented"),
+            ast::DataType::Custom(name, args) if args.is_empty() && name.0.len() == 1 => {
+                match name.0[0].value.as_str() {
+                    "oid" => Ok(LogicalType::Oid),
+                    _ => not_implemented!("custom type"),
+                }
+            }
+            _ => bail!("type {ty:?} not implemented"),
         }
     }
 
-    fn bind_namespace(&self, tx: &dyn Transaction<'env, S>, path: &Path) -> Result<Oid<Namespace>> {
+    fn bind_namespace(&self, tx: &dyn Transaction<'env, S>, path: &Path) -> Result<Namespace> {
         match path {
             Path::Qualified(QPath { prefix, .. }) => match prefix.as_ref() {
                 Path::Qualified(QPath { .. }) => not_implemented!("qualified schemas"),
@@ -516,7 +386,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                         .namespaces(tx)?
                         .find(self.catalog, tx, None, name)?
                         .ok_or_else(|| unbound!(Namespace, path))?;
-                    Ok(ns.key())
+                    Ok(ns)
                 }
             },
             Path::Unqualified(name) => self.bind_namespace(
@@ -744,6 +614,277 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
         let scope = scope.project(&returning);
 
         Ok((scope, Box::new(ir::QueryPlan::Update { table, source, returning, schema })))
+    }
+
+    fn bind_create_table_inner(
+        &self,
+        tx: &dyn Transaction<'env, S>,
+        namespace: &Namespace,
+        table_name: Name,
+        columns: Vec<CreateColumnInfo>,
+    ) -> Result<Box<ir::QueryPlan>> {
+        if columns.iter().all(|c| !c.is_primary_key) {
+            bail!("table must have a primary key defined")
+        }
+
+        let table_columns =
+            self.catalog.get::<Table>(tx, Table::TABLE)?.columns(self.catalog, tx)?;
+        assert_eq!(table_columns.len(), 3);
+        let oid_column = &table_columns[0];
+
+        // logically, the query for creating a new table is roughly as follows:
+        // WITH t AS (INSERT INTO nsql_catalog.nsql_table VALUES (DEFAULT, 'namespace', 'name') RETURNING id)
+        // INSERT INTO nsql_catalog.nsql_attribute
+        // (SELECT t.id, 0 as index, name, .. FROM t UNION ALL col2... UNION ALL ...)
+        let insert_table_plan = Box::new(ir::QueryPlan::Insert {
+            table: Table::TABLE,
+            source: ir::QueryPlan::values(ir::Values::new(
+                [[
+                    ir::Expr {
+                        ty: LogicalType::Oid,
+                        kind: ir::ExprKind::Compiled(oid_column.default_expr().clone()),
+                    },
+                    literal(namespace.oid()),
+                    literal(Name::clone(&table_name)),
+                ]
+                .into()]
+                .into(),
+            )),
+            returning: [ir::Expr {
+                ty: LogicalType::Oid,
+                kind: ir::ExprKind::ColumnRef(ir::ColumnRef {
+                    index: ir::TupleIndex::new(0),
+                    qpath: ir::QPath::new("t", "id"),
+                }),
+            }]
+            .into(),
+            schema: Schema::new([LogicalType::Oid]),
+        });
+
+        // it's important that we generate a unique name for the cte since this query is sometimes nested
+        let cte_name = Name::from(format!("{}_{}", namespace.name(), table_name));
+
+        let table_cte_scan = Box::new(ir::QueryPlan::CteScan {
+            name: Name::clone(&cte_name),
+            schema: Schema::new([LogicalType::Oid]),
+        });
+
+        Ok(Box::new(ir::QueryPlan::Insert {
+            table: Table::ATTRIBUTE,
+            // Return the oid of the table if the caller wants it for whatever reason.
+            // Note there will be one row per inserted column
+            returning: [ir::Expr {
+                ty: LogicalType::Oid,
+                kind: ir::ExprKind::ColumnRef(ir::ColumnRef {
+                    index: ir::TupleIndex::new(0),
+                    qpath: ir::QPath::new("t", "id"),
+                }),
+            }]
+            .into(),
+            schema: Schema::new([LogicalType::Oid]),
+            source: columns
+                .into_iter()
+                .enumerate()
+                .map(|(index, column)| {
+                    assert!(index < u8::MAX as usize);
+                    if !matches!(column.identity, ColumnIdentity::None) {
+                        ensure!(
+                            column.ty == LogicalType::Int64,
+                            "identity column must be of type int"
+                        );
+                    }
+
+                    Ok(ir::QueryPlan::project(
+                        table_cte_scan.clone(),
+                        // order of these columns must match the order of the columns of the `Table` entity
+                        [
+                            ir::Expr::column_ref(
+                                LogicalType::Oid,
+                                ir::QPath::new(cte_name.as_str(), "id"),
+                                ir::TupleIndex::new(0),
+                            ),
+                            literal(ir::Value::Byte(index as u8)),
+                            literal(column.ty),
+                            literal(Name::clone(&column.name)),
+                            literal(column.is_primary_key),
+                            literal(column.identity),
+                            match column.identity {
+                                ColumnIdentity::None => literal(eval::Expr::null()),
+                                ColumnIdentity::ByDefault | ColumnIdentity::Always => {
+                                    // If the column has a generated sequence, we need to create the sequence, it's underlying table and set the appropriate `default_expr` for the column.
+                                    // The default value is computed roughly as the following pseudo-sql:
+                                    // ```sql
+                                    // WITH seq_oid AS (
+                                    //    INSERT INTO nsql_catalog.nsql_sequence (oid)
+                                    //    SELECT (INSERT INTO nsql_catalog.nsql_table VALUES (DEFAULT, 'namespace', 'name') RETURNING id
+                                    // ) NEXTVAL(seq_oid)
+                                    // ```
+                                    // The subtlety here is that the CTE evaluates to the expression `NEXTVAL(seq_oid)`,
+                                    // which is then evaluated only when a row is inserted into the table.
+                                    // Again, it evaluates to an expression (as expressions are values in nsql).
+
+                                    let seq_name = Name::from(format!(
+                                        "{}_{table_name}_{}_seq",
+                                        namespace.name(),
+                                        &column.name
+                                    ));
+
+                                    // This is the plan to create the underlying sequence data table
+                                    let create_seq_table_plan = self.bind_create_table_inner(
+                                        tx,
+                                        namespace,
+                                        seq_name,
+                                        vec![
+                                            CreateColumnInfo {
+                                                name: "key".into(),
+                                                ty: LogicalType::Oid,
+                                                identity: ColumnIdentity::None,
+                                                is_primary_key: true,
+                                            },
+                                            CreateColumnInfo {
+                                                name: "value".into(),
+                                                ty: LogicalType::Int64,
+                                                identity: ColumnIdentity::None,
+                                                is_primary_key: false,
+                                            },
+                                        ],
+                                    )?;
+
+                                    // This wraps the above plan and creates the entry in `nsql_sequence`
+                                    let create_seq_plan = Box::new(ir::QueryPlan::Insert {
+                                        table: Table::SEQUENCE,
+                                        source: ir::QueryPlan::project(
+                                            create_seq_table_plan,
+                                            [
+                                                ir::Expr::column_ref(
+                                                    LogicalType::Oid,
+                                                    QPath::new("", "oid"),
+                                                    ir::TupleIndex::new(0),
+                                                ),
+                                                literal(1), // start
+                                                literal(1), // step
+                                            ],
+                                        ),
+                                        returning: [ir::Expr {
+                                            ty: LogicalType::Oid,
+                                            kind: ir::ExprKind::ColumnRef(ir::ColumnRef {
+                                                index: ir::TupleIndex::new(0),
+                                                qpath: ir::QPath::new("t", "id"),
+                                            }),
+                                        }]
+                                        .into(),
+                                        schema: Schema::new([LogicalType::Oid]),
+                                    });
+
+                                    // The generated `CREATE SEQUENCE` query above returns the oid of the sequence which is exactly what we need here.
+                                    // We reference the new sequence oid in a subquery expr to construct the `default_expr` value.
+                                    // This `expr` is then passed to the `MK_NEXTVAL_EXPR` which takes the `seq_oid` and creates an expr that evaluates `NEXTVAL(seq_oid)`
+                                    // which is precisely what the `default_expr` should be.
+                                    let sequence_oid_expr =
+                                        ir::Expr::scalar_subquery(create_seq_plan)?;
+                                    assert_eq!(sequence_oid_expr.ty, LogicalType::Oid);
+
+                                    let f = self
+                                        .catalog
+                                        .system_table::<Function>(tx)?
+                                        .get(Function::MK_NEXTVAL_EXPR)?;
+
+                                    let function = ir::MonoFunction::new(f, LogicalType::Expr);
+                                    ir::Expr::call(function, [sequence_oid_expr])?
+                                }
+                            },
+                        ],
+                    ))
+                })
+                .collect::<Result<Vec<_>, Error>>()?
+                .into_iter()
+                .reduce(|a, b| {
+                    assert_eq!(a.schema(), b.schema());
+                    let schema = a.schema().clone();
+                    a.union(schema, b)
+                })
+                .ok_or_else(|| anyhow!("table must define at least one column"))?,
+        })
+        // The generated plan returns `n` rows with the oid of the table so we pick the first.
+        .ungrouped_aggregate([(
+            ir::MonoFunction::new(ir::Function::first(), LogicalType::Oid),
+            [ir::Expr::column_ref(
+                LogicalType::Oid,
+                ir::QPath::new("t", "oid"),
+                ir::TupleIndex::new(0),
+            )]
+            .into(),
+        )])
+        .with_cte(ir::Cte { name: Name::clone(&cte_name), plan: insert_table_plan }))
+    }
+
+    fn bind_create_table(
+        &self,
+        tx: &dyn Transaction<'env, S>,
+        stmt: &ast::Statement,
+    ) -> Result<Box<ir::QueryPlan>> {
+        let ast::Statement::CreateTable {
+            or_replace,
+            temporary,
+            external,
+            global,
+            if_not_exists,
+            transient,
+            name,
+            columns,
+            constraints,
+            hive_distribution,
+            hive_formats: _,
+            table_properties,
+            with_options,
+            file_format,
+            location,
+            query,
+            without_rowid,
+            like,
+            clone,
+            engine,
+            default_charset,
+            collation,
+            on_commit,
+            on_cluster,
+            order_by,
+            strict,
+        } = stmt
+        else {
+            panic!("expected create table statement")
+        };
+
+        not_implemented_if!(*strict);
+        not_implemented_if!(*or_replace);
+        not_implemented_if!(*temporary);
+        not_implemented_if!(*external);
+        not_implemented_if!(global.is_some());
+        not_implemented_if!(*if_not_exists);
+        not_implemented_if!(!constraints.is_empty());
+        not_implemented_if!(*hive_distribution != ast::HiveDistributionStyle::NONE);
+        not_implemented_if!(!table_properties.is_empty());
+        not_implemented_if!(!with_options.is_empty());
+        not_implemented_if!(file_format.is_some());
+        not_implemented_if!(location.is_some());
+        not_implemented_if!(query.is_some());
+        not_implemented_if!(*without_rowid);
+        not_implemented_if!(like.is_some());
+        not_implemented_if!(clone.is_some());
+        not_implemented_if!(engine.is_some());
+        not_implemented_if!(default_charset.is_some());
+        not_implemented_if!(collation.is_some());
+        not_implemented_if!(on_commit.is_some());
+        not_implemented_if!(on_cluster.is_some());
+        not_implemented_if!(*transient);
+        not_implemented_if!(order_by.is_some());
+
+        let path = self.lower_path(&name.0)?;
+        let namespace = self.bind_namespace(tx, &path)?;
+        let columns = self.lower_columns(columns)?;
+        let name = path.name();
+
+        self.bind_create_table_inner(tx, &namespace, name, columns)
     }
 
     fn bind_insert(
@@ -1467,16 +1608,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
             }
             ast::Expr::Subquery(subquery) => {
                 let plan = self.bind_subquery(tx, scope, subquery)?;
-
-                let schema = plan.schema();
-                ensure!(
-                    schema.len() == 1,
-                    "subquery expression must return exactly one column, got {}",
-                    schema.len()
-                );
-
-                let ty = schema[0].clone();
-                (ty, ir::ExprKind::Subquery(ir::SubqueryKind::Scalar, plan))
+                return ir::Expr::scalar_subquery(plan);
             }
             ast::Expr::Exists { subquery, negated } => {
                 // `NOT EXISTS (subquery)` is literally `NOT (EXISTS (subquery))` so do that transformation
@@ -1658,4 +1790,12 @@ fn default_logical_type_of_value(value: &ir::Value) -> LogicalType {
         ir::Value::Byte(_) => LogicalType::Byte,
         ir::Value::Float64(_) => LogicalType::Float64,
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct CreateColumnInfo {
+    pub name: Name,
+    pub ty: LogicalType,
+    pub is_primary_key: bool,
+    pub identity: ColumnIdentity,
 }
