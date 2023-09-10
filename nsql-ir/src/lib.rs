@@ -189,7 +189,7 @@ pub enum QueryPlan {
     Update {
         table: Oid<Table>,
         source: Box<QueryPlan>,
-        returning: Option<Box<[Expr]>>,
+        returning: Box<[Expr]>,
         schema: Schema,
     },
 }
@@ -330,7 +330,7 @@ impl fmt::Display for PlanFormatter<'_> {
             }
             QueryPlan::Update { table, source, returning, schema: _ } => {
                 write!(f, "UPDATE {table} SET", table = table)?;
-                if let Some(returning) = returning {
+                if !returning.is_empty() {
                     write!(f, " RETURNING ({})", returning.iter().format(","))?;
                 }
                 self.child(source).fmt(f)

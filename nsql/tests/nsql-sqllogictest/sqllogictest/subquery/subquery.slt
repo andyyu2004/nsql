@@ -7,7 +7,7 @@ statement ok
 CREATE TABLE t (id int PRIMARY KEY)
 
 statement ok
-INSERT INTO t VALUES (1), (2)
+INSERT INTO t(id) VALUES (1), (2)
 
 query II
 SELECT * FROM t JOIN (SELECT * FROM t)
@@ -26,6 +26,17 @@ SELECT * FROM (SELECT * FROM (SELECT * FROM t) JOIN (SELECT * FROM t))
 2 2
 
 query II
-SELECT (SELECT * FROM (INSERT INTO t VALUES (3) RETURNING id))
+SELECT (SELECT * FROM (INSERT INTO t(id) VALUES (3) RETURNING id))
 ----
 3
+
+statement ok
+CREATE TABLE u (id int PRIMARY KEY, x int)
+
+statement ok
+INSERT INTO u(id, x) VALUES (1, 1)
+
+query II
+SELECT (SELECT x FROM (UPDATE u SET x = 4 RETURNING x))
+----
+4

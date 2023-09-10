@@ -137,7 +137,7 @@ impl PlanFold for QueryPlan {
                 let mut source = folder.fold_boxed_plan(source);
                 QueryPlan::Update {
                     table,
-                    returning: returning.map(|exprs| folder.fold_exprs(&mut source, exprs)),
+                    returning: folder.fold_exprs(&mut source, returning),
                     source,
                     schema,
                 }

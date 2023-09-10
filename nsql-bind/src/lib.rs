@@ -264,6 +264,10 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                 let (_scope, query) = self.bind_insert(tx, scope, stmt)?;
                 ir::Plan::Query(query)
             }
+            ast::Statement::Update { .. } => {
+                let (_scope, query) = self.bind_update(tx, scope, stmt)?;
+                ir::Plan::Query(query)
+            }
             ast::Statement::Query(query) => {
                 let (_scope, query) = self.bind_query(tx, scope, query)?;
                 ir::Plan::Query(query)
@@ -325,51 +329,6 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                     .collect::<Result<Vec<_>, Error>>()?;
 
                 ir::Plan::Drop(refs)
-            }
-            ast::Statement::Update { table, assignments, from, selection, returning } => {
-                // What does it mean to update a table with joins?
-                not_implemented_if!(!table.joins.is_empty());
-                not_implemented_if!(from.is_some());
-
-                let (scope, table) = match &table.relation {
-                    ast::TableFactor::Table { name, alias, args, with_hints } => {
-                        not_implemented_if!(alias.is_some());
-                        not_implemented_if!(args.is_some());
-                        not_implemented_if!(!with_hints.is_empty());
-                        self.bind_base_table(tx, scope, name, alias.as_ref())?
-                    }
-                    _ => not_implemented!("update with non-table relation"),
-                };
-
-                let mut source = self.build_table_scan(tx, table, None)?;
-                if let Some(predicate) = selection
-                    .as_ref()
-                    .map(|selection| self.bind_predicate(tx, &scope, selection))
-                    .transpose()?
-                {
-                    source = source.filter(predicate);
-                }
-
-                let assignments = self.bind_assignments(tx, &scope, table, assignments)?;
-                source = source.project(assignments);
-
-                let returning = returning
-                    .as_ref()
-                    .map(|items| {
-                        items
-                            .iter()
-                            .map(|selection| self.bind_select_item(tx, &scope, selection))
-                            .flatten_ok()
-                            .collect::<Result<Box<_>>>()
-                    })
-                    .transpose()?;
-
-                let schema = returning
-                    .as_ref()
-                    .map(|exprs| exprs.iter().map(|e| e.ty.clone()).collect())
-                    .unwrap_or_else(Schema::empty);
-
-                ir::Plan::query(ir::QueryPlan::Update { table, source, returning, schema })
             }
             ast::Statement::Explain { describe_alias: _, analyze, verbose, statement, format } => {
                 not_implemented_if!(*analyze);
@@ -725,13 +684,66 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                 not_implemented_if!(!order_by.is_empty());
                 self.bind_insert(tx, scope, stmt)?
             }
-            ast::SetExpr::Table(_) | ast::SetExpr::Update(_) => {
+            ast::SetExpr::Update(stmt) => {
+                not_implemented_if!(!order_by.is_empty());
+                self.bind_update(tx, scope, stmt)?
+            }
+            ast::SetExpr::Table(_) => {
                 not_implemented_if!(!order_by.is_empty());
                 todo!()
             }
         };
 
         Ok((scope, expr))
+    }
+
+    fn bind_update(
+        &self,
+        tx: &dyn Transaction<'env, S>,
+        scope: &Scope,
+        stmt: &ast::Statement,
+    ) -> Result<(Scope, Box<ir::QueryPlan>)> {
+        let ast::Statement::Update { table, assignments, from, selection, returning } = stmt else {
+            panic!("expected insert statement")
+        };
+
+        not_implemented_if!(!table.joins.is_empty());
+        not_implemented_if!(from.is_some());
+
+        let (scope, table) = match &table.relation {
+            ast::TableFactor::Table { name, alias, args, with_hints } => {
+                not_implemented_if!(alias.is_some());
+                not_implemented_if!(args.is_some());
+                not_implemented_if!(!with_hints.is_empty());
+                self.bind_base_table(tx, scope, name, alias.as_ref())?
+            }
+            _ => not_implemented!("update with non-table relation"),
+        };
+
+        let mut source = self.build_table_scan(tx, table, None)?;
+        if let Some(predicate) = selection
+            .as_ref()
+            .map(|selection| self.bind_predicate(tx, &scope, selection))
+            .transpose()?
+        {
+            source = source.filter(predicate);
+        }
+
+        let assignments = self.bind_assignments(tx, &scope, table, assignments)?;
+        source = source.project(assignments);
+
+        let returning = returning.as_ref().map_or(Ok([].into()), |items| {
+            items
+                .iter()
+                .map(|selection| self.bind_select_item(tx, &scope, selection))
+                .flatten_ok()
+                .collect::<Result<Box<_>>>()
+        })?;
+
+        let schema = returning.iter().map(|e| e.ty.clone()).collect::<Schema>();
+        let scope = scope.project(&returning);
+
+        Ok((scope, Box::new(ir::QueryPlan::Update { table, source, returning, schema })))
     }
 
     fn bind_insert(

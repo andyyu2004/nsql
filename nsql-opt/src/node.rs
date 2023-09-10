@@ -171,7 +171,7 @@ impl Builder {
             }
             ir::QueryPlan::Update { table, source, returning, schema: _ } => {
                 let source = self.build_query(source);
-                let returning = self.build_exprs(source, returning.as_deref().unwrap_or(&[]));
+                let returning = self.build_exprs(source, returning);
                 let table = self.add(Node::Table(*table));
                 Node::Update([table, source, returning])
             }
