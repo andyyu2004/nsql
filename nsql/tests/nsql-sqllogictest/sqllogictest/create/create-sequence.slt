@@ -1,0 +1,18 @@
+statement ok
+CREATE SEQUENCE seq;
+
+query I
+WITH t (oid) AS (SELECT t.oid FROM nsql_catalog.nsql_table AS t WHERE t.name = 'seq')
+SELECT nextval(t.oid), nextval(t.oid), nextval(t.oid) FROM t
+----
+1 2 3
+
+statement ok
+CREATE SEQUENCE seq2 INCREMENT BY 2 START WITH 42
+
+query I
+WITH t (oid) AS (SELECT t.oid FROM nsql_catalog.nsql_table AS t WHERE t.name = 'seq2')
+SELECT nextval(t.oid), nextval(t.oid), nextval(t.oid) FROM t
+----
+42 44 46
+

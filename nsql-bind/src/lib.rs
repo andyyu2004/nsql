@@ -122,7 +122,68 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                     schema: Schema::empty(),
                 })
             }
+            ast::Statement::CreateSequence {
+                temporary,
+                if_not_exists,
+                name,
+                data_type,
+                sequence_options,
+                owned_by,
+            } => {
+                not_implemented_if!(*temporary);
+                not_implemented_if!(*if_not_exists);
+                not_implemented_if!(owned_by.is_some());
+                not_implemented_if!(data_type.is_some());
 
+                let mut start = 1;
+                let mut step = 1;
+
+                for sequence_option in sequence_options {
+                    match sequence_option {
+                        ast::SequenceOptions::IncrementBy(expr, _) => {
+                            let expr = self.bind_expr(tx, scope, expr)?;
+                            step = expr
+                                .const_eval()
+                                .or_else(|EvalNotConst| {
+                                    bail!("sequence increment value must be constant")
+                                })?
+                                .cast()?;
+                        }
+                        ast::SequenceOptions::StartWith(expr, _) => {
+                            let expr = self.bind_expr(tx, scope, expr)?;
+                            start = expr
+                                .const_eval()
+                                .or_else(|EvalNotConst| {
+                                    bail!("sequence start value must be constant")
+                                })?
+                                .cast()?;
+                        }
+                        ast::SequenceOptions::MinValue(value) => match value {
+                            ast::MinMaxValue::Empty | ast::MinMaxValue::None => {}
+                            ast::MinMaxValue::Some(_) => not_implemented!("sequence min value"),
+                        },
+                        ast::SequenceOptions::MaxValue(value) => match value {
+                            ast::MinMaxValue::Empty | ast::MinMaxValue::None => {}
+                            ast::MinMaxValue::Some(_) => not_implemented!("sequence max value"),
+                        },
+                        ast::SequenceOptions::Cache(_) => not_implemented!("sequence cache"),
+                        ast::SequenceOptions::Cycle(yes) => {
+                            if *yes {
+                                not_implemented!("sequence cycle")
+                            }
+                        }
+                    }
+                }
+
+                let path = self.lower_path(&name.0)?;
+                let namespace = &self.bind_namespace(tx, &path)?;
+                let name = path.name();
+
+                ir::Plan::Query(self.bind_create_sequence(
+                    tx,
+                    &CreateSequenceInfo { namespace, name, start, step },
+                )?)
+            }
             ast::Statement::CreateTable { .. } => {
                 ir::Plan::Query(self.bind_create_table(tx, stmt)?)
             }
@@ -567,6 +628,61 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
         Ok((scope, expr))
     }
 
+    fn bind_create_sequence(
+        &self,
+        tx: &dyn Transaction<'env, S>,
+        seq: &CreateSequenceInfo<'_>,
+    ) -> Result<Box<ir::QueryPlan>> {
+        // This is the plan to create the underlying sequence data table.
+        let create_seq_table_plan = self.bind_create_table_inner(
+            tx,
+            seq.namespace,
+            Name::clone(&seq.name),
+            vec![
+                CreateColumnInfo {
+                    name: "key".into(),
+                    ty: LogicalType::Oid,
+                    identity: ColumnIdentity::None,
+                    is_primary_key: true,
+                },
+                CreateColumnInfo {
+                    name: "value".into(),
+                    ty: LogicalType::Int64,
+                    identity: ColumnIdentity::None,
+                    is_primary_key: false,
+                },
+            ],
+        )?;
+
+        // This wraps the above plan and creates the corresponding entry in `nsql_sequence`.
+        let create_seq_plan = Box::new(ir::QueryPlan::Insert {
+            table: Table::SEQUENCE,
+            source: ir::QueryPlan::project(
+                create_seq_table_plan,
+                [
+                    ir::Expr::column_ref(
+                        LogicalType::Oid,
+                        QPath::new("", "oid"),
+                        ir::TupleIndex::new(0),
+                    ),
+                    literal(seq.start),
+                    literal(seq.step),
+                ],
+            ),
+            returning: [ir::Expr {
+                ty: LogicalType::Oid,
+                kind: ir::ExprKind::ColumnRef(ir::ColumnRef {
+                    index: ir::TupleIndex::new(0),
+                    qpath: ir::QPath::new("t", "id"),
+                }),
+            }]
+            .into(),
+            schema: Schema::new([LogicalType::Oid]),
+        });
+
+        Ok(create_seq_plan)
+    }
+
     fn bind_update(
         &self,
         tx: &dyn Transaction<'env, S>,
@@ -723,58 +839,16 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                                     // which is then evaluated only when a row is inserted into the table.
                                     // Again, it evaluates to an expression (as expressions are values in nsql).
 
-                                    let seq_name = Name::from(format!(
+                                    let name = Name::from(format!(
                                         "{}_{table_name}_{}_seq",
                                         namespace.name(),
                                         &column.name
                                     ));
 
-                                    // This is the plan to create the underlying sequence data table
-                                    let create_seq_table_plan = self.bind_create_table_inner(
+                                    let create_seq_plan = self.bind_create_sequence(
                                         tx,
-                                        namespace,
-                                        seq_name,
-                                        vec![
-                                            CreateColumnInfo {
-                                                name: "key".into(),
-                                                ty: LogicalType::Oid,
-                                                identity: ColumnIdentity::None,
-                                                is_primary_key: true,
-                                            },
-                                            CreateColumnInfo {
-                                                name: "value".into(),
-                                                ty: LogicalType::Int64,
-                                                identity: ColumnIdentity::None,
-                                                is_primary_key: false,
-                                            },
-                                        ],
+                                        &CreateSequenceInfo { namespace, name, start: 1, step: 1 },
                                     )?;
-
-                                    // This wraps the above plan and creates the entry in `nsql_sequence`
-                                    let create_seq_plan = Box::new(ir::QueryPlan::Insert {
-                                        table: Table::SEQUENCE,
-                                        source: ir::QueryPlan::project(
-                                            create_seq_table_plan,
-                                            [
-                                                ir::Expr::column_ref(
-                                                    LogicalType::Oid,
-                                                    QPath::new("", "oid"),
-                                                    ir::TupleIndex::new(0),
-                                                ),
-                                                literal(1), // start
-                                                literal(1), // step
-                                            ],
-                                        ),
-                                        returning: [ir::Expr {
-                                            ty: LogicalType::Oid,
-                                            kind: ir::ExprKind::ColumnRef(ir::ColumnRef {
-                                                index: ir::TupleIndex::new(0),
-                                                qpath: ir::QPath::new("t", "id"),
-                                            }),
-                                        }]
-                                        .into(),
-                                        schema: Schema::new([LogicalType::Oid]),
-                                    });
 
                                     // The generated `CREATE SEQUENCE` query above returns the oid of the sequence which is exactly what we need here.
                                     // We reference the new sequence oid in a subquery expr to construct the `default_expr` value.
@@ -1793,9 +1867,17 @@ fn default_logical_type_of_value(value: &ir::Value) -> LogicalType {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct CreateColumnInfo {
+struct CreateColumnInfo {
     pub name: Name,
     pub ty: LogicalType,
     pub is_primary_key: bool,
     pub identity: ColumnIdentity,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct CreateSequenceInfo<'a> {
+    namespace: &'a Namespace,
+    name: Name,
+    start: i64,
+    step: i64,
 }

@@ -193,6 +193,23 @@ impl QueryPlan {
                     _ => self.walk_query_plan(plan),
                 }
             }
+
+            fn visit_expr(&mut self, plan: &QueryPlan, expr: &Expr) -> ControlFlow<()> {
+                match &expr.kind {
+                    ExprKind::FunctionCall { function, args: _ } => {
+                        // FIXME a function should probably be able to specify its required transaction mode or something like that.
+                        // Or maybe something more general like it's purity.
+                        // Special casing them for now
+                        if function.oid() == Function::NEXTVAL {
+                            self.requires_write = true;
+                            ControlFlow::Break(())
+                        } else {
+                            self.walk_expr(plan, expr)
+                        }
+                    }
+                    _ => self.walk_expr(plan, expr),
+                }
+            }
         }
 
         let mut v = V { requires_write: false };
