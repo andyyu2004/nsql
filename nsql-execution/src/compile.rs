@@ -1,30 +1,29 @@
 use std::mem;
 
 use anyhow::Result;
-use nsql_storage::eval::{
-    ExecutableExpr, ExecutableExprOp, ExecutableTupleExpr, Expr, ExprOp, FunctionCatalog, TupleExpr,
-};
+use nsql_core::UntypedOid;
+use nsql_storage::eval::{Expr, ExprOp, FunctionCatalog, TupleExpr};
 use nsql_storage_engine::{StorageEngine, Transaction};
 
 #[derive(Debug)]
-pub(crate) struct Compiler<S> {
-    ops: Vec<ExecutableExprOp<S>>,
+pub(crate) struct Compiler<F> {
+    ops: Vec<ExprOp<F>>,
 }
 
-impl<S> Default for Compiler<S> {
+impl<F> Default for Compiler<F> {
     fn default() -> Self {
         Self { ops: Vec::new() }
     }
 }
 
-impl<S: StorageEngine> Compiler<S> {
-    pub fn compile_many<'env>(
+impl<F> Compiler<F> {
+    pub fn compile_many<'env, S: StorageEngine>(
         &mut self,
-        catalog: &dyn FunctionCatalog<'env, S>,
+        catalog: &dyn FunctionCatalog<'env, S, F>,
         tx: &dyn Transaction<'env, S>,
         q: &opt::Query,
         exprs: impl IntoIterator<Item = opt::Expr<'_>>,
-    ) -> Result<ExecutableTupleExpr<S>> {
+    ) -> Result<TupleExpr<F>> {
         exprs
             .into_iter()
             .map(|expr| self.compile(catalog, tx, q, expr))
@@ -32,21 +31,21 @@ impl<S: StorageEngine> Compiler<S> {
             .map(TupleExpr::new)
     }
 
-    pub fn compile<'env>(
+    pub fn compile<'env, S: StorageEngine>(
         &mut self,
-        catalog: &dyn FunctionCatalog<'env, S>,
+        catalog: &dyn FunctionCatalog<'env, S, F>,
         tx: &dyn Transaction<'env, S>,
         q: &opt::Query,
         expr: opt::Expr<'_>,
-    ) -> Result<ExecutableExpr<S>> {
+    ) -> Result<Expr<F>> {
         self.build(catalog, tx, q, &expr)?;
         self.emit(ExprOp::Return);
         Ok(Expr::new(expr.display(q), mem::take(&mut self.ops)))
     }
 
-    fn build<'env>(
+    fn build<'env, S: StorageEngine>(
         &mut self,
-        catalog: &dyn FunctionCatalog<'env, S>,
+        catalog: &dyn FunctionCatalog<'env, S, F>,
         tx: &dyn Transaction<'env, S>,
         q: &opt::Query,
         expr: &opt::Expr<'_>,
@@ -58,7 +57,7 @@ impl<S: StorageEngine> Compiler<S> {
                     "compiled expressions are expected to be at the top level"
                 );
                 let expr = (*expr).clone();
-                self.ops.extend_from_slice(expr.prepare(catalog, tx)?.ops());
+                self.ops = expr.resolve(catalog, tx)?.into_ops();
             }
             opt::Expr::ColumnRef(col) => self.emit(ExprOp::Project { index: col.index }),
             opt::Expr::Literal(lit) => self.emit(ExprOp::Push(lit.value(q).clone())),
@@ -73,7 +72,6 @@ impl<S: StorageEngine> Compiler<S> {
             opt::Expr::Call(call) => {
                 let function = catalog.get_function(tx, call.function().untyped())?;
                 let args = call.args(q);
-                assert_eq!(function.arity(), args.len());
                 for arg in args {
                     self.build(catalog, tx, q, &arg)?;
                 }
@@ -84,7 +82,7 @@ impl<S: StorageEngine> Compiler<S> {
                 let cases = case.cases(q);
                 let else_expr = case.else_expr(q);
 
-                let mut next_branch_marker: Option<JumpMarker<S>> = None;
+                let mut next_branch_marker: Option<JumpMarker<F>> = None;
                 let mut end_markers = Vec::with_capacity(cases.len());
 
                 for (when, then) in cases {
@@ -120,34 +118,58 @@ impl<S: StorageEngine> Compiler<S> {
                     marker.backpatch(self);
                 }
             }
+            opt::Expr::Quote(expr) => {
+                // When we compile a quoted expression we want it to be in the `storable` state not the `executable` state.
+                struct NoopCatalog<'env, S>(&'env S);
+
+                impl<'env, S> FunctionCatalog<'env, S, UntypedOid> for NoopCatalog<'env, S> {
+                    fn storage(&self) -> &'env S {
+                        self.0
+                    }
+
+                    fn get_function(
+                        &self,
+                        _tx: &dyn Transaction<'_, S>,
+                        oid: UntypedOid,
+                    ) -> Result<UntypedOid> {
+                        Ok(oid)
+                    }
+                }
+
+                let mut compiler = Compiler::<UntypedOid>::default();
+                let expr =
+                    compiler.compile(&NoopCatalog(catalog.storage()), tx, q, expr.expr(q))?;
+                // compile the `opt::Expr` into `eval::Expr` and use the expression as a value
+                self.emit(ExprOp::Push(ir::Value::Expr(expr)));
+            }
         }
 
         Ok(())
     }
 
-    fn emit(&mut self, op: ExecutableExprOp<S>) {
+    fn emit(&mut self, op: ExprOp<F>) {
         self.ops.push(op);
     }
 
-    fn emit_jmp(&mut self, mk_jmp: fn(u32) -> ExecutableExprOp<S>) -> JumpMarker<S> {
+    fn emit_jmp(&mut self, mk_jmp: fn(u32) -> ExprOp<F>) -> JumpMarker<F> {
         JumpMarker::new(self, mk_jmp)
     }
 }
 
-struct JumpMarker<S> {
+struct JumpMarker<F> {
     /// The offset of the jump instruction to backpatch
     offset: usize,
-    mk_jmp: fn(u32) -> ExecutableExprOp<S>,
+    mk_jmp: fn(u32) -> ExprOp<F>,
 }
 
-impl<S: StorageEngine> JumpMarker<S> {
-    fn new(compiler: &mut Compiler<S>, mk_jmp: fn(u32) -> ExecutableExprOp<S>) -> Self {
+impl<F> JumpMarker<F> {
+    fn new(compiler: &mut Compiler<F>, mk_jmp: fn(u32) -> ExprOp<F>) -> Self {
         let offset = compiler.ops.len();
         compiler.emit(mk_jmp(u32::MAX));
         JumpMarker { offset, mk_jmp }
     }
 
-    fn backpatch(self, compiler: &mut Compiler<S>) {
+    fn backpatch(self, compiler: &mut Compiler<F>) {
         let offset = compiler.ops.len() - self.offset;
         compiler.ops[self.offset] = (self.mk_jmp)(offset as u32);
     }

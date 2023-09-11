@@ -14,14 +14,10 @@ use rkyv::{Archive, Deserialize, Serialize};
 use crate::tuple::{Tuple, TupleIndex};
 use crate::value::{CastError, FromValue, Value};
 
-pub trait FunctionCatalog<'env, S> {
+pub trait FunctionCatalog<'env, S, F = Arc<dyn ScalarFunction<S>>> {
     fn storage(&self) -> &'env S;
 
-    fn get_function(
-        &self,
-        tx: &dyn Transaction<'env, S>,
-        oid: UntypedOid,
-    ) -> Result<Arc<dyn ScalarFunction<S>>>;
+    fn get_function(&self, tx: &dyn Transaction<'env, S>, oid: UntypedOid) -> Result<F>;
 }
 
 pub trait ScalarFunction<S: StorageEngine>: fmt::Debug + Send + Sync + 'static {
@@ -77,12 +73,12 @@ impl TupleExpr {
 
 impl Expr {
     /// Prepare this expression for evaluation.
-    // This resolves any function oids and replaces them with the actual function.
-    pub fn prepare<'env, S>(
+    // This resolves any function oids and replaces them with what the catalog returns
+    pub fn resolve<'env, S, F>(
         self,
-        catalog: &dyn FunctionCatalog<'env, S>,
+        catalog: &dyn FunctionCatalog<'env, S, F>,
         tx: &dyn Transaction<'env, S>,
-    ) -> Result<ExecutableExpr<S>> {
+    ) -> Result<Expr<F>> {
         self.map(|oid| catalog.get_function(tx, oid))
     }
 }
@@ -126,7 +122,9 @@ impl From<TupleExpr> for Value {
     }
 }
 
-pub type ExecutableExpr<S> = Expr<Arc<dyn ScalarFunction<S>>>;
+pub type ExecutableExpr<S> = Expr<ExecutableFunction<S>>;
+
+pub type ExecutableFunction<S> = Arc<dyn ScalarFunction<S>>;
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Archive, Serialize, Deserialize)]
 pub struct Expr<F = UntypedOid> {
@@ -197,6 +195,11 @@ impl<F> Expr<F> {
     #[inline]
     pub fn ops(&self) -> &[ExprOp<F>] {
         self.ops.as_ref()
+    }
+
+    #[inline]
+    pub fn into_ops(self) -> Vec<ExprOp<F>> {
+        self.ops.into_vec()
     }
 }
 

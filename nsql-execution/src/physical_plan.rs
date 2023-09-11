@@ -25,7 +25,7 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use nsql_catalog::Catalog;
-use nsql_storage::eval::{ExecutableExpr, ExecutableTupleExpr};
+use nsql_storage::eval::{ExecutableExpr, ExecutableFunction, ExecutableTupleExpr};
 use nsql_storage_engine::{StorageEngine, Transaction};
 
 use self::aggregate::{PhysicalHashAggregate, PhysicalUngroupedAggregate};
@@ -59,7 +59,7 @@ use crate::{
 
 pub struct PhysicalPlanner<'env, S> {
     catalog: Catalog<'env, S>,
-    compiler: Compiler<S>,
+    compiler: Compiler<ExecutableFunction<S>>,
 }
 
 /// Opaque physical plan that is ready to be executed

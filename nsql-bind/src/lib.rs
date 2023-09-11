@@ -359,16 +359,25 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
         Ok(projections.into_boxed_slice())
     }
 
-    fn lower_columns(&self, columns: &[ast::ColumnDef]) -> Result<Vec<CreateColumnInfo>> {
+    fn lower_columns(
+        &self,
+        tx: &dyn Transaction<'env, S>,
+        columns: &[ast::ColumnDef],
+    ) -> Result<Vec<CreateColumnInfo>> {
         ensure!(columns.len() < u8::MAX as usize, "too many columns (max 256)");
-        columns.iter().map(|col| self.lower_column(col)).collect()
+        columns.iter().map(|col| self.lower_column(tx, col)).collect()
     }
 
-    fn lower_column(&self, column: &ast::ColumnDef) -> Result<CreateColumnInfo> {
+    fn lower_column(
+        &self,
+        tx: &dyn Transaction<'env, S>,
+        column: &ast::ColumnDef,
+    ) -> Result<CreateColumnInfo> {
         not_implemented_if!(column.collation.is_some());
 
         let mut is_primary_key = false;
         let mut identity = ColumnIdentity::None;
+        let mut default_expr = None;
 
         for option in &column.options {
             match &option.option {
@@ -394,6 +403,9 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                         _ => (),
                     }
                 }
+                ast::ColumnOption::Default(expr) => {
+                    default_expr = Some(self.bind_expr(tx, &Scope::default(), expr)?)
+                }
                 _ => not_implemented!("column option"),
             }
         }
@@ -403,6 +415,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
             ty: self.lower_ty(&column.data_type)?,
             identity,
             is_primary_key,
+            default_expr,
         })
     }
 
@@ -644,12 +657,14 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                     ty: LogicalType::Oid,
                     identity: ColumnIdentity::None,
                     is_primary_key: true,
+                    default_expr: None,
                 },
                 CreateColumnInfo {
                     name: "value".into(),
                     ty: LogicalType::Int64,
                     identity: ColumnIdentity::None,
                     is_primary_key: false,
+                    default_expr: None,
                 },
             ],
         )?;
@@ -825,8 +840,15 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                             literal(column.is_primary_key),
                             literal(column.identity),
                             match column.identity {
-                                ColumnIdentity::None => literal(eval::Expr::null()),
+                                ColumnIdentity::None => column
+                                    .default_expr
+                                    .map_or_else(|| literal(eval::Expr::null()), ir::Expr::quote),
                                 ColumnIdentity::ByDefault | ColumnIdentity::Always => {
+                                    ensure!(
+                                        column.default_expr.is_none(),
+                                        "both default and identity specified for column `{}` of table `{table_name}`",
+                                        &column.name,
+                                    );
                                     // If the column has a generated sequence, we need to create the sequence, it's underlying table and set the appropriate `default_expr` for the column.
                                     // The default value is computed roughly as the following pseudo-sql:
                                     // ```sql
@@ -955,7 +977,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
 
         let path = self.lower_path(&name.0)?;
         let namespace = self.bind_namespace(tx, &path)?;
-        let columns = self.lower_columns(columns)?;
+        let columns = self.lower_columns(tx, columns)?;
         let name = path.name();
 
         self.bind_create_table_inner(tx, &namespace, name, columns)
@@ -1872,6 +1894,7 @@ struct CreateColumnInfo {
     pub ty: LogicalType,
     pub is_primary_key: bool,
     pub identity: ColumnIdentity,
+    pub default_expr: Option<ir::Expr>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

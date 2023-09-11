@@ -10,8 +10,6 @@ use crate::{TableStorage, TableStorageInfo};
 
 pub(crate) struct IndexStorage<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> {
     storage: TableStorage<'env, 'txn, S, M>,
-    // what if we define `TupleExpr` in the `catalog` crate and then define an interface `Expr { fn execute(storage, tx) -> Tuple}` to avoid the direct dependency?
-    // i think that design makes much more sense, but TupleExpr lives in value ...
     index_expr: AtomicTake<TupleExpr>,
     prepared_expr: OnceLock<TupleExpr<Arc<dyn ScalarFunction<S>>>>,
 }

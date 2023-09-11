@@ -77,6 +77,7 @@ impl Query {
             Node::Case([scrutinee, cases, else_expr]) => {
                 Expr::Case(CaseExpr { scrutinee, cases: self.nodes(cases), else_expr })
             }
+            Node::QuotedExpr(expr) => Expr::Quote(QuotedExpr(expr)),
             Node::Subquery(_) | Node::Exists(..) => {
                 panic!("subquery nodes should have been flattened during optimization")
             }
@@ -133,6 +134,7 @@ impl Query {
             Node::Cte(ref name, [cte_plan, child]) => Plan::Cte(Cte { name, cte_plan, child }),
             Node::CteScan(ref name) => Plan::CteScan(CteScan { name }),
             Node::Desc(_)
+            | Node::QuotedExpr(_)
             | Node::Nodes(_)
             | Node::Table(_)
             | Node::Function(_)
@@ -485,6 +487,7 @@ pub enum Expr<'a> {
     Array(ArrayExpr<'a>),
     Call(CallExpr<'a>),
     Case(CaseExpr<'a>),
+    Quote(QuotedExpr),
     Compiled(&'a eval::Expr),
 }
 
@@ -526,6 +529,7 @@ impl<'q> fmt::Display for ExprDisplay<'q> {
                 write!(f, "END")
             }
             Expr::Compiled(expr) => write!(f, "{expr}"),
+            Expr::Quote(expr) => write!(f, "'({})", expr.expr(q).display(q)),
         }
     }
 }
@@ -568,6 +572,16 @@ impl<'a> CallExpr<'a> {
     #[inline]
     pub fn args(self, g: &'a Query) -> impl ExactSizeIterator<Item = Expr<'a>> + 'a {
         self.args.iter().map(|&id| g.expr(id))
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct QuotedExpr(Id);
+
+impl QuotedExpr {
+    #[inline]
+    pub fn expr(self, q: &Query) -> Expr<'_> {
+        q.expr(self.0)
     }
 }
 

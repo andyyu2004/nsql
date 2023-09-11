@@ -22,6 +22,7 @@ impl Expr {
             | ExprKind::ColumnRef { .. }
             | ExprKind::FunctionCall { .. }
             | ExprKind::Compiled(..)
+            | ExprKind::Quote(_)
             | ExprKind::Case { .. } => Err(EvalNotConst),
         }
     }

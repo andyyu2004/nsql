@@ -225,6 +225,7 @@ impl ExprFold for Expr {
                 rhs: folder.fold_boxed_expr(plan, rhs),
             },
             ExprKind::Compiled(expr) => ExprKind::Compiled(expr),
+            ExprKind::Quote(expr) => ExprKind::Quote(folder.fold_boxed_expr(plan, expr)),
         };
 
         Expr { ty: self.ty.clone(), kind }

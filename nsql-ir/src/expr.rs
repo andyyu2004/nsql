@@ -38,6 +38,12 @@ impl Expr {
         Self { ty, kind: ExprKind::ColumnRef(ColumnRef { qpath, index }) }
     }
 
+    #[inline]
+    pub fn quote(expr: Self) -> Self {
+        Self { ty: LogicalType::Expr, kind: ExprKind::Quote(Box::new(expr)) }
+    }
+
+    #[inline]
     pub fn call(function: MonoFunction, args: impl Into<Box<[Expr]>>) -> anyhow::Result<Expr> {
         let args = args.into();
         let ty = function.return_type();
@@ -92,14 +98,34 @@ static_assert_eq!(mem::size_of::<ExprKind>(), 48);
 pub enum ExprKind {
     Literal(Value),
     Array(Box<[Expr]>),
-    Alias { alias: Name, expr: Box<Expr> },
+    Alias {
+        alias: Name,
+        expr: Box<Expr>,
+    },
     ColumnRef(ColumnRef),
-    FunctionCall { function: MonoFunction, args: Box<[Expr]> },
-    UnaryOperator { operator: MonoOperator, expr: Box<Expr> },
-    BinaryOperator { operator: MonoOperator, lhs: Box<Expr>, rhs: Box<Expr> },
-    Case { scrutinee: Box<Expr>, cases: Box<[Case]>, else_result: Option<Box<Expr>> },
+    FunctionCall {
+        function: MonoFunction,
+        args: Box<[Expr]>,
+    },
+    UnaryOperator {
+        operator: MonoOperator,
+        expr: Box<Expr>,
+    },
+    BinaryOperator {
+        operator: MonoOperator,
+        lhs: Box<Expr>,
+        rhs: Box<Expr>,
+    },
+    Case {
+        scrutinee: Box<Expr>,
+        cases: Box<[Case]>,
+        else_result: Option<Box<Expr>>,
+    },
     Subquery(SubqueryKind, Box<QueryPlan>),
     Compiled(eval::Expr),
+    /// An expression that evaluates to an expression.
+    /// Similar to `Compiled` above but is yet to be compiled.
+    Quote(Box<Expr>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -236,6 +262,7 @@ impl fmt::Display for ExprKind {
                 write!(f, "({lhs} {operator} {rhs})")
             }
             ExprKind::Compiled(expr) => write!(f, "{expr}"),
+            ExprKind::Quote(expr) => write!(f, "'({expr})"),
         }
     }
 }

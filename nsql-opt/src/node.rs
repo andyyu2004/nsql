@@ -20,6 +20,7 @@ define_language! {
         ColumnRef(ir::ColumnRef, Id),           // (column-ref <index> <plan>)
         "union" = Union([Id; 2]),               // (union <lhs> <rhs>)
         "array" = Array(Box<[Id]>),
+        "quote" = QuotedExpr(Id),
         "subquery" = Subquery(Id),
         "exists" = Exists(Id),
         "case" = Case([Id; 3]), // (case <scrutinee> (<condition> <then> <condition> <then> ...) <else>)
@@ -258,6 +259,7 @@ impl Builder {
                 ir::SubqueryKind::Exists => Node::Exists(self.build_query(query)),
             },
             ir::ExprKind::Compiled(expr) => Node::CompiledExpr(expr.clone()),
+            ir::ExprKind::Quote(expr) => Node::QuotedExpr(self.build_expr(plan, expr)),
         };
 
         self.add(node)
