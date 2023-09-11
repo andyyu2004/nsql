@@ -233,6 +233,9 @@ impl<S: StorageEngine> ExecutableExpr<S> {
 
 pub type ExecutableExprOp<S> = ExprOp<Arc<dyn ScalarFunction<S>>>;
 
+/// `Expr` is generic over the representation of functions.
+/// For storage in the catalog, we need to be able to serialize the function and `F = UntypedOid` (morally `Oid<Function>`).
+/// For execution, we want to be able to invoke the function (without looking into the catalog as that's slow) and so `F = Arc<dyn ScalarFunction<S>>`.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Archive, Serialize, Deserialize)]
 #[omit_bounds]
 #[archive(bound(serialize = "__S: rkyv::ser::ScratchSpace + rkyv::ser::Serializer"))]
