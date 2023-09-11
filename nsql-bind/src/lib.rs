@@ -793,7 +793,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
         });
 
         // it's important that we generate a unique name for the cte since this query is sometimes nested
-        let cte_name = Name::from(format!("{}_{}", namespace.name(), table_name));
+        let cte_name = Name::from(format!("{table_name}_cte"));
 
         let table_cte_scan = Box::new(ir::QueryPlan::CteScan {
             name: Name::clone(&cte_name),
@@ -1025,9 +1025,37 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
 
         let table_columns = self.catalog.get::<Table>(tx, table)?.columns(self.catalog, tx)?;
 
-        // if there are no columns specified, then we don't apply any projection to the source
-        if !columns.is_empty() {
-            // We model the insertion columns list as a projection over the source, with missing columns filled in with nulls
+        if source.schema().len() > table_columns.len() {
+            bail!(
+                "table `{}` has {} columns but {} columns were supplied",
+                table_name,
+                table_columns.len(),
+                source.schema().len()
+            )
+        }
+
+        // if there are no columns specified, then we apply the given `k` columns in order and fill the right with the default values
+        let projection = if columns.is_empty() {
+            table_columns
+                .iter()
+                .enumerate()
+                .map(|(i, column)| {
+                    let ty = column.logical_type().clone();
+                    if i < source.schema().len() {
+                        ir::Expr {
+                            ty,
+                            kind: ir::ExprKind::ColumnRef(ir::ColumnRef {
+                                qpath: QPath::new(table.to_string().as_ref(), column.name()),
+                                index: TupleIndex::new(i),
+                            }),
+                        }
+                    } else {
+                        ir::Expr { ty, kind: ir::ExprKind::Compiled(column.default_expr().clone()) }
+                    }
+                })
+                .collect()
+        } else {
+            // If insert columns are proivded, then we model the insertion columns list as a projection over the source, with missing columns filled in with defaults
             let target_column_indices = columns
                 .iter()
                 .map(|ident| ast::Expr::Identifier(ident.clone()))
@@ -1037,44 +1065,42 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                 })
                 .collect::<Result<Vec<_>>>()?;
 
-            let mut projection = Vec::with_capacity(table_columns.len());
             // loop over all columns in the table and find the corresponding column in the base projection,
             // if one does not exist then we fill it in with a null
             let source_schema = source.schema();
-            for column in &table_columns {
-                if let Some(expr) =
-                    target_column_indices.iter().enumerate().find_map(|(i, column_index)| {
-                        (column_index.as_usize() == column.index().as_usize()).then_some(ir::Expr {
-                            ty: source_schema[i].clone(),
-                            kind: ir::ExprKind::ColumnRef(ir::ColumnRef {
-                                qpath: QPath::new(table.to_string().as_ref(), column.name()),
-                                index: TupleIndex::new(i),
-                            }),
+            table_columns
+                .iter()
+                .map(|column| {
+                    if let Some(expr) =
+                        target_column_indices.iter().enumerate().find_map(|(i, column_index)| {
+                            (column_index.as_usize() == column.index().as_usize()).then_some(
+                                ir::Expr {
+                                    ty: source_schema[i].clone(),
+                                    kind: ir::ExprKind::ColumnRef(ir::ColumnRef {
+                                        qpath: QPath::new(
+                                            table.to_string().as_ref(),
+                                            column.name(),
+                                        ),
+                                        index: TupleIndex::new(i),
+                                    }),
+                                },
+                            )
                         })
-                    })
-                {
-                    projection.push(expr);
-                } else {
-                    let ty = column.logical_type().clone();
-                    projection.push(ir::Expr {
-                        ty,
-                        kind: ir::ExprKind::Compiled(column.default_expr().clone()),
-                    });
-                }
-            }
+                    {
+                        expr
+                    } else {
+                        let ty = column.logical_type().clone();
+                        ir::Expr { ty, kind: ir::ExprKind::Compiled(column.default_expr().clone()) }
+                    }
+                })
+                .collect_vec()
+        };
 
-            assert_eq!(projection.len(), table_columns.len());
-            source = source.project(projection);
-        }
+        assert_eq!(projection.len(), table_columns.len());
+        source = source.project(projection);
 
         let source_schema = source.schema();
-        ensure!(
-            table_columns.len() == source_schema.len(),
-            "table `{}` has {} columns but {} columns were supplied",
-            table_name,
-            table_columns.len(),
-            source_schema.len()
-        );
+        assert_eq!(source_schema.len(), table_columns.len());
 
         for (column, ty) in table_columns.iter().zip(source_schema) {
             ensure!(
