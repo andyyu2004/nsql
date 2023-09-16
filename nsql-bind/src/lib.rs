@@ -1781,16 +1781,18 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
 
                 let else_result = else_result.as_ref().map(|r| f(r).map(Box::new)).transpose()?;
 
-                let result_type = cases[0].then.ty.clone();
+                let mut result_type: LogicalType = cases[0].then.ty.clone();
                 for expr in
                     cases.iter().map(|case| &case.then).chain(else_result.iter().map(AsRef::as_ref))
                 {
-                    ensure!(
-                        expr.ty == result_type,
-                        "all case results must have the same type, expected `{}`, got `{}`",
-                        result_type,
-                        expr.ty
-                    );
+                    let expr: &ir::Expr = expr;
+                    result_type = result_type.common_supertype(&expr.ty).ok_or_else(|| {
+                        anyhow!(
+                            "all case results must have the same type, expected `{}`, got `{}`",
+                            result_type,
+                            expr.ty
+                        )
+                    })?;
                 }
 
                 (

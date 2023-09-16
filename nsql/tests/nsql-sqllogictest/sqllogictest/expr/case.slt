@@ -18,6 +18,17 @@ SELECT CASE 42 WHEN 41 THEN 1 ELSE 0 END
 ----
 0
 
+# allow nulls in cases
+query I
+SELECT CASE WHEN false THEN 1 ELSE NULL END
+----
+NULL
+
+query I
+SELECT CASE WHEN false THEN NULL ELSE 1 END
+----
+1
+
 query I
 SELECT CASE 42 WHEN 41 THEN 1 WHEN 43 THEN 2 ELSE 5 END
 ----

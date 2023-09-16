@@ -60,6 +60,16 @@ impl LogicalType {
         matches!(self, LogicalType::Null) || self == supertype
     }
 
+    #[inline]
+    pub fn common_supertype(&self, other: &Self) -> Option<Self> {
+        match (self, other) {
+            (LogicalType::Null, b) => Some(b.clone()),
+            (a, LogicalType::Null) => Some(a.clone()),
+            (a, b) if a == b => Some(a.clone()),
+            _ => None,
+        }
+    }
+
     #[must_use]
     pub fn is_null(&self) -> bool {
         matches!(self, Self::Null)
