@@ -58,6 +58,7 @@ impl Function {
         NEG_INT,
         NOT_BOOL,
         EQ,
+        NEQ,
         LT,
         LTE,
         GTE,
@@ -110,6 +111,7 @@ impl Function {
         vec![
             // `(a, a) -> bool` operations
             comparison!(EQ        =  : Any),
+            comparison!(NEQ       != : Any),
             comparison!(LT        >  : Any),
             comparison!(LTE       >= : Any),
             comparison!(GTE       >= : Any),

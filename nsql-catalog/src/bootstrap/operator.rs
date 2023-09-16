@@ -5,14 +5,15 @@ use crate::OperatorKind;
 
 impl Operator {
     mk_consts![
-        EQ, LT, LTE, GTE, GT, NEG_INT, NOT_BOOL, ADD_INT, ADD_FLOAT, ADD_DEC, SUB_INT, SUB_FLOAT,
-        SUB_DEC, MUL_INT, MUL_FLOAT, MUL_DEC, DIV_INT, DIV_FLOAT, DIV_DEC, AND_BOOL, OR_BOOL
+        EQ, NEQ, LT, LTE, GTE, GT, NEG_INT, NOT_BOOL, ADD_INT, ADD_FLOAT, ADD_DEC, SUB_INT,
+        SUB_FLOAT, SUB_DEC, MUL_INT, MUL_FLOAT, MUL_DEC, DIV_INT, DIV_FLOAT, DIV_DEC, AND_BOOL,
+        OR_BOOL
     ];
 
     pub const LESS: &'static str = "<";
     pub const LESS_EQUAL: &'static str = "<=";
     pub const EQUAL: &'static str = "=";
-    pub const NOT_EQUAL: &'static str = "=";
+    pub const NOT_EQUAL: &'static str = "!=";
     pub const GREATER_EQUAL: &'static str = ">=";
     pub const GREATER: &'static str = ">";
     pub const STAR: &'static str = "*";
@@ -72,6 +73,7 @@ impl Operator {
             binary!(SLASH, DIV_FLOAT),
             binary!(SLASH, DIV_DEC),
             binary!(EQUAL, EQ),
+            binary!(NOT_EQUAL, NEQ),
             binary!(LESS, LT),
             binary!(LESS_EQUAL, LTE),
             binary!(GREATER_EQUAL, GTE),

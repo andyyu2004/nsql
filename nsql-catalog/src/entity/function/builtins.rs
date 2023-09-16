@@ -80,6 +80,7 @@ pub(crate) fn get_scalar_function<S: StorageEngine>(oid: Oid<Function>) -> Optio
         _ if oid == Function::DIV_FLOAT => infix_op!(/ : f64),
         _ if oid == Function::DIV_DEC   => infix_op!(/ : Decimal),
         _ if oid == Function::EQ        => comparison!(== : Value),
+        _ if oid == Function::NEQ       => comparison!(!= : Value),
         _ if oid == Function::LT        => comparison!(<  : Value),
         _ if oid == Function::LTE       => comparison!(<= : Value),
         _ if oid == Function::GTE       => comparison!(>= : Value),

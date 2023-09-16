@@ -216,7 +216,7 @@ impl Scope {
 
     pub fn alias(&self, alias: TableAlias) -> Result<Self> {
         // if no columns are specified, we only rename the table
-        if !alias.columns.is_empty() && self.columns.len() != alias.columns.len() {
+        if !alias.columns.is_empty() && self.columns.len() < alias.columns.len() {
             bail!(
                 "table expression has {} columns, but {} columns were specified in alias",
                 self.columns.len(),
