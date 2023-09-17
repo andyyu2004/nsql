@@ -1,2 +1,2 @@
-CREATE TABLE t(x int PRIMARY KEY);
-INSERT INTO t VALUES (1), (2);
+SELECT * FROM (VALUES (1), (2)) AS t(x) JOIN (SELECT 2 AS k) WHERE k = x;
+e

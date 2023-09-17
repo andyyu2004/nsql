@@ -174,7 +174,7 @@ impl<F> Expr<F> {
     pub fn literal(value: impl Into<Value>) -> Self {
         let value = value.into();
         Self {
-            pretty: format!("{value}").into(),
+            pretty: format!("{value:#}").into(),
             ops: Box::new([ExprOp::Push(value), ExprOp::Return]),
         }
     }

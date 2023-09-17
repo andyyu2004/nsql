@@ -33,7 +33,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
             .cast::<Option<bool>>()
             .expect("this should have failed during planning")
             .unwrap_or(false);
-        tracing::debug!(%keep, %input, "filtering tuple");
+        tracing::debug!(%keep, %input, %self.predicate, "filtering tuple");
         // A null predicate is treated as false.
         match keep {
             false => Ok(OperatorState::Continue),

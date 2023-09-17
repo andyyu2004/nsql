@@ -105,6 +105,7 @@ impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalOperator<'
         ecx: &'txn ExecutionContext<'_, 'env, S, M>,
         lhs_tuple: Tuple,
     ) -> ExecutionResult<OperatorState<Tuple>> {
+        tracing::debug!(%lhs_tuple, "probing nested loop join");
         let storage = ecx.storage();
         let tx = ecx.tx();
         let lhs_width = lhs_tuple.width();
@@ -168,6 +169,7 @@ impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSink<'env,
         _ecx: &'txn ExecutionContext<'_, 'env, S, M>,
         tuple: Tuple,
     ) -> ExecutionResult<()> {
+        tracing::debug!(%tuple, "building nested loop join");
         self.rhs_tuples_build.lock().push(tuple);
         Ok(())
     }

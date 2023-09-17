@@ -35,6 +35,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Executor<'en
 
         'main: while let Some(input_tuple) = stream.next()? {
             'input: loop {
+                tracing::debug!(%input_tuple, "pushing tuple through pipeline");
                 let mut again = false;
                 let mut tuple = input_tuple.clone();
 

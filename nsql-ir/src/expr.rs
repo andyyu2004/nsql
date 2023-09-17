@@ -145,7 +145,7 @@ pub struct ColumnRef {
 
 impl fmt::Display for ColumnRef {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}@{}", self.qpath, self.index)
+        if f.alternate() { write!(f, "@{}", self.index) } else { write!(f, "{}", self.qpath) }
     }
 }
 
@@ -235,7 +235,7 @@ impl fmt::Display for ExprKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match &self {
             ExprKind::Literal(value) => write!(f, "{value}"),
-            ExprKind::ColumnRef(ColumnRef { qpath, index: _ }) => write!(f, "{qpath}"),
+            ExprKind::ColumnRef(col) => write!(f, "{col}"),
             ExprKind::Array(exprs) => write!(f, "[{}]", exprs.iter().format(", ")),
             ExprKind::FunctionCall { function, args } => {
                 write!(f, "{}({})", function.name(), args.iter().format(", "))
