@@ -11,6 +11,7 @@ use crate::{Binder, Path, Result, TableAlias};
 
 #[derive(Default, Clone, PartialEq, Eq)]
 pub(crate) struct Scope {
+    parent: Option<Box<Scope>>,
     columns: rpds::Vector<(QPath, LogicalType)>,
 }
 
@@ -28,6 +29,14 @@ impl fmt::Debug for Scope {
 }
 
 impl Scope {
+    pub fn subscope(&self) -> Self {
+        Self { parent: Some(Box::new(self.clone())), columns: rpds::Vector::new() }
+    }
+
+    fn with_columns(&self, columns: rpds::Vector<(QPath, LogicalType)>) -> Self {
+        Self { columns, parent: self.parent.clone() }
+    }
+
     pub fn project(&self, projection: &[ir::Expr]) -> Self {
         let columns = projection
             .iter()
@@ -43,7 +52,7 @@ impl Scope {
             })
             .collect();
 
-        Self { columns }
+        self.with_columns(columns)
     }
 
     /// Find a reference to a table:
@@ -110,24 +119,44 @@ impl Scope {
             columns.push_back_mut((QPath::new(path.clone(), name), column.logical_type()));
         }
 
-        Ok((Self { columns }, table_oid))
+        Ok((self.with_columns(columns), table_oid))
     }
 
     pub fn lookup_by_index(&self, index: usize) -> (QPath, LogicalType) {
         self.columns[index].clone()
     }
 
-    pub fn lookup_column(&self, path: &Path) -> Result<(QPath, LogicalType, ir::TupleIndex)> {
+    pub fn lookup_column(&self, path: &Path) -> Result<(LogicalType, ir::ColumnRef)> {
+        self.lookup_column_rec(path, 0)
+    }
+
+    fn lookup_column_rec(&self, path: &Path, level: u8) -> Result<(LogicalType, ir::ColumnRef)> {
+        match self.lookup_column_inner(path, level)? {
+            Some((ty, column_ref)) => Ok((ty, column_ref)),
+            None => match &self.parent {
+                Some(parent) => parent.lookup_column_rec(path, level + 1),
+                None => Err(unbound!(Column, path)),
+            },
+        }
+    }
+
+    fn lookup_column_inner(
+        &self,
+        path: &Path,
+        level: u8,
+    ) -> Result<Option<(LogicalType, ir::ColumnRef)>> {
         match path {
             Path::Qualified(qpath) => {
-                let idx = self
-                    .columns
-                    .iter()
-                    .position(|(p, _)| p == qpath)
-                    .ok_or_else(|| unbound!(Column, path))?;
+                let idx = match self.columns.iter().position(|(p, _)| p == qpath) {
+                    Some(idx) => idx,
+                    None => return Ok(None),
+                };
 
                 let (qpath, ty) = &self.columns[idx];
-                Ok((qpath.clone(), ty.clone(), ir::TupleIndex::new(idx)))
+                Ok(Some((
+                    ty.clone(),
+                    ir::ColumnRef { qpath: qpath.clone(), index: ir::TupleIndex::new(idx), level },
+                )))
             }
             Path::Unqualified(column_name) => {
                 match &self
@@ -137,10 +166,15 @@ impl Scope {
                     .filter(|(_, (p, _))| &p.name == column_name)
                     .collect::<Vec<_>>()[..]
                 {
-                    [] => Err(unbound!(Column, path)),
-                    [(idx, (qpath, ty))] => {
-                        Ok((qpath.clone(), ty.clone(), ir::TupleIndex::new(*idx)))
-                    }
+                    [] => Ok(None),
+                    [(idx, (qpath, ty))] => Ok(Some((
+                        ty.clone(),
+                        ir::ColumnRef {
+                            qpath: qpath.clone(),
+                            index: ir::TupleIndex::new(*idx),
+                            level,
+                        },
+                    ))),
                     matches => {
                         bail!(
                             "column `{}` is ambiguous, it could refer to any one of {}",
@@ -167,7 +201,7 @@ impl Scope {
             columns.push_back_mut((QPath::new("values", name), expr.ty.clone()));
         }
 
-        Self { columns }
+        self.with_columns(columns)
     }
 
     pub fn bind_unnest(&self, expr: &ir::Expr) -> Result<Scope> {
@@ -182,7 +216,7 @@ impl Scope {
             _ => unreachable!(),
         };
 
-        Ok(Self { columns: self.columns.push_back((QPath::new("", "unnest"), ty)) })
+        Ok(self.with_columns(self.columns.push_back((QPath::new("", "unnest"), ty))))
     }
 
     pub fn len(&self) -> usize {
@@ -201,7 +235,7 @@ impl Scope {
             .filter(|(idx, _)| !exclude.contains(idx))
             .map(move |(index, (path, ty))| ir::Expr {
                 ty: ty.clone(),
-                kind: ir::ExprKind::ColumnRef(ir::ColumnRef { qpath: path.clone(), index }),
+                kind: ir::ExprKind::ColumnRef(ir::ColumnRef::new(index, path.clone())),
             })
     }
 
@@ -211,7 +245,7 @@ impl Scope {
             columns.push_back_mut((path.clone(), ty.clone()));
         }
 
-        Self { columns }
+        self.with_columns(columns)
     }
 
     pub fn alias(&self, alias: TableAlias) -> Result<Self> {
@@ -234,7 +268,7 @@ impl Scope {
             columns = columns.push_back((path, ty.clone()));
         }
 
-        Ok(Scope { columns })
+        Ok(self.with_columns(columns))
     }
 }
 

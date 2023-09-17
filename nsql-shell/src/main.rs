@@ -41,6 +41,10 @@ impl reedline::Validator for Validator {
             return ValidationResult::Incomplete;
         }
 
+        if line.trim_end().ends_with(';') {
+            return ValidationResult::Complete;
+        }
+
         match nsql::parse(line) {
             Ok(_) => ValidationResult::Complete,
             Err(_) => ValidationResult::Incomplete,

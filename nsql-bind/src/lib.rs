@@ -525,9 +525,8 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
         tx: &dyn Transaction<'env, S>,
         scope: &Scope,
         subquery: &ast::Query,
-    ) -> Result<Box<ir::QueryPlan>> {
-        let (_scope, plan) = self.bind_query(tx, scope, subquery)?;
-        Ok(plan)
+    ) -> Result<(Scope, Box<ir::QueryPlan>)> {
+        self.bind_query(tx, &scope.subscope(), subquery)
     }
 
     fn bind_query(
@@ -684,13 +683,11 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                     literal(seq.step),
                 ],
             ),
-            returning: [ir::Expr {
-                ty: LogicalType::Oid,
-                kind: ir::ExprKind::ColumnRef(ir::ColumnRef {
-                    index: ir::TupleIndex::new(0),
-                    qpath: ir::QPath::new("t", "id"),
-                }),
-            }]
+            returning: [ir::Expr::column_ref(
+                LogicalType::Oid,
+                QPath::new("t", "id"),
+                ir::TupleIndex::new(0),
+            )]
             .into(),
             schema: Schema::new([LogicalType::Oid]),
         });
@@ -781,13 +778,11 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                 .into()]
                 .into(),
             )),
-            returning: [ir::Expr {
-                ty: LogicalType::Oid,
-                kind: ir::ExprKind::ColumnRef(ir::ColumnRef {
-                    index: ir::TupleIndex::new(0),
-                    qpath: ir::QPath::new("t", "id"),
-                }),
-            }]
+            returning: [ir::Expr::column_ref(
+                LogicalType::Oid,
+                ir::QPath::new("t", "id"),
+                ir::TupleIndex::new(0),
+            )]
             .into(),
             schema: Schema::new([LogicalType::Oid]),
         });
@@ -804,13 +799,13 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
             table: Table::ATTRIBUTE,
             // Return the oid of the table if the caller wants it for whatever reason.
             // Note there will be one row per inserted column
-            returning: [ir::Expr {
-                ty: LogicalType::Oid,
-                kind: ir::ExprKind::ColumnRef(ir::ColumnRef {
-                    index: ir::TupleIndex::new(0),
-                    qpath: ir::QPath::new("t", "id"),
-                }),
-            }]
+            returning: [
+                ir::Expr::column_ref(
+                    LogicalType::Oid,
+                    ir::QPath::new("t", "id"),
+                    ir::TupleIndex::new(0),
+                                    )
+            ]
             .into(),
             schema: Schema::new([LogicalType::Oid]),
             source: columns
@@ -1042,13 +1037,11 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                 .map(|(i, column)| {
                     let ty = column.logical_type().clone();
                     if i < source.schema().len() {
-                        ir::Expr {
+                        ir::Expr::column_ref(
                             ty,
-                            kind: ir::ExprKind::ColumnRef(ir::ColumnRef {
-                                qpath: QPath::new(table.to_string().as_ref(), column.name()),
-                                index: TupleIndex::new(i),
-                            }),
-                        }
+                            QPath::new(table.to_string().as_ref(), column.name()),
+                            TupleIndex::new(i),
+                        )
                     } else {
                         ir::Expr { ty, kind: ir::ExprKind::Compiled(column.default_expr().clone()) }
                     }
@@ -1074,16 +1067,11 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                     if let Some(expr) =
                         target_column_indices.iter().enumerate().find_map(|(i, column_index)| {
                             (column_index.as_usize() == column.index().as_usize()).then_some(
-                                ir::Expr {
-                                    ty: source_schema[i].clone(),
-                                    kind: ir::ExprKind::ColumnRef(ir::ColumnRef {
-                                        qpath: QPath::new(
-                                            table.to_string().as_ref(),
-                                            column.name(),
-                                        ),
-                                        index: TupleIndex::new(i),
-                                    }),
-                                },
+                                ir::Expr::column_ref(
+                                    source_schema[i].clone(),
+                                    QPath::new(table.to_string().as_ref(), column.name()),
+                                    TupleIndex::new(i),
+                                ),
                             )
                         })
                     {
@@ -1270,8 +1258,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
             ast::TableFactor::Derived { lateral, subquery, alias } => {
                 not_implemented_if!(*lateral);
 
-                // subqueries get a fresh empty scope to prevent correlated subqueries for now
-                let (mut scope, subquery) = self.bind_query(tx, &Scope::default(), subquery)?;
+                let (mut scope, subquery) = self.bind_subquery(tx, scope, subquery)?;
                 if let Some(alias) = alias {
                     scope = scope.alias(self.lower_table_alias(alias))?;
                 }
@@ -1367,7 +1354,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
 
                 let excludes = excludes
                     .iter()
-                    .map(|ident| self.bind_ident(scope, ident).map(|(_qpath, _ty, index)| index))
+                    .map(|ident| self.bind_ident(scope, ident).map(|(_ty, col)| col.index))
                     .collect::<Result<Vec<_>, _>>()?;
 
                 let exprs = scope.column_refs(&excludes).collect::<Vec<_>>();
@@ -1444,7 +1431,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
         &self,
         scope: &Scope,
         ident: &ast::Ident,
-    ) -> Result<(QPath, LogicalType, ir::TupleIndex)> {
+    ) -> Result<(LogicalType, ir::ColumnRef)> {
         scope.lookup_column(&Path::Unqualified(ident.value.clone().into()))
     }
 
@@ -1603,13 +1590,13 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
         let (ty, kind) = match expr {
             ast::Expr::Value(literal) => self.bind_value_expr(literal),
             ast::Expr::Identifier(ident) => {
-                let (qpath, ty, index) = self.bind_ident(scope, ident)?;
-                (ty, ir::ExprKind::ColumnRef(ir::ColumnRef { qpath, index }))
+                let (ty, col) = self.bind_ident(scope, ident)?;
+                (ty, ir::ExprKind::ColumnRef(col))
             }
             ast::Expr::CompoundIdentifier(ident) => {
                 let path = self.lower_path(ident)?;
-                let (qpath, ty, index) = scope.lookup_column(&path)?;
-                (ty, ir::ExprKind::ColumnRef(ir::ColumnRef { qpath, index }))
+                let (ty, col) = scope.lookup_column(&path)?;
+                (ty, ir::ExprKind::ColumnRef(col))
             }
             ast::Expr::UnaryOp { op, expr } => {
                 let expr = Box::new(f(expr)?);
@@ -1728,7 +1715,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                 }
             }
             ast::Expr::Subquery(subquery) => {
-                let plan = self.bind_subquery(tx, scope, subquery)?;
+                let (_, plan) = self.bind_subquery(tx, scope, subquery)?;
                 return ir::Expr::scalar_subquery(plan);
             }
             ast::Expr::Exists { subquery, negated } => {
@@ -1748,7 +1735,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                     );
                 }
 
-                let plan = self.bind_subquery(tx, scope, subquery)?;
+                let (_scope, plan) = self.bind_subquery(tx, scope, subquery)?;
                 (LogicalType::Bool, ir::ExprKind::Subquery(ir::SubqueryKind::Exists, plan))
             }
             ast::Expr::Case { operand, conditions, results, else_result } => {

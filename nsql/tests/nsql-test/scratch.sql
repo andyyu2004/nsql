@@ -1,4 +1,3 @@
-SELECT * FROM ( VALUES (1), (2)) AS t(x) JOIN (SELECT 2 AS k) WHERE k = x;
--- SELECT * FROM (VALUES (1), (2)) AS t(x) JOIN (SELECT 2 AS k);
-
-
+CREATE TABLE integers(x int PRIMARY KEY)
+INSERT INTO integers VALUES (1), (2), (3), (NULL)
+SELECT x FROM INTEGERS WHERE x = (SELECT MAX(x) FROM integers)

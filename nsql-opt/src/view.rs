@@ -111,7 +111,7 @@ impl Query {
                 Plan::Projection(Projection { projection, source })
             }
             Node::Filter([source, predicate]) => Plan::Filter(Filter { source, predicate }),
-            Node::Join(join_kind, [lhs, rhs]) => Plan::Join(Join { join_kind, lhs, rhs }),
+            Node::Join(join_kind, [lhs, rhs]) => Plan::Join(Join { kind: join_kind, lhs, rhs }),
             Node::Unnest(expr) => Plan::Unnest(Unnest { expr }),
             Node::Order([source, order_exprs]) => Plan::Order(Order { source, order_exprs }),
             Node::Limit([source, limit]) => Plan::Limit(Limit { source, limit, msg: None }),
@@ -440,15 +440,15 @@ impl Union {
 
 #[derive(Debug, Copy, Clone)]
 pub struct Join {
-    join_kind: ir::JoinKind,
+    kind: ir::JoinKind,
     lhs: Id,
     rhs: Id,
 }
 
 impl Join {
     #[inline]
-    pub fn join_kind(self) -> ir::JoinKind {
-        self.join_kind
+    pub fn kind(self) -> ir::JoinKind {
+        self.kind
     }
 
     #[inline]

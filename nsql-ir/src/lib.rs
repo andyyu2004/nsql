@@ -178,6 +178,11 @@ pub enum QueryPlan {
 }
 
 impl QueryPlan {
+    #[inline]
+    pub fn take(&mut self) -> Self {
+        mem::take(self)
+    }
+
     pub fn required_transaction_mode(&self) -> TransactionMode {
         struct V {
             requires_write: bool,
@@ -273,11 +278,11 @@ impl fmt::Display for PlanFormatter<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{:indent$}", "", indent = self.indent)?;
         match self.plan {
-            QueryPlan::Aggregate { aggregates: functions, source, group_by, schema: _ } => {
+            QueryPlan::Aggregate { aggregates, source, group_by, schema: _ } => {
                 writeln!(
                     f,
                     "aggregate ({})",
-                    functions
+                    aggregates
                         .iter()
                         .map(|(f, args)| format!("{}({})", f.name(), args.iter().format(",")))
                         .collect::<Vec<_>>()
@@ -298,7 +303,11 @@ impl fmt::Display for PlanFormatter<'_> {
                 writeln!(f)
             }
             QueryPlan::Projection { source, projection, projected_schema: _ } => {
-                writeln!(f, "projection ({})", projection.iter().format(","),)?;
+                if f.alternate() {
+                    writeln!(f, "projection ({:#})", projection.iter().format(","))?;
+                } else {
+                    writeln!(f, "projection ({:#})", projection.iter().format(","))?;
+                }
                 self.child(source).fmt(f)
             }
             QueryPlan::Filter { source, predicate } => {
@@ -430,6 +439,31 @@ impl<E: fmt::Display> fmt::Display for OrderExpr<E> {
 }
 
 impl QueryPlan {
+    #[inline]
+    pub fn correlated_columns(&self) -> Vec<CorrelatedColumn> {
+        #[derive(Default)]
+        struct CorrelatedColumnVisitor {
+            correlated_columns: Vec<CorrelatedColumn>,
+        }
+
+        impl Visitor for CorrelatedColumnVisitor {
+            fn visit_expr(&mut self, plan: &QueryPlan, expr: &Expr) -> ControlFlow<()> {
+                match &expr.kind {
+                    ExprKind::ColumnRef(col) if (col.is_correlated()) => self
+                        .correlated_columns
+                        .push(CorrelatedColumn { ty: expr.ty.clone(), col: col.clone() }),
+                    _ => (),
+                }
+
+                self.walk_expr(plan, expr)
+            }
+        }
+
+        let mut visitor = CorrelatedColumnVisitor::default();
+        visitor.visit_query_plan(self);
+        visitor.correlated_columns
+    }
+
     pub fn schema(&self) -> &Schema {
         match self {
             QueryPlan::TableScan { projected_schema, .. }
@@ -504,18 +538,20 @@ impl QueryPlan {
     }
 
     #[inline]
+    fn unconditional_join(self: Box<Self>, join: JoinKind, rhs: Box<Self>) -> Box<Self> {
+        let schema = self.schema().iter().chain(rhs.schema().iter()).cloned().collect();
+        Box::new(Self::Join { schema, join, lhs: self, rhs })
+    }
+
+    #[inline]
     pub fn cross_join(self: Box<Self>, rhs: Box<Self>) -> Box<Self> {
-        self.join(
-            JoinKind::Inner,
-            rhs,
-            Expr { ty: LogicalType::Bool, kind: ExprKind::Literal(Value::Bool(true)) },
-        )
+        let schema = self.schema().iter().chain(rhs.schema().iter()).cloned().collect();
+        Box::new(Self::Join { schema, join: JoinKind::Inner, lhs: self, rhs })
     }
 
     #[inline]
     pub fn join(self: Box<Self>, join: JoinKind, rhs: Box<Self>, predicate: Expr) -> Box<Self> {
-        let schema = self.schema().iter().chain(rhs.schema().iter()).cloned().collect();
-        Box::new(Self::Join { schema, join, lhs: self, rhs }).filter(predicate)
+        self.unconditional_join(join, rhs).filter(predicate)
     }
 
     #[inline]
@@ -536,20 +572,24 @@ impl QueryPlan {
         Box::new(Self::Projection { source: self, projection, projected_schema })
     }
 
+    pub fn build_leftmost_k_projection(&self, k: usize) -> Box<[Expr]> {
+        let schema = self.schema();
+        assert!(k <= schema.len(), "k must be less than or equal to the number of columns");
+        (0..k)
+            .map(|i| Expr {
+                ty: schema[i].clone(),
+                kind: ExprKind::ColumnRef(ColumnRef::new(
+                    TupleIndex::new(i),
+                    QPath::new("", format!("{i}")),
+                )),
+            })
+            .collect::<Box<_>>()
+    }
+
     /// Create a projection that projects the first `k` columns of the plan
     #[inline]
     pub fn project_leftmost_k(self: Box<Self>, k: usize) -> Box<Self> {
-        let schema = self.schema();
-        assert!(k <= schema.len(), "k must be less than or equal to the number of columns");
-        let projection = (0..k)
-            .map(|i| Expr {
-                ty: schema[i].clone(),
-                kind: ExprKind::ColumnRef(ColumnRef {
-                    qpath: QPath::new("", format!("{i}")),
-                    index: TupleIndex::new(i),
-                }),
-            })
-            .collect::<Box<_>>();
+        let projection = self.build_leftmost_k_projection(k);
         self.project(projection)
     }
 

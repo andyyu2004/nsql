@@ -50,6 +50,7 @@ impl ColumnType for TypeWrapper {
             'D' => LogicalType::Decimal,
             'T' => LogicalType::Text,
             'A' => LogicalType::Array(Box::new(LogicalType::Int64)),
+            'R' => LogicalType::Float64,
             _ => return None,
         };
         Some(TypeWrapper(ty))
@@ -58,7 +59,7 @@ impl ColumnType for TypeWrapper {
     fn to_char(&self) -> char {
         match self.0 {
             LogicalType::Int64 => 'I',
-            LogicalType::Float64 => 'F',
+            LogicalType::Float64 => 'R',
             LogicalType::Bool => 'B',
             LogicalType::Decimal => 'D',
             LogicalType::Text => 'T',

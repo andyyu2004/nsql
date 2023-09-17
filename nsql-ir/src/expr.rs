@@ -35,12 +35,16 @@ impl Expr {
 
     #[inline]
     pub fn column_ref(ty: LogicalType, qpath: QPath, index: TupleIndex) -> Self {
-        Self { ty, kind: ExprKind::ColumnRef(ColumnRef { qpath, index }) }
+        Self { ty, kind: ExprKind::ColumnRef(ColumnRef::new(index, qpath)) }
     }
 
     #[inline]
     pub fn quote(expr: Self) -> Self {
         Self { ty: LogicalType::Expr, kind: ExprKind::Quote(Box::new(expr)) }
+    }
+
+    pub fn lit(ty: LogicalType, value: impl Into<Value>) -> Self {
+        Self { ty, kind: ExprKind::Literal(value.into()) }
     }
 
     #[inline]
@@ -87,7 +91,7 @@ impl Expr {
 
 impl fmt::Display for Expr {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.kind)
+        if f.alternate() { write!(f, "{:#}", self.kind) } else { write!(f, "{}", self.kind) }
     }
 }
 
@@ -135,12 +139,32 @@ pub enum SubqueryKind {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct CorrelatedColumn {
+    pub ty: LogicalType,
+    pub col: ColumnRef,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct ColumnRef {
     /// An index into the tuple the expression is evaluated against
     pub index: TupleIndex,
-
     /// A qualified display path for the column (for pretty printing etc)
     pub qpath: QPath,
+    /// The scope level, where 0 is the current scope.
+    /// level > 0 means the column is a correlated reference to an outer scope
+    pub level: u8,
+}
+
+impl ColumnRef {
+    #[inline]
+    pub fn new(index: TupleIndex, qpath: QPath) -> Self {
+        Self { index, qpath, level: 0 }
+    }
+
+    #[inline]
+    pub fn is_correlated(&self) -> bool {
+        self.level > 0
+    }
 }
 
 impl fmt::Display for ColumnRef {
@@ -152,10 +176,9 @@ impl fmt::Display for ColumnRef {
 impl FromStr for ColumnRef {
     type Err = anyhow::Error;
 
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let (qpath, index) =
-            s.split_once('@').ok_or_else(|| anyhow::anyhow!("invalid column ref"))?;
-        Ok(Self { qpath: qpath.parse()?, index: index.parse()? })
+    fn from_str(_s: &str) -> Result<Self, Self::Err> {
+        // this is just to satisfy the trait for egraphs
+        todo!()
     }
 }
 
@@ -235,7 +258,13 @@ impl fmt::Display for ExprKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match &self {
             ExprKind::Literal(value) => write!(f, "{value}"),
-            ExprKind::ColumnRef(col) => write!(f, "{col}"),
+            ExprKind::ColumnRef(col) => {
+                if f.alternate() {
+                    write!(f, "{col:#}")
+                } else {
+                    write!(f, "{col}")
+                }
+            }
             ExprKind::Array(exprs) => write!(f, "[{}]", exprs.iter().format(", ")),
             ExprKind::FunctionCall { function, args } => {
                 write!(f, "{}({})", function.name(), args.iter().format(", "))

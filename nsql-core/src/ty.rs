@@ -149,6 +149,11 @@ impl Schema {
         self.types.len() == supertype.len()
             && self.types.iter().zip(supertype.iter()).all(|(a, b)| a.is_subtype_of(b))
     }
+
+    #[inline]
+    pub fn into_inner(self) -> Box<[LogicalType]> {
+        self.types
+    }
 }
 
 impl Deref for Schema {

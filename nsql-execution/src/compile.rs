@@ -59,7 +59,13 @@ impl<F> Compiler<F> {
                 let expr = (*expr).clone();
                 self.ops = expr.resolve(catalog, tx)?.into_ops();
             }
-            opt::Expr::ColumnRef(col) => self.emit(ExprOp::Project { index: col.index }),
+            opt::Expr::ColumnRef(col) => {
+                assert!(
+                    col.level == 0,
+                    "correlated column references should be resolved before compilation, got column reference: {col:?}",
+                );
+                self.emit(ExprOp::Project { index: col.index })
+            }
             opt::Expr::Literal(lit) => self.emit(ExprOp::Push(lit.value(q).clone())),
             opt::Expr::Array(array) => {
                 let exprs = array.exprs(q);
