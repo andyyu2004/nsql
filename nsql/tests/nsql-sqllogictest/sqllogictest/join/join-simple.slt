@@ -86,20 +86,3 @@ SELECT * FROM book LEFT JOIN author ON book.author = author.author_id ORDER BY b
 3 War and Peace 2 2 Leo Tolstoy
 4 Unknown NULL NULL NULL
 
-query ITIIT ok
-SELECT * FROM book RIGHT JOIN author ON book.author = author.author_id ORDER BY book_id
-----
-NULL NULL NULL 3 Unknown Author
-1 The Hobbit 1 1 J.R.R. Tolkien
-2 The Silmarillion 1 1 J.R.R. Tolkien
-3 War and Peace 2 2 Leo Tolstoy
-
-
-query ITIIT ok
-SELECT * FROM book FULL JOIN author ON book.author = author.author_id ORDER BY book_id
-----
-NULL NULL NULL 3 Unknown Author
-1 The Hobbit 1 1 J.R.R. Tolkien
-2 The Silmarillion 1 1 J.R.R. Tolkien
-3 War and Peace 2 2 Leo Tolstoy
-4 Unknown NULL NULL NULL

@@ -9,7 +9,7 @@ CREATE TABLE t (id int PRIMARY KEY)
 statement ok
 INSERT INTO t(id) VALUES (1), (2)
 
-query II
+query II rowsort
 SELECT * FROM t JOIN (SELECT * FROM t)
 ----
 1 1
@@ -17,7 +17,7 @@ SELECT * FROM t JOIN (SELECT * FROM t)
 2 1
 2 2
 
-query II
+query II rowsort
 SELECT * FROM (SELECT * FROM (SELECT * FROM t) JOIN (SELECT * FROM t))
 ----
 1 1

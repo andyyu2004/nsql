@@ -27,13 +27,14 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     pub fn plan(
         join_kind: ir::JoinKind,
         join_predicate: ExecutableExpr<S>,
-        probe_node: Arc<dyn PhysicalNode<'env, 'txn, S, M>>,
-        build_node: Arc<dyn PhysicalNode<'env, 'txn, S, M>>,
+        lhs_node: Arc<dyn PhysicalNode<'env, 'txn, S, M>>,
+        rhs_node: Arc<dyn PhysicalNode<'env, 'txn, S, M>>,
     ) -> Arc<dyn PhysicalNode<'env, 'txn, S, M>> {
+        assert!(!join_kind.is_right(), "right joins are not supported by nested-loop join");
         Arc::new(Self {
             join_kind,
             join_predicate,
-            children: [probe_node, build_node],
+            children: [lhs_node, rhs_node],
             found_match_for_tuple: AtomicBool::new(false),
             rhs_index: AtomicUsize::new(0),
             rhs_tuples_build: Default::default(),
@@ -41,11 +42,11 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
         })
     }
 
-    fn probe_node(&self) -> Arc<dyn PhysicalNode<'env, 'txn, S, M>> {
+    fn lhs_node(&self) -> Arc<dyn PhysicalNode<'env, 'txn, S, M>> {
         Arc::clone(&self.children[0])
     }
 
-    fn build_node(&self) -> Arc<dyn PhysicalNode<'env, 'txn, S, M>> {
+    fn rhs_node(&self) -> Arc<dyn PhysicalNode<'env, 'txn, S, M>> {
         Arc::clone(&self.children[1])
     }
 }
@@ -87,13 +88,13 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode
         // `current` is the probe pipeline of the join
         arena[current].add_operator(Arc::clone(&self) as _);
 
-        self.probe_node().build_pipelines(arena, meta_builder, current);
+        self.lhs_node().build_pipelines(arena, meta_builder, current);
 
         // create a new meta pipeline for the build side of the join with `self` as the sink
         let child_meta_pipeline =
             arena.new_child_meta_pipeline(meta_builder, Arc::clone(&self) as _);
 
-        arena.build(child_meta_pipeline, self.build_node());
+        arena.build(child_meta_pipeline, self.rhs_node());
     }
 }
 
@@ -131,7 +132,7 @@ impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalOperator<'
                 let found_match = self.found_match_for_tuple.swap(false, atomic::Ordering::Relaxed);
                 // emit the lhs_tuple padded with nulls if no match was found
                 if !found_match && self.join_kind.is_left() {
-                    return Ok(OperatorState::Yield(lhs_tuple.fill_right(rhs_tuple_width)));
+                    return Ok(OperatorState::Yield(lhs_tuple.pad_right(rhs_tuple_width)));
                 }
                 return Ok(OperatorState::Continue);
             }
@@ -149,12 +150,6 @@ impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalOperator<'
         if keep {
             self.found_match_for_tuple.store(true, atomic::Ordering::Relaxed);
             Ok(OperatorState::Again(Some(joint_tuple)))
-        } else if rhs_index == rhs_tuples.len() - 1
-            && self.join_kind.is_right()
-            && !self.found_match_for_tuple.load(atomic::Ordering::Relaxed)
-        {
-            // emit a rhs_tuple padded with nulls if no match was found
-            Ok(OperatorState::Again(Some(rhs_tuple.clone().fill_left(lhs_width))))
         } else {
             Ok(OperatorState::Again(None))
         }
@@ -202,7 +197,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Explain<'_, 
         _tx: &dyn Transaction<'_, S>,
         f: &mut fmt::Formatter<'_>,
     ) -> explain::Result {
-        write!(f, "nested loop join ({})", self.join_kind)?;
+        write!(f, "nested loop join ({}) ON ({})", self.join_kind, self.join_predicate)?;
         Ok(())
     }
 }

@@ -506,7 +506,7 @@ impl<'q> fmt::Display for ExprDisplay<'q> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let q = self.q;
         match &self.expr {
-            Expr::ColumnRef(col) => write!(f, "{}", col.qpath),
+            Expr::ColumnRef(col) => col.fmt(f),
             Expr::Literal(lit) => write!(f, "{}", lit.value(q)),
             Expr::Array(array) => {
                 write!(f, "[{}]", array.exprs(q).map(|expr| expr.display(q)).format(", "))

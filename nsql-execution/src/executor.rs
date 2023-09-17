@@ -33,7 +33,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Executor<'en
         let pipeline: &Pipeline<'env, 'txn, S, M> = &self.arena[pipeline];
         let mut stream = Arc::clone(&pipeline.source).source(ecx)?;
 
-        'main: while let Some(input_tuple) = stream.next()? {
+        while let Some(input_tuple) = stream.next()? {
             'input: loop {
                 tracing::debug!(%input_tuple, "pushing tuple through pipeline");
                 let mut again = false;
@@ -49,7 +49,13 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Executor<'en
                             None => continue 'input,
                         },
                         OperatorState::Yield(tuple) => tuple,
-                        OperatorState::Continue => continue 'main,
+                        OperatorState::Continue => {
+                            if again {
+                                continue 'input;
+                            } else {
+                                break 'input;
+                            }
+                        }
                         // Once an operator completes, the entire pipeline is finished
                         OperatorState::Done => return Ok(()),
                     };

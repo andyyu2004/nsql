@@ -1213,7 +1213,6 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
             ast::JoinOperator::Inner(_) | ast::JoinOperator::CrossJoin => ir::JoinKind::Inner,
             ast::JoinOperator::LeftOuter(_) => ir::JoinKind::Left,
             ast::JoinOperator::RightOuter(_) => ir::JoinKind::Right,
-            ast::JoinOperator::FullOuter(_) => ir::JoinKind::Full,
             _ => not_implemented!("{kind}"),
         };
 
