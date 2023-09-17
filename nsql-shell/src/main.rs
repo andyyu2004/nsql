@@ -5,9 +5,9 @@ use argh::FromArgs;
 use nsql::{LmdbStorageEngine, MaterializedQueryOutput, Nsql};
 use nu_ansi_term::{Color, Style};
 use reedline::{
-    default_vi_insert_keybindings, default_vi_normal_keybindings, DefaultHinter, FileBackedHistory,
-    KeyCode, KeyModifiers, PromptEditMode, PromptHistorySearch, PromptHistorySearchStatus,
-    PromptViMode, Reedline, ReedlineEvent, Signal, Vi,
+    default_vi_insert_keybindings, default_vi_normal_keybindings, DefaultHinter, DefaultValidator,
+    FileBackedHistory, KeyCode, KeyModifiers, PromptEditMode, PromptHistorySearch,
+    PromptHistorySearchStatus, PromptViMode, Reedline, ReedlineEvent, Signal, ValidationResult, Vi,
 };
 use tabled::builder::Builder;
 use tabled::Table;
@@ -25,6 +25,21 @@ struct Args {
 
     #[argh(positional)]
     path: PathBuf,
+}
+
+struct Validator;
+
+impl reedline::Validator for Validator {
+    fn validate(&self, line: &str) -> reedline::ValidationResult {
+        if matches!(DefaultValidator.validate(line), ValidationResult::Incomplete) {
+            return ValidationResult::Incomplete;
+        }
+
+        match nsql::parse(line) {
+            Ok(_) => ValidationResult::Complete,
+            Err(_) => ValidationResult::Incomplete,
+        }
+    }
 }
 
 fn main() -> nsql::Result<()> {
@@ -52,6 +67,7 @@ fn main() -> nsql::Result<()> {
     let mut line_editor = Reedline::create()
         .with_edit_mode(Box::new(Vi::new(ikb, default_vi_normal_keybindings())))
         .with_history(Box::new(FileBackedHistory::with_file(500, "/tmp/nsql-history.txt".into())?))
+        .with_validator(Box::new(Validator))
         .with_hinter(Box::new(
             DefaultHinter::default().with_style(Style::new().italic().fg(Color::DarkGray)),
         ));
