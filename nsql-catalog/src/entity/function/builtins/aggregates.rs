@@ -132,3 +132,41 @@ impl AggregateFunctionInstance for CountStar {
         Value::Int64(self.count as i64)
     }
 }
+
+#[derive(Debug, Default)]
+pub(super) struct Min {
+    value: Value,
+}
+
+impl AggregateFunctionInstance for Min {
+    #[inline]
+    fn update(&mut self, value: Option<Value>) {
+        self.value = match (self.value.take(), value.expect("min should be passed an argument")) {
+            (current, Value::Null) => current,
+            (Value::Null, v) => v,
+            (current, v) => current.min(v),
+        }
+    }
+
+    #[inline]
+    fn finalize(self: Box<Self>) -> Value {
+        self.value
+    }
+}
+
+#[derive(Debug, Default)]
+pub(super) struct Max {
+    value: Value,
+}
+
+impl AggregateFunctionInstance for Max {
+    #[inline]
+    fn update(&mut self, value: Option<Value>) {
+        self.value = self.value.take().max(value.expect("max should be passed an argument"))
+    }
+
+    #[inline]
+    fn finalize(self: Box<Self>) -> Value {
+        self.value
+    }
+}

@@ -155,6 +155,8 @@ pub(crate) fn get_aggregate_function(
         _ if oid == Function::FIRST => Box::<First>::default(),
         _ if oid == Function::COUNT => Box::<Count>::default(),
         _ if oid == Function::COUNT_STAR => Box::<CountStar>::default(),
+        _ if oid == Function::MIN => Box::<Min>::default(),
+        _ if oid == Function::MAX => Box::<Max>::default(),
         _ => return None,
     })
 }

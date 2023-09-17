@@ -63,6 +63,8 @@ impl Function {
         LTE,
         GTE,
         GT,
+        MAX,
+        MIN,
         ADD_INT,
         ADD_FLOAT,
         ADD_DEC,
@@ -144,6 +146,8 @@ impl Function {
             aggregate!(FIRST       first   : (Any)   -> Any),
             aggregate!(COUNT       count   : (Any)   -> Int64),
             aggregate!(COUNT_STAR  count   : ()      -> Int64),
+            aggregate!(MIN         min     : (Any)   -> Any),
+            aggregate!(MAX         max     : (Any)   -> Any),
             // casts
             cast!(CAST_SELF          : Any   => Any),
             cast!(CAST_INT_TO_DEC    : Int64 => Decimal),

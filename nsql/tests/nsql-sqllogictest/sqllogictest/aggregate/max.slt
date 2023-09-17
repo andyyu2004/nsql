@@ -1,0 +1,9 @@
+query I
+SELECT MAX(x) FROM (VALUES (1), (2), (3), (null)) AS t(x)
+----
+3
+
+query I
+SELECT MAX(x) FROM (SELECT 1 AS x WHERE false)
+----
+NULL
