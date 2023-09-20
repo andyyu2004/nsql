@@ -23,6 +23,34 @@ impl Folder for PushdownDependentJoin {
             );
         }
 
+        struct CorrelatedColumnRewriter<'a> {
+            correlated_columns: &'a [ir::CorrelatedColumn],
+        }
+
+        impl Folder for CorrelatedColumnRewriter<'_> {
+            fn as_dyn(&mut self) -> &mut dyn Folder {
+                self
+            }
+
+            fn fold_expr(&mut self, plan: &mut ir::QueryPlan, expr: ir::Expr) -> ir::Expr {
+                match expr.kind {
+                    ir::ExprKind::ColumnRef(col) if col.is_correlated() => {
+                        // FIXME don't think this is quite the right computation to get the index
+                        let index = self
+                            .correlated_columns
+                            .iter()
+                            .position(|cor| cor.col == col)
+                            .expect("there should be a match");
+
+                        ir::Expr::column_ref(expr.ty, col.qpath, ir::TupleIndex::new(index))
+                    }
+                    _ => expr.fold_with(self, plan),
+                }
+            }
+        }
+
+        let mut rewriter = CorrelatedColumnRewriter { correlated_columns: &correlated_columns };
+
         match plan {
             ir::QueryPlan::DummyScan | ir::QueryPlan::CteScan { .. } => {
                 unreachable!("these plans can't have correlated references")
@@ -35,34 +63,6 @@ impl Folder for PushdownDependentJoin {
             ir::QueryPlan::Projection { source, projection, projected_schema: _ } => {
                 let mut source = self.fold_boxed_plan(source);
 
-                struct CorrelatedColumnRewriter<'a> {
-                    correlated_columns: &'a [ir::CorrelatedColumn],
-                }
-
-                impl Folder for CorrelatedColumnRewriter<'_> {
-                    fn as_dyn(&mut self) -> &mut dyn Folder {
-                        self
-                    }
-
-                    fn fold_expr(&mut self, plan: &mut ir::QueryPlan, expr: ir::Expr) -> ir::Expr {
-                        match expr.kind {
-                            ir::ExprKind::ColumnRef(col) if col.is_correlated() => {
-                                // FIXME don't think this is quite the right computation to get the index
-                                let index = self
-                                    .correlated_columns
-                                    .iter()
-                                    .position(|cor| cor.col == col)
-                                    .expect("there should be a match");
-
-                                ir::Expr::column_ref(expr.ty, col.qpath, ir::TupleIndex::new(index))
-                            }
-                            _ => expr.fold_with(self, plan),
-                        }
-                    }
-                }
-
-                let mut rewriter =
-                    CorrelatedColumnRewriter { correlated_columns: &correlated_columns };
                 let original_projection = rewriter.fold_exprs(&mut source, projection).into_vec();
 
                 let lhs_schema = self.lhs.schema();
@@ -77,7 +77,11 @@ impl Folder for PushdownDependentJoin {
                     projected_schema,
                 }
             }
-            ir::QueryPlan::Filter { source: _, predicate: _ } => todo!(),
+            ir::QueryPlan::Filter { source, predicate } => {
+                let mut source = self.fold_boxed_plan(source);
+                let predicate = rewriter.fold_expr(&mut source, predicate);
+                ir::QueryPlan::Filter { source, predicate }
+            }
             ir::QueryPlan::Unnest { schema: _, expr: _ } => todo!(),
             ir::QueryPlan::Values { schema: _, values: _ } => todo!(),
             ir::QueryPlan::Union { schema: _, lhs: _, rhs: _ } => todo!(),

@@ -15,12 +15,9 @@ NULL NULL
 
 # scalar filter with correlation
 query II rowsort
-SELECT i FROM integers WHERE (SELECT i + 0) >= 2;
+SELECT i FROM integers WHERE i = (SELECT i WHERE i = 2);
 ----
-2 
-3 
-
-
+2
 
 # statement ok
 # CREATE TABLE employee (

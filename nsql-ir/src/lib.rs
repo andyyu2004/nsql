@@ -306,7 +306,7 @@ impl fmt::Display for PlanFormatter<'_> {
                 if f.alternate() {
                     writeln!(f, "projection ({:#})", projection.iter().format(","))?;
                 } else {
-                    writeln!(f, "projection ({:#})", projection.iter().format(","))?;
+                    writeln!(f, "projection ({})", projection.iter().format(","))?;
                 }
                 self.child(source).fmt(f)
             }
@@ -449,7 +449,7 @@ impl QueryPlan {
         impl Visitor for CorrelatedColumnVisitor {
             fn visit_expr(&mut self, plan: &QueryPlan, expr: &Expr) -> ControlFlow<()> {
                 match &expr.kind {
-                    ExprKind::ColumnRef(col) if (col.is_correlated()) => self
+                    ExprKind::ColumnRef(col) if col.is_correlated() => self
                         .correlated_columns
                         .push(CorrelatedColumn { ty: expr.ty.clone(), col: col.clone() }),
                     _ => (),
