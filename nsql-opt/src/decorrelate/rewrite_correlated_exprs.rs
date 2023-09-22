@@ -12,7 +12,7 @@ impl Folder for PushdownDependentJoin {
     fn fold_plan(&mut self, plan: ir::QueryPlan) -> ir::QueryPlan {
         let correlated_columns = plan.correlated_columns();
         if correlated_columns.is_empty() {
-            // no more dependent columns on the rhs, can replace dependent join with cross product
+            // no more dependent columns on the rhs, can replace the (implicit) dependent join with a cross product
             return *Box::new(self.lhs.clone()).cross_join(Box::new(plan));
         }
 
@@ -52,8 +52,11 @@ impl Folder for PushdownDependentJoin {
         let mut rewriter = CorrelatedColumnRewriter { correlated_columns: &correlated_columns };
 
         match plan {
-            ir::QueryPlan::DummyScan | ir::QueryPlan::CteScan { .. } => {
-                unreachable!("these plans can't have correlated references")
+            ir::QueryPlan::DummyScan
+            | ir::QueryPlan::CteScan { .. }
+            | ir::QueryPlan::Unnest { schema: _, expr: _ }
+            | ir::QueryPlan::Values { schema: _, values: _ } => {
+                unreachable!("these plans can't contain correlated references")
             }
             ir::QueryPlan::Cte { cte: _, child: _ } => todo!(),
             ir::QueryPlan::Aggregate { aggregates: _, source: _, group_by: _, schema: _ } => {
@@ -66,8 +69,10 @@ impl Folder for PushdownDependentJoin {
                 let original_projection = rewriter.fold_exprs(&mut source, projection).into_vec();
 
                 let lhs_schema = self.lhs.schema();
+                // create a projection for the columns of the lhs plan so they don't get lost
                 let mut projection =
                     self.lhs.build_leftmost_k_projection(lhs_schema.len()).into_vec();
+                // append on the rewritten projections
                 projection.extend(original_projection);
 
                 let projected_schema = projection.iter().map(|expr| expr.ty()).collect();
@@ -82,8 +87,6 @@ impl Folder for PushdownDependentJoin {
                 let predicate = rewriter.fold_expr(&mut source, predicate);
                 ir::QueryPlan::Filter { source, predicate }
             }
-            ir::QueryPlan::Unnest { schema: _, expr: _ } => todo!(),
-            ir::QueryPlan::Values { schema: _, values: _ } => todo!(),
             ir::QueryPlan::Union { schema: _, lhs: _, rhs: _ } => todo!(),
             ir::QueryPlan::Join { schema: _, join: _, lhs: _, rhs: _ } => todo!(),
             ir::QueryPlan::Limit { source: _, limit: _, exceeded_message: _ } => todo!(),

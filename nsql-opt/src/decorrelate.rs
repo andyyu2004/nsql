@@ -46,6 +46,12 @@ impl Flattener {
         kind: ir::SubqueryKind,
         subquery_plan: Box<ir::QueryPlan>,
     ) -> ir::Expr {
+        // We use the approach from Neumann's `Unnesting Arbitrary Subqueries`.
+        // https://btw-2015.informatik.uni-hamburg.de/res/proceedings/Hauptband/Wiss/Neumann-Unnesting_Arbitrary_Querie.pdf
+        // Complementary slides from duckdb: https://drive.google.com/file/d/17_sVIwwxFM5RZB5McQZ8dzT8JvOHZuAq/view?pli=1
+        // The gist is that a correlated subquery can be initially represented as a dependent join `<plan> dependent-join <subquery-plan>`.
+        // Then we can push this dependent join down until there are no more correlated/dependent columns and then we can turn it into an equivalent cross product.
+        // This is what the `PushdownDependentJoin` transform implements. We never explicitly create the dependent join node, but only create the cross product.
         match kind {
             ir::SubqueryKind::Scalar => {
                 let n = plan.schema().len();
