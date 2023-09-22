@@ -102,8 +102,13 @@ pub struct Cte {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
 pub enum QueryPlan {
+    /// Single empty tuple as output
     #[default]
     DummyScan,
+    /// No rows output. This can have any schema as it produces no output.
+    Empty {
+        schema: Schema,
+    },
     // introduce a cte
     Cte {
         cte: Cte,
@@ -278,6 +283,8 @@ impl fmt::Display for PlanFormatter<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{:indent$}", "", indent = self.indent)?;
         match self.plan {
+            QueryPlan::Empty { .. } => write!(f, "empty"),
+            QueryPlan::DummyScan => write!(f, "dummy scan"),
             QueryPlan::Aggregate { aggregates, source, group_by, schema: _ } => {
                 writeln!(
                     f,
@@ -329,7 +336,6 @@ impl fmt::Display for PlanFormatter<'_> {
                 write!(f, "order ({})", order.iter().format(","),)?;
                 self.child(source).fmt(f)
             }
-            QueryPlan::DummyScan => write!(f, "dummy scan"),
             QueryPlan::Insert { table, source, returning, schema: _ } => {
                 write!(f, "INSERT INTO {table}")?;
                 if !returning.is_empty() {
@@ -495,6 +501,7 @@ impl QueryPlan {
             | QueryPlan::Insert { schema, .. }
             | QueryPlan::Update { schema, .. }
             | QueryPlan::CteScan { schema, .. }
+            | QueryPlan::Empty { schema }
             | QueryPlan::Values { schema, .. } => schema,
             QueryPlan::Filter { source, .. }
             | QueryPlan::Limit { source, .. }

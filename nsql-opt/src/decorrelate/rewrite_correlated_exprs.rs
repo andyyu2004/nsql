@@ -53,7 +53,8 @@ impl Folder for PushdownDependentJoin {
 
         match plan {
             ir::QueryPlan::DummyScan
-            | ir::QueryPlan::CteScan { .. }
+            | ir::QueryPlan::Empty { schema: _ }
+            | ir::QueryPlan::CteScan { name: _, schema: _ }
             | ir::QueryPlan::Unnest { schema: _, expr: _ }
             | ir::QueryPlan::Values { schema: _, values: _ } => {
                 unreachable!("these plans can't contain correlated references")

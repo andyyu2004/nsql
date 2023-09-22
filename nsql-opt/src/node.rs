@@ -30,6 +30,7 @@ define_language! {
 
         // relational expression
         "dummy" = DummyScan,
+        "empty" = EmptyPlan,
         "project" = Project([Id; 2]),            // (project <source> (<exprs> ...))
         "filter" = Filter([Id; 2]),              // (filter <source> <predicate>)
         Join(ir::JoinKind, [Id; 2]),             // (join <join-kind> <lhs> <rhs>)
@@ -103,6 +104,7 @@ impl Builder {
     fn build_query(&mut self, query: &ir::QueryPlan) -> Id {
         let expr = match query {
             ir::QueryPlan::DummyScan => Node::DummyScan,
+            ir::QueryPlan::Empty { .. } => Node::EmptyPlan,
             ir::QueryPlan::Aggregate { aggregates, source, group_by, schema: _ } => {
                 let source = self.build_query(source);
                 let group_by = self.build_exprs(source, group_by);

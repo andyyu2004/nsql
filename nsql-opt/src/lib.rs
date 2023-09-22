@@ -12,7 +12,7 @@ pub use egg::Id as NodeId;
 use ir::fold::{ExprFold, Folder, PlanFold};
 use nsql_core::LogicalType;
 
-use self::decorrelate::Decorrelator;
+use self::decorrelate::Decorrelate;
 pub use self::view::{CallExpr, Expr, Plan, Query};
 
 trait Pass: Folder {
@@ -39,7 +39,11 @@ fn optimize_query(mut plan: Box<ir::QueryPlan>) -> Query {
     plan.validate().unwrap_or_else(|err| panic!("invalid plan passed to optimizer: {err}"));
 
     loop {
-        let passes = [&mut IdentityProjectionRemover as &mut dyn Pass, &mut Decorrelator];
+        let passes = [
+            &mut IdentityProjectionElimination as &mut dyn Pass,
+            &mut EmptyPlanElimination,
+            &mut Decorrelate,
+        ];
         let pre_opt_plan = plan.clone();
         for pass in passes {
             plan = pass.fold_boxed_plan(plan);
@@ -58,15 +62,15 @@ fn optimize_query(mut plan: Box<ir::QueryPlan>) -> Query {
     builder.finalize(root)
 }
 
-struct IdentityProjectionRemover;
+struct IdentityProjectionElimination;
 
-impl Pass for IdentityProjectionRemover {
+impl Pass for IdentityProjectionElimination {
     fn name(&self) -> &'static str {
         "identity projection removal"
     }
 }
 
-impl Folder for IdentityProjectionRemover {
+impl Folder for IdentityProjectionElimination {
     #[inline]
     fn as_dyn(&mut self) -> &mut dyn Folder {
         self
@@ -89,6 +93,36 @@ impl Folder for IdentityProjectionRemover {
             }
         } else {
             plan.fold_with(self)
+        }
+    }
+}
+
+struct EmptyPlanElimination;
+
+impl Pass for EmptyPlanElimination {
+    fn name(&self) -> &'static str {
+        "empty plan elimination"
+    }
+}
+
+impl Folder for EmptyPlanElimination {
+    #[inline]
+    fn as_dyn(&mut self) -> &mut dyn Folder {
+        self
+    }
+
+    fn fold_plan(&mut self, plan: ir::QueryPlan) -> ir::QueryPlan {
+        match plan {
+            ir::QueryPlan::DummyScan => ir::QueryPlan::DummyScan,
+            ir::QueryPlan::Limit { source, limit, exceeded_message: None } if limit == 0 => {
+                ir::QueryPlan::Empty { schema: source.schema().clone() }
+            }
+            ir::QueryPlan::Filter { source, predicate }
+                if predicate.kind == ir::ExprKind::Literal(false.into()) =>
+            {
+                ir::QueryPlan::Empty { schema: source.schema().clone() }
+            }
+            _ => plan.fold_with(self),
         }
     }
 }

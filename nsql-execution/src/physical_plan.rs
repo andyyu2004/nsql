@@ -221,7 +221,8 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalPlanner<'env, S> {
                 self.compile_order_exprs(tx, q, order.order_exprs(q))?,
             ),
             opt::Plan::TableScan(scan) => PhysicalTableScan::plan(scan.table(q), None),
-            opt::Plan::DummyScan => PhysicalDummyScan::plan(),
+            opt::Plan::DummyScan => PhysicalDummyScan::plan(false),
+            opt::Plan::Empty => PhysicalDummyScan::plan(true),
             opt::Plan::Union(union) => {
                 PhysicalUnion::plan(f(self, union.lhs(q))?, f(self, union.rhs(q))?)
             }

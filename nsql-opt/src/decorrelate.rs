@@ -3,15 +3,15 @@ mod rewrite_correlated_exprs;
 use super::*;
 use crate::decorrelate::rewrite_correlated_exprs::*;
 
-pub(crate) struct Decorrelator;
+pub(crate) struct Decorrelate;
 
-impl Pass for Decorrelator {
+impl Pass for Decorrelate {
     fn name(&self) -> &'static str {
         "subquery decorrelation"
     }
 }
 
-impl Folder for Decorrelator {
+impl Folder for Decorrelate {
     #[inline]
     fn as_dyn(&mut self) -> &mut dyn Folder {
         self

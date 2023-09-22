@@ -77,6 +77,8 @@ impl PlanFold for QueryPlan {
 
     fn fold_with(self, folder: &mut dyn Folder) -> Self {
         match self {
+            QueryPlan::DummyScan => QueryPlan::DummyScan,
+            QueryPlan::Empty { schema } => QueryPlan::Empty { schema },
             // maybe can incorporate an expression folder in here too?
             QueryPlan::TableScan { table, projection, projected_schema } => {
                 QueryPlan::TableScan { table, projection, projected_schema }
@@ -123,7 +125,6 @@ impl PlanFold for QueryPlan {
                     source,
                 }
             }
-            QueryPlan::DummyScan => QueryPlan::DummyScan,
             QueryPlan::Insert { table, source, returning, schema } => {
                 let mut source = folder.fold_boxed_plan(source);
                 QueryPlan::Insert {

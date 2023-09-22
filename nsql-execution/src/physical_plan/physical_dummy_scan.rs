@@ -4,12 +4,16 @@ use super::*;
 use crate::TupleStream;
 
 #[derive(Debug)]
-pub struct PhysicalDummyScan;
+pub struct PhysicalDummyScan {
+    empty: bool,
+}
 
 impl PhysicalDummyScan {
-    pub(crate) fn plan<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>()
-    -> Arc<dyn PhysicalNode<'env, 'txn, S, M>> {
-        Arc::new(Self)
+    /// If `empty`, then output no tuples, otherwise output a single empty tuple.
+    pub(crate) fn plan<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
+        empty: bool,
+    ) -> Arc<dyn PhysicalNode<'env, 'txn, S, M>> {
+        Arc::new(Self { empty })
     }
 }
 
@@ -20,7 +24,11 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
         self: Arc<Self>,
         _ecx: &'txn ExecutionContext<'_, 'env, S, M>,
     ) -> ExecutionResult<TupleStream<'txn>> {
-        Ok(Box::new(fallible_iterator::once(Tuple::empty())))
+        if self.empty {
+            Ok(Box::new(fallible_iterator::empty()))
+        } else {
+            Ok(Box::new(fallible_iterator::once(Tuple::empty())))
+        }
     }
 }
 
@@ -60,7 +68,11 @@ impl<'env: 'txn, 'txn, S: StorageEngine> Explain<'_, S> for PhysicalDummyScan {
         _tx: &dyn Transaction<'_, S>,
         f: &mut fmt::Formatter<'_>,
     ) -> explain::Result {
-        write!(f, "dummy scan")?;
+        if self.empty {
+            write!(f, "empty")?;
+        } else {
+            write!(f, "dummy scan")?;
+        }
         Ok(())
     }
 }

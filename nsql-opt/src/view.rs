@@ -82,6 +82,7 @@ impl Query {
                 panic!("subquery nodes should have been flattened during optimization")
             }
             ref node @ (Node::DummyScan
+            | Node::EmptyPlan
             | Node::Nodes(_)
             | Node::Project(_)
             | Node::Filter(_)
@@ -107,6 +108,7 @@ impl Query {
     fn plan(&self, id: Id) -> Plan<'_> {
         match *self.node(id) {
             Node::DummyScan => Plan::DummyScan,
+            Node::EmptyPlan => Plan::Empty,
             Node::Project([source, projection]) => {
                 Plan::Projection(Projection { projection, source })
             }
@@ -167,6 +169,7 @@ pub enum Plan<'a> {
     CteScan(CteScan<'a>),
     Cte(Cte<'a>),
     DummyScan,
+    Empty,
 }
 
 #[derive(Debug, Copy, Clone)]
