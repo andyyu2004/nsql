@@ -3,6 +3,10 @@ name = "nsql-shell"
 version = "0.1.0"
 edition = "2021"
 
+[[bin]]
+name = "nsql"
+path = "src/main.rs"
+
 [dependencies]
 argh = "0.1.10"
 nsql = { path = "../nsql" }
