@@ -1,4 +1,4 @@
-use ir::fold::{ExprFold, Folder};
+use ir::fold::{ExprFold, Folder, PlanFold};
 
 pub(super) struct PushdownDependentJoin {
     pub(super) lhs: ir::QueryPlan,
@@ -59,9 +59,7 @@ impl Folder for PushdownDependentJoin {
                 unreachable!("these plans can't contain correlated references")
             }
             ir::QueryPlan::Cte { cte: _, child: _ } => todo!(),
-            ir::QueryPlan::Aggregate { aggregates: _, source: _, group_by: _, schema: _ } => {
-                todo!()
-            }
+            ir::QueryPlan::Aggregate { .. } => todo!(),
             ir::QueryPlan::TableScan { table: _, projection: _, projected_schema: _ } => todo!(),
             ir::QueryPlan::Projection { source, projection, projected_schema: _ } => {
                 let mut source = self.fold_boxed_plan(source);
@@ -87,9 +85,9 @@ impl Folder for PushdownDependentJoin {
                 let predicate = rewriter.fold_expr(&mut source, predicate);
                 ir::QueryPlan::Filter { source, predicate }
             }
+            ir::QueryPlan::Limit { .. } => plan.fold_with(self),
             ir::QueryPlan::Union { schema: _, lhs: _, rhs: _ } => todo!(),
             ir::QueryPlan::Join { schema: _, join: _, lhs: _, rhs: _ } => todo!(),
-            ir::QueryPlan::Limit { source: _, limit: _, exceeded_message: _ } => todo!(),
             ir::QueryPlan::Order { source: _, order: _ } => todo!(),
             ir::QueryPlan::Insert { table: _, source: _, returning: _, schema: _ } => todo!(),
             ir::QueryPlan::Update { table: _, source: _, returning: _, schema: _ } => todo!(),

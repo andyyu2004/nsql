@@ -13,6 +13,42 @@ SELECT i, (SELECT 42+i) FROM integers;
 3 45
 NULL NULL
 
+query II
+SELECT i, (SELECT 42+i1.i) AS j FROM integers i1 ORDER BY i;
+----
+NULL NULL
+1 43
+2 44
+3 45
+
+# ORDER BY correlated subquery
+query I
+SELECT i FROM integers i1 ORDER BY (SELECT 100-i1.i);
+----
+NULL
+3
+2
+1
+
+# subquery with LIMIT
+query II
+SELECT i, (SELECT 42+i1.i FROM integers LIMIT 1) AS j FROM integers i1 ORDER BY i;
+----
+NULL	NULL
+1	43
+2	44
+3	45
+
+# subquery with LIMIT 0
+query II
+SELECT i, (SELECT 42+i1.i FROM integers LIMIT 0) AS j FROM integers i1 ORDER BY i;
+----
+NULL	NULL
+1	NULL
+2	NULL
+3	NULL
+
+
 # scalar filter with correlation
 query II rowsort
 SELECT i FROM integers WHERE i = (SELECT i WHERE i = 2);
