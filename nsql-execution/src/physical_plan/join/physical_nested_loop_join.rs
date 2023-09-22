@@ -109,7 +109,7 @@ impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalOperator<'
         tracing::debug!(%lhs_tuple, "probing nested loop join");
         let storage = ecx.storage();
         let tx = ecx.tx();
-        let lhs_width = lhs_tuple.width();
+        let _lhs_width = lhs_tuple.width();
         let rhs_tuples = self.rhs_tuples.get().expect("probing before build is finished");
         if rhs_tuples.is_empty() {
             return Ok(OperatorState::Done);
