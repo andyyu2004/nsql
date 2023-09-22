@@ -3,15 +3,15 @@ mod rewrite_correlated_exprs;
 use super::*;
 use crate::decorrelate::rewrite_correlated_exprs::*;
 
-pub(crate) struct SubqueryFlattener;
+pub(crate) struct Decorrelator;
 
-impl Pass for SubqueryFlattener {
+impl Pass for Decorrelator {
     fn name(&self) -> &'static str {
-        "subquery flattening"
+        "subquery decorrelation"
     }
 }
 
-impl Folder for SubqueryFlattener {
+impl Folder for Decorrelator {
     #[inline]
     fn as_dyn(&mut self) -> &mut dyn Folder {
         self
@@ -19,9 +19,7 @@ impl Folder for SubqueryFlattener {
 
     fn fold_plan(&mut self, plan: ir::QueryPlan) -> ir::QueryPlan {
         #[derive(Debug)]
-        struct Flattener {
-            found_subquery: bool,
-        }
+        struct Flattener;
 
         impl Flattener {
             fn flatten_correlated_subquery(
@@ -60,7 +58,6 @@ impl Folder for SubqueryFlattener {
             ) -> ir::Expr {
                 match kind {
                     ir::SubqueryKind::Scalar => {
-                        self.found_subquery |= true;
                         assert_eq!(subquery_plan.schema().len(), 1);
                         let ty = subquery_plan.schema()[0].clone();
                         let subquery_plan = subquery_plan
@@ -88,7 +85,6 @@ impl Folder for SubqueryFlattener {
                         ir::Expr::column_ref(ty, ir::QPath::new("", "__scalar_subquery__"), i)
                     }
                     ir::SubqueryKind::Exists => {
-                        self.found_subquery |= true;
                         let subquery_plan = subquery_plan
                             // add a `limit 1` clause as we only care about existence
                             .limit(1)
@@ -165,14 +161,15 @@ impl Folder for SubqueryFlattener {
         }
 
         let original_plan_columns = plan.schema().len();
-        let mut flattener = Flattener { found_subquery: false };
+        let mut flattener = Flattener;
         // apply the flattener to one layer of the plan
         let plan = plan.fold_with(&mut flattener);
 
         // then recurse
         let plan = plan.fold_with(self.as_dyn());
 
-        if flattener.found_subquery && plan.schema().len() > original_plan_columns {
+        debug_assert!(plan.schema().len() >= original_plan_columns, "plan lost columns after pass");
+        if plan.schema().len() > original_plan_columns {
             // if the flattener added a column, we need to project it away
             *Box::new(plan).project_leftmost_k(original_plan_columns)
         } else {

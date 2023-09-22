@@ -12,7 +12,7 @@ pub use egg::Id as NodeId;
 use ir::fold::{ExprFold, Folder, PlanFold};
 use nsql_core::LogicalType;
 
-use self::decorrelate::SubqueryFlattener;
+use self::decorrelate::Decorrelator;
 pub use self::view::{CallExpr, Expr, Plan, Query};
 
 trait Pass: Folder {
@@ -39,7 +39,7 @@ fn optimize_query(mut plan: Box<ir::QueryPlan>) -> Query {
     plan.validate().unwrap_or_else(|err| panic!("invalid plan passed to optimizer: {err}"));
 
     loop {
-        let passes = [&mut IdentityProjectionRemover as &mut dyn Pass, &mut SubqueryFlattener];
+        let passes = [&mut IdentityProjectionRemover as &mut dyn Pass, &mut Decorrelator];
         let pre_opt_plan = plan.clone();
         for pass in passes {
             plan = pass.fold_boxed_plan(plan);
