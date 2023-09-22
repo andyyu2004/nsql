@@ -157,11 +157,10 @@ impl Folder for Flattener {
     fn fold_expr(&mut self, plan: &mut ir::QueryPlan, expr: ir::Expr) -> ir::Expr {
         match expr.kind {
             ir::ExprKind::Subquery(kind, subquery_plan) => {
-                let correlated_columns = subquery_plan.correlated_columns();
-                if correlated_columns.is_empty() {
-                    self.flatten_uncorrelated_subquery(plan, kind, subquery_plan)
-                } else {
+                if subquery_plan.is_correlated() {
                     self.flatten_correlated_subquery(plan, kind, subquery_plan)
+                } else {
+                    self.flatten_uncorrelated_subquery(plan, kind, subquery_plan)
                 }
             }
             _ => expr.fold_with(self, plan),

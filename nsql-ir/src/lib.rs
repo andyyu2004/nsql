@@ -440,6 +440,26 @@ impl<E: fmt::Display> fmt::Display for OrderExpr<E> {
 
 impl QueryPlan {
     #[inline]
+    pub fn is_correlated(&self) -> bool {
+        #[derive(Default)]
+        struct CorrelatedColumnsVisitor;
+
+        impl Visitor for CorrelatedColumnsVisitor {
+            fn visit_expr(&mut self, plan: &QueryPlan, expr: &Expr) -> ControlFlow<()> {
+                match &expr.kind {
+                    ExprKind::ColumnRef(col) if col.is_correlated() => {
+                        return ControlFlow::Break(());
+                    }
+                    _ => self.walk_expr(plan, expr),
+                }
+            }
+        }
+
+        CorrelatedColumnsVisitor.visit_query_plan(self).is_break()
+    }
+
+    /// Prefer `is_correlated` over `correlated_columns().is_empty()`.
+    #[inline]
     pub fn correlated_columns(&self) -> Vec<CorrelatedColumn> {
         #[derive(Default)]
         struct CorrelatedColumnVisitor {
