@@ -17,7 +17,8 @@ fn nsql_debug_scratch<S: StorageEngine>(sql: &str) -> nsql::Result<(), Box<dyn E
     let db_path = nsql_test::tempfile::NamedTempFile::new()?.into_temp_path();
     let db = Nsql::<S>::create(db_path).unwrap();
     let (conn, state) = db.connect();
-    let _ = conn.query(&state, sql)?;
+    let output = conn.query(&state, sql)?;
+    eprintln!("{output:?}");
 
     Ok(())
 }

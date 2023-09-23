@@ -53,15 +53,33 @@ impl Folder for PushdownDependentJoin {
 
         match plan {
             ir::QueryPlan::DummyScan
-            | ir::QueryPlan::Empty { schema: _ }
-            | ir::QueryPlan::CteScan { name: _, schema: _ }
-            | ir::QueryPlan::Unnest { schema: _, expr: _ }
-            | ir::QueryPlan::Values { schema: _, values: _ } => {
+            | ir::QueryPlan::Empty { .. }
+            | ir::QueryPlan::CteScan { .. }
+            | ir::QueryPlan::Unnest { .. }
+            | ir::QueryPlan::TableScan { .. }
+            | ir::QueryPlan::Values { .. } => {
                 unreachable!("these plans can't contain correlated references")
             }
             ir::QueryPlan::Cte { cte: _, child: _ } => todo!(),
-            ir::QueryPlan::Aggregate { .. } => todo!(),
-            ir::QueryPlan::TableScan { table: _, projection: _, projected_schema: _ } => todo!(),
+            ir::QueryPlan::Aggregate { aggregates, source, group_by, schema: _ } => {
+                let mut source = self.fold_boxed_plan(source);
+                let aggregates = aggregates
+                    .into_vec()
+                    .into_iter()
+                    .map(|(f, args)| (f, rewriter.fold_exprs(&mut source, args)))
+                    .collect::<Box<_>>();
+
+                let original_group_by = rewriter.fold_exprs(&mut source, group_by).into_vec();
+
+                let lhs_schema = self.lhs.schema();
+                // create a projection for the columns of the lhs plan so they don't get lost
+                let mut group_by =
+                    self.lhs.build_leftmost_k_projection(lhs_schema.len()).into_vec();
+                // append on the rewritten projections
+                group_by.extend(original_group_by);
+
+                *ir::QueryPlan::aggregate(source, group_by, aggregates)
+            }
             ir::QueryPlan::Projection { source, projection, projected_schema: _ } => {
                 let mut source = self.fold_boxed_plan(source);
 
@@ -74,12 +92,7 @@ impl Folder for PushdownDependentJoin {
                 // append on the rewritten projections
                 projection.extend(original_projection);
 
-                let projected_schema = projection.iter().map(|expr| expr.ty()).collect();
-                ir::QueryPlan::Projection {
-                    source,
-                    projection: projection.into_boxed_slice(),
-                    projected_schema,
-                }
+                *ir::QueryPlan::project(source, projection)
             }
             ir::QueryPlan::Filter { source, predicate } => {
                 let mut source = self.fold_boxed_plan(source);
