@@ -9,7 +9,7 @@ use tracing_subscriber::EnvFilter;
 mod explain;
 mod opt;
 
-fn nsql_debug_scratch<S: StorageEngine>(stmts: &str) -> nsql::Result<(), Box<dyn Error>> {
+fn nsql_debug_scratch<S: StorageEngine>(sql: &str) -> nsql::Result<(), Box<dyn Error>> {
     let filter =
         EnvFilter::try_from_env("NSQL_LOG").unwrap_or_else(|_| EnvFilter::new("nsql=DEBUG"));
     let _ = tracing_subscriber::fmt::fmt().with_env_filter(filter).try_init();
@@ -17,9 +17,7 @@ fn nsql_debug_scratch<S: StorageEngine>(stmts: &str) -> nsql::Result<(), Box<dyn
     let db_path = nsql_test::tempfile::NamedTempFile::new()?.into_temp_path();
     let db = Nsql::<S>::create(db_path).unwrap();
     let (conn, state) = db.connect();
-    for stmt in stmts.lines() {
-        let _ = conn.query(&state, stmt)?;
-    }
+    let _ = conn.query(&state, sql)?;
 
     Ok(())
 }

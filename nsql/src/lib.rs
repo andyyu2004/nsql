@@ -13,6 +13,7 @@ use nsql_execution::config::SessionConfig;
 use nsql_execution::{ExecutionContext, PhysicalPlanner, TransactionContext, TransactionState};
 pub use nsql_lmdb::LmdbStorageEngine;
 use nsql_opt::optimize;
+use nsql_parse::ast;
 pub use nsql_parse::parse;
 pub use nsql_redb::RedbStorageEngine;
 pub use nsql_storage::tuple::Tuple;
@@ -104,37 +105,47 @@ impl<'env, S: StorageEngine> nsql_execution::SessionContext for SessionContext<'
 impl<S: StorageEngine> Connection<S> {
     pub fn query<'env>(
         &'env self,
-        state: &SessionContext<'env, S>,
+        ctx: &SessionContext<'env, S>,
         query: &str,
     ) -> Result<MaterializedQueryOutput> {
-        let output = self.db.shared.query(state, query)?;
+        let output = self.db.shared.query(ctx, query)?;
 
         Ok(output)
     }
 }
 
 impl<S: StorageEngine> Shared<S> {
+    #[tracing::instrument(skip(self, ctx))]
     fn query<'env>(
         &'env self,
-        state: &SessionContext<'env, S>,
+        ctx: &SessionContext<'env, S>,
         query: &str,
     ) -> Result<MaterializedQueryOutput> {
-        let statements = nsql_parse::parse_statements(query)?;
-        if statements.is_empty() {
-            return Ok(MaterializedQueryOutput { types: vec![], tuples: vec![] });
-        }
+        let stmts = nsql_parse::parse_statements(query)?;
+        if stmts.is_empty() {}
 
-        if statements.len() > 1 {
-            todo!("multiple statements");
+        match &stmts[..] {
+            [] => Ok(MaterializedQueryOutput { types: vec![], tuples: vec![] }),
+            [stmts @ .., last] => {
+                for stmt in stmts {
+                    let _output = self.execute(ctx, stmt);
+                }
+                self.execute(ctx, last)
+            }
         }
+    }
 
+    fn execute<'env>(
+        &'env self,
+        state: &SessionContext<'env, S>,
+        stmt: &ast::Statement,
+    ) -> Result<MaterializedQueryOutput> {
         let tx = state.current_tx.swap(None).map(|tx| {
             Arc::into_inner(tx).expect("unexpected outstanding references to transaction")
         });
 
         let storage = self.storage.storage();
         let catalog = Catalog::new(storage);
-        let stmt = &statements[0];
 
         let binder = Binder::new(catalog);
         let (auto_commit, tx, plan) = match tx {
@@ -165,7 +176,7 @@ impl<S: StorageEngine> Shared<S> {
 
         let (tx, tuples) = match tx {
             ReadOrWriteTransaction::Read(tx) => {
-                tracing::info!(query, "executing readonly query");
+                tracing::info!("executing readonly query");
                 let physical_plan = planner.plan(&tx, plan)?;
                 let ecx =
                     ExecutionContext::new(catalog, TransactionContext::new(tx, auto_commit), state);
@@ -179,7 +190,7 @@ impl<S: StorageEngine> Shared<S> {
                 }
             }
             ReadOrWriteTransaction::Write(tx) => {
-                tracing::info!(query, "executing write query");
+                tracing::info!("executing write query");
                 let physical_plan = planner.plan_write(&tx, plan)?;
                 let ecx =
                     ExecutionContext::new(catalog, TransactionContext::new(tx, auto_commit), state);
