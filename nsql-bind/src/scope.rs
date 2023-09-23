@@ -191,7 +191,7 @@ impl Scope {
         }
     }
 
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(skip(self, values))]
     pub fn bind_values(&self, values: &ir::Values) -> Scope {
         let mut columns = self.columns.clone();
 
