@@ -280,25 +280,28 @@ impl<'p> PlanFormatter<'p> {
 }
 
 impl fmt::Display for PlanFormatter<'_> {
+    // for recursive format calls (to either plan or exprs), make sure to pass the same `f` to preserve formatting flags.
+    // i.e. don't do `write!(f, "{expr}")`, instead do `expr.fmt(f)`
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{:indent$}", "", indent = self.indent)?;
         match self.plan {
             QueryPlan::Empty { .. } => write!(f, "empty"),
             QueryPlan::DummyScan => write!(f, "dummy scan"),
             QueryPlan::Aggregate { aggregates, source, group_by, schema: _ } => {
-                writeln!(
-                    f,
-                    "aggregate ({})",
-                    aggregates
-                        .iter()
-                        .map(|(f, args)| format!("{}({})", f.name(), args.iter().format(",")))
-                        .collect::<Vec<_>>()
-                        .join(","),
-                )?;
+                write!(f, "aggregate ")?;
+                aggregates
+                    .iter()
+                    .map(|(f, args)| format!("{}({})", f.name(), args.iter().format(",")))
+                    .collect::<Vec<_>>()
+                    .join(",")
+                    .fmt(f)?;
 
                 if !group_by.is_empty() {
-                    write!(f, " by {}", group_by.iter().format(","))?;
+                    write!(f, " by ")?;
+                    group_by.iter().format(",").fmt(f)?;
                 }
+
+                writeln!(f)?;
 
                 self.child(source).fmt(f)
             }
@@ -310,15 +313,15 @@ impl fmt::Display for PlanFormatter<'_> {
                 writeln!(f)
             }
             QueryPlan::Projection { source, projection, projected_schema: _ } => {
-                if f.alternate() {
-                    writeln!(f, "projection ({:#})", projection.iter().format(","))?;
-                } else {
-                    writeln!(f, "projection ({})", projection.iter().format(","))?;
-                }
+                write!(f, "projection (")?;
+                projection.iter().format(",").fmt(f)?;
+                writeln!(f, ")")?;
                 self.child(source).fmt(f)
             }
             QueryPlan::Filter { source, predicate } => {
-                writeln!(f, "filter ({})", predicate)?;
+                write!(f, "filter (")?;
+                predicate.fmt(f)?;
+                writeln!(f, ")")?;
                 self.child(source).fmt(f)
             }
             QueryPlan::Unnest { schema: _, expr } => write!(f, "UNNEST ({})", expr),
@@ -333,21 +336,29 @@ impl fmt::Display for PlanFormatter<'_> {
                 self.child(source).fmt(f)
             }
             QueryPlan::Order { source, order } => {
-                write!(f, "order ({})", order.iter().format(","),)?;
+                write!(f, "order (")?;
+                order.iter().format(", ").fmt(f)?;
+                writeln!(f, ")")?;
                 self.child(source).fmt(f)
             }
             QueryPlan::Insert { table, source, returning, schema: _ } => {
-                write!(f, "INSERT INTO {table}")?;
+                write!(f, "insert {table}")?;
                 if !returning.is_empty() {
-                    write!(f, " RETURNING ({})", returning.iter().format(","))?;
+                    write!(f, " RETURNING (")?;
+                    returning.iter().format(",").fmt(f)?;
+                    write!(f, ")")?;
                 }
+                writeln!(f)?;
                 self.child(source).fmt(f)
             }
             QueryPlan::Update { table, source, returning, schema: _ } => {
                 write!(f, "UPDATE {table} SET", table = table)?;
                 if !returning.is_empty() {
-                    write!(f, " RETURNING ({})", returning.iter().format(","))?;
+                    write!(f, " RETURNING (")?;
+                    returning.iter().format(",").fmt(f)?;
+                    write!(f, ")")?;
                 }
+                writeln!(f)?;
                 self.child(source).fmt(f)
             }
             QueryPlan::Union { schema: _, lhs, rhs } => {
@@ -453,9 +464,7 @@ impl QueryPlan {
         impl Visitor for CorrelatedColumnsVisitor {
             fn visit_expr(&mut self, plan: &QueryPlan, expr: &Expr) -> ControlFlow<()> {
                 match &expr.kind {
-                    ExprKind::ColumnRef(col) if col.is_correlated() => {
-                        return ControlFlow::Break(());
-                    }
+                    ExprKind::ColumnRef(col) if col.is_correlated() => ControlFlow::Break(()),
                     _ => self.walk_expr(plan, expr),
                 }
             }
@@ -611,6 +620,11 @@ impl QueryPlan {
                 )),
             })
             .collect::<Box<_>>()
+    }
+
+    #[inline]
+    pub fn build_identity_projection(&self) -> Box<[Expr]> {
+        self.build_leftmost_k_projection(self.schema().len())
     }
 
     /// Create a projection that projects the first `k` columns of the plan

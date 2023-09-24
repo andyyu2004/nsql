@@ -1,5 +1,4 @@
 use ir::fold::{ExprFold, Folder, PlanFold};
-use itertools::Itertools;
 
 pub(super) struct PushdownDependentJoin {
     pub(super) lhs: ir::QueryPlan,
@@ -63,24 +62,22 @@ impl Folder for PushdownDependentJoin {
             }
             ir::QueryPlan::Cte { cte: _, child: _ } => todo!(),
             ir::QueryPlan::Aggregate { aggregates, source, group_by, schema: _ } => {
-                todo!();
-                // let mut source = self.fold_boxed_plan(source);
-                // let aggregates = aggregates
-                //     .into_vec()
-                //     .into_iter()
-                //     .map(|(f, args)| (f, rewriter.fold_exprs(&mut source, args)))
-                //     .collect::<Box<_>>();
+                let mut source = self.fold_boxed_plan(source);
+                let aggregates = aggregates
+                    .into_vec()
+                    .into_iter()
+                    .map(|(f, args)| (f, rewriter.fold_exprs(&mut source, args)))
+                    .collect::<Box<_>>();
 
-                // let original_group_by = rewriter.fold_exprs(&mut source, group_by).into_vec();
+                let original_group_by = rewriter.fold_exprs(&mut source, group_by).into_vec();
 
-                // let lhs_schema = self.lhs.schema();
-                // // create a projection for the columns of the lhs plan so they don't get lost
-                // let mut group_by =
-                //     self.lhs.build_leftmost_k_projection(lhs_schema.len()).into_vec();
-                // // append on the rewritten projections
-                // group_by.extend(original_group_by);
+                // create a projection for the columns of the source plan so they don't get lost
+                let mut group_by = source.build_identity_projection().into_vec();
+                group_by.extend(original_group_by);
 
-                // *ir::QueryPlan::aggregate(source, group_by, aggregates)
+                let plan = *ir::QueryPlan::aggregate(source, group_by, aggregates);
+                eprintln!("{plan:#}");
+                plan
             }
             ir::QueryPlan::Projection { source, projection, projected_schema: _ } => {
                 let mut source = self.fold_boxed_plan(source);
@@ -88,8 +85,7 @@ impl Folder for PushdownDependentJoin {
 
                 // create a projection for the columns of the source plan so they don't get lost
                 // and append on the rewritten projections
-                let mut projection =
-                    source.build_leftmost_k_projection(source.schema().len()).into_vec();
+                let mut projection = source.build_identity_projection().into_vec();
                 projection.extend(original_projection);
 
                 *ir::QueryPlan::project(source, projection)

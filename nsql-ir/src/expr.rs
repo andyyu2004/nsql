@@ -255,40 +255,68 @@ impl Deref for MonoFunction {
 }
 
 impl fmt::Display for ExprKind {
+    // note this is written in this way (i.e. avoiding the `write!` macro for recursive calls)
+    // because we want to preserve the formatter flags for child nodes
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match &self {
-            ExprKind::Literal(value) => write!(f, "{value}"),
-            ExprKind::ColumnRef(col) => {
-                if f.alternate() {
-                    write!(f, "{col:#}")
-                } else {
-                    write!(f, "{col}")
-                }
+            ExprKind::Literal(value) => value.fmt(f),
+            ExprKind::ColumnRef(col) => col.fmt(f),
+            ExprKind::Array(exprs) => {
+                write!(f, "[")?;
+                exprs.iter().format(", ").fmt(f)?;
+                write!(f, "]")
             }
-            ExprKind::Array(exprs) => write!(f, "[{}]", exprs.iter().format(", ")),
             ExprKind::FunctionCall { function, args } => {
-                write!(f, "{}({})", function.name(), args.iter().format(", "))
+                function.name().fmt(f)?;
+                write!(f, "(")?;
+                args.iter().format(", ").fmt(f)?;
+                write!(f, ")")
             }
-            ExprKind::Alias { alias, expr } if alias.is_empty() => write!(f, "{expr}"),
-            ExprKind::Alias { alias, expr } => write!(f, r#"({expr} AS "{alias}")"#),
+            ExprKind::Alias { alias, expr } => {
+                expr.fmt(f)?;
+                if !alias.is_empty() {
+                    write!(f, " AS {alias}")?;
+                }
+
+                Ok(())
+            }
             ExprKind::Case { scrutinee, cases, else_result } => {
-                write!(f, "CASE {scrutinee} ")?;
+                write!(f, "CASE ")?;
+                scrutinee.fmt(f)?;
                 for case in cases.iter() {
-                    write!(f, "WHEN {} THEN {}", case.when, case.then)?;
+                    write!(f, " WHEN")?;
+                    case.when.fmt(f)?;
+                    write!(f, " THEN ")?;
+                    case.then.fmt(f)?;
                 }
 
                 if let Some(else_result) = else_result.as_ref() {
-                    write!(f, " ELSE {else_result} ")?;
+                    write!(f, " ELSE ")?;
+                    else_result.fmt(f)?;
                 }
+
                 write!(f, "END")
             }
-            ExprKind::Subquery(kind, _plan) => match kind {
-                SubqueryKind::Scalar => write!(f, "<subquery>"),
-                SubqueryKind::Exists => write!(f, "EXISTS (<subquery>)"),
+            ExprKind::Subquery(kind, plan) => match kind {
+                SubqueryKind::Scalar => {
+                    write!(f, "(")?;
+                    plan.fmt(f)?;
+                    write!(f, ")")
+                }
+                SubqueryKind::Exists => {
+                    write!(f, "EXISTS (")?;
+                    plan.fmt(f)?;
+                    write!(f, ")")
+                }
             },
-            ExprKind::UnaryOperator { operator, expr } => write!(f, "{operator}{expr}"),
+            ExprKind::UnaryOperator { operator, expr } => {
+                operator.fmt(f)?;
+                expr.fmt(f)
+            }
             ExprKind::BinaryOperator { operator, lhs, rhs } => {
-                write!(f, "({lhs} {operator} {rhs})")
+                lhs.fmt(f)?;
+                write!(f, " {operator} ")?;
+                rhs.fmt(f)
             }
             ExprKind::Compiled(expr) => write!(f, "{expr}"),
             ExprKind::Quote(expr) => write!(f, "'({expr})"),

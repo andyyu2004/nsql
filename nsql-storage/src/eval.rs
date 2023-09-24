@@ -189,7 +189,7 @@ impl<F> Expr<F> {
     pub fn new(pretty: impl fmt::Display, ops: impl Into<Box<[ExprOp<F>]>>) -> Self {
         let ops = ops.into();
         assert!(ops.len() > 1, "should have at least one value and one return");
-        Self { pretty: format!("{pretty:#}").into(), ops }
+        Self { pretty: format!("{pretty}").into(), ops }
     }
 
     #[inline]
