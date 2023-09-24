@@ -4,7 +4,7 @@ use nsql::Nsql;
 use nsql_lmdb::LmdbStorageEngine;
 use nsql_redb::RedbStorageEngine;
 use nsql_storage_engine::StorageEngine;
-use tracing_subscriber::prelude::__tracing_subscriber_SubscriberExt;
+use tracing_subscriber::prelude::*;
 use tracing_subscriber::Registry;
 use tracing_tree::HierarchicalLayer;
 
@@ -12,6 +12,10 @@ mod explain;
 mod opt;
 
 fn nsql_debug_scratch<S: StorageEngine>(sql: &str) -> nsql::Result<(), Box<dyn Error>> {
+    // let filter =
+    //     EnvFilter::try_from_env("NSQL_LOG").unwrap_or_else(|_| EnvFilter::new("nsql=DEBUG"));
+    // let _ = tracing_subscriber::fmt::fmt().with_env_filter(filter).try_init();
+    // let _ = tracing_subscriber::fmt::init();
     let subscriber = Registry::default().with(HierarchicalLayer::new(2));
     tracing::subscriber::with_default(subscriber, || {
         let db_path = nsql_test::tempfile::NamedTempFile::new()?.into_temp_path();

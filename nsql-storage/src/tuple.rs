@@ -6,6 +6,7 @@ use std::str::FromStr;
 use std::sync::OnceLock;
 
 use anyhow::bail;
+use itertools::Itertools;
 use nsql_core::Schema;
 use rkyv::with::{RefAsBox, Skip};
 use rkyv::{Archive, Archived, Deserialize, Serialize};
@@ -13,11 +14,17 @@ use rkyv::{Archive, Archived, Deserialize, Serialize};
 use crate::value::{CastError, FromValue, Value};
 
 // FIXME make this cheap to clone
-#[derive(Debug, Clone, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
+#[derive(Clone, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
 pub struct Tuple {
     values: Box<[Value]>,
     #[with(Skip)]
     cached_schema: OnceLock<Schema>,
+}
+
+impl fmt::Debug for Tuple {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "({})", self.values.iter().format(", "))
+    }
 }
 
 impl PartialEq for Tuple {

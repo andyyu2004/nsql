@@ -101,16 +101,18 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode
 impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalOperator<'env, 'txn, S, M>
     for PhysicalNestedLoopJoin<'env, 'txn, S, M>
 {
+    #[tracing::instrument(skip(self, ecx))]
     fn execute(
         &self,
         ecx: &'txn ExecutionContext<'_, 'env, S, M>,
         lhs_tuple: Tuple,
     ) -> ExecutionResult<OperatorState<Tuple>> {
-        tracing::debug!(%lhs_tuple, "probing nested loop join");
+        tracing::debug!("probing nested loop join");
         let storage = ecx.storage();
         let tx = ecx.tx();
         let rhs_tuples = self.rhs_tuples.get().expect("probing before build is finished");
         if rhs_tuples.is_empty() {
+            tracing::debug!("no tuples on rhs, operator done");
             return Ok(OperatorState::Done);
         }
 
@@ -131,13 +133,19 @@ impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalOperator<'
                 let found_match = self.found_match_for_tuple.swap(false, atomic::Ordering::Relaxed);
                 // emit the lhs_tuple padded with nulls if no match was found
                 if !found_match && self.join_kind.is_left() {
+                    tracing::debug!(
+                        "no match found, emitting tuple padded with nulls for left join"
+                    );
                     return Ok(OperatorState::Yield(lhs_tuple.pad_right(rhs_tuple_width)));
                 }
+
+                tracing::debug!("completed loop, continuing with next lhs tuple");
                 return Ok(OperatorState::Continue);
             }
         };
 
         let rhs_tuple = &rhs_tuples[rhs_index];
+        tracing::debug!(%rhs_tuple, "execution join predicate");
         let joint_tuple = lhs_tuple.join(rhs_tuple);
 
         let keep = self
@@ -148,8 +156,10 @@ impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalOperator<'
 
         if keep {
             self.found_match_for_tuple.store(true, atomic::Ordering::Relaxed);
+            tracing::debug!("found match, emitting tuple");
             Ok(OperatorState::Again(Some(joint_tuple)))
         } else {
+            tracing::debug!("no match found, continuing loop with same lhs tuple");
             Ok(OperatorState::Again(None))
         }
     }

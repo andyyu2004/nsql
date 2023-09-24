@@ -33,11 +33,11 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Executor<'en
         let pipeline: &Pipeline<'env, 'txn, S, M> = &self.arena[pipeline];
         let mut stream = Arc::clone(&pipeline.source).source(ecx)?;
 
-        while let Some(input_tuple) = stream.next()? {
+        while let Some(tuple) = stream.next()? {
             'input: loop {
-                tracing::debug!(%input_tuple, "pushing tuple through pipeline");
+                tracing::debug!(%tuple, "pushing tuple through pipeline");
                 let mut again = false;
-                let mut tuple = input_tuple.clone();
+                let mut tuple = tuple.clone();
 
                 for op in &pipeline.operators {
                     tuple = match op.execute(ecx, tuple)? {
