@@ -67,6 +67,10 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode
 }
 
 impl<'env, S: StorageEngine> Explain<'env, S> for PhysicalCteScan {
+    fn as_dyn(&self) -> &dyn Explain<'env, S> {
+        self
+    }
+
     fn explain(
         &self,
         _catalog: Catalog<'env, S>,

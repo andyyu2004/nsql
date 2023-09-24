@@ -12,6 +12,8 @@ use crate::{ExecutionMode, PhysicalNode, RootPipeline};
 pub type Result<T = ()> = anyhow::Result<T>;
 
 pub trait Explain<'env, S: StorageEngine> {
+    fn as_dyn(&self) -> &dyn Explain<'env, S>;
+
     fn explain(
         &self,
         catalog: Catalog<'env, S>,
@@ -23,11 +25,8 @@ pub trait Explain<'env, S: StorageEngine> {
         &'a self,
         catalog: Catalog<'env, S>,
         tx: &'a dyn Transaction<'env, S>,
-    ) -> Display<'a, 'env, S>
-    where
-        Self: Sized,
-    {
-        Display { catalog, tx, explain: self, marker: std::marker::PhantomData }
+    ) -> Display<'a, 'env, S> {
+        Display { catalog, tx, explain: self.as_dyn(), marker: std::marker::PhantomData }
     }
 }
 
@@ -40,13 +39,20 @@ pub struct Display<'a, 'env, S: StorageEngine> {
 
 impl<'a, 'env, S: StorageEngine> fmt::Display for Display<'a, 'env, S> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.explain.explain(self.catalog, self.tx, f).map_err(|_e| fmt::Error)
+        self.explain.explain(self.catalog, self.tx, f).map_err(|err| {
+            tracing::error!("failed to explain: {err}");
+            fmt::Error
+        })
     }
 }
 
 impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Explain<'env, S>
     for RootPipeline<'env, 'txn, S, M>
 {
+    fn as_dyn(&self) -> &dyn Explain<'env, S> {
+        self
+    }
+
     fn explain(
         &self,
         catalog: Catalog<'env, S>,
@@ -115,6 +121,10 @@ impl<'a, 'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Explain<'env, S>
     for RootPipelineExplainer<'_, 'env, 'txn, S, M>
 {
+    fn as_dyn(&self) -> &dyn Explain<'env, S> {
+        self
+    }
+
     fn explain(
         &self,
         catalog: Catalog<'env, S>,
@@ -133,6 +143,10 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Explain<'env
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Explain<'env, S>
     for PhysicalPlan<'env, 'txn, S, M>
 {
+    fn as_dyn(&self) -> &dyn Explain<'env, S> {
+        self
+    }
+
     fn explain(
         &self,
         catalog: Catalog<'env, S>,
@@ -162,6 +176,10 @@ impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
 impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Explain<'env, S>
     for PhysicalNodeExplainer<'env, 'txn, S, M>
 {
+    fn as_dyn(&self) -> &dyn Explain<'env, S> {
+        self
+    }
+
     fn explain(
         &self,
         catalog: Catalog<'env, S>,

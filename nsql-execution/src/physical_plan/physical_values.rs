@@ -73,7 +73,11 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine> Explain<'_, S> for PhysicalValues<S> {
+impl<'env: 'txn, 'txn, S: StorageEngine> Explain<'env, S> for PhysicalValues<S> {
+    fn as_dyn(&self) -> &dyn Explain<'env, S> {
+        self
+    }
+
     fn explain(
         &self,
         _catalog: Catalog<'_, S>,

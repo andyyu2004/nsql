@@ -40,6 +40,12 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Executor<'en
                 let mut tuple = tuple.clone();
 
                 for op in &pipeline.operators {
+                    let span = tracing::debug_span!(
+                        "operator",
+                        "{}",
+                        op.display(ecx.catalog(), &ecx.tx())
+                    );
+                    let _entered = span.enter();
                     tuple = match op.execute(ecx, tuple)? {
                         OperatorState::Again(tuple) => match tuple {
                             Some(tuple) => {
@@ -185,7 +191,11 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSink
     }
 }
 
-impl<S: StorageEngine> Explain<'_, S> for OutputSink {
+impl<'env, S: StorageEngine> Explain<'env, S> for OutputSink {
+    fn as_dyn(&self) -> &dyn Explain<'env, S> {
+        self
+    }
+
     fn explain(
         &self,
         _catalog: Catalog<'_, S>,

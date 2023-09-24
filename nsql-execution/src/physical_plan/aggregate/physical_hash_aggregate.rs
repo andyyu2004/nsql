@@ -109,6 +109,10 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Explain<'env, S>
     for PhysicalHashAggregate<'env, 'txn, S, M>
 {
+    fn as_dyn(&self) -> &dyn Explain<'env, S> {
+        self
+    }
+
     fn explain(
         &self,
         _catalog: Catalog<'_, S>,

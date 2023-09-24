@@ -81,7 +81,11 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
     }
 }
 
-impl<S: StorageEngine> Explain<'_, S> for PhysicalTransaction {
+impl<'env, S: StorageEngine> Explain<'env, S> for PhysicalTransaction {
+    fn as_dyn(&self) -> &dyn Explain<'env, S> {
+        self
+    }
+
     fn explain(
         &self,
         _catalog: Catalog<'_, S>,
