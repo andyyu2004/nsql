@@ -169,7 +169,7 @@ impl ColumnRef {
 
 impl fmt::Display for ColumnRef {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if f.alternate() { write!(f, "@{}", self.index) } else { write!(f, "{}", self.qpath) }
+        if f.alternate() { write!(f, "{}", self.index) } else { write!(f, "{}", self.qpath) }
     }
 }
 

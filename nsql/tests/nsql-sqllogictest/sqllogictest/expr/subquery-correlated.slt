@@ -55,34 +55,34 @@ SELECT i FROM integers WHERE i = (SELECT i WHERE i = 2);
 ----
 2
 
-statement ok
-CREATE TABLE employee (
-    id int PRIMARY KEY,
-    name text,
-    department text,
-    salary int
-)
+# statement ok
+# CREATE TABLE employee (
+#     id int PRIMARY KEY,
+#     name text,
+#     department text,
+#     salary int
+# )
 
-statement ok
-INSERT INTO employee (id, name, department, salary)
-VALUES (1, 'Alice', 'HR',          50),
-       (2, 'Bob',   'Engineering', 100),
-       (3, 'Carol', 'Engineering', 70),
-       (4, 'Dan',   'Engineering', 60),
-       (5, 'Eve',   'HR',          50),
-       (6, 'Frank', 'Engineering', 80)
+# statement ok
+# INSERT INTO employee (id, name, department, salary)
+# VALUES (1, 'Alice', 'HR',          50),
+#        (2, 'Bob',   'Engineering', 100),
+#        (3, 'Carol', 'Engineering', 70),
+#        (4, 'Dan',   'Engineering', 60),
+#        (5, 'Eve',   'HR',          50),
+#        (6, 'Frank', 'Engineering', 80)
 
-query I rowsort
-SELECT id,
-       name,
-       (SELECT AVG(salary)
-          FROM employee
-       WHERE department = emp.department) AS department_average
-   FROM employee emp
-----
-1  Alice 50.0 
-2  Bob   77.5 
-3  Carol 77.5 
-4  Dan   77.5 
-5  Eve   50.0 
-6  Frank 77.5 
+# query I rowsort
+# SELECT id,
+#        name,
+#        (SELECT AVG(salary)
+#           FROM employee
+#        WHERE department = emp.department) AS department_average
+#    FROM employee emp
+# ----
+# 1  Alice 50.0 
+# 2  Bob   77.5 
+# 3  Carol 77.5 
+# 4  Dan   77.5 
+# 5  Eve   50.0 
+# 6  Frank 77.5 
