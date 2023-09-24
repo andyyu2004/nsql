@@ -145,7 +145,6 @@ impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalOperator<'
         };
 
         let rhs_tuple = &rhs_tuples[rhs_index];
-        tracing::debug!(%rhs_tuple, "execution join predicate");
         let joint_tuple = lhs_tuple.join(rhs_tuple);
 
         let keep = self
@@ -153,6 +152,8 @@ impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalOperator<'
             .execute(storage, &tx, &joint_tuple)?
             .cast::<Option<bool>>()?
             .unwrap_or(false);
+
+        tracing::debug!(%joint_tuple, %keep, "evaluated join predicate");
 
         if keep {
             self.found_match_for_tuple.store(true, atomic::Ordering::Relaxed);

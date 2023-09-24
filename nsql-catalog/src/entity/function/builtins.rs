@@ -25,10 +25,15 @@ macro_rules! comparison {
     ($op:tt: $ty:ty) => {
         |_catalog, _tx, mut args| {
             assert_eq!(args.len(), 2);
-            let a: Option<$ty> = args[0].take().cast().unwrap();
-            let b: Option<$ty> = args[1].take().cast().unwrap();
+            let a = args[0].take();
+            let b = args[1].take();
+            debug_assert!(a.is_comparable_with(&b), "cannot compare `{a}` and `{b}` (this should have been a type error)");
+            let a: Option<$ty> = a.cast().unwrap();
+            let b: Option<$ty> = b.cast().unwrap();
             match (a, b) {
-                (Some(a), Some(b)) => Ok(Value::Bool(a $op b)),
+                (Some(a), Some(b)) => {
+                    Ok(Value::Bool(a $op b))
+                }
                 _  => Ok(Value::Null),
             }
         }
