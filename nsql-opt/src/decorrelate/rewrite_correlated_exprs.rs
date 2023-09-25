@@ -4,11 +4,11 @@ use ir::fold::{ExprFold, Folder};
 
 pub(super) struct PushdownDependentJoin {
     /// The parent plan the subquery is correlated with
-    correlated_plan: ir::QueryPlan,
+    correlated_plan: Box<ir::QueryPlan>,
 }
 
 impl PushdownDependentJoin {
-    pub(super) fn new(correlated_plan: ir::QueryPlan) -> Self {
+    pub(super) fn new(correlated_plan: Box<ir::QueryPlan>) -> Self {
         debug_assert!(!correlated_plan.is_correlated());
         Self { correlated_plan }
     }
@@ -23,7 +23,7 @@ impl Folder for PushdownDependentJoin {
         let correlated_columns = plan.correlated_columns();
         if correlated_columns.is_empty() {
             // no more dependent columns on the rhs, can replace the (implicit) dependent join with a cross product
-            return *Box::new(self.correlated_plan.clone()).cross_join(Box::new(plan));
+            return *self.correlated_plan.clone().cross_join(Box::new(plan));
         }
 
         for correlated_column in &correlated_columns {
@@ -116,6 +116,7 @@ impl Folder for PushdownDependentJoin {
             ir::QueryPlan::Order { source: _, order: _ } => todo!(),
             ir::QueryPlan::Insert { table: _, source: _, returning: _, schema: _ } => todo!(),
             ir::QueryPlan::Update { table: _, source: _, returning: _, schema: _ } => todo!(),
+            ir::QueryPlan::Distinct { source: _ } => todo!(),
         }
     }
 }

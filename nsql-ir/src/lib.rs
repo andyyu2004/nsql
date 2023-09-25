@@ -109,6 +109,9 @@ pub enum QueryPlan {
     Empty {
         schema: Schema,
     },
+    Distinct {
+        source: Box<QueryPlan>,
+    },
     // introduce a cte
     Cte {
         cte: Cte,
@@ -371,6 +374,10 @@ impl fmt::Display for PlanFormatter<'_> {
                 writeln!(f, "CTE {}", cte.name)?;
                 self.child(child).fmt(f)
             }
+            QueryPlan::Distinct { source } => {
+                writeln!(f, "distinct")?;
+                self.child(source).fmt(f)
+            }
         }
     }
 }
@@ -512,7 +519,8 @@ impl QueryPlan {
             | QueryPlan::CteScan { schema, .. }
             | QueryPlan::Empty { schema }
             | QueryPlan::Values { schema, .. } => schema,
-            QueryPlan::Filter { source, .. }
+            QueryPlan::Distinct { source }
+            | QueryPlan::Filter { source, .. }
             | QueryPlan::Limit { source, .. }
             | QueryPlan::Order { source, .. } => source.schema(),
             QueryPlan::Cte { cte: _, child } => child.schema(),
@@ -546,6 +554,11 @@ impl QueryPlan {
             .chain(aggregates.iter().map(|(f, _args)| f.return_type()))
             .collect();
         Box::new(Self::Aggregate { schema, aggregates, group_by, source: self })
+    }
+
+    #[inline]
+    pub fn distinct(self: Box<Self>) -> Box<Self> {
+        Box::new(Self::Distinct { source: self })
     }
 
     #[inline]

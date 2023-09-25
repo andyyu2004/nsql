@@ -7,6 +7,7 @@ mod physical_drop;
 mod physical_dummy_scan;
 mod physical_explain;
 mod physical_filter;
+mod physical_hash_distinct;
 mod physical_insert;
 mod physical_limit;
 mod physical_order;
@@ -37,6 +38,7 @@ use self::physical_drop::PhysicalDrop;
 use self::physical_dummy_scan::PhysicalDummyScan;
 use self::physical_explain::PhysicalExplain;
 use self::physical_filter::PhysicalFilter;
+use self::physical_hash_distinct::PhysicalHashDistinct;
 use self::physical_insert::PhysicalInsert;
 use self::physical_limit::PhysicalLimit;
 use self::physical_order::PhysicalOrder;
@@ -195,6 +197,10 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalPlanner<'env, S> {
             opt::Plan::Limit(limit) => {
                 let source = f(self, limit.source(q))?;
                 PhysicalLimit::plan(source, limit.limit(q), limit.limit_exceeded_message(q))
+            }
+            opt::Plan::Distinct(distinct) => {
+                let source = f(self, distinct.source(q))?;
+                PhysicalHashDistinct::plan(source)
             }
             opt::Plan::Aggregate(agg) => {
                 let functions = self.compile_aggregate_functions(tx, q, agg.aggregates(q))?;

@@ -20,6 +20,7 @@ define_language! {
         ColumnRef(ir::ColumnRef, Id),           // (column-ref <index> <plan>)
         "union" = Union([Id; 2]),               // (union <lhs> <rhs>)
         "array" = Array(Box<[Id]>),
+        "distinct" = Distinct(Id),
         "quote" = QuotedExpr(Id),
         "subquery" = Subquery(Id),
         "exists" = Exists(Id),
@@ -188,6 +189,10 @@ impl Builder {
                 let cte_plan = self.build_query(&cte.plan);
                 let child = self.build_query(child);
                 Node::Cte(Name::clone(&cte.name), [cte_plan, child])
+            }
+            ir::QueryPlan::Distinct { source } => {
+                let source = self.build_query(source);
+                Node::Distinct(source)
             }
         };
 

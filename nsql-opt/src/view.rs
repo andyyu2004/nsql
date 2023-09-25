@@ -84,6 +84,7 @@ impl Query {
             ref node @ (Node::DummyScan
             | Node::EmptyPlan
             | Node::Nodes(_)
+            | Node::Distinct(..)
             | Node::Project(_)
             | Node::Filter(_)
             | Node::Join(..)
@@ -135,6 +136,7 @@ impl Query {
             Node::Union([lhs, rhs]) => Plan::Union(Union { lhs, rhs }),
             Node::Cte(ref name, [cte_plan, child]) => Plan::Cte(Cte { name, cte_plan, child }),
             Node::CteScan(ref name) => Plan::CteScan(CteScan { name }),
+            Node::Distinct(source) => Plan::Distinct(Distinct { source }),
             Node::Desc(_)
             | Node::QuotedExpr(_)
             | Node::Nodes(_)
@@ -168,6 +170,7 @@ pub enum Plan<'a> {
     Unnest(Unnest),
     CteScan(CteScan<'a>),
     Cte(Cte<'a>),
+    Distinct(Distinct),
     DummyScan,
     Empty,
 }
@@ -408,6 +411,18 @@ impl Cte<'_> {
     #[inline]
     pub fn child(self, q: &Query) -> Plan<'_> {
         q.plan(self.child)
+    }
+}
+
+#[derive(Debug, Copy, Clone)]
+pub struct Distinct {
+    source: Id,
+}
+
+impl Distinct {
+    #[inline]
+    pub fn source(self, q: &Query) -> Plan<'_> {
+        q.plan(self.source)
     }
 }
 

@@ -18,7 +18,6 @@ SELECT id,
        name,
        (SELECT salary
           FROM employee
-       WHERE emp.department <> 'bad'
-       LIMIT 1) AS salary
+       WHERE emp.department <> 'bad') AS salary
    FROM employee emp;
 

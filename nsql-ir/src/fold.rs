@@ -166,6 +166,9 @@ impl PlanFold for QueryPlan {
                 cte: Cte { name: cte.name, plan: folder.fold_boxed_plan(cte.plan) },
                 child: folder.fold_boxed_plan(child),
             },
+            QueryPlan::Distinct { source } => {
+                QueryPlan::Distinct { source: folder.fold_boxed_plan(source) }
+            }
         }
     }
 }

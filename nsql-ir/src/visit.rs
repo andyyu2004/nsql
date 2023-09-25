@@ -34,8 +34,7 @@ pub trait Visitor {
 
     #[inline]
     fn walk_query_plan(&mut self, plan: &QueryPlan) -> ControlFlow<()> {
-        // we must visit the expression before recursing on the plan (i.e. somewhat breadth-first)
-
+        // we must visit the expression before recursing on the plan
         match plan {
             QueryPlan::DummyScan | QueryPlan::Empty { schema: _ } => ControlFlow::Continue(()),
             QueryPlan::TableScan { table: _, projection: _, projected_schema: _ } => {
@@ -93,6 +92,7 @@ pub trait Visitor {
                 self.visit_query_plan(&cte.plan)?;
                 self.visit_query_plan(child)
             }
+            QueryPlan::Distinct { source } => self.visit_query_plan(source),
         }
     }
 

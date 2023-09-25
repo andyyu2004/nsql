@@ -74,7 +74,8 @@ impl Flattener {
                 //     )]);
 
                 let n = plan.schema().len();
-                *plan = *PushdownDependentJoin::new(mem::take(plan)).fold_boxed_plan(subquery_plan);
+                let correlated_plan = Box::new(mem::take(plan)).distinct();
+                *plan = *PushdownDependentJoin::new(correlated_plan).fold_boxed_plan(subquery_plan);
 
                 assert_eq!(
                     n + 1,

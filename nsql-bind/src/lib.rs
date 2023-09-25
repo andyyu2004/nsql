@@ -603,7 +603,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                     bail!("schemas of set operation operands are not compatible")
                 };
 
-                let plan = match op {
+                let mut plan = match op {
                     ast::SetOperator::Union => lhs.union(schema, rhs),
                     // the others can be implemented as semi and anti joins
                     ast::SetOperator::Except => not_implemented!("except"),
@@ -613,8 +613,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                 match set_quantifier {
                     ast::SetQuantifier::All => {}
                     ast::SetQuantifier::Distinct | ast::SetQuantifier::None => {
-                        // push a distinct operation on top of the set operation
-                        not_implemented!("distinct")
+                        plan = plan.distinct()
                     }
                     ast::SetQuantifier::ByName => not_implemented!("by name"),
                     ast::SetQuantifier::AllByName => not_implemented!("all by name"),
@@ -1137,7 +1136,6 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
             named_window,
         } = select;
         not_implemented_if!(!named_window.is_empty());
-        not_implemented_if!(distinct.is_some());
         not_implemented_if!(top.is_some());
         not_implemented_if!(into.is_some());
         not_implemented_if!(!lateral_views.is_empty());
@@ -1162,14 +1160,23 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
             .map(|expr| self.bind_expr(tx, &scope, expr))
             .collect::<Result<Box<_>>>()?;
 
-        SelectBinder::new(self, group_by).bind(
+        let (scope, mut plan) = SelectBinder::new(self, group_by).bind(
             tx,
             &scope,
             source,
             projection,
             order_by,
             having.as_ref(),
-        )
+        )?;
+
+        if let Some(distinct) = distinct {
+            plan = match distinct {
+                ast::Distinct::Distinct => plan.distinct(),
+                ast::Distinct::On(_) => not_implemented!("distinct on"),
+            }
+        }
+
+        Ok((scope, plan))
     }
 
     fn bind_joint_tables(
