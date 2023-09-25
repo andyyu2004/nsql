@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 use std::error::Error;
 use std::path::Path;
 
+use ir::Value;
 use nsql::{Connection, Nsql, SessionContext};
 use nsql_core::LogicalType;
 use nsql_lmdb::LmdbStorageEngine;
@@ -119,7 +120,15 @@ impl<S: StorageEngine> DB for TestDb<S> {
             rows: output
                 .tuples
                 .iter()
-                .map(|t| t.values().map(|v| v.to_string()).collect())
+                .map(|t| {
+                    t.values()
+                        .map(|v: &Value| match v {
+                            Value::Text(s) => s.to_string(), // no quotes in the output
+                            Value::Float64(f) => format!("{:.1}", f64::from_bits(*f)), // 1 dp
+                            v => v.to_string(),
+                        })
+                        .collect()
+                })
                 .collect(),
         })
     }

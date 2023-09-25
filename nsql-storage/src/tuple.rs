@@ -1,7 +1,7 @@
 use std::error::Error;
 use std::fmt;
 use std::hash::{Hash, Hasher};
-use std::ops::{Index, IndexMut};
+use std::ops::{Add, Index, IndexMut};
 use std::str::FromStr;
 use std::sync::OnceLock;
 
@@ -202,6 +202,15 @@ impl TupleIndex {
     #[inline]
     pub fn as_usize(&self) -> usize {
         self.0 as usize
+    }
+}
+
+impl Add<usize> for TupleIndex {
+    type Output = Self;
+
+    #[inline]
+    fn add(self, rhs: usize) -> Self::Output {
+        Self::new(self.as_usize() + rhs)
     }
 }
 

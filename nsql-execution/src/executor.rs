@@ -63,7 +63,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Executor<'en
                             }
                         }
                         // Once an operator completes, the entire pipeline is finished
-                        OperatorState::Done => return Ok(()),
+                        OperatorState::Done => break 'input,
                     };
                 }
 

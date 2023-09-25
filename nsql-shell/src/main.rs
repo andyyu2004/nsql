@@ -45,10 +45,13 @@ impl reedline::Validator for Validator {
             return ValidationResult::Complete;
         }
 
-        match nsql::parse(line) {
-            Ok(_) => ValidationResult::Complete,
-            Err(_) => ValidationResult::Incomplete,
-        }
+        return ValidationResult::Incomplete;
+
+        // the following isn't smart enough
+        // match nsql::parse(line) {
+        //     Ok(_) => ValidationResult::Complete,
+        //     Err(_) => ValidationResult::Incomplete,
+        // }
     }
 }
 

@@ -1,7 +1,17 @@
-use ir::fold::{ExprFold, Folder, PlanFold};
+use std::marker::PhantomData;
+
+use ir::fold::{ExprFold, Folder};
 
 pub(super) struct PushdownDependentJoin {
-    pub(super) lhs: ir::QueryPlan,
+    /// The parent plan the subquery is correlated with
+    correlated_plan: ir::QueryPlan,
+}
+
+impl PushdownDependentJoin {
+    pub(super) fn new(correlated_plan: ir::QueryPlan) -> Self {
+        debug_assert!(!correlated_plan.is_correlated());
+        Self { correlated_plan }
+    }
 }
 
 impl Folder for PushdownDependentJoin {
@@ -13,7 +23,7 @@ impl Folder for PushdownDependentJoin {
         let correlated_columns = plan.correlated_columns();
         if correlated_columns.is_empty() {
             // no more dependent columns on the rhs, can replace the (implicit) dependent join with a cross product
-            return *Box::new(self.lhs.clone()).cross_join(Box::new(plan));
+            return *Box::new(self.correlated_plan.clone()).cross_join(Box::new(plan));
         }
 
         for correlated_column in &correlated_columns {
@@ -24,7 +34,8 @@ impl Folder for PushdownDependentJoin {
         }
 
         struct CorrelatedColumnRewriter<'a> {
-            correlated_columns: &'a [ir::CorrelatedColumn],
+            shift: usize,
+            maybe_need_lifetime_again: PhantomData<&'a ()>,
         }
 
         impl Folder for CorrelatedColumnRewriter<'_> {
@@ -34,22 +45,27 @@ impl Folder for PushdownDependentJoin {
 
             fn fold_expr(&mut self, plan: &mut ir::QueryPlan, expr: ir::Expr) -> ir::Expr {
                 match expr.kind {
-                    ir::ExprKind::ColumnRef(col) if col.is_correlated() => {
-                        // FIXME don't think this is quite the right computation to get the index
-                        let index = self
-                            .correlated_columns
-                            .iter()
-                            .position(|cor| cor.col == col)
-                            .expect("there should be a match");
+                    ir::ExprKind::ColumnRef(col) => {
+                        let new_index = if col.is_correlated() {
+                            // `shift` is the number of columns of the correlated plan.
+                            // We keep those columns on the left so the index is still correct.
+                            col.index
+                        } else {
+                            // The original projections are shifted to the right hence the new index is `old + shift`
+                            col.index + self.shift
+                        };
 
-                        ir::Expr::column_ref(expr.ty, col.qpath, ir::TupleIndex::new(index))
+                        ir::Expr::column_ref(expr.ty, col.qpath, new_index)
                     }
                     _ => expr.fold_with(self, plan),
                 }
             }
         }
 
-        let mut rewriter = CorrelatedColumnRewriter { correlated_columns: &correlated_columns };
+        let mut rewriter = CorrelatedColumnRewriter {
+            shift: self.correlated_plan.schema().len(),
+            maybe_need_lifetime_again: PhantomData,
+        };
 
         match plan {
             ir::QueryPlan::DummyScan
@@ -71,21 +87,20 @@ impl Folder for PushdownDependentJoin {
 
                 let original_group_by = rewriter.fold_exprs(&mut source, group_by).into_vec();
 
-                // create a projection for the columns of the source plan so they don't get lost
-                let mut group_by = source.build_identity_projection().into_vec();
+                // create a projection for the columns of the lhs plan so they don't get lost
+                let mut group_by = self.correlated_plan.build_identity_projection().into_vec();
                 group_by.extend(original_group_by);
 
                 let plan = *ir::QueryPlan::aggregate(source, group_by, aggregates);
-                eprintln!("{plan:#}");
                 plan
             }
             ir::QueryPlan::Projection { source, projection, projected_schema: _ } => {
                 let mut source = self.fold_boxed_plan(source);
                 let original_projection = rewriter.fold_exprs(&mut source, projection).into_vec();
 
-                // create a projection for the columns of the source plan so they don't get lost
+                // create a projection for the columns of the lhs plan so they don't get lost
                 // and append on the rewritten projections
-                let mut projection = source.build_identity_projection().into_vec();
+                let mut projection = self.correlated_plan.build_identity_projection().into_vec();
                 projection.extend(original_projection);
 
                 *ir::QueryPlan::project(source, projection)
@@ -95,7 +110,7 @@ impl Folder for PushdownDependentJoin {
                 let predicate = rewriter.fold_expr(&mut source, predicate);
                 ir::QueryPlan::Filter { source, predicate }
             }
-            ir::QueryPlan::Limit { .. } => plan.fold_with(self),
+            ir::QueryPlan::Limit { .. } => todo!(), // naively recursing through limit is not correct for this
             ir::QueryPlan::Union { schema: _, lhs: _, rhs: _ } => todo!(),
             ir::QueryPlan::Join { schema: _, join: _, lhs: _, rhs: _ } => todo!(),
             ir::QueryPlan::Order { source: _, order: _ } => todo!(),

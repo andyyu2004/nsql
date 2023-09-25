@@ -1,4 +1,5 @@
 use expect_test::{expect, Expect};
+use ir::Value;
 use nsql::Nsql;
 use nsql_storage::tuple::TupleIndex;
 
@@ -19,7 +20,10 @@ pub fn check_explain<'a>(
     assert_eq!(result.tuples.len(), 1);
     assert_eq!(result.tuples[0].width(), 1);
 
-    expect.assert_eq(&result.tuples[0][TupleIndex::new(0)].to_string());
+    match &result.tuples[0][TupleIndex::new(0)] {
+        Value::Text(plan) => expect.assert_eq(&plan),
+        _ => panic!("expected text output from explain"),
+    }
     Ok(())
 }
 

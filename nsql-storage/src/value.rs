@@ -276,6 +276,8 @@ impl fmt::Display for Value {
             Value::Null => write!(f, "NULL"),
             Value::Bool(b) => write!(f, "{b}"),
             Value::Decimal(d) => write!(f, "{d}"),
+            // Value::Text(s) => write!(f, "'{s}'"),
+            // should probably be quoted, need to fix tests
             Value::Text(s) => write!(f, "{s}"),
             Value::Int64(i) => write!(f, "{i}"),
             Value::Oid(oid) => write!(f, "{oid}"),

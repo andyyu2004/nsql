@@ -13,9 +13,12 @@ VALUES (1, 'Alice', 'HR',          50),
        (5, 'Eve',   'HR',          50),
        (6, 'Frank', 'Engineering', 80);
 
+
 SELECT id,
        name,
-       (SELECT AVG(salary)
+       (SELECT salary
           FROM employee
-       WHERE department = emp.department) AS department_average
+       WHERE emp.department <> 'bad'
+       LIMIT 1) AS salary
    FROM employee emp;
+

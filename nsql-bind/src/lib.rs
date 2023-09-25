@@ -1588,7 +1588,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
         mut f: impl FnMut(&ast::Expr) -> Result<ir::Expr>,
     ) -> Result<ir::Expr> {
         let (ty, kind) = match expr {
-            ast::Expr::Value(literal) => self.bind_value_expr(literal),
+            ast::Expr::Value(literal) => return Ok(self.bind_value_expr(literal)),
             ast::Expr::Identifier(ident) => {
                 let (ty, col) = self.bind_ident(scope, ident)?;
                 (ty, ir::ExprKind::ColumnRef(col))
@@ -1801,9 +1801,9 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
         self.walk_expr(tx, scope, expr, |expr| self.bind_expr(tx, scope, expr))
     }
 
-    fn bind_value_expr(&self, value: &ast::Value) -> (LogicalType, ir::ExprKind) {
+    fn bind_value_expr(&self, value: &ast::Value) -> ir::Expr {
         let value = self.bind_value(value);
-        (default_logical_type_of_value(&value), ir::ExprKind::Literal(value))
+        literal(value)
     }
 
     fn bind_value(&self, val: &ast::Value) -> ir::Value {
@@ -1869,37 +1869,36 @@ struct TableAlias {
 }
 
 fn literal(value: impl Into<ir::Value>) -> ir::Expr {
+    // resist moving this logic out of this binder module.
+    // the array defaulting logic is a bit of a hack that will cause issues if used outside of here.
+    // i.e. if we have an empty array and someone decides to call say `val.logical_type()` it will
+    // be `int[]`, which is probably not the proper type.
+    fn default_logical_type_of_value(value: &ir::Value) -> LogicalType {
+        match value {
+            ir::Value::Null => LogicalType::Null,
+            ir::Value::Int64(_) => LogicalType::Int64,
+            ir::Value::Bool(_) => LogicalType::Bool,
+            ir::Value::Decimal(_) => LogicalType::Decimal,
+            ir::Value::Text(_) => LogicalType::Text,
+            ir::Value::Oid(_) => LogicalType::Oid,
+            ir::Value::Bytea(_) => LogicalType::Bytea,
+            ir::Value::Array(values) => LogicalType::array(
+                values
+                    .iter()
+                    .find(|val| !matches!(val, ir::Value::Null))
+                    .map(default_logical_type_of_value)
+                    .unwrap_or(LogicalType::Int64),
+            ),
+            ir::Value::Type(_) => LogicalType::Type,
+            ir::Value::Expr(_) => LogicalType::Expr,
+            ir::Value::TupleExpr(_) => LogicalType::TupleExpr,
+            ir::Value::Byte(_) => LogicalType::Byte,
+            ir::Value::Float64(_) => LogicalType::Float64,
+        }
+    }
     let value = value.into();
     let ty = default_logical_type_of_value(&value);
     ir::Expr { kind: ir::ExprKind::Literal(value), ty }
-}
-
-// resist moving this logic out of this module binder.
-// the array defaulting logic is a bit of a hack that will cause issues if used outside of here.
-// i.e. if we have an empty array and someone decides to call say `val.logical_type()` it will
-// be `int[]`, which is probably not the proper type.
-fn default_logical_type_of_value(value: &ir::Value) -> LogicalType {
-    match value {
-        ir::Value::Null => LogicalType::Null,
-        ir::Value::Int64(_) => LogicalType::Int64,
-        ir::Value::Bool(_) => LogicalType::Bool,
-        ir::Value::Decimal(_) => LogicalType::Decimal,
-        ir::Value::Text(_) => LogicalType::Text,
-        ir::Value::Oid(_) => LogicalType::Oid,
-        ir::Value::Bytea(_) => LogicalType::Bytea,
-        ir::Value::Array(values) => LogicalType::array(
-            values
-                .iter()
-                .find(|val| !matches!(val, ir::Value::Null))
-                .map(default_logical_type_of_value)
-                .unwrap_or(LogicalType::Int64),
-        ),
-        ir::Value::Type(_) => LogicalType::Type,
-        ir::Value::Expr(_) => LogicalType::Expr,
-        ir::Value::TupleExpr(_) => LogicalType::TupleExpr,
-        ir::Value::Byte(_) => LogicalType::Byte,
-        ir::Value::Float64(_) => LogicalType::Float64,
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
