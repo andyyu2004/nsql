@@ -103,10 +103,7 @@ pub(super) struct Count {
 impl AggregateFunctionInstance for Count {
     #[inline]
     fn update(&mut self, value: Option<Value>) {
-        match value.expect("count should be passed an argument") {
-            Value::Null => {}
-            _ => self.count += 1,
-        }
+        self.count += !value.expect("count should be passed an argument").is_null() as usize
     }
 
     #[inline]
