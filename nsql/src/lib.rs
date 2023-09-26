@@ -122,7 +122,6 @@ impl<S: StorageEngine> Shared<S> {
         query: &str,
     ) -> Result<MaterializedQueryOutput> {
         let stmts = nsql_parse::parse_statements(query)?;
-        if stmts.is_empty() {}
 
         match &stmts[..] {
             [] => Ok(MaterializedQueryOutput { types: vec![], tuples: vec![] }),

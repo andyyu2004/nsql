@@ -11,6 +11,7 @@ use reedline::{
 };
 use tabled::builder::Builder;
 use tabled::Table;
+use tracing_subscriber::EnvFilter;
 
 #[derive(Debug, FromArgs)]
 #[argh(description = "nsql")]
@@ -51,7 +52,9 @@ fn main() -> nsql::Result<()> {
 
     if let Some(log_path) = args.log {
         let file = &*Box::leak(Box::new(std::fs::File::create(log_path)?));
-        tracing_subscriber::fmt::fmt().with_writer(move || file).init();
+        let filter =
+            EnvFilter::try_from_env("NSQL_LOG").unwrap_or_else(|_| EnvFilter::new("nsql=DEBUG"));
+        tracing_subscriber::fmt::fmt().with_env_filter(filter).with_writer(move || file).init();
     }
 
     let nsql = Nsql::<LmdbStorageEngine>::open(&args.path)?;
