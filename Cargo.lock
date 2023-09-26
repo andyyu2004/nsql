@@ -1433,6 +1433,7 @@ dependencies = [
  "nu-ansi-term 0.49.0",
  "reedline",
  "tabled",
+ "tracing-subscriber",
 ]
 
 [[package]]

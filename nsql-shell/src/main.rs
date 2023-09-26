@@ -15,12 +15,16 @@ use tabled::Table;
 #[derive(Debug, FromArgs)]
 #[argh(description = "nsql")]
 struct Args {
-    #[argh(option, short = 'c')]
     /// execute command and quit
+    #[argh(option, short = 'c')]
     cmd: Option<String>,
 
-    #[argh(switch)]
+    /// path to log file
+    #[argh(option)]
+    log: Option<PathBuf>,
+
     /// suppress all output except errors
+    #[argh(switch)]
     silent: bool,
 
     #[argh(positional)]
@@ -44,6 +48,11 @@ impl reedline::Validator for Validator {
 
 fn main() -> nsql::Result<()> {
     let args: Args = argh::from_env();
+
+    if let Some(log_path) = args.log {
+        let file = &*Box::leak(Box::new(std::fs::File::create(log_path)?));
+        tracing_subscriber::fmt::fmt().with_writer(move || file).init();
+    }
 
     let nsql = Nsql::<LmdbStorageEngine>::open(&args.path)?;
     let (conn, state) = nsql.connect();
