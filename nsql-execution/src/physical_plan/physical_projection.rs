@@ -76,7 +76,9 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Explain<'env
         _tx: &dyn Transaction<'_, S>,
         f: &mut fmt::Formatter<'_>,
     ) -> explain::Result {
-        write!(f, "projection ({})", self.projection)?;
+        write!(f, "projection (")?;
+        fmt::Display::fmt(&self.projection, f)?;
+        write!(f, ")")?;
         Ok(())
     }
 }

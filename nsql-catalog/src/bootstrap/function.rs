@@ -109,6 +109,10 @@ impl Function {
         comparison!(EQ = : Any)
     }
 
+    pub fn and() -> Function {
+        binary!(AND_BOOL AND : Bool)
+    }
+
     pub(super) fn bootstrap_data() -> Box<[Function]> {
         vec![
             // `(a, a) -> bool` operations
@@ -131,8 +135,8 @@ impl Function {
             binary!(DIV_INT    /   : Int64),
             binary!(DIV_FLOAT  /   : Float64),
             binary!(DIV_DEC    /   : Decimal),
-            binary!(AND_BOOL   OR  : Bool),
-            binary!(OR_BOOL    AND : Bool),
+            binary!(AND_BOOL   and : Bool),
+            binary!(OR_BOOL    or : Bool),
             // general scalar functions
             scalar!(NEG_INT  - : (Int64) -> Int64),
             scalar!(NOT_BOOL - : (Bool) -> Bool),

@@ -31,9 +31,8 @@ impl Visitor for Validator {
             ExprKind::ColumnRef(ColumnRef { qpath, index, level: 0 }) => {
                 if index.as_usize() >= plan.schema().len() {
                     self.errors.push(anyhow!(
-                        "column reference out of bounds: {index} >= {} (path: {})",
+                        "column reference out of bounds: {index} >= {} (path: {qpath}) (plan:\n{plan:#})",
                         plan.schema().len(),
-                        qpath,
                     ));
                 }
                 ControlFlow::Continue(())

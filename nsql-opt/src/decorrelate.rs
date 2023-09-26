@@ -1,5 +1,7 @@
 mod rewrite_correlated_exprs;
 
+use rustc_hash::FxHashMap;
+
 use super::*;
 use crate::decorrelate::rewrite_correlated_exprs::*;
 
@@ -46,47 +48,83 @@ impl Flattener {
         kind: ir::SubqueryKind,
         subquery_plan: Box<ir::QueryPlan>,
     ) -> ir::Expr {
+        debug_assert!(subquery_plan.is_correlated());
         // We use the approach from Neumann's `Unnesting Arbitrary Subqueries`.
         // https://btw-2015.informatik.uni-hamburg.de/res/proceedings/Hauptband/Wiss/Neumann-Unnesting_Arbitrary_Querie.pdf
         // Complementary slides from duckdb: https://drive.google.com/file/d/17_sVIwwxFM5RZB5McQZ8dzT8JvOHZuAq/view?pli=1
         // The gist is that a correlated subquery can be initially represented as a dependent join `<plan> dependent-join <subquery-plan>`.
         // Then we can push this dependent join down until there are no more correlated/dependent columns and then we can turn it into an equivalent cross product.
         // This is what the `PushdownDependentJoin` transform implements. We never explicitly create the dependent join node, but only create the cross product.
+        let correlated_plan = Box::new(mem::take(plan));
+        let correlated_columns = subquery_plan.correlated_columns();
+        // mapping from the old correlated column index to the new correlated column index (post-projection)
+        let mut correlated_map = FxHashMap::default();
+        let correlated_projection = correlated_columns
+            .iter()
+            .inspect(|cor| assert!(cor.col.level == 1, "unhandled nested correlated expression"))
+            .enumerate()
+            .map(|(i, cor)| {
+                correlated_map.insert(cor.col.index, ir::TupleIndex::new(i));
+                ir::Expr::column_ref(cor.ty.clone(), cor.col.qpath.clone(), cor.col.index)
+            })
+            .collect::<Vec<_>>();
+
         match kind {
             ir::SubqueryKind::Scalar => {
                 assert_eq!(subquery_plan.schema().len(), 1);
-                // need something like this?
-                // let ty = subquery_plan.schema()[0].clone();
-                // let subquery_plan = subquery_plan
-                //     // add a `limit 1` for efficiency.
-                //     // note that we don't have the same strict check as the uncorrelated case
-                //     // because this one becomes too annoying.
-                //     .limit(1)
-                //     // add a `FIRST(#0)` aggregate over the limit for when it returns no rows, we want to return `NULL` in that case
-                //     .ungrouped_aggregate([(
-                //         ir::MonoFunction::new(ir::Function::first(), ty.clone()),
-                //         [ir::Expr::column_ref(
-                //             ty.clone(),
-                //             ir::QPath::new("", "__scalar_subquery__"),
-                //             ir::TupleIndex::new(0), // we know the subquery only has one column
-                //         )]
-                //         .into(),
-                //     )]);
 
-                let n = plan.schema().len();
-                let correlated_plan = Box::new(mem::take(plan)).distinct();
-                *plan = *PushdownDependentJoin::new(correlated_plan).fold_boxed_plan(subquery_plan);
+                // We only need to compute the subquery once per unique combination of correlated columns.
+                // let delim_correlated_plan =
+                //     correlated_plan.clone().project(correlated_projection).distinct();
+                let delim_correlated_plan = correlated_plan.clone().project(correlated_projection);
+                let magic =
+                    PushdownDependentJoin::new(delim_correlated_plan, correlated_map.clone())
+                        .fold_boxed_plan(subquery_plan);
 
-                assert_eq!(
-                    n + 1,
-                    plan.schema().len(),
-                    "there should be exactly one extra column glued on for a scalar subquery"
+                let shift = correlated_plan.schema().len();
+                // join the delim rhs back with the original plan on the correlated columns (see the slides for details)
+                let predicates = correlated_columns.iter().map(|cor| {
+                    ir::Expr::call(
+                        ir::MonoFunction::new(ir::Function::equal(), LogicalType::Bool),
+                        [
+                            // the column in the lhs of the join
+                            ir::Expr::column_ref(
+                                cor.ty.clone(),
+                                cor.col.qpath.clone(),
+                                cor.col.index,
+                            ),
+                            // the column belonging on the rhs of the join
+                            ir::Expr::column_ref(
+                                cor.ty.clone(),
+                                cor.col.qpath.clone(),
+                                correlated_map[&cor.col.index] + shift,
+                            ),
+                        ],
+                    )
+                });
+
+                let magic = correlated_plan.join(
+                    ir::JoinKind::Single,
+                    magic,
+                    predicates
+                        .reduce(|a, b| {
+                            ir::Expr::call(
+                                ir::MonoFunction::new(ir::Function::and(), LogicalType::Bool),
+                                [a, b],
+                            )
+                        })
+                        .expect("there is at least one correlated column"),
                 );
+                *plan = *magic;
 
+                eprintln!("magic: {:#}", plan);
+
+                // TODO is the last column always the correct one?
+                let idx = plan.schema().len() - 1;
                 ir::Expr::column_ref(
-                    plan.schema()[n].clone(),
+                    plan.schema()[idx].clone(),
                     ir::QPath::new("", "__correlated_scalar__"),
-                    ir::TupleIndex::new(n),
+                    ir::TupleIndex::new(idx),
                 )
             }
             ir::SubqueryKind::Exists => todo!("exists correlated subquery"),

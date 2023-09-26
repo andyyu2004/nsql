@@ -114,7 +114,7 @@ impl Folder for EmptyPlanElimination {
     fn fold_plan(&mut self, plan: ir::QueryPlan) -> ir::QueryPlan {
         match plan {
             ir::QueryPlan::DummyScan => ir::QueryPlan::DummyScan,
-            ir::QueryPlan::Limit { source, limit, exceeded_message: None } if limit == 0 => {
+            ir::QueryPlan::Limit { source, limit: 0, exceeded_message: None } => {
                 ir::QueryPlan::Empty { schema: source.schema().clone() }
             }
             ir::QueryPlan::Filter { source, predicate }

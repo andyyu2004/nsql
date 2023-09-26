@@ -880,7 +880,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                                         .get(Function::MK_NEXTVAL_EXPR)?;
 
                                     let function = ir::MonoFunction::new(f, LogicalType::Expr);
-                                    ir::Expr::call(function, [sequence_oid_expr])?
+                                    ir::Expr::call(function, [sequence_oid_expr])
                                 }
                             },
                         ],

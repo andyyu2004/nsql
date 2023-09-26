@@ -21,7 +21,7 @@ pub fn check_explain<'a>(
     assert_eq!(result.tuples[0].width(), 1);
 
     match &result.tuples[0][TupleIndex::new(0)] {
-        Value::Text(plan) => expect.assert_eq(&plan),
+        Value::Text(plan) => expect.assert_eq(plan),
         _ => panic!("expected text output from explain"),
     }
     Ok(())

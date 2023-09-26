@@ -42,7 +42,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Executor<'en
                 for op in &pipeline.operators {
                     let span = tracing::debug_span!(
                         "operator",
-                        "{}",
+                        "{:#}",
                         op.display(ecx.catalog(), &ecx.tx())
                     );
                     let _entered = span.enter();

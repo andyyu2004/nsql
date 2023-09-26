@@ -48,10 +48,10 @@ impl Expr {
     }
 
     #[inline]
-    pub fn call(function: MonoFunction, args: impl Into<Box<[Expr]>>) -> anyhow::Result<Expr> {
+    pub fn call(function: MonoFunction, args: impl Into<Box<[Expr]>>) -> Expr {
         let args = args.into();
         let ty = function.return_type();
-        Ok(Expr { ty, kind: ExprKind::FunctionCall { function, args } })
+        Expr { ty, kind: ExprKind::FunctionCall { function, args } }
     }
 
     pub fn scalar_subquery(plan: Box<QueryPlan>) -> anyhow::Result<Expr> {

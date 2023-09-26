@@ -4,6 +4,7 @@ use std::str::FromStr;
 use std::sync::LazyLock;
 
 use anyhow::bail;
+use itertools::Itertools;
 use rkyv::{Archive, Deserialize, Serialize};
 
 mod fold;
@@ -100,6 +101,14 @@ impl fmt::Display for LogicalType {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Schema {
     types: Box<[LogicalType]>,
+}
+
+impl fmt::Display for Schema {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "(")?;
+        self.types.iter().format(", ").fmt(f)?;
+        write!(f, ")")
+    }
 }
 
 impl<'a> IntoIterator for &'a Schema {

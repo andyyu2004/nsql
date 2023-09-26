@@ -45,7 +45,7 @@ impl reedline::Validator for Validator {
             return ValidationResult::Complete;
         }
 
-        return ValidationResult::Incomplete;
+        ValidationResult::Incomplete
 
         // the following isn't smart enough
         // match nsql::parse(line) {

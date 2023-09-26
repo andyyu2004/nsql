@@ -18,7 +18,7 @@ pub(crate) struct PhysicalNestedLoopJoin<'env, 'txn, S, M> {
     // tuples are moved into this vector during finalization (to avoid unnecessary locks)
     rhs_tuples: OnceLock<Vec<Tuple>>,
     rhs_index: AtomicUsize,
-    found_match_for_tuple: AtomicBool,
+    found_match_for_lhs_tuple: AtomicBool,
 }
 
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
@@ -35,7 +35,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
             join_kind,
             join_predicate,
             children: [lhs_node, rhs_node],
-            found_match_for_tuple: AtomicBool::new(false),
+            found_match_for_lhs_tuple: AtomicBool::new(false),
             rhs_index: AtomicUsize::new(0),
             rhs_tuples_build: Default::default(),
             rhs_tuples: Default::default(),
@@ -130,7 +130,8 @@ impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalOperator<'
                 assert_eq!(last_index, rhs_tuples.len());
                 self.rhs_index.store(0, atomic::Ordering::Relaxed);
 
-                let found_match = self.found_match_for_tuple.swap(false, atomic::Ordering::Relaxed);
+                let found_match =
+                    self.found_match_for_lhs_tuple.swap(false, atomic::Ordering::Relaxed);
                 // emit the lhs_tuple padded with nulls if no match was found
                 if !found_match && self.join_kind.is_left() {
                     tracing::debug!(
@@ -156,9 +157,17 @@ impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalOperator<'
         tracing::debug!(%joint_tuple, %keep, "evaluated join predicate");
 
         if keep {
-            self.found_match_for_tuple.store(true, atomic::Ordering::Relaxed);
-            tracing::debug!("found match, emitting tuple");
-            Ok(OperatorState::Again(Some(joint_tuple)))
+            tracing::debug!(output = %joint_tuple, "found match, emitting tuple");
+
+            if matches!(self.join_kind, ir::JoinKind::Single) {
+                // If this is a single join, we only want to emit one matching tuple.
+                // Reset the rhs and continue to the next lhs tuple.
+                self.rhs_index.store(0, atomic::Ordering::Relaxed);
+                Ok(OperatorState::Yield(joint_tuple))
+            } else {
+                self.found_match_for_lhs_tuple.store(true, atomic::Ordering::Relaxed);
+                Ok(OperatorState::Again(Some(joint_tuple)))
+            }
         } else {
             tracing::debug!("no match found, continuing loop with same lhs tuple");
             Ok(OperatorState::Again(None))

@@ -290,7 +290,7 @@ impl fmt::Display for PlanFormatter<'_> {
         match self.plan {
             QueryPlan::Empty { .. } => write!(f, "empty"),
             QueryPlan::DummyScan => write!(f, "dummy scan"),
-            QueryPlan::Aggregate { aggregates, source, group_by, schema: _ } => {
+            QueryPlan::Aggregate { aggregates, source, group_by, schema } => {
                 write!(f, "aggregate ")?;
                 aggregates
                     .iter()
@@ -304,21 +304,35 @@ impl fmt::Display for PlanFormatter<'_> {
                     group_by.iter().format(",").fmt(f)?;
                 }
 
+                if f.alternate() {
+                    write!(f, " :: {schema}")?;
+                }
+
                 writeln!(f)?;
 
                 self.child(source).fmt(f)
             }
-            QueryPlan::TableScan { table, projection, projected_schema: _ } => {
-                write!(f, "table scan {}", table)?;
+            QueryPlan::TableScan { table, projection, projected_schema } => {
+                write!(f, "table scan {table}")?;
                 if let Some(projection) = projection {
-                    write!(f, "({})", projection.iter().format(","))?;
+                    write!(f, "({})", projection.iter().format(", "))?;
                 }
+
+                if f.alternate() {
+                    write!(f, " :: {projected_schema}")?;
+                }
+
                 writeln!(f)
             }
-            QueryPlan::Projection { source, projection, projected_schema: _ } => {
+            QueryPlan::Projection { source, projection, projected_schema } => {
                 write!(f, "projection (")?;
                 projection.iter().format(",").fmt(f)?;
-                writeln!(f, ")")?;
+                write!(f, ")")?;
+                if f.alternate() {
+                    write!(f, " :: {projected_schema}")?;
+                }
+
+                writeln!(f)?;
                 self.child(source).fmt(f)
             }
             QueryPlan::Filter { source, predicate } => {
@@ -329,8 +343,12 @@ impl fmt::Display for PlanFormatter<'_> {
             }
             QueryPlan::Unnest { schema: _, expr } => write!(f, "UNNEST ({})", expr),
             QueryPlan::Values { values: _, schema: _ } => writeln!(f, "VALUES"),
-            QueryPlan::Join { schema: _, join, lhs, rhs } => {
-                writeln!(f, "join ({})", join)?;
+            QueryPlan::Join { schema, join, lhs, rhs } => {
+                write!(f, "join ({join})")?;
+                if f.alternate() {
+                    write!(f, " :: {schema}")?;
+                }
+                writeln!(f)?;
                 self.child(lhs).fmt(f)?;
                 self.child(rhs).fmt(f)
             }
@@ -378,7 +396,9 @@ impl fmt::Display for PlanFormatter<'_> {
                 writeln!(f, "distinct")?;
                 self.child(source).fmt(f)
             }
-        }
+        }?;
+
+        Ok(())
     }
 }
 
@@ -403,6 +423,8 @@ impl<Q: fmt::Display> fmt::Display for Plan<Q> {
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum JoinKind {
+    /// Similar to a `LEFT OUTER JOIN` but returns at most one matching row from the right side (NULL if no match)
+    Single,
     Inner,
     Left,
     Right,
@@ -426,7 +448,7 @@ impl FromStr for JoinKind {
 impl JoinKind {
     #[inline]
     pub fn is_left(&self) -> bool {
-        matches!(self, JoinKind::Left | JoinKind::Full)
+        matches!(self, JoinKind::Left | JoinKind::Full | JoinKind::Single)
     }
 
     #[inline]
@@ -442,6 +464,7 @@ impl fmt::Display for JoinKind {
             JoinKind::Left => write!(f, "LEFT"),
             JoinKind::Right => write!(f, "RIGHT"),
             JoinKind::Full => write!(f, "FULL"),
+            JoinKind::Single => write!(f, "SINGLE"),
         }
     }
 }
