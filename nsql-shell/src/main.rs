@@ -11,6 +11,7 @@ use reedline::{
 };
 use tabled::builder::Builder;
 use tabled::Table;
+use tracing_subscriber::prelude::*;
 use tracing_subscriber::EnvFilter;
 
 #[derive(Debug, FromArgs)]
@@ -22,7 +23,7 @@ struct Args {
 
     /// path to log file
     #[argh(option)]
-    log: Option<PathBuf>,
+    log_file: Option<PathBuf>,
 
     /// suppress all output except errors
     #[argh(switch)]
@@ -50,11 +51,18 @@ impl reedline::Validator for Validator {
 fn main() -> nsql::Result<()> {
     let args: Args = argh::from_env();
 
-    if let Some(log_path) = args.log {
-        let file = &*Box::leak(Box::new(std::fs::File::create(log_path)?));
+    if let Some(log_file) = args.log_file {
+        let file = &*Box::leak(Box::new(std::fs::File::create(log_file)?));
         let filter =
-            EnvFilter::try_from_env("NSQL_LOG").unwrap_or_else(|_| EnvFilter::new("nsql=DEBUG"));
-        tracing_subscriber::fmt::fmt().with_env_filter(filter).with_writer(move || file).init();
+            EnvFilter::try_from_env("NSQL_LOG").unwrap_or_else(|_| EnvFilter::new("nsql=INFO"));
+
+        tracing_subscriber::Registry::default()
+            .with(
+                tracing_tree::HierarchicalLayer::new(2)
+                    .with_writer(move || file)
+                    .with_filter(filter),
+            )
+            .init();
     }
 
     let nsql = Nsql::<LmdbStorageEngine>::open(&args.path)?;
