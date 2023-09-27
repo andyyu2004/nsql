@@ -1,9 +1,10 @@
 #![deny(rust_2018_idioms)]
 
+use std::panic::AssertUnwindSafe;
 use std::path::Path;
 use std::sync::Arc;
 
-pub use anyhow::Error;
+pub use anyhow::{anyhow, Error};
 use arc_swap::ArcSwapOption;
 use mimalloc::MiMalloc;
 use nsql_bind::Binder;
@@ -108,9 +109,12 @@ impl<S: StorageEngine> Connection<S> {
         ctx: &SessionContext<'env, S>,
         query: &str,
     ) -> Result<MaterializedQueryOutput> {
-        let output = self.db.shared.query(ctx, query)?;
+        std::panic::catch_unwind(AssertUnwindSafe(|| {
+            let output = self.db.shared.query(ctx, query)?;
 
-        Ok(output)
+            Ok(output)
+        }))
+        .map_err(|_data| anyhow!("caught panic"))?
     }
 }
 
