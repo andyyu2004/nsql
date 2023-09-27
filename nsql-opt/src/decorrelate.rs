@@ -74,9 +74,8 @@ impl Flattener {
                 assert_eq!(subquery_plan.schema().len(), 1);
 
                 // We only need to compute the subquery once per unique combination of correlated columns.
-                // let delim_correlated_plan =
-                //     correlated_plan.clone().project(correlated_projection).distinct();
-                let delim_correlated_plan = correlated_plan.clone().project(correlated_projection);
+                let delim_correlated_plan =
+                    correlated_plan.clone().project(correlated_projection).distinct();
                 let magic =
                     PushdownDependentJoin::new(delim_correlated_plan, correlated_map.clone())
                         .fold_boxed_plan(subquery_plan);
@@ -85,7 +84,11 @@ impl Flattener {
                 // join the delim rhs back with the original plan on the correlated columns (see the slides for details)
                 let predicates = correlated_columns.iter().map(|cor| {
                     ir::Expr::call(
-                        ir::MonoFunction::new(ir::Function::equal(), LogicalType::Bool),
+                        // we need an `is not distinct from` join, (then we can add the distinct up top back)
+                        ir::MonoFunction::new(
+                            ir::Function::is_not_distinct_from(),
+                            LogicalType::Bool,
+                        ),
                         [
                             // the column in the lhs of the join
                             ir::Expr::column_ref(

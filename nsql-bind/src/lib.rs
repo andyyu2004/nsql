@@ -1627,14 +1627,14 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                 let rhs = Box::new(f(right)?);
 
                 let op = match op {
-                    ast::BinaryOperator::Eq => Operator::EQUAL,
-                    ast::BinaryOperator::NotEq => Operator::NOT_EQUAL,
+                    ast::BinaryOperator::Eq => Operator::EQ,
+                    ast::BinaryOperator::NotEq => Operator::NEQ,
                     ast::BinaryOperator::Plus => Operator::PLUS,
                     ast::BinaryOperator::Minus => Operator::MINUS,
-                    ast::BinaryOperator::Lt => Operator::LESS,
-                    ast::BinaryOperator::LtEq => Operator::LESS_EQUAL,
-                    ast::BinaryOperator::GtEq => Operator::GREATER_EQUAL,
-                    ast::BinaryOperator::Gt => Operator::GREATER,
+                    ast::BinaryOperator::Lt => Operator::LT,
+                    ast::BinaryOperator::LtEq => Operator::LTE,
+                    ast::BinaryOperator::GtEq => Operator::GTE,
+                    ast::BinaryOperator::Gt => Operator::GT,
                     ast::BinaryOperator::Multiply => Operator::STAR,
                     ast::BinaryOperator::Divide => Operator::SLASH,
                     // the compiler should special case these operators and implement short circuiting
@@ -1661,6 +1661,24 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                 };
 
                 let operator = self.bind_binary_operator(tx, op, lhs.ty(), rhs.ty())?;
+                (operator.return_type(), ir::ExprKind::BinaryOperator { operator, lhs, rhs })
+            }
+            ast::Expr::IsDistinctFrom(lhs, rhs) => {
+                let lhs = Box::new(f(lhs)?);
+                let rhs = Box::new(f(rhs)?);
+                let operator =
+                    self.bind_binary_operator(tx, Operator::IS_DISTINCT_FROM, lhs.ty(), rhs.ty())?;
+                (operator.return_type(), ir::ExprKind::BinaryOperator { operator, lhs, rhs })
+            }
+            ast::Expr::IsNotDistinctFrom(lhs, rhs) => {
+                let lhs = Box::new(f(lhs)?);
+                let rhs = Box::new(f(rhs)?);
+                let operator = self.bind_binary_operator(
+                    tx,
+                    Operator::IS_NOT_DISTINCT_FROM,
+                    lhs.ty(),
+                    rhs.ty(),
+                )?;
                 (operator.return_type(), ir::ExprKind::BinaryOperator { operator, lhs, rhs })
             }
             ast::Expr::Cast { expr, data_type } => {

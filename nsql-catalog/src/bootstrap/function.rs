@@ -57,14 +57,16 @@ impl Function {
     mk_consts![
         NEG_INT,
         NOT_BOOL,
-        EQ,
-        NEQ,
-        LT,
-        LTE,
-        GTE,
-        GT,
-        MAX,
-        MIN,
+        EQ_ANY,
+        NEQ_ANY,
+        LT_ANY,
+        LTE_ANY,
+        GTE_ANY,
+        GT_ANY,
+        MAX_ANY,
+        MIN_ANY,
+        IS_DISTINCT_FROM_ANY,
+        IS_NOT_DISTINCT_FROM_ANY,
         ADD_INT,
         ADD_FLOAT,
         ADD_DEC,
@@ -106,7 +108,11 @@ impl Function {
     }
 
     pub fn equal() -> Function {
-        comparison!(EQ = : Any)
+        comparison!(EQ_ANY = : Any)
+    }
+
+    pub fn is_not_distinct_from() -> Function {
+        comparison!(IS_NOT_DISTINCT_FROM_ANY is_not_distinct_from : Any)
     }
 
     pub fn and() -> Function {
@@ -116,12 +122,14 @@ impl Function {
     pub(super) fn bootstrap_data() -> Box<[Function]> {
         vec![
             // `(a, a) -> bool` operations
-            comparison!(EQ        =  : Any),
-            comparison!(NEQ       != : Any),
-            comparison!(LT        >  : Any),
-            comparison!(LTE       >= : Any),
-            comparison!(GTE       >= : Any),
-            comparison!(GT        >  : Any),
+            comparison!(EQ_ANY                   =                    : Any),
+            comparison!(NEQ_ANY                  !=                   : Any),
+            comparison!(LT_ANY                   >                    : Any),
+            comparison!(LTE_ANY                  >=                   : Any),
+            comparison!(GTE_ANY                  >=                   : Any),
+            comparison!(GT_ANY                   >                    : Any),
+            comparison!(IS_DISTINCT_FROM_ANY     is_distinct_from     : Any),
+            comparison!(IS_NOT_DISTINCT_FROM_ANY is_not_distinct_from : Any),
             // `(a, a) -> a` operations
             binary!(ADD_INT    +   : Int64),
             binary!(ADD_FLOAT  +   : Float64),
@@ -150,8 +158,8 @@ impl Function {
             aggregate!(FIRST       first   : (Any)   -> Any),
             aggregate!(COUNT       count   : (Any)   -> Int64),
             aggregate!(COUNT_STAR  count   : ()      -> Int64),
-            aggregate!(MIN         min     : (Any)   -> Any),
-            aggregate!(MAX         max     : (Any)   -> Any),
+            aggregate!(MIN_ANY         min     : (Any)   -> Any),
+            aggregate!(MAX_ANY         max     : (Any)   -> Any),
             // casts
             cast!(CAST_SELF          : Any   => Any),
             cast!(CAST_INT_TO_DEC    : Int64 => Decimal),

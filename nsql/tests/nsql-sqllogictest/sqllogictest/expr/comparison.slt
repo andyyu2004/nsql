@@ -73,3 +73,35 @@ query B
 SELECT [1,2,3] = [1,2,3]
 ----
 true
+
+query B
+SELECT NULL IS NOT DISTINCT FROM NULL
+----
+true
+
+query B
+SELECT NULL IS DISTINCT FROM NULL
+----
+false
+
+query B
+SELECT 1 IS NOT DISTINCT FROM 1
+----
+true
+
+query B
+SELECT 1 IS DISTINCT FROM 1
+----
+false
+
+query B
+SELECT 1 IS NOT DISTINCT FROM 2
+----
+false
+
+query B
+SELECT 1 IS DISTINCT FROM 2
+----
+true
+
+
