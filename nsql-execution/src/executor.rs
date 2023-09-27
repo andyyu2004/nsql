@@ -33,44 +33,65 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Executor<'en
         let pipeline: &Pipeline<'env, 'txn, S, M> = &self.arena[pipeline];
         let mut stream = Arc::clone(&pipeline.source).source(ecx)?;
 
-        while let Some(tuple) = stream.next()? {
-            'input: loop {
-                tracing::debug!(%tuple, "pushing tuple through pipeline");
-                let mut again = false;
-                let mut tuple = tuple.clone();
+        'main_loop: while let Some(tuple) = stream.next()? {
+            let mut incomplete_operator_indexes = vec![(0, tuple)];
 
-                for op in &pipeline.operators {
+            'operator_loop: while let Some((operator_idx, mut tuple)) =
+                incomplete_operator_indexes.pop()
+            {
+                tracing::debug!(%tuple, start = %operator_idx, "pushing tuple through pipeline");
+
+                for (idx, op) in pipeline.operators.iter().enumerate().skip(operator_idx) {
                     let span = tracing::debug_span!(
                         "operator",
                         "{:#}",
                         op.display(ecx.catalog(), &ecx.tx())
                     );
+
                     let _entered = span.enter();
-                    tuple = match op.execute(ecx, tuple)? {
-                        OperatorState::Again(tuple) => match tuple {
-                            Some(tuple) => {
-                                again = true;
-                                tuple
-                            }
-                            None => continue 'input,
-                        },
-                        OperatorState::Yield(tuple) => tuple,
-                        OperatorState::Continue => {
-                            if again {
-                                continue 'input;
-                            } else {
-                                break 'input;
+                    let input_tuple = tuple;
+                    // FIXME avoid clones
+                    tuple = match op.execute(ecx, input_tuple.clone())? {
+                        OperatorState::Again(tuple) => {
+                            incomplete_operator_indexes.push((idx, input_tuple));
+                            match tuple {
+                                Some(tuple) => {
+                                    tracing::debug!(%tuple, "operator state again");
+                                    tuple
+                                }
+                                None => {
+                                    tracing::debug!(
+                                        "operator state again with no tuple, continuing"
+                                    );
+                                    continue 'operator_loop;
+                                }
                             }
                         }
+                        OperatorState::Yield(tuple) => {
+                            tracing::debug!(%tuple, "operator state yield");
+                            tuple
+                        }
+                        OperatorState::Continue => {
+                            tracing::debug!("operator state continue");
+                            break 'operator_loop;
+                        }
                         // Once an operator completes, the entire pipeline is finished
-                        OperatorState::Done => break 'input,
+                        OperatorState::Done => {
+                            tracing::debug!("operator state done");
+                            break 'main_loop;
+                        }
                     };
                 }
 
+                let _entered = tracing::debug_span!(
+                    "sink",
+                    "{:#}",
+                    pipeline.sink.display(ecx.catalog(), &ecx.tx())
+                )
+                .entered();
+
+                tracing::debug!(%tuple, "sinking tuple");
                 pipeline.sink.sink(ecx, tuple)?;
-                if !again {
-                    break 'input;
-                }
             }
         }
 

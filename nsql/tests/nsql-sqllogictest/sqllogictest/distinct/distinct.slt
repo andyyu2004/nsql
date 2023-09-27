@@ -33,3 +33,14 @@ SELECT x FROM (SELECT NULL AS x UNION ALL SELECT NULL)
 NULL
 NULL
 
+# regression test
+query I
+SELECT i FROM (SELECT DISTINCT i FROM unnest(range(0, 6)) AS t(i)) AS t(i) JOIN (values (42))
+----
+0
+1
+2
+3
+4
+5
+

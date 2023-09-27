@@ -107,7 +107,6 @@ impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalOperator<'
         ecx: &'txn ExecutionContext<'_, 'env, S, M>,
         lhs_tuple: Tuple,
     ) -> ExecutionResult<OperatorState<Tuple>> {
-        tracing::debug!("probing nested loop join");
         let storage = ecx.storage();
         let tx = ecx.tx();
         let rhs_tuples = self.rhs_tuples.get().expect("probing before build is finished");
