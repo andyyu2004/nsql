@@ -93,7 +93,10 @@ fn main() -> nsql::Result<()> {
 
     let mut line_editor = Reedline::create()
         .with_edit_mode(Box::new(Vi::new(ikb, default_vi_normal_keybindings())))
-        .with_history(Box::new(FileBackedHistory::with_file(500, "/tmp/nsql-history.txt".into())?))
+        .with_history(Box::new(FileBackedHistory::with_file(
+            500,
+            "~/.local/share/nsql/nsql_history".into(),
+        )?))
         .with_validator(Box::new(Validator))
         .with_hinter(Box::new(
             DefaultHinter::default().with_style(Style::new().italic().fg(Color::DarkGray)),

@@ -120,8 +120,6 @@ impl Flattener {
                 );
                 *plan = *magic;
 
-                eprintln!("magic: {:#}", plan);
-
                 // TODO is the last column always the correct one?
                 let idx = plan.schema().len() - 1;
                 ir::Expr::column_ref(
