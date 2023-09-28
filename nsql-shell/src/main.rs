@@ -95,7 +95,7 @@ fn main() -> nsql::Result<()> {
         .with_edit_mode(Box::new(Vi::new(ikb, default_vi_normal_keybindings())))
         .with_history(Box::new(FileBackedHistory::with_file(
             500,
-            "~/.local/share/nsql/nsql_history".into(),
+            dirs::data_dir().unwrap_or_else(|| "/tmp".into()).join("nsql/nsql_history"),
         )?))
         .with_validator(Box::new(Validator))
         .with_hinter(Box::new(

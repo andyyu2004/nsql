@@ -20,7 +20,7 @@ use nsql_catalog::{
     Catalog, ColumnIdentity, ColumnIndex, Function, FunctionKind, Namespace, Operator,
     OperatorKind, SystemEntity, SystemTableView, Table, MAIN_SCHEMA,
 };
-use nsql_core::{LogicalType, Name, Oid, Schema};
+use nsql_core::{not_implemented, not_implemented_if, LogicalType, Name, Oid, Schema};
 use nsql_parse::ast;
 use nsql_storage::eval;
 use nsql_storage_engine::{FallibleIterator, ReadonlyExecutionMode, StorageEngine, Transaction};
@@ -34,22 +34,6 @@ pub struct Binder<'env, S> {
 }
 
 type CteMeta = (CteKind, Scope, Box<ir::QueryPlan>);
-
-macro_rules! not_implemented {
-    ($msg:literal) => {
-        anyhow::bail!("not implemented: {}", $msg)
-    };
-}
-
-macro_rules! not_implemented_if {
-    ($cond:expr) => {
-        if $cond {
-            anyhow::bail!("not implemented: {}", stringify!($cond))
-        }
-    };
-}
-
-use not_implemented_if;
 
 macro_rules! unbound {
     ($ty:ty, $path:expr) => {

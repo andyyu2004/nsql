@@ -9,6 +9,7 @@ path = "src/main.rs"
 
 [dependencies]
 argh = "0.1.10"
+dirs = "5.0.1"
 nsql = { path = "../nsql" }
 nu-ansi-term = "0.49.0"
 reedline = "0.22.0"

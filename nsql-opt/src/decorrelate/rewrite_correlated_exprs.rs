@@ -75,7 +75,7 @@ impl Folder for PushdownDependentJoin {
                 *ir::QueryPlan::project(source, projection)
             }
             ir::QueryPlan::Filter { .. } => plan.fold_with(self),
-            ir::QueryPlan::Limit { .. } => todo!(), // naively recursing through limit is not correct for this
+            ir::QueryPlan::Limit { .. } => unimplemented!("limit within correlated subquery"),
             ir::QueryPlan::Union { schema: _, lhs: _, rhs: _ } => todo!(),
             ir::QueryPlan::Join { schema: _, join: _, lhs: _, rhs: _ } => todo!(),
             ir::QueryPlan::Order { source: _, order: _ } => todo!(),
