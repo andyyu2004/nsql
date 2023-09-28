@@ -24,6 +24,10 @@ impl<'env: 'txn, 'txn> PhysicalDrop {
 impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode>
     for PhysicalDrop
 {
+    fn width(&self) -> usize {
+        0
+    }
+
     fn children(&self) -> &[Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode>>] {
         &[]
     }

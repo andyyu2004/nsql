@@ -4,20 +4,25 @@ use nsql_storage_engine::fallible_iterator;
 use super::*;
 
 #[derive(Debug)]
-pub struct PhysicalCteScan {
+pub struct PhysicalCteScan<'env, 'txn, S, M> {
     cte_name: Name,
+    /// The cte node that produces the data for this scan
+    cte: Arc<dyn PhysicalNode<'env, 'txn, S, M>>,
 }
 
-impl<'env: 'txn, 'txn> PhysicalCteScan {
-    pub(crate) fn plan<S: StorageEngine, M: ExecutionMode<'env, S>>(
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
+    PhysicalCteScan<'env, 'txn, S, M>
+{
+    pub(crate) fn plan(
         cte_name: Name,
+        cte: Arc<dyn PhysicalNode<'env, 'txn, S, M>>,
     ) -> Arc<dyn PhysicalNode<'env, 'txn, S, M>> {
-        Arc::new(Self { cte_name })
+        Arc::new(Self { cte_name, cte })
     }
 }
 
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSource<'env, 'txn, S, M>
-    for PhysicalCteScan
+    for PhysicalCteScan<'env, 'txn, S, M>
 {
     #[tracing::instrument(skip(self, ecx))]
     fn source(
@@ -38,8 +43,12 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
 }
 
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode<'env, 'txn, S, M>
-    for PhysicalCteScan
+    for PhysicalCteScan<'env, 'txn, S, M>
 {
+    fn width(&self) -> usize {
+        self.cte.width()
+    }
+
     fn children(&self) -> &[Arc<dyn PhysicalNode<'env, 'txn, S, M>>] {
         &[]
     }
@@ -66,7 +75,9 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode
     }
 }
 
-impl<'env, S: StorageEngine> Explain<'env, S> for PhysicalCteScan {
+impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Explain<'env, S>
+    for PhysicalCteScan<'env, 'txn, S, M>
+{
     fn as_dyn(&self) -> &dyn Explain<'env, S> {
         self
     }

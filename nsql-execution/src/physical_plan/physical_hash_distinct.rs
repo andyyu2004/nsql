@@ -40,6 +40,10 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode<'env, 'txn, S, M>
     for PhysicalHashDistinct<'env, 'txn, S, M>
 {
+    fn width(&self) -> usize {
+        self.child.width()
+    }
+
     #[inline]
     fn children(&self) -> &[Arc<dyn PhysicalNode<'env, 'txn, S, M>>] {
         std::slice::from_ref(&self.child)

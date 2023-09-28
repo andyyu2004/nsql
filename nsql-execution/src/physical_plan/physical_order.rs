@@ -8,7 +8,7 @@ use super::*;
 
 #[derive(Debug)]
 pub struct PhysicalOrder<'env, 'txn, S, M> {
-    children: [Arc<dyn PhysicalNode<'env, 'txn, S, M>>; 1],
+    child: Arc<dyn PhysicalNode<'env, 'txn, S, M>>,
     ordering: Box<[ir::OrderExpr<ExecutableExpr<S>>]>,
     tuples: RwLock<Vec<Tuple>>,
 }
@@ -20,7 +20,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
         source: Arc<dyn PhysicalNode<'env, 'txn, S, M>>,
         ordering: Box<[ir::OrderExpr<ExecutableExpr<S>>]>,
     ) -> Arc<dyn PhysicalNode<'env, 'txn, S, M>> {
-        Arc::new(Self { children: [source], ordering, tuples: Default::default() })
+        Arc::new(Self { child: source, ordering, tuples: Default::default() })
     }
 }
 
@@ -84,8 +84,12 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSink
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode<'env, 'txn, S, M>
     for PhysicalOrder<'env, 'txn, S, M>
 {
+    fn width(&self) -> usize {
+        self.child.width()
+    }
+
     fn children(&self) -> &[Arc<dyn PhysicalNode<'env, 'txn, S, M>>] {
-        &self.children
+        std::slice::from_ref(&self.child)
     }
 
     fn as_source(
@@ -123,7 +127,9 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Explain<'env
         _tx: &dyn Transaction<'_, S>,
         f: &mut fmt::Formatter<'_>,
     ) -> explain::Result {
-        write!(f, "order by ({})", self.ordering.iter().format(","))?;
+        write!(f, "order by (")?;
+        fmt::Display::fmt(&self.ordering.iter().format(", "), f)?;
+        write!(f, ")")?;
         Ok(())
     }
 }

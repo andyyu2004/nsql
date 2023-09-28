@@ -123,7 +123,7 @@ pub fn execute<'env: 'txn, 'txn, S: StorageEngine>(
     ecx: &'txn ExecutionContext<'_, 'env, S, ReadonlyExecutionMode>,
     plan: PhysicalPlan<'env, 'txn, S, ReadonlyExecutionMode>,
 ) -> ExecutionResult<Vec<Tuple>> {
-    let sink = Arc::new(OutputSink::default());
+    let sink = Arc::new(OutputSink::new());
     let root_pipeline = build_pipelines(
         Arc::clone(&sink) as Arc<dyn PhysicalSink<'env, 'txn, S, ReadonlyExecutionMode> + 'txn>,
         plan,
@@ -138,7 +138,7 @@ pub fn execute_write<'env: 'txn, 'txn, S: StorageEngine>(
     ecx: &'txn ExecutionContext<'_, 'env, S, ReadWriteExecutionMode>,
     plan: PhysicalPlan<'env, 'txn, S, ReadWriteExecutionMode>,
 ) -> ExecutionResult<Vec<Tuple>> {
-    let sink = Arc::new(OutputSink::default());
+    let sink = Arc::new(OutputSink::new());
 
     let root_pipeline = build_pipelines(
         Arc::clone(&sink) as Arc<dyn PhysicalSink<'env, 'txn, S, ReadWriteExecutionMode> + 'txn>,
@@ -155,9 +155,22 @@ pub(crate) struct OutputSink {
     tuples: RwLock<Vec<Tuple>>,
 }
 
+impl OutputSink {
+    pub(crate) fn new() -> Self {
+        Self { tuples: Default::default() }
+    }
+}
+
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode<'env, 'txn, S, M>
     for OutputSink
 {
+    #[inline]
+    fn width(&self) -> usize {
+        unimplemented!(
+            "does anyone need to know the width of this one as it will always be at the root?"
+        )
+    }
+
     #[inline]
     fn children(&self) -> &[Arc<dyn PhysicalNode<'env, 'txn, S, M>>] {
         &[]
