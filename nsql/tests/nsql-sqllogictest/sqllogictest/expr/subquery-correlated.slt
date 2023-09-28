@@ -31,14 +31,14 @@ NULL
 1
 0
 
-# subquery with LIMIT 0
-# query II
-# SELECT i, (SELECT 42+i1.i FROM integers WHERE false) AS j FROM integers i1 ORDER BY i
-# ----
-# NULL	NULL
-# 1	NULL
-# 2	NULL
-# 3	NULL
+# correlated subquery with empty plan
+query II rowsort
+SELECT i, (SELECT 42+i1.i FROM integers WHERE false) AS j FROM integers i1
+----
+NULL	NULL
+1	NULL
+2	NULL
+3	NULL
 
 
 # scalar filter with correlation

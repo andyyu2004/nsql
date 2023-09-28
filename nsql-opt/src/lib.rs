@@ -122,6 +122,25 @@ impl Folder for EmptyPlanElimination {
             {
                 ir::QueryPlan::Empty { schema: source.schema().clone() }
             }
+            ir::QueryPlan::Projection { source, projection, projected_schema } => {
+                let source = self.fold_boxed_plan(source);
+                if source.is_empty() {
+                    ir::QueryPlan::Empty { schema: projected_schema }
+                } else {
+                    ir::QueryPlan::Projection { source, projection, projected_schema }
+                }
+            }
+            ir::QueryPlan::Join { join, lhs, rhs, schema } => {
+                let lhs = self.fold_boxed_plan(lhs);
+                let rhs = self.fold_boxed_plan(rhs);
+
+                // FIXME there's a lot more cases where we can eliminate the join
+                if (lhs.is_empty() || rhs.is_empty()) && matches!(join, ir::JoinKind::Inner) {
+                    ir::QueryPlan::Empty { schema }
+                } else {
+                    ir::QueryPlan::Join { join, lhs, rhs, schema }
+                }
+            }
             _ => plan.fold_with(self),
         }
     }

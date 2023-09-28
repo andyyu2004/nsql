@@ -644,6 +644,11 @@ impl QueryPlan {
         Box::new(Self::Projection { source: self, projection, projected_schema })
     }
 
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        matches!(self, Self::Empty { .. })
+    }
+
     pub fn build_leftmost_k_projection(&self, k: usize) -> Box<[Expr]> {
         let schema = self.schema();
         assert!(k <= schema.len(), "k must be less than or equal to the number of columns");
