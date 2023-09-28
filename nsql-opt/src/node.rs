@@ -31,10 +31,10 @@ define_language! {
 
         // relational expression
         "dummy" = DummyScan,
-        "empty" = EmptyPlan,
         "project" = Project([Id; 2]),            // (project <source> (<exprs> ...))
         "filter" = Filter([Id; 2]),              // (filter <source> <predicate>)
         Join(ir::JoinKind, [Id; 2]),             // (join <join-kind> <lhs> <rhs>)
+        EmptyPlan(usize),                        // (empty <width>)
         "unnest" = Unnest(Id),                   // (unnest <array-expr>)
         "order" = Order([Id; 2]),                // (order <source> (<order-exprs>...))
         "limit" = Limit([Id; 2]),                // (limit <source> <limit>)
@@ -105,7 +105,7 @@ impl Builder {
     fn build_query(&mut self, query: &ir::QueryPlan) -> Id {
         let expr = match query {
             ir::QueryPlan::DummyScan => Node::DummyScan,
-            ir::QueryPlan::Empty { .. } => Node::EmptyPlan,
+            ir::QueryPlan::Empty { schema } => Node::EmptyPlan(schema.len()),
             ir::QueryPlan::Aggregate { aggregates, source, group_by, schema: _ } => {
                 let source = self.build_query(source);
                 let group_by = self.build_exprs(source, group_by);

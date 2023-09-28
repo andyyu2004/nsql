@@ -18,6 +18,7 @@ pub(crate) struct PhysicalNestedLoopJoin<'env, 'txn, S, M> {
     // tuples are moved into this vector during finalization (to avoid unnecessary locks)
     rhs_tuples: OnceLock<Vec<Tuple>>,
     rhs_index: AtomicUsize,
+    rhs_width: usize,
     found_match_for_lhs_tuple: AtomicBool,
 }
 
@@ -34,6 +35,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
         Arc::new(Self {
             join_kind,
             join_predicate,
+            rhs_width: rhs_node.width(),
             children: [lhs_node, rhs_node],
             found_match_for_lhs_tuple: AtomicBool::new(false),
             rhs_index: AtomicUsize::new(0),
@@ -114,12 +116,6 @@ impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalOperator<'
         let storage = ecx.storage();
         let tx = ecx.tx();
         let rhs_tuples = self.rhs_tuples.get().expect("probing before build is finished");
-        if rhs_tuples.is_empty() {
-            tracing::debug!("no tuples on rhs, operator done");
-            return Ok(OperatorState::Done);
-        }
-
-        let rhs_tuple_width = rhs_tuples[0].width();
 
         let rhs_index = match self.rhs_index.fetch_update(
             atomic::Ordering::Relaxed,
@@ -140,7 +136,7 @@ impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalOperator<'
                     tracing::debug!(
                         "no match found, emitting tuple padded with nulls for left join"
                     );
-                    return Ok(OperatorState::Yield(lhs_tuple.pad_right(rhs_tuple_width)));
+                    return Ok(OperatorState::Yield(lhs_tuple.pad_right(self.rhs_width)));
                 }
 
                 tracing::debug!("completed loop, continuing with next lhs tuple");

@@ -5,15 +5,15 @@ use crate::TupleStream;
 
 #[derive(Debug)]
 pub struct PhysicalDummyScan {
-    empty: bool,
+    width: Option<usize>,
 }
 
 impl PhysicalDummyScan {
-    /// If `empty`, then output no tuples, otherwise output a single empty tuple.
+    /// If `Some(n)`, then output no tuples (with `width = n`), otherwise output a single empty tuple (width 0).
     pub(crate) fn plan<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
-        empty: bool,
+        width: Option<usize>,
     ) -> Arc<dyn PhysicalNode<'env, 'txn, S, M>> {
-        Arc::new(Self { empty })
+        Arc::new(Self { width })
     }
 }
 
@@ -24,7 +24,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
         self: Arc<Self>,
         _ecx: &'txn ExecutionContext<'_, 'env, S, M>,
     ) -> ExecutionResult<TupleStream<'txn>> {
-        if self.empty {
+        if self.width.is_some() {
             Ok(Box::new(fallible_iterator::empty()))
         } else {
             Ok(Box::new(fallible_iterator::once(Tuple::empty())))
@@ -36,7 +36,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode
     for PhysicalDummyScan
 {
     fn width(&self) -> usize {
-        0
+        self.width.unwrap_or(0)
     }
 
     fn children(&self) -> &[Arc<dyn PhysicalNode<'env, 'txn, S, M>>] {
@@ -76,7 +76,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> Explain<'env, S> for PhysicalDummyScan 
         _tx: &dyn Transaction<'_, S>,
         f: &mut fmt::Formatter<'_>,
     ) -> explain::Result {
-        if self.empty {
+        if self.width.is_some() {
             write!(f, "empty")?;
         } else {
             write!(f, "dummy scan")?;

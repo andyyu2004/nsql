@@ -57,6 +57,8 @@ fn optimize_query(mut plan: Box<ir::QueryPlan>) -> Query {
         }
     }
 
+    eprintln!("{:#}", plan);
+
     let mut builder = node::Builder::default();
     let root = builder.build(&plan);
     builder.finalize(root)

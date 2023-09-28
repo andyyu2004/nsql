@@ -188,8 +188,8 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
                 let columns = table.columns(self.catalog, tx)?;
                 PhysicalTableScan::plan(table, columns, None)
             }
-            opt::Plan::DummyScan => PhysicalDummyScan::plan(false),
-            opt::Plan::Empty => PhysicalDummyScan::plan(true),
+            opt::Plan::DummyScan => PhysicalDummyScan::plan(None),
+            opt::Plan::Empty(empty) => PhysicalDummyScan::plan(Some(empty.width())),
             opt::Plan::Union(union) => {
                 PhysicalUnion::plan(f(self, union.lhs(q))?, f(self, union.rhs(q))?)
             }

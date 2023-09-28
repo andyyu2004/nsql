@@ -82,7 +82,7 @@ impl Query {
                 panic!("subquery nodes should have been flattened during optimization")
             }
             ref node @ (Node::DummyScan
-            | Node::EmptyPlan
+            | Node::EmptyPlan(..)
             | Node::Nodes(_)
             | Node::Distinct(..)
             | Node::Project(_)
@@ -109,7 +109,7 @@ impl Query {
     fn plan(&self, id: Id) -> Plan<'_> {
         match *self.node(id) {
             Node::DummyScan => Plan::DummyScan,
-            Node::EmptyPlan => Plan::Empty,
+            Node::EmptyPlan(width) => Plan::Empty(Empty { width }),
             Node::Project([source, projection]) => {
                 Plan::Projection(Projection { projection, source })
             }
@@ -171,8 +171,8 @@ pub enum Plan<'a> {
     CteScan(CteScan<'a>),
     Cte(Cte<'a>),
     Distinct(Distinct),
+    Empty(Empty),
     DummyScan,
-    Empty,
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -354,6 +354,19 @@ impl Order {
             Node::Desc(expr) => ir::OrderExpr { expr: q.expr(*expr), asc: false },
             _ => ir::OrderExpr { expr: q.expr(node), asc: true },
         })
+    }
+}
+
+#[derive(Debug, Copy, Clone)]
+
+pub struct Empty {
+    width: usize,
+}
+
+impl Empty {
+    #[inline]
+    pub fn width(self) -> usize {
+        self.width
     }
 }
 
