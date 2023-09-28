@@ -82,7 +82,9 @@ impl Query {
                 panic!("subquery nodes should have been flattened during optimization")
             }
             ref node @ (Node::DummyScan
+            | Node::EmptyPlan(..)
             | Node::Nodes(_)
+            | Node::Distinct(..)
             | Node::Project(_)
             | Node::Filter(_)
             | Node::Join(..)
@@ -107,11 +109,12 @@ impl Query {
     fn plan(&self, id: Id) -> Plan<'_> {
         match *self.node(id) {
             Node::DummyScan => Plan::DummyScan,
+            Node::EmptyPlan(width) => Plan::Empty(Empty { width }),
             Node::Project([source, projection]) => {
                 Plan::Projection(Projection { projection, source })
             }
             Node::Filter([source, predicate]) => Plan::Filter(Filter { source, predicate }),
-            Node::Join(join_kind, [lhs, rhs]) => Plan::Join(Join { join_kind, lhs, rhs }),
+            Node::Join(join_kind, [lhs, rhs]) => Plan::Join(Join { kind: join_kind, lhs, rhs }),
             Node::Unnest(expr) => Plan::Unnest(Unnest { expr }),
             Node::Order([source, order_exprs]) => Plan::Order(Order { source, order_exprs }),
             Node::Limit([source, limit]) => Plan::Limit(Limit { source, limit, msg: None }),
@@ -133,6 +136,7 @@ impl Query {
             Node::Union([lhs, rhs]) => Plan::Union(Union { lhs, rhs }),
             Node::Cte(ref name, [cte_plan, child]) => Plan::Cte(Cte { name, cte_plan, child }),
             Node::CteScan(ref name) => Plan::CteScan(CteScan { name }),
+            Node::Distinct(source) => Plan::Distinct(Distinct { source }),
             Node::Desc(_)
             | Node::QuotedExpr(_)
             | Node::Nodes(_)
@@ -166,6 +170,8 @@ pub enum Plan<'a> {
     Unnest(Unnest),
     CteScan(CteScan<'a>),
     Cte(Cte<'a>),
+    Distinct(Distinct),
+    Empty(Empty),
     DummyScan,
 }
 
@@ -352,6 +358,19 @@ impl Order {
 }
 
 #[derive(Debug, Copy, Clone)]
+
+pub struct Empty {
+    width: usize,
+}
+
+impl Empty {
+    #[inline]
+    pub fn width(self) -> usize {
+        self.width
+    }
+}
+
+#[derive(Debug, Copy, Clone)]
 pub struct Filter {
     source: Id,
     predicate: Id,
@@ -409,6 +428,18 @@ impl Cte<'_> {
 }
 
 #[derive(Debug, Copy, Clone)]
+pub struct Distinct {
+    source: Id,
+}
+
+impl Distinct {
+    #[inline]
+    pub fn source(self, q: &Query) -> Plan<'_> {
+        q.plan(self.source)
+    }
+}
+
+#[derive(Debug, Copy, Clone)]
 pub struct CteScan<'a> {
     name: &'a Name,
 }
@@ -440,15 +471,15 @@ impl Union {
 
 #[derive(Debug, Copy, Clone)]
 pub struct Join {
-    join_kind: ir::JoinKind,
+    kind: ir::JoinKind,
     lhs: Id,
     rhs: Id,
 }
 
 impl Join {
     #[inline]
-    pub fn join_kind(self) -> ir::JoinKind {
-        self.join_kind
+    pub fn kind(self) -> ir::JoinKind {
+        self.kind
     }
 
     #[inline]

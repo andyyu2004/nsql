@@ -18,7 +18,8 @@ pub(crate) struct PhysicalNestedLoopJoin<'env, 'txn, S, M> {
     // tuples are moved into this vector during finalization (to avoid unnecessary locks)
     rhs_tuples: OnceLock<Vec<Tuple>>,
     rhs_index: AtomicUsize,
-    found_match_for_tuple: AtomicBool,
+    rhs_width: usize,
+    found_match_for_lhs_tuple: AtomicBool,
 }
 
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
@@ -34,8 +35,9 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
         Arc::new(Self {
             join_kind,
             join_predicate,
+            rhs_width: rhs_node.width(),
             children: [lhs_node, rhs_node],
-            found_match_for_tuple: AtomicBool::new(false),
+            found_match_for_lhs_tuple: AtomicBool::new(false),
             rhs_index: AtomicUsize::new(0),
             rhs_tuples_build: Default::default(),
             rhs_tuples: Default::default(),
@@ -54,6 +56,10 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode<'env, 'txn, S, M>
     for PhysicalNestedLoopJoin<'env, 'txn, S, M>
 {
+    fn width(&self) -> usize {
+        self.lhs_node().width() + self.rhs_node().width()
+    }
+
     fn children(&self) -> &[Arc<dyn PhysicalNode<'env, 'txn, S, M>>] {
         &self.children
     }
@@ -101,21 +107,15 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode
 impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalOperator<'env, 'txn, S, M>
     for PhysicalNestedLoopJoin<'env, 'txn, S, M>
 {
+    #[tracing::instrument(skip(self, ecx))]
     fn execute(
         &self,
         ecx: &'txn ExecutionContext<'_, 'env, S, M>,
         lhs_tuple: Tuple,
     ) -> ExecutionResult<OperatorState<Tuple>> {
-        tracing::debug!(%lhs_tuple, "probing nested loop join");
         let storage = ecx.storage();
         let tx = ecx.tx();
-        let _lhs_width = lhs_tuple.width();
         let rhs_tuples = self.rhs_tuples.get().expect("probing before build is finished");
-        if rhs_tuples.is_empty() {
-            return Ok(OperatorState::Done);
-        }
-
-        let rhs_tuple_width = rhs_tuples[0].width();
 
         let rhs_index = match self.rhs_index.fetch_update(
             atomic::Ordering::Relaxed,
@@ -129,11 +129,17 @@ impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalOperator<'
                 assert_eq!(last_index, rhs_tuples.len());
                 self.rhs_index.store(0, atomic::Ordering::Relaxed);
 
-                let found_match = self.found_match_for_tuple.swap(false, atomic::Ordering::Relaxed);
+                let found_match =
+                    self.found_match_for_lhs_tuple.swap(false, atomic::Ordering::Relaxed);
                 // emit the lhs_tuple padded with nulls if no match was found
                 if !found_match && self.join_kind.is_left() {
-                    return Ok(OperatorState::Yield(lhs_tuple.pad_right(rhs_tuple_width)));
+                    tracing::debug!(
+                        "no match found, emitting tuple padded with nulls for left join"
+                    );
+                    return Ok(OperatorState::Yield(lhs_tuple.pad_right(self.rhs_width)));
                 }
+
+                tracing::debug!("completed loop, continuing with next lhs tuple");
                 return Ok(OperatorState::Continue);
             }
         };
@@ -147,10 +153,22 @@ impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalOperator<'
             .cast::<Option<bool>>()?
             .unwrap_or(false);
 
+        tracing::debug!(%joint_tuple, %keep, "evaluated join predicate");
+
         if keep {
-            self.found_match_for_tuple.store(true, atomic::Ordering::Relaxed);
-            Ok(OperatorState::Again(Some(joint_tuple)))
+            tracing::debug!(output = %joint_tuple, "found match, emitting tuple");
+
+            if matches!(self.join_kind, ir::JoinKind::Single) {
+                // If this is a single join, we only want to emit one matching tuple.
+                // Reset the rhs and continue to the next lhs tuple.
+                self.rhs_index.store(0, atomic::Ordering::Relaxed);
+                Ok(OperatorState::Yield(joint_tuple))
+            } else {
+                self.found_match_for_lhs_tuple.store(true, atomic::Ordering::Relaxed);
+                Ok(OperatorState::Again(Some(joint_tuple)))
+            }
         } else {
+            tracing::debug!("no match found, continuing loop with same lhs tuple");
             Ok(OperatorState::Again(None))
         }
     }
@@ -188,9 +206,13 @@ impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSource<'en
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Explain<'_, S>
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Explain<'env, S>
     for PhysicalNestedLoopJoin<'env, 'txn, S, M>
 {
+    fn as_dyn(&self) -> &dyn Explain<'env, S> {
+        self
+    }
+
     fn explain(
         &self,
         _catalog: Catalog<'_, S>,

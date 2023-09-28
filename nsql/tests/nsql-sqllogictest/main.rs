@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 use std::error::Error;
 use std::path::Path;
 
+use ir::Value;
 use nsql::{Connection, Nsql, SessionContext};
 use nsql_core::LogicalType;
 use nsql_lmdb::LmdbStorageEngine;
@@ -50,6 +51,7 @@ impl ColumnType for TypeWrapper {
             'D' => LogicalType::Decimal,
             'T' => LogicalType::Text,
             'A' => LogicalType::Array(Box::new(LogicalType::Int64)),
+            'R' => LogicalType::Float64,
             _ => return None,
         };
         Some(TypeWrapper(ty))
@@ -58,7 +60,7 @@ impl ColumnType for TypeWrapper {
     fn to_char(&self) -> char {
         match self.0 {
             LogicalType::Int64 => 'I',
-            LogicalType::Float64 => 'F',
+            LogicalType::Float64 => 'R',
             LogicalType::Bool => 'B',
             LogicalType::Decimal => 'D',
             LogicalType::Text => 'T',
@@ -118,7 +120,15 @@ impl<S: StorageEngine> DB for TestDb<S> {
             rows: output
                 .tuples
                 .iter()
-                .map(|t| t.values().map(|v| v.to_string()).collect())
+                .map(|t| {
+                    t.values()
+                        .map(|v: &Value| match v {
+                            Value::Text(s) => s.to_string(), // no quotes in the output
+                            Value::Float64(f) => format!("{:.1}", f64::from_bits(*f)), // 1 dp
+                            v => v.to_string(),
+                        })
+                        .collect()
+                })
                 .collect(),
         })
     }

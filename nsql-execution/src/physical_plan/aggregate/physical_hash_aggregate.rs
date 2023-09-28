@@ -9,7 +9,7 @@ use super::*;
 
 #[derive(Debug)]
 pub struct PhysicalHashAggregate<'env, 'txn, S, M> {
-    functions: Box<[(ir::Function, Option<ExecutableExpr<S>>)]>,
+    aggregates: Box<[(ir::Function, Option<ExecutableExpr<S>>)]>,
     children: [Arc<dyn PhysicalNode<'env, 'txn, S, M>>; 1],
     group_expr: ExecutableTupleExpr<S>,
     output_groups: DashMap<Tuple, Mutex<Vec<Box<dyn AggregateFunctionInstance>>>>,
@@ -19,12 +19,12 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     PhysicalHashAggregate<'env, 'txn, S, M>
 {
     pub(crate) fn plan(
-        functions: Box<[(ir::Function, Option<ExecutableExpr<S>>)]>,
+        aggregates: Box<[(ir::Function, Option<ExecutableExpr<S>>)]>,
         source: Arc<dyn PhysicalNode<'env, 'txn, S, M>>,
         group_expr: ExecutableTupleExpr<S>,
     ) -> Arc<dyn PhysicalNode<'env, 'txn, S, M>> {
         Arc::new(Self {
-            functions,
+            aggregates,
             group_expr,
             children: [source],
             output_groups: Default::default(),
@@ -64,11 +64,13 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSink
         let tx = ecx.tx();
         let group = self.group_expr.execute(storage, &tx, &tuple)?;
         let functions = self.output_groups.entry(group).or_insert_with(|| {
-            Mutex::new(self.functions.iter().map(|(f, _expr)| f.get_aggregate_instance()).collect())
+            Mutex::new(
+                self.aggregates.iter().map(|(f, _expr)| f.get_aggregate_instance()).collect(),
+            )
         });
 
         let mut aggregate_functions = functions.lock();
-        for (state, (_f, expr)) in aggregate_functions.iter_mut().zip(&self.functions[..]) {
+        for (state, (_f, expr)) in aggregate_functions.iter_mut().zip(&self.aggregates[..]) {
             let value = expr.as_ref().map(|expr| expr.execute(storage, &tx, &tuple)).transpose()?;
             state.update(value);
         }
@@ -80,6 +82,10 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSink
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode<'env, 'txn, S, M>
     for PhysicalHashAggregate<'env, 'txn, S, M>
 {
+    fn width(&self) -> usize {
+        self.aggregates.len() + self.group_expr.width()
+    }
+
     fn children(&self) -> &[Arc<dyn PhysicalNode<'env, 'txn, S, M>>] {
         &self.children
     }
@@ -109,6 +115,10 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Explain<'env, S>
     for PhysicalHashAggregate<'env, 'txn, S, M>
 {
+    fn as_dyn(&self) -> &dyn Explain<'env, S> {
+        self
+    }
+
     fn explain(
         &self,
         _catalog: Catalog<'_, S>,
@@ -118,7 +128,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Explain<'env
         write!(
             fmt,
             "hash aggregate ({}) by {}",
-            self.functions
+            self.aggregates
                 .iter()
                 .map(|(f, arg)| match arg {
                     Some(arg) => format!("{}({})", f.name(), arg),

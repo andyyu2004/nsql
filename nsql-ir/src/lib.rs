@@ -102,8 +102,16 @@ pub struct Cte {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
 pub enum QueryPlan {
+    /// Single empty tuple as output
     #[default]
     DummyScan,
+    /// No rows output. This can have any schema as it produces no output.
+    Empty {
+        schema: Schema,
+    },
+    Distinct {
+        source: Box<QueryPlan>,
+    },
     // introduce a cte
     Cte {
         cte: Cte,
@@ -178,6 +186,11 @@ pub enum QueryPlan {
 }
 
 impl QueryPlan {
+    #[inline]
+    pub fn take(&mut self) -> Self {
+        mem::take(self)
+    }
+
     pub fn required_transaction_mode(&self) -> TransactionMode {
         struct V {
             requires_write: bool,
@@ -270,45 +283,72 @@ impl<'p> PlanFormatter<'p> {
 }
 
 impl fmt::Display for PlanFormatter<'_> {
+    // for recursive format calls (to either plan or exprs), make sure to pass the same `f` to preserve formatting flags.
+    // i.e. don't do `write!(f, "{expr}")`, instead do `expr.fmt(f)`
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{:indent$}", "", indent = self.indent)?;
         match self.plan {
-            QueryPlan::Aggregate { aggregates: functions, source, group_by, schema: _ } => {
-                writeln!(
-                    f,
-                    "aggregate ({})",
-                    functions
-                        .iter()
-                        .map(|(f, args)| format!("{}({})", f.name(), args.iter().format(",")))
-                        .collect::<Vec<_>>()
-                        .join(","),
-                )?;
+            QueryPlan::Empty { .. } => write!(f, "empty"),
+            QueryPlan::DummyScan => write!(f, "dummy scan"),
+            QueryPlan::Aggregate { aggregates, source, group_by, schema } => {
+                write!(f, "aggregate ")?;
+                aggregates
+                    .iter()
+                    .map(|(f, args)| format!("{}({})", f.name(), args.iter().format(",")))
+                    .collect::<Vec<_>>()
+                    .join(",")
+                    .fmt(f)?;
 
                 if !group_by.is_empty() {
-                    write!(f, " by {}", group_by.iter().format(","))?;
+                    write!(f, " by ")?;
+                    group_by.iter().format(",").fmt(f)?;
                 }
+
+                if f.alternate() {
+                    write!(f, " :: {schema}")?;
+                }
+
+                writeln!(f)?;
 
                 self.child(source).fmt(f)
             }
-            QueryPlan::TableScan { table, projection, projected_schema: _ } => {
-                write!(f, "table scan {}", table)?;
+            QueryPlan::TableScan { table, projection, projected_schema } => {
+                write!(f, "table scan {table}")?;
                 if let Some(projection) = projection {
-                    write!(f, "({})", projection.iter().format(","))?;
+                    write!(f, "({})", projection.iter().format(", "))?;
                 }
+
+                if f.alternate() {
+                    write!(f, " :: {projected_schema}")?;
+                }
+
                 writeln!(f)
             }
-            QueryPlan::Projection { source, projection, projected_schema: _ } => {
-                writeln!(f, "projection ({})", projection.iter().format(","),)?;
+            QueryPlan::Projection { source, projection, projected_schema } => {
+                write!(f, "projection (")?;
+                projection.iter().format(",").fmt(f)?;
+                write!(f, ")")?;
+                if f.alternate() {
+                    write!(f, " :: {projected_schema}")?;
+                }
+
+                writeln!(f)?;
                 self.child(source).fmt(f)
             }
             QueryPlan::Filter { source, predicate } => {
-                writeln!(f, "filter ({})", predicate)?;
+                write!(f, "filter (")?;
+                predicate.fmt(f)?;
+                writeln!(f, ")")?;
                 self.child(source).fmt(f)
             }
             QueryPlan::Unnest { schema: _, expr } => write!(f, "UNNEST ({})", expr),
             QueryPlan::Values { values: _, schema: _ } => writeln!(f, "VALUES"),
-            QueryPlan::Join { schema: _, join, lhs, rhs } => {
-                writeln!(f, "join ({})", join)?;
+            QueryPlan::Join { schema, join, lhs, rhs } => {
+                write!(f, "join ({join})")?;
+                if f.alternate() {
+                    write!(f, " :: {schema}")?;
+                }
+                writeln!(f)?;
                 self.child(lhs).fmt(f)?;
                 self.child(rhs).fmt(f)
             }
@@ -317,22 +357,29 @@ impl fmt::Display for PlanFormatter<'_> {
                 self.child(source).fmt(f)
             }
             QueryPlan::Order { source, order } => {
-                write!(f, "order ({})", order.iter().format(","),)?;
+                write!(f, "order (")?;
+                order.iter().format(", ").fmt(f)?;
+                writeln!(f, ")")?;
                 self.child(source).fmt(f)
             }
-            QueryPlan::DummyScan => write!(f, "dummy scan"),
             QueryPlan::Insert { table, source, returning, schema: _ } => {
-                write!(f, "INSERT INTO {table}")?;
+                write!(f, "insert {table}")?;
                 if !returning.is_empty() {
-                    write!(f, " RETURNING ({})", returning.iter().format(","))?;
+                    write!(f, " RETURNING (")?;
+                    returning.iter().format(",").fmt(f)?;
+                    write!(f, ")")?;
                 }
+                writeln!(f)?;
                 self.child(source).fmt(f)
             }
             QueryPlan::Update { table, source, returning, schema: _ } => {
                 write!(f, "UPDATE {table} SET", table = table)?;
                 if !returning.is_empty() {
-                    write!(f, " RETURNING ({})", returning.iter().format(","))?;
+                    write!(f, " RETURNING (")?;
+                    returning.iter().format(",").fmt(f)?;
+                    write!(f, ")")?;
                 }
+                writeln!(f)?;
                 self.child(source).fmt(f)
             }
             QueryPlan::Union { schema: _, lhs, rhs } => {
@@ -345,7 +392,13 @@ impl fmt::Display for PlanFormatter<'_> {
                 writeln!(f, "CTE {}", cte.name)?;
                 self.child(child).fmt(f)
             }
-        }
+            QueryPlan::Distinct { source } => {
+                writeln!(f, "distinct")?;
+                self.child(source).fmt(f)
+            }
+        }?;
+
+        Ok(())
     }
 }
 
@@ -370,6 +423,8 @@ impl<Q: fmt::Display> fmt::Display for Plan<Q> {
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum JoinKind {
+    /// Similar to a `LEFT OUTER JOIN` but returns at most one matching row from the right side (NULL if no match)
+    Single,
     Inner,
     Left,
     Right,
@@ -393,7 +448,7 @@ impl FromStr for JoinKind {
 impl JoinKind {
     #[inline]
     pub fn is_left(&self) -> bool {
-        matches!(self, JoinKind::Left | JoinKind::Full)
+        matches!(self, JoinKind::Left | JoinKind::Full | JoinKind::Single)
     }
 
     #[inline]
@@ -409,6 +464,7 @@ impl fmt::Display for JoinKind {
             JoinKind::Left => write!(f, "LEFT"),
             JoinKind::Right => write!(f, "RIGHT"),
             JoinKind::Full => write!(f, "FULL"),
+            JoinKind::Single => write!(f, "SINGLE"),
         }
     }
 }
@@ -430,6 +486,49 @@ impl<E: fmt::Display> fmt::Display for OrderExpr<E> {
 }
 
 impl QueryPlan {
+    #[inline]
+    pub fn is_correlated(&self) -> bool {
+        #[derive(Default)]
+        struct CorrelatedColumnsVisitor;
+
+        impl Visitor for CorrelatedColumnsVisitor {
+            fn visit_expr(&mut self, plan: &QueryPlan, expr: &Expr) -> ControlFlow<()> {
+                match &expr.kind {
+                    ExprKind::ColumnRef(col) if col.is_correlated() => ControlFlow::Break(()),
+                    _ => self.walk_expr(plan, expr),
+                }
+            }
+        }
+
+        CorrelatedColumnsVisitor.visit_query_plan(self).is_break()
+    }
+
+    /// Prefer `is_correlated` over `correlated_columns().is_empty()`.
+    #[inline]
+    pub fn correlated_columns(&self) -> Vec<CorrelatedColumn> {
+        #[derive(Default)]
+        struct CorrelatedColumnVisitor {
+            correlated_columns: Vec<CorrelatedColumn>,
+        }
+
+        impl Visitor for CorrelatedColumnVisitor {
+            fn visit_expr(&mut self, plan: &QueryPlan, expr: &Expr) -> ControlFlow<()> {
+                match &expr.kind {
+                    ExprKind::ColumnRef(col) if col.is_correlated() => self
+                        .correlated_columns
+                        .push(CorrelatedColumn { ty: expr.ty.clone(), col: col.clone() }),
+                    _ => (),
+                }
+
+                self.walk_expr(plan, expr)
+            }
+        }
+
+        let mut visitor = CorrelatedColumnVisitor::default();
+        visitor.visit_query_plan(self);
+        visitor.correlated_columns
+    }
+
     pub fn schema(&self) -> &Schema {
         match self {
             QueryPlan::TableScan { projected_schema, .. }
@@ -441,8 +540,10 @@ impl QueryPlan {
             | QueryPlan::Insert { schema, .. }
             | QueryPlan::Update { schema, .. }
             | QueryPlan::CteScan { schema, .. }
+            | QueryPlan::Empty { schema }
             | QueryPlan::Values { schema, .. } => schema,
-            QueryPlan::Filter { source, .. }
+            QueryPlan::Distinct { source }
+            | QueryPlan::Filter { source, .. }
             | QueryPlan::Limit { source, .. }
             | QueryPlan::Order { source, .. } => source.schema(),
             QueryPlan::Cte { cte: _, child } => child.schema(),
@@ -479,6 +580,11 @@ impl QueryPlan {
     }
 
     #[inline]
+    pub fn distinct(self: Box<Self>) -> Box<Self> {
+        Box::new(Self::Distinct { source: self })
+    }
+
+    #[inline]
     pub fn limit(self: Box<Self>, limit: u64) -> Box<Self> {
         Box::new(Self::Limit { source: self, limit, exceeded_message: None })
     }
@@ -504,18 +610,20 @@ impl QueryPlan {
     }
 
     #[inline]
+    fn unconditional_join(self: Box<Self>, join: JoinKind, rhs: Box<Self>) -> Box<Self> {
+        let schema = self.schema().iter().chain(rhs.schema().iter()).cloned().collect();
+        Box::new(Self::Join { schema, join, lhs: self, rhs })
+    }
+
+    #[inline]
     pub fn cross_join(self: Box<Self>, rhs: Box<Self>) -> Box<Self> {
-        self.join(
-            JoinKind::Inner,
-            rhs,
-            Expr { ty: LogicalType::Bool, kind: ExprKind::Literal(Value::Bool(true)) },
-        )
+        let schema = self.schema().iter().chain(rhs.schema().iter()).cloned().collect();
+        Box::new(Self::Join { schema, join: JoinKind::Inner, lhs: self, rhs })
     }
 
     #[inline]
     pub fn join(self: Box<Self>, join: JoinKind, rhs: Box<Self>, predicate: Expr) -> Box<Self> {
-        let schema = self.schema().iter().chain(rhs.schema().iter()).cloned().collect();
-        Box::new(Self::Join { schema, join, lhs: self, rhs }).filter(predicate)
+        self.unconditional_join(join, rhs).filter(predicate)
     }
 
     #[inline]
@@ -536,20 +644,34 @@ impl QueryPlan {
         Box::new(Self::Projection { source: self, projection, projected_schema })
     }
 
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        matches!(self, Self::Empty { .. })
+    }
+
+    pub fn build_leftmost_k_projection(&self, k: usize) -> Box<[Expr]> {
+        let schema = self.schema();
+        assert!(k <= schema.len(), "k must be less than or equal to the number of columns");
+        (0..k)
+            .map(|i| Expr {
+                ty: schema[i].clone(),
+                kind: ExprKind::ColumnRef(ColumnRef::new(
+                    TupleIndex::new(i),
+                    QPath::new("", format!("{i}")),
+                )),
+            })
+            .collect::<Box<_>>()
+    }
+
+    #[inline]
+    pub fn build_identity_projection(&self) -> Box<[Expr]> {
+        self.build_leftmost_k_projection(self.schema().len())
+    }
+
     /// Create a projection that projects the first `k` columns of the plan
     #[inline]
     pub fn project_leftmost_k(self: Box<Self>, k: usize) -> Box<Self> {
-        let schema = self.schema();
-        assert!(k <= schema.len(), "k must be less than or equal to the number of columns");
-        let projection = (0..k)
-            .map(|i| Expr {
-                ty: schema[i].clone(),
-                kind: ExprKind::ColumnRef(ColumnRef {
-                    qpath: QPath::new("", format!("{i}")),
-                    index: TupleIndex::new(i),
-                }),
-            })
-            .collect::<Box<_>>();
+        let projection = self.build_leftmost_k_projection(k);
         self.project(projection)
     }
 

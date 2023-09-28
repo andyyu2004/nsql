@@ -78,10 +78,10 @@ impl<'a, 'env, S: StorageEngine> SelectBinder<'a, 'env, S> {
                         asc: order_expr.asc.unwrap_or(true),
                         expr: ir::Expr {
                             ty: target_expr.ty.clone(),
-                            kind: ir::ExprKind::ColumnRef(ir::ColumnRef {
-                                qpath: QPath::new("", target_expr.to_string()),
-                                index: TupleIndex::new(target_index),
-                            }),
+                            kind: ir::ExprKind::ColumnRef(ir::ColumnRef::new(
+                                TupleIndex::new(target_index),
+                                QPath::new("", target_expr.to_string()),
+                            )),
                         },
                     })
                 }
@@ -94,10 +94,10 @@ impl<'a, 'env, S: StorageEngine> SelectBinder<'a, 'env, S> {
                 let expr = &pre_projection[i];
                 ir::Expr {
                     ty: expr.ty.clone(),
-                    kind: ir::ExprKind::ColumnRef(ir::ColumnRef {
-                        qpath: QPath::new("", expr.name()),
-                        index: TupleIndex::new(i),
-                    }),
+                    kind: ir::ExprKind::ColumnRef(ir::ColumnRef::new(
+                        TupleIndex::new(i),
+                        QPath::new("", expr.name()),
+                    )),
                 }
             })
             .collect::<Vec<_>>();
@@ -110,10 +110,10 @@ impl<'a, 'env, S: StorageEngine> SelectBinder<'a, 'env, S> {
                         let target_expr = &pre_projection[target_index];
                         ir::Expr {
                             ty: target_expr.ty.clone(),
-                            kind: ir::ExprKind::ColumnRef(ir::ColumnRef {
-                                qpath: QPath::new("", target_expr.to_string()),
-                                index: TupleIndex::new(target_index),
-                            }),
+                            kind: ir::ExprKind::ColumnRef(ir::ColumnRef::new(
+                                TupleIndex::new(target_index),
+                                QPath::new("", target_expr.to_string()),
+                            )),
                         }
                     }
                     None => self.bind_maybe_aggregate_expr(tx, &scope, expr)?,
@@ -180,10 +180,10 @@ impl<'a, 'env, S: StorageEngine> SelectBinder<'a, 'env, S> {
                             let g = &self.group_by[i];
                             return ir::Expr {
                                 ty: g.ty.clone(),
-                                kind: ir::ExprKind::ColumnRef(ir::ColumnRef {
-                                    qpath: QPath::new(AGGREGATE_TABLE_NAME, g.to_string()),
-                                    index: TupleIndex::new(i),
-                                }),
+                                kind: ir::ExprKind::ColumnRef(ir::ColumnRef::new(
+                                    TupleIndex::new(i),
+                                    QPath::new("", g.to_string()),
+                                )),
                             };
                         } else if let ir::ExprKind::ColumnRef { .. } = expr.kind {
                             self.unaggregated_column_ref_expr = Some(expr.clone());
@@ -243,10 +243,10 @@ impl<'a, 'env, S: StorageEngine> SelectBinder<'a, 'env, S> {
                 let (qpath, ty) = scope.lookup_by_index(i);
                 ir::Expr {
                     ty,
-                    kind: ir::ExprKind::ColumnRef(ir::ColumnRef {
-                        qpath,
-                        index: TupleIndex::new(i),
-                    }),
+                    kind: ir::ExprKind::ColumnRef(ir::ColumnRef::new(
+                        TupleIndex::new(i),
+                        qpath.clone(),
+                    )),
                 }
             }
             _ => expr,
@@ -287,11 +287,11 @@ impl<'a, 'env, S: StorageEngine> SelectBinder<'a, 'env, S> {
                     FunctionKind::Scalar => ir::ExprKind::FunctionCall { function, args },
                     FunctionKind::Aggregate => {
                         let (idx, _exists) = self.aggregates.insert_full((function, args));
-                        ir::ExprKind::ColumnRef(ir::ColumnRef {
-                            qpath: QPath::new("agg", expr.to_string()),
+                        ir::ExprKind::ColumnRef(ir::ColumnRef::new(
                             // the first N columns are the group by columns followed by the aggregate columns
-                            index: TupleIndex::new(self.group_by.len() + idx),
-                        })
+                            TupleIndex::new(self.group_by.len() + idx),
+                            QPath::new("agg", expr.to_string()),
+                        ))
                     }
                 };
 

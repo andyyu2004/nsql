@@ -4,12 +4,16 @@ use super::*;
 use crate::TupleStream;
 
 #[derive(Debug)]
-pub struct PhysicalDummyScan;
+pub struct PhysicalDummyScan {
+    width: Option<usize>,
+}
 
 impl PhysicalDummyScan {
-    pub(crate) fn plan<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>()
-    -> Arc<dyn PhysicalNode<'env, 'txn, S, M>> {
-        Arc::new(Self)
+    /// If `Some(n)`, then output no tuples (with `width = n`), otherwise output a single empty tuple (width 0).
+    pub(crate) fn plan<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
+        width: Option<usize>,
+    ) -> Arc<dyn PhysicalNode<'env, 'txn, S, M>> {
+        Arc::new(Self { width })
     }
 }
 
@@ -20,13 +24,21 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
         self: Arc<Self>,
         _ecx: &'txn ExecutionContext<'_, 'env, S, M>,
     ) -> ExecutionResult<TupleStream<'txn>> {
-        Ok(Box::new(fallible_iterator::once(Tuple::empty())))
+        if self.width.is_some() {
+            Ok(Box::new(fallible_iterator::empty()))
+        } else {
+            Ok(Box::new(fallible_iterator::once(Tuple::empty())))
+        }
     }
 }
 
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode<'env, 'txn, S, M>
     for PhysicalDummyScan
 {
+    fn width(&self) -> usize {
+        self.width.unwrap_or(0)
+    }
+
     fn children(&self) -> &[Arc<dyn PhysicalNode<'env, 'txn, S, M>>] {
         &[]
     }
@@ -53,14 +65,22 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine> Explain<'_, S> for PhysicalDummyScan {
+impl<'env: 'txn, 'txn, S: StorageEngine> Explain<'env, S> for PhysicalDummyScan {
+    fn as_dyn(&self) -> &dyn Explain<'env, S> {
+        self
+    }
+
     fn explain(
         &self,
         _catalog: Catalog<'_, S>,
         _tx: &dyn Transaction<'_, S>,
         f: &mut fmt::Formatter<'_>,
     ) -> explain::Result {
-        write!(f, "dummy scan")?;
+        if self.width.is_some() {
+            write!(f, "empty")?;
+        } else {
+            write!(f, "dummy scan")?;
+        }
         Ok(())
     }
 }

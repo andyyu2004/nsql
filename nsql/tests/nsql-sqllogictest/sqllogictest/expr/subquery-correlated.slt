@@ -1,0 +1,98 @@
+statement ok
+CREATE TABLE integers(i integer, id integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY)
+
+# important to start from 0 otherwise `id` and `i` will be the same and we can miss off by one errors
+statement ok
+INSERT INTO integers VALUES (0), (1), (2), (NULL)
+
+# scalar select with correlation
+query II rowsort
+SELECT i, (SELECT 42+i) FROM integers;
+----
+0 42
+1 43
+2 44
+NULL NULL
+
+query II
+SELECT i, (SELECT 42+i1.i) AS j FROM integers i1 ORDER BY i;
+----
+NULL NULL
+0 42
+1 43
+2 44
+
+# ORDER BY correlated subquery
+query I
+SELECT i FROM integers i1 ORDER BY (SELECT 100-i1.i);
+----
+NULL
+2
+1
+0
+
+# correlated subquery with empty plan
+query II 
+SELECT i, (SELECT 42+i1.i FROM integers WHERE false) AS j FROM integers i1 ORDER BY i;
+----
+NULL	NULL
+0	NULL
+1	NULL
+2	NULL
+
+
+# scalar filter with correlation
+query II rowsort
+SELECT i FROM integers WHERE i = (SELECT i WHERE i = 2);
+----
+2
+
+statement ok
+CREATE TABLE employee (
+    id int PRIMARY KEY,
+    name text,
+    department text,
+    salary int
+)
+
+statement ok
+INSERT INTO employee (id, name, department, salary)
+VALUES (1, 'Alice', 'HR',          50),
+       (2, 'Bob',   'Engineering', 100),
+       (3, 'Carol', 'Engineering', 70),
+       (4, 'Dan',   'Engineering', 60),
+       (5, 'Eve',   'HR',          50),
+       (6, 'Frank', 'Engineering', 80)
+
+
+# correlated aggregate
+query ITD rowsort
+SELECT id,
+       name,
+       (SELECT AVG(salary)
+          FROM employee
+       WHERE department = emp.department) AS department_average
+   FROM employee emp
+----
+1  Alice 50.0 
+2  Bob   77.5 
+3  Carol 77.5 
+4  Dan   77.5 
+5  Eve   50.0 
+6  Frank 77.5 
+
+query ITD
+SELECT id,
+       name,
+       (SELECT salary
+          FROM employee
+       WHERE emp.department <> 'bad') AS salary
+   FROM employee emp
+----
+1 Alice 50
+2 Bob 50
+3 Carol 50
+4 Dan 50
+5 Eve 50
+6 Frank 50
+

@@ -42,9 +42,20 @@ SELECT x FROM (VALUES (1)) AS t(x) WHERE x = (SELECT * FROM (VALUES (1), (2)))
 subquery used as an expression must return at most one row
 
 statement ok
-CREATE TABLE t1(a INTEGER PRIMARY KEY, b INTEGER, c INTEGER, d INTEGER, e INTEGER);
+CREATE TABLE t1(a INTEGER PRIMARY KEY, b INTEGER, c INTEGER, d INTEGER, e INTEGER)
 
 query I
 SELECT 1, (SELECT 2 WHERE false)
 ----
 1 NULL
+
+statement ok
+CREATE TABLE integers(x int PRIMARY KEY)
+
+statement ok
+INSERT INTO integers VALUES (1), (2), (3), (NULL)
+
+query I
+SELECT x FROM INTEGERS WHERE x = (SELECT MAX(x) FROM integers)
+----
+3

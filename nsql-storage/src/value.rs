@@ -253,6 +253,20 @@ impl Value {
     pub fn is_null(&self) -> bool {
         matches!(self, Value::Null)
     }
+
+    /// Sanity check routine to ensure we haven't messed up the types to badly.
+    /// We should never be comparing `INT` with `TEXT` directly for example.
+    #[inline]
+    pub fn is_comparable_with(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Value::Null, _) | (_, Value::Null) => true,
+            (Value::Array(xs), Value::Array(ys)) if xs.is_empty() && ys.is_empty() => true,
+            (Value::Array(xs), Value::Array(ys)) if !xs.is_empty() && !ys.is_empty() => {
+                xs[0].is_comparable_with(&ys[0])
+            }
+            _ => mem::discriminant(self) == mem::discriminant(other),
+        }
+    }
 }
 
 impl fmt::Display for Value {
@@ -262,6 +276,8 @@ impl fmt::Display for Value {
             Value::Null => write!(f, "NULL"),
             Value::Bool(b) => write!(f, "{b}"),
             Value::Decimal(d) => write!(f, "{d}"),
+            // Value::Text(s) => write!(f, "'{s}'"),
+            // should probably be quoted, need to fix tests
             Value::Text(s) => write!(f, "{s}"),
             Value::Int64(i) => write!(f, "{i}"),
             Value::Oid(oid) => write!(f, "{oid}"),

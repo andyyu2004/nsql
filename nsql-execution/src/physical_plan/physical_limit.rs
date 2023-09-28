@@ -6,7 +6,7 @@ use super::*;
 
 #[derive(Debug)]
 pub struct PhysicalLimit<'env, 'txn, S, M> {
-    children: [Arc<dyn PhysicalNode<'env, 'txn, S, M>>; 1],
+    child: Arc<dyn PhysicalNode<'env, 'txn, S, M>>,
     yielded: AtomicU64,
     limit: u64,
     exceeded_message: Option<String>,
@@ -20,7 +20,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
         limit: u64,
         exceeded_message: Option<String>,
     ) -> Arc<dyn PhysicalNode<'env, 'txn, S, M>> {
-        Arc::new(Self { children: [source], limit, yielded: AtomicU64::new(0), exceeded_message })
+        Arc::new(Self { child: source, limit, yielded: AtomicU64::new(0), exceeded_message })
     }
 }
 
@@ -48,8 +48,12 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode<'env, 'txn, S, M>
     for PhysicalLimit<'env, 'txn, S, M>
 {
+    fn width(&self) -> usize {
+        self.child.width()
+    }
+
     fn children(&self) -> &[Arc<dyn PhysicalNode<'env, 'txn, S, M>>] {
-        &self.children
+        std::slice::from_ref(&self.child)
     }
 
     fn as_source(
@@ -77,6 +81,10 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Explain<'env, S>
     for PhysicalLimit<'env, 'txn, S, M>
 {
+    fn as_dyn(&self) -> &dyn Explain<'env, S> {
+        self
+    }
+
     fn explain(
         &self,
         _catalog: Catalog<'_, S>,

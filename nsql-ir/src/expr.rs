@@ -35,7 +35,7 @@ impl Expr {
 
     #[inline]
     pub fn column_ref(ty: LogicalType, qpath: QPath, index: TupleIndex) -> Self {
-        Self { ty, kind: ExprKind::ColumnRef(ColumnRef { qpath, index }) }
+        Self { ty, kind: ExprKind::ColumnRef(ColumnRef::new(index, qpath)) }
     }
 
     #[inline]
@@ -43,11 +43,15 @@ impl Expr {
         Self { ty: LogicalType::Expr, kind: ExprKind::Quote(Box::new(expr)) }
     }
 
+    pub fn lit(ty: LogicalType, value: impl Into<Value>) -> Self {
+        Self { ty, kind: ExprKind::Literal(value.into()) }
+    }
+
     #[inline]
-    pub fn call(function: MonoFunction, args: impl Into<Box<[Expr]>>) -> anyhow::Result<Expr> {
+    pub fn call(function: MonoFunction, args: impl Into<Box<[Expr]>>) -> Expr {
         let args = args.into();
         let ty = function.return_type();
-        Ok(Expr { ty, kind: ExprKind::FunctionCall { function, args } })
+        Expr { ty, kind: ExprKind::FunctionCall { function, args } }
     }
 
     pub fn scalar_subquery(plan: Box<QueryPlan>) -> anyhow::Result<Expr> {
@@ -87,7 +91,7 @@ impl Expr {
 
 impl fmt::Display for Expr {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.kind)
+        if f.alternate() { write!(f, "{:#}", self.kind) } else { write!(f, "{}", self.kind) }
     }
 }
 
@@ -135,27 +139,46 @@ pub enum SubqueryKind {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct CorrelatedColumn {
+    pub ty: LogicalType,
+    pub col: ColumnRef,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct ColumnRef {
     /// An index into the tuple the expression is evaluated against
     pub index: TupleIndex,
-
     /// A qualified display path for the column (for pretty printing etc)
     pub qpath: QPath,
+    /// The scope level, where 0 is the current scope.
+    /// level > 0 means the column is a correlated reference to an outer scope
+    pub level: u8,
+}
+
+impl ColumnRef {
+    #[inline]
+    pub fn new(index: TupleIndex, qpath: QPath) -> Self {
+        Self { index, qpath, level: 0 }
+    }
+
+    #[inline]
+    pub fn is_correlated(&self) -> bool {
+        self.level > 0
+    }
 }
 
 impl fmt::Display for ColumnRef {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if f.alternate() { write!(f, "@{}", self.index) } else { write!(f, "{}", self.qpath) }
+        if f.alternate() { write!(f, "{}", self.index) } else { write!(f, "{}", self.qpath) }
     }
 }
 
 impl FromStr for ColumnRef {
     type Err = anyhow::Error;
 
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let (qpath, index) =
-            s.split_once('@').ok_or_else(|| anyhow::anyhow!("invalid column ref"))?;
-        Ok(Self { qpath: qpath.parse()?, index: index.parse()? })
+    fn from_str(_s: &str) -> Result<Self, Self::Err> {
+        // this is just to satisfy the trait for egraphs
+        todo!()
     }
 }
 
@@ -232,34 +255,68 @@ impl Deref for MonoFunction {
 }
 
 impl fmt::Display for ExprKind {
+    // note this is written in this way (i.e. avoiding the `write!` macro for recursive calls)
+    // because we want to preserve the formatter flags for child nodes
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match &self {
-            ExprKind::Literal(value) => write!(f, "{value}"),
-            ExprKind::ColumnRef(col) => write!(f, "{col}"),
-            ExprKind::Array(exprs) => write!(f, "[{}]", exprs.iter().format(", ")),
-            ExprKind::FunctionCall { function, args } => {
-                write!(f, "{}({})", function.name(), args.iter().format(", "))
+            ExprKind::Literal(value) => value.fmt(f),
+            ExprKind::ColumnRef(col) => col.fmt(f),
+            ExprKind::Array(exprs) => {
+                write!(f, "[")?;
+                exprs.iter().format(", ").fmt(f)?;
+                write!(f, "]")
             }
-            ExprKind::Alias { alias, expr } if alias.is_empty() => write!(f, "{expr}"),
-            ExprKind::Alias { alias, expr } => write!(f, r#"({expr} AS "{alias}")"#),
+            ExprKind::FunctionCall { function, args } => {
+                function.name().fmt(f)?;
+                write!(f, "(")?;
+                args.iter().format(", ").fmt(f)?;
+                write!(f, ")")
+            }
+            ExprKind::Alias { alias, expr } => {
+                expr.fmt(f)?;
+                if !alias.is_empty() {
+                    write!(f, " AS {alias}")?;
+                }
+
+                Ok(())
+            }
             ExprKind::Case { scrutinee, cases, else_result } => {
-                write!(f, "CASE {scrutinee} ")?;
+                write!(f, "CASE ")?;
+                scrutinee.fmt(f)?;
                 for case in cases.iter() {
-                    write!(f, "WHEN {} THEN {}", case.when, case.then)?;
+                    write!(f, " WHEN")?;
+                    case.when.fmt(f)?;
+                    write!(f, " THEN ")?;
+                    case.then.fmt(f)?;
                 }
 
                 if let Some(else_result) = else_result.as_ref() {
-                    write!(f, " ELSE {else_result} ")?;
+                    write!(f, " ELSE ")?;
+                    else_result.fmt(f)?;
                 }
+
                 write!(f, "END")
             }
-            ExprKind::Subquery(kind, _plan) => match kind {
-                SubqueryKind::Scalar => write!(f, "<subquery>"),
-                SubqueryKind::Exists => write!(f, "EXISTS (<subquery>)"),
+            ExprKind::Subquery(kind, plan) => match kind {
+                SubqueryKind::Scalar => {
+                    write!(f, "(")?;
+                    plan.fmt(f)?;
+                    write!(f, ")")
+                }
+                SubqueryKind::Exists => {
+                    write!(f, "EXISTS (")?;
+                    plan.fmt(f)?;
+                    write!(f, ")")
+                }
             },
-            ExprKind::UnaryOperator { operator, expr } => write!(f, "{operator}{expr}"),
+            ExprKind::UnaryOperator { operator, expr } => {
+                operator.fmt(f)?;
+                expr.fmt(f)
+            }
             ExprKind::BinaryOperator { operator, lhs, rhs } => {
-                write!(f, "({lhs} {operator} {rhs})")
+                lhs.fmt(f)?;
+                write!(f, " {operator} ")?;
+                rhs.fmt(f)
             }
             ExprKind::Compiled(expr) => write!(f, "{expr}"),
             ExprKind::Quote(expr) => write!(f, "'({expr})"),

@@ -1,11 +1,12 @@
 use std::error::Error;
 use std::fmt;
 use std::hash::{Hash, Hasher};
-use std::ops::{Index, IndexMut};
+use std::ops::{Add, Index, IndexMut};
 use std::str::FromStr;
 use std::sync::OnceLock;
 
 use anyhow::bail;
+use itertools::Itertools;
 use nsql_core::Schema;
 use rkyv::with::{RefAsBox, Skip};
 use rkyv::{Archive, Archived, Deserialize, Serialize};
@@ -13,11 +14,17 @@ use rkyv::{Archive, Archived, Deserialize, Serialize};
 use crate::value::{CastError, FromValue, Value};
 
 // FIXME make this cheap to clone
-#[derive(Debug, Clone, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
+#[derive(Clone, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
 pub struct Tuple {
     values: Box<[Value]>,
     #[with(Skip)]
     cached_schema: OnceLock<Schema>,
+}
+
+impl fmt::Debug for Tuple {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "({})", self.values.iter().format(", "))
+    }
 }
 
 impl PartialEq for Tuple {
@@ -195,6 +202,15 @@ impl TupleIndex {
     #[inline]
     pub fn as_usize(&self) -> usize {
         self.0 as usize
+    }
+}
+
+impl Add<usize> for TupleIndex {
+    type Output = Self;
+
+    #[inline]
+    fn add(self, rhs: usize) -> Self::Output {
+        Self::new(self.as_usize() + rhs)
     }
 }
 

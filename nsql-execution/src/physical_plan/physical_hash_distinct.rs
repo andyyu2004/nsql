@@ -1,50 +1,55 @@
+use dashmap::DashSet;
+
 use super::*;
 
 #[derive(Debug)]
-pub struct PhysicalProjection<'env, 'txn, S, M> {
-    children: [Arc<dyn PhysicalNode<'env, 'txn, S, M>>; 1],
-    projection: ExecutableTupleExpr<S>,
+pub struct PhysicalHashDistinct<'env, 'txn, S, M> {
+    child: Arc<dyn PhysicalNode<'env, 'txn, S, M>>,
+    seen: DashSet<Tuple>,
 }
 
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
-    PhysicalProjection<'env, 'txn, S, M>
+    PhysicalHashDistinct<'env, 'txn, S, M>
 {
     pub(crate) fn plan(
-        source: Arc<dyn PhysicalNode<'env, 'txn, S, M>>,
-        projection: ExecutableTupleExpr<S>,
+        child: Arc<dyn PhysicalNode<'env, 'txn, S, M>>,
     ) -> Arc<dyn PhysicalNode<'env, 'txn, S, M>> {
-        Arc::new(Self { children: [source], projection })
+        Arc::new(Self { child, seen: Default::default() })
     }
 }
 
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
-    PhysicalOperator<'env, 'txn, S, M> for PhysicalProjection<'env, 'txn, S, M>
+    PhysicalOperator<'env, 'txn, S, M> for PhysicalHashDistinct<'env, 'txn, S, M>
 {
-    #[tracing::instrument(skip(self, ecx, input))]
+    #[tracing::instrument(skip(self, _ecx, tuple))]
     fn execute(
         &self,
-        ecx: &'txn ExecutionContext<'_, 'env, S, M>,
-        input: Tuple,
+        _ecx: &'txn ExecutionContext<'_, 'env, S, M>,
+        tuple: Tuple,
     ) -> ExecutionResult<OperatorState<Tuple>> {
-        let storage = ecx.storage();
-        let tx = ecx.tx();
-        let output = self.projection.execute(storage, &tx, &input)?;
-        tracing::debug!(%input, %output, "evaluating projection");
-        Ok(OperatorState::Yield(output))
+        // FIXME can avoid unnecessary tuple clones using `DashMap` raw-api
+        let keep = self.seen.insert(tuple.clone());
+        tracing::debug!(%keep, %tuple, "deduping tuple");
+        match keep {
+            false => Ok(OperatorState::Continue),
+            true => Ok(OperatorState::Yield(tuple)),
+        }
     }
 }
 
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode<'env, 'txn, S, M>
-    for PhysicalProjection<'env, 'txn, S, M>
+    for PhysicalHashDistinct<'env, 'txn, S, M>
 {
     fn width(&self) -> usize {
-        self.projection.width()
+        self.child.width()
     }
 
+    #[inline]
     fn children(&self) -> &[Arc<dyn PhysicalNode<'env, 'txn, S, M>>] {
-        &self.children
+        std::slice::from_ref(&self.child)
     }
 
+    #[inline]
     fn as_source(
         self: Arc<Self>,
     ) -> Result<Arc<dyn PhysicalSource<'env, 'txn, S, M>>, Arc<dyn PhysicalNode<'env, 'txn, S, M>>>
@@ -52,6 +57,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode
         Err(self)
     }
 
+    #[inline]
     fn as_sink(
         self: Arc<Self>,
     ) -> Result<Arc<dyn PhysicalSink<'env, 'txn, S, M>>, Arc<dyn PhysicalNode<'env, 'txn, S, M>>>
@@ -59,6 +65,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode
         Err(self)
     }
 
+    #[inline]
     fn as_operator(
         self: Arc<Self>,
     ) -> Result<Arc<dyn PhysicalOperator<'env, 'txn, S, M>>, Arc<dyn PhysicalNode<'env, 'txn, S, M>>>
@@ -68,7 +75,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode
 }
 
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Explain<'env, S>
-    for PhysicalProjection<'env, 'txn, S, M>
+    for PhysicalHashDistinct<'env, 'txn, S, M>
 {
     fn as_dyn(&self) -> &dyn Explain<'env, S> {
         self
@@ -80,9 +87,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Explain<'env
         _tx: &dyn Transaction<'_, S>,
         f: &mut fmt::Formatter<'_>,
     ) -> explain::Result {
-        write!(f, "projection (")?;
-        fmt::Display::fmt(&self.projection, f)?;
-        write!(f, ")")?;
+        write!(f, "hash distinct")?;
         Ok(())
     }
 }

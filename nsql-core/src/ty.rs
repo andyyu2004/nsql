@@ -4,6 +4,7 @@ use std::str::FromStr;
 use std::sync::LazyLock;
 
 use anyhow::bail;
+use itertools::Itertools;
 use rkyv::{Archive, Deserialize, Serialize};
 
 mod fold;
@@ -102,6 +103,14 @@ pub struct Schema {
     types: Box<[LogicalType]>,
 }
 
+impl fmt::Display for Schema {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "(")?;
+        self.types.iter().format(", ").fmt(f)?;
+        write!(f, ")")
+    }
+}
+
 impl<'a> IntoIterator for &'a Schema {
     type Item = &'a LogicalType;
     type IntoIter = std::slice::Iter<'a, LogicalType>;
@@ -148,6 +157,11 @@ impl Schema {
     pub fn is_subschema_of(&self, supertype: &[LogicalType]) -> bool {
         self.types.len() == supertype.len()
             && self.types.iter().zip(supertype.iter()).all(|(a, b)| a.is_subtype_of(b))
+    }
+
+    #[inline]
+    pub fn into_inner(self) -> Box<[LogicalType]> {
+        self.types
     }
 }
 

@@ -25,12 +25,31 @@ macro_rules! comparison {
     ($op:tt: $ty:ty) => {
         |_catalog, _tx, mut args| {
             assert_eq!(args.len(), 2);
-            let a: Option<$ty> = args[0].take().cast().unwrap();
-            let b: Option<$ty> = args[1].take().cast().unwrap();
+            let a = args[0].take();
+            let b = args[1].take();
+            debug_assert!(a.is_comparable_with(&b), "cannot compare `{a}` and `{b}` (this should have been a type error)");
+            let a: Option<$ty> = a.cast().unwrap();
+            let b: Option<$ty> = b.cast().unwrap();
             match (a, b) {
-                (Some(a), Some(b)) => Ok(Value::Bool(a $op b)),
+                (Some(a), Some(b)) => {
+                    Ok(Value::Bool(a $op b))
+                }
                 _  => Ok(Value::Null),
             }
+        }
+    };
+}
+
+macro_rules! comparison_include_null {
+    ($op:tt: $ty:ty) => {
+        |_catalog, _tx, mut args| {
+            assert_eq!(args.len(), 2);
+            let a = args[0].take();
+            let b = args[1].take();
+            debug_assert!(a.is_comparable_with(&b), "cannot compare `{a}` and `{b}` (this should have been a type error)");
+            let a: Option<$ty> = a.cast().unwrap();
+            let b: Option<$ty> = b.cast().unwrap();
+            Ok(Value::Bool(a $op b))
         }
     };
 }
@@ -79,14 +98,16 @@ pub(crate) fn get_scalar_function<S: StorageEngine>(oid: Oid<Function>) -> Optio
         _ if oid == Function::DIV_INT   => infix_op!(/ : i64),
         _ if oid == Function::DIV_FLOAT => infix_op!(/ : f64),
         _ if oid == Function::DIV_DEC   => infix_op!(/ : Decimal),
-        _ if oid == Function::EQ        => comparison!(== : Value),
-        _ if oid == Function::NEQ       => comparison!(!= : Value),
-        _ if oid == Function::LT        => comparison!(<  : Value),
-        _ if oid == Function::LTE       => comparison!(<= : Value),
-        _ if oid == Function::GTE       => comparison!(>= : Value),
-        _ if oid == Function::GT        => comparison!(>  : Value),
+        _ if oid == Function::EQ_ANY        => comparison!(== : Value),
+        _ if oid == Function::NEQ_ANY       => comparison!(!= : Value),
+        _ if oid == Function::LT_ANY        => comparison!(<  : Value),
+        _ if oid == Function::LTE_ANY       => comparison!(<= : Value),
+        _ if oid == Function::GTE_ANY       => comparison!(>= : Value),
+        _ if oid == Function::GT_ANY        => comparison!(>  : Value),
         _ if oid == Function::OR_BOOL   => comparison!(|| : bool),
         _ if oid == Function::AND_BOOL  => comparison!(&& : bool),
+        _ if oid == Function::IS_DISTINCT_FROM_ANY => comparison_include_null!(!= : Value),
+        _ if oid == Function::IS_NOT_DISTINCT_FROM_ANY => comparison_include_null!(== : Value),
         // casts
         _ if oid == Function::CAST_SELF         => cast_to!(Value),
         _ if oid == Function::CAST_INT_TO_DEC   => cast_to!(Decimal),
@@ -155,8 +176,8 @@ pub(crate) fn get_aggregate_function(
         _ if oid == Function::FIRST => Box::<First>::default(),
         _ if oid == Function::COUNT => Box::<Count>::default(),
         _ if oid == Function::COUNT_STAR => Box::<CountStar>::default(),
-        _ if oid == Function::MIN => Box::<Min>::default(),
-        _ if oid == Function::MAX => Box::<Max>::default(),
+        _ if oid == Function::MIN_ANY => Box::<Min>::default(),
+        _ if oid == Function::MAX_ANY => Box::<Max>::default(),
         _ => return None,
     })
 }

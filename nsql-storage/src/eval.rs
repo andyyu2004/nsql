@@ -57,6 +57,12 @@ impl<F> TupleExpr<F> {
     pub fn is_empty(&self) -> bool {
         self.exprs.is_empty()
     }
+
+    /// The width of the tuples produced by this expression.
+    #[inline]
+    pub fn width(&self) -> usize {
+        self.exprs.len()
+    }
 }
 
 impl TupleExpr {

@@ -2,7 +2,7 @@ use super::*;
 
 #[derive(Debug)]
 pub struct PhysicalFilter<'env, 'txn, S, M> {
-    children: [Arc<dyn PhysicalNode<'env, 'txn, S, M>>; 1],
+    child: Arc<dyn PhysicalNode<'env, 'txn, S, M>>,
     predicate: ExecutableExpr<S>,
 }
 
@@ -13,7 +13,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
         source: Arc<dyn PhysicalNode<'env, 'txn, S, M>>,
         predicate: ExecutableExpr<S>,
     ) -> Arc<dyn PhysicalNode<'env, 'txn, S, M>> {
-        Arc::new(Self { children: [source], predicate })
+        Arc::new(Self { child: source, predicate })
     }
 }
 
@@ -45,9 +45,13 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode<'env, 'txn, S, M>
     for PhysicalFilter<'env, 'txn, S, M>
 {
+    fn width(&self) -> usize {
+        self.child.width()
+    }
+
     #[inline]
     fn children(&self) -> &[Arc<dyn PhysicalNode<'env, 'txn, S, M>>] {
-        &self.children
+        std::slice::from_ref(&self.child)
     }
 
     #[inline]
@@ -75,16 +79,21 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Explain<'_, S>
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Explain<'env, S>
     for PhysicalFilter<'env, 'txn, S, M>
 {
+    fn as_dyn(&self) -> &dyn Explain<'env, S> {
+        self
+    }
+
     fn explain(
         &self,
         _catalog: Catalog<'_, S>,
         _tx: &dyn Transaction<'_, S>,
         f: &mut fmt::Formatter<'_>,
     ) -> explain::Result {
-        write!(f, "filter {}", self.predicate)?;
+        write!(f, "filter ")?;
+        fmt::Display::fmt(&self.predicate, f)?;
         Ok(())
     }
 }

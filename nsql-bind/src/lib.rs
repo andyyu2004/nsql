@@ -20,7 +20,7 @@ use nsql_catalog::{
     Catalog, ColumnIdentity, ColumnIndex, Function, FunctionKind, Namespace, Operator,
     OperatorKind, SystemEntity, SystemTableView, Table, MAIN_SCHEMA,
 };
-use nsql_core::{LogicalType, Name, Oid, Schema};
+use nsql_core::{not_implemented, not_implemented_if, LogicalType, Name, Oid, Schema};
 use nsql_parse::ast;
 use nsql_storage::eval;
 use nsql_storage_engine::{FallibleIterator, ReadonlyExecutionMode, StorageEngine, Transaction};
@@ -34,22 +34,6 @@ pub struct Binder<'env, S> {
 }
 
 type CteMeta = (CteKind, Scope, Box<ir::QueryPlan>);
-
-macro_rules! not_implemented {
-    ($msg:literal) => {
-        anyhow::bail!("not implemented: {}", $msg)
-    };
-}
-
-macro_rules! not_implemented_if {
-    ($cond:expr) => {
-        if $cond {
-            anyhow::bail!("not implemented: {}", stringify!($cond))
-        }
-    };
-}
-
-use not_implemented_if;
 
 macro_rules! unbound {
     ($ty:ty, $path:expr) => {
@@ -525,9 +509,8 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
         tx: &dyn Transaction<'env, S>,
         scope: &Scope,
         subquery: &ast::Query,
-    ) -> Result<Box<ir::QueryPlan>> {
-        let (_scope, plan) = self.bind_query(tx, scope, subquery)?;
-        Ok(plan)
+    ) -> Result<(Scope, Box<ir::QueryPlan>)> {
+        self.bind_query(tx, &scope.subscope(), subquery)
     }
 
     fn bind_query(
@@ -604,7 +587,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                     bail!("schemas of set operation operands are not compatible")
                 };
 
-                let plan = match op {
+                let mut plan = match op {
                     ast::SetOperator::Union => lhs.union(schema, rhs),
                     // the others can be implemented as semi and anti joins
                     ast::SetOperator::Except => not_implemented!("except"),
@@ -614,8 +597,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                 match set_quantifier {
                     ast::SetQuantifier::All => {}
                     ast::SetQuantifier::Distinct | ast::SetQuantifier::None => {
-                        // push a distinct operation on top of the set operation
-                        not_implemented!("distinct")
+                        plan = plan.distinct()
                     }
                     ast::SetQuantifier::ByName => not_implemented!("by name"),
                     ast::SetQuantifier::AllByName => not_implemented!("all by name"),
@@ -684,13 +666,11 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                     literal(seq.step),
                 ],
             ),
-            returning: [ir::Expr {
-                ty: LogicalType::Oid,
-                kind: ir::ExprKind::ColumnRef(ir::ColumnRef {
-                    index: ir::TupleIndex::new(0),
-                    qpath: ir::QPath::new("t", "id"),
-                }),
-            }]
+            returning: [ir::Expr::column_ref(
+                LogicalType::Oid,
+                QPath::new("t", "id"),
+                ir::TupleIndex::new(0),
+            )]
             .into(),
             schema: Schema::new([LogicalType::Oid]),
         });
@@ -781,13 +761,11 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                 .into()]
                 .into(),
             )),
-            returning: [ir::Expr {
-                ty: LogicalType::Oid,
-                kind: ir::ExprKind::ColumnRef(ir::ColumnRef {
-                    index: ir::TupleIndex::new(0),
-                    qpath: ir::QPath::new("t", "id"),
-                }),
-            }]
+            returning: [ir::Expr::column_ref(
+                LogicalType::Oid,
+                ir::QPath::new("t", "id"),
+                ir::TupleIndex::new(0),
+            )]
             .into(),
             schema: Schema::new([LogicalType::Oid]),
         });
@@ -804,13 +782,13 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
             table: Table::ATTRIBUTE,
             // Return the oid of the table if the caller wants it for whatever reason.
             // Note there will be one row per inserted column
-            returning: [ir::Expr {
-                ty: LogicalType::Oid,
-                kind: ir::ExprKind::ColumnRef(ir::ColumnRef {
-                    index: ir::TupleIndex::new(0),
-                    qpath: ir::QPath::new("t", "id"),
-                }),
-            }]
+            returning: [
+                ir::Expr::column_ref(
+                    LogicalType::Oid,
+                    ir::QPath::new("t", "id"),
+                    ir::TupleIndex::new(0),
+                                    )
+            ]
             .into(),
             schema: Schema::new([LogicalType::Oid]),
             source: columns
@@ -886,7 +864,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                                         .get(Function::MK_NEXTVAL_EXPR)?;
 
                                     let function = ir::MonoFunction::new(f, LogicalType::Expr);
-                                    ir::Expr::call(function, [sequence_oid_expr])?
+                                    ir::Expr::call(function, [sequence_oid_expr])
                                 }
                             },
                         ],
@@ -1042,13 +1020,11 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                 .map(|(i, column)| {
                     let ty = column.logical_type().clone();
                     if i < source.schema().len() {
-                        ir::Expr {
+                        ir::Expr::column_ref(
                             ty,
-                            kind: ir::ExprKind::ColumnRef(ir::ColumnRef {
-                                qpath: QPath::new(table.to_string().as_ref(), column.name()),
-                                index: TupleIndex::new(i),
-                            }),
-                        }
+                            QPath::new(table.to_string().as_ref(), column.name()),
+                            TupleIndex::new(i),
+                        )
                     } else {
                         ir::Expr { ty, kind: ir::ExprKind::Compiled(column.default_expr().clone()) }
                     }
@@ -1074,16 +1050,11 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                     if let Some(expr) =
                         target_column_indices.iter().enumerate().find_map(|(i, column_index)| {
                             (column_index.as_usize() == column.index().as_usize()).then_some(
-                                ir::Expr {
-                                    ty: source_schema[i].clone(),
-                                    kind: ir::ExprKind::ColumnRef(ir::ColumnRef {
-                                        qpath: QPath::new(
-                                            table.to_string().as_ref(),
-                                            column.name(),
-                                        ),
-                                        index: TupleIndex::new(i),
-                                    }),
-                                },
+                                ir::Expr::column_ref(
+                                    source_schema[i].clone(),
+                                    QPath::new(table.to_string().as_ref(), column.name()),
+                                    TupleIndex::new(i),
+                                ),
                             )
                         })
                     {
@@ -1149,7 +1120,6 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
             named_window,
         } = select;
         not_implemented_if!(!named_window.is_empty());
-        not_implemented_if!(distinct.is_some());
         not_implemented_if!(top.is_some());
         not_implemented_if!(into.is_some());
         not_implemented_if!(!lateral_views.is_empty());
@@ -1174,14 +1144,23 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
             .map(|expr| self.bind_expr(tx, &scope, expr))
             .collect::<Result<Box<_>>>()?;
 
-        SelectBinder::new(self, group_by).bind(
+        let (scope, mut plan) = SelectBinder::new(self, group_by).bind(
             tx,
             &scope,
             source,
             projection,
             order_by,
             having.as_ref(),
-        )
+        )?;
+
+        if let Some(distinct) = distinct {
+            plan = match distinct {
+                ast::Distinct::Distinct => plan.distinct(),
+                ast::Distinct::On(_) => not_implemented!("distinct on"),
+            }
+        }
+
+        Ok((scope, plan))
     }
 
     fn bind_joint_tables(
@@ -1270,8 +1249,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
             ast::TableFactor::Derived { lateral, subquery, alias } => {
                 not_implemented_if!(*lateral);
 
-                // subqueries get a fresh empty scope to prevent correlated subqueries for now
-                let (mut scope, subquery) = self.bind_query(tx, &Scope::default(), subquery)?;
+                let (mut scope, subquery) = self.bind_subquery(tx, scope, subquery)?;
                 if let Some(alias) = alias {
                     scope = scope.alias(self.lower_table_alias(alias))?;
                 }
@@ -1367,7 +1345,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
 
                 let excludes = excludes
                     .iter()
-                    .map(|ident| self.bind_ident(scope, ident).map(|(_qpath, _ty, index)| index))
+                    .map(|ident| self.bind_ident(scope, ident).map(|(_ty, col)| col.index))
                     .collect::<Result<Vec<_>, _>>()?;
 
                 let exprs = scope.column_refs(&excludes).collect::<Vec<_>>();
@@ -1444,7 +1422,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
         &self,
         scope: &Scope,
         ident: &ast::Ident,
-    ) -> Result<(QPath, LogicalType, ir::TupleIndex)> {
+    ) -> Result<(LogicalType, ir::ColumnRef)> {
         scope.lookup_column(&Path::Unqualified(ident.value.clone().into()))
     }
 
@@ -1601,15 +1579,15 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
         mut f: impl FnMut(&ast::Expr) -> Result<ir::Expr>,
     ) -> Result<ir::Expr> {
         let (ty, kind) = match expr {
-            ast::Expr::Value(literal) => self.bind_value_expr(literal),
+            ast::Expr::Value(literal) => return Ok(self.bind_value_expr(literal)),
             ast::Expr::Identifier(ident) => {
-                let (qpath, ty, index) = self.bind_ident(scope, ident)?;
-                (ty, ir::ExprKind::ColumnRef(ir::ColumnRef { qpath, index }))
+                let (ty, col) = self.bind_ident(scope, ident)?;
+                (ty, ir::ExprKind::ColumnRef(col))
             }
             ast::Expr::CompoundIdentifier(ident) => {
                 let path = self.lower_path(ident)?;
-                let (qpath, ty, index) = scope.lookup_column(&path)?;
-                (ty, ir::ExprKind::ColumnRef(ir::ColumnRef { qpath, index }))
+                let (ty, col) = scope.lookup_column(&path)?;
+                (ty, ir::ExprKind::ColumnRef(col))
             }
             ast::Expr::UnaryOp { op, expr } => {
                 let expr = Box::new(f(expr)?);
@@ -1633,14 +1611,14 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                 let rhs = Box::new(f(right)?);
 
                 let op = match op {
-                    ast::BinaryOperator::Eq => Operator::EQUAL,
-                    ast::BinaryOperator::NotEq => Operator::NOT_EQUAL,
+                    ast::BinaryOperator::Eq => Operator::EQ,
+                    ast::BinaryOperator::NotEq => Operator::NEQ,
                     ast::BinaryOperator::Plus => Operator::PLUS,
                     ast::BinaryOperator::Minus => Operator::MINUS,
-                    ast::BinaryOperator::Lt => Operator::LESS,
-                    ast::BinaryOperator::LtEq => Operator::LESS_EQUAL,
-                    ast::BinaryOperator::GtEq => Operator::GREATER_EQUAL,
-                    ast::BinaryOperator::Gt => Operator::GREATER,
+                    ast::BinaryOperator::Lt => Operator::LT,
+                    ast::BinaryOperator::LtEq => Operator::LTE,
+                    ast::BinaryOperator::GtEq => Operator::GTE,
+                    ast::BinaryOperator::Gt => Operator::GT,
                     ast::BinaryOperator::Multiply => Operator::STAR,
                     ast::BinaryOperator::Divide => Operator::SLASH,
                     // the compiler should special case these operators and implement short circuiting
@@ -1667,6 +1645,24 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                 };
 
                 let operator = self.bind_binary_operator(tx, op, lhs.ty(), rhs.ty())?;
+                (operator.return_type(), ir::ExprKind::BinaryOperator { operator, lhs, rhs })
+            }
+            ast::Expr::IsDistinctFrom(lhs, rhs) => {
+                let lhs = Box::new(f(lhs)?);
+                let rhs = Box::new(f(rhs)?);
+                let operator =
+                    self.bind_binary_operator(tx, Operator::IS_DISTINCT_FROM, lhs.ty(), rhs.ty())?;
+                (operator.return_type(), ir::ExprKind::BinaryOperator { operator, lhs, rhs })
+            }
+            ast::Expr::IsNotDistinctFrom(lhs, rhs) => {
+                let lhs = Box::new(f(lhs)?);
+                let rhs = Box::new(f(rhs)?);
+                let operator = self.bind_binary_operator(
+                    tx,
+                    Operator::IS_NOT_DISTINCT_FROM,
+                    lhs.ty(),
+                    rhs.ty(),
+                )?;
                 (operator.return_type(), ir::ExprKind::BinaryOperator { operator, lhs, rhs })
             }
             ast::Expr::Cast { expr, data_type } => {
@@ -1728,7 +1724,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                 }
             }
             ast::Expr::Subquery(subquery) => {
-                let plan = self.bind_subquery(tx, scope, subquery)?;
+                let (_, plan) = self.bind_subquery(tx, scope, subquery)?;
                 return ir::Expr::scalar_subquery(plan);
             }
             ast::Expr::Exists { subquery, negated } => {
@@ -1748,7 +1744,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                     );
                 }
 
-                let plan = self.bind_subquery(tx, scope, subquery)?;
+                let (_scope, plan) = self.bind_subquery(tx, scope, subquery)?;
                 (LogicalType::Bool, ir::ExprKind::Subquery(ir::SubqueryKind::Exists, plan))
             }
             ast::Expr::Case { operand, conditions, results, else_result } => {
@@ -1814,9 +1810,9 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
         self.walk_expr(tx, scope, expr, |expr| self.bind_expr(tx, scope, expr))
     }
 
-    fn bind_value_expr(&self, value: &ast::Value) -> (LogicalType, ir::ExprKind) {
+    fn bind_value_expr(&self, value: &ast::Value) -> ir::Expr {
         let value = self.bind_value(value);
-        (default_logical_type_of_value(&value), ir::ExprKind::Literal(value))
+        literal(value)
     }
 
     fn bind_value(&self, val: &ast::Value) -> ir::Value {
@@ -1882,37 +1878,36 @@ struct TableAlias {
 }
 
 fn literal(value: impl Into<ir::Value>) -> ir::Expr {
+    // resist moving this logic out of this binder module.
+    // the array defaulting logic is a bit of a hack that will cause issues if used outside of here.
+    // i.e. if we have an empty array and someone decides to call say `val.logical_type()` it will
+    // be `int[]`, which is probably not the proper type.
+    fn default_logical_type_of_value(value: &ir::Value) -> LogicalType {
+        match value {
+            ir::Value::Null => LogicalType::Null,
+            ir::Value::Int64(_) => LogicalType::Int64,
+            ir::Value::Bool(_) => LogicalType::Bool,
+            ir::Value::Decimal(_) => LogicalType::Decimal,
+            ir::Value::Text(_) => LogicalType::Text,
+            ir::Value::Oid(_) => LogicalType::Oid,
+            ir::Value::Bytea(_) => LogicalType::Bytea,
+            ir::Value::Array(values) => LogicalType::array(
+                values
+                    .iter()
+                    .find(|val| !matches!(val, ir::Value::Null))
+                    .map(default_logical_type_of_value)
+                    .unwrap_or(LogicalType::Int64),
+            ),
+            ir::Value::Type(_) => LogicalType::Type,
+            ir::Value::Expr(_) => LogicalType::Expr,
+            ir::Value::TupleExpr(_) => LogicalType::TupleExpr,
+            ir::Value::Byte(_) => LogicalType::Byte,
+            ir::Value::Float64(_) => LogicalType::Float64,
+        }
+    }
     let value = value.into();
     let ty = default_logical_type_of_value(&value);
     ir::Expr { kind: ir::ExprKind::Literal(value), ty }
-}
-
-// resist moving this logic out of this module binder.
-// the array defaulting logic is a bit of a hack that will cause issues if used outside of here.
-// i.e. if we have an empty array and someone decides to call say `val.logical_type()` it will
-// be `int[]`, which is probably not the proper type.
-fn default_logical_type_of_value(value: &ir::Value) -> LogicalType {
-    match value {
-        ir::Value::Null => LogicalType::Null,
-        ir::Value::Int64(_) => LogicalType::Int64,
-        ir::Value::Bool(_) => LogicalType::Bool,
-        ir::Value::Decimal(_) => LogicalType::Decimal,
-        ir::Value::Text(_) => LogicalType::Text,
-        ir::Value::Oid(_) => LogicalType::Oid,
-        ir::Value::Bytea(_) => LogicalType::Bytea,
-        ir::Value::Array(values) => LogicalType::array(
-            values
-                .iter()
-                .find(|val| !matches!(val, ir::Value::Null))
-                .map(default_logical_type_of_value)
-                .unwrap_or(LogicalType::Int64),
-        ),
-        ir::Value::Type(_) => LogicalType::Type,
-        ir::Value::Expr(_) => LogicalType::Expr,
-        ir::Value::TupleExpr(_) => LogicalType::TupleExpr,
-        ir::Value::Byte(_) => LogicalType::Byte,
-        ir::Value::Float64(_) => LogicalType::Float64,
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

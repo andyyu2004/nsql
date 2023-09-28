@@ -30,6 +30,10 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode<'env, 'txn, S, M>
     for PhysicalExplain<'env, 'txn, S, M>
 {
+    fn width(&self) -> usize {
+        1
+    }
+
     fn children(&self) -> &[Arc<dyn PhysicalNode<'env, 'txn, S, M>>] {
         // no children as we don't actually need to run anything (unless we're doing an analyse which is not implemented)
         &[]
@@ -73,7 +77,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
             PhysicalPlan(Arc::clone(physical_plan)).display(catalog, &tx).to_string();
 
         let pipeline = crate::build_pipelines(
-            Arc::new(OutputSink::default()),
+            Arc::new(OutputSink::new()),
             PhysicalPlan(Arc::clone(physical_plan)),
         );
         let pipeline_explain = pipeline.display(catalog, &tx).to_string();
@@ -97,9 +101,13 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Explain<'_, S>
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Explain<'env, S>
     for PhysicalExplain<'env, 'txn, S, M>
 {
+    fn as_dyn(&self) -> &dyn Explain<'env, S> {
+        self
+    }
+
     fn explain(
         &self,
         _catalog: Catalog<'_, S>,

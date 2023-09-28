@@ -6,12 +6,12 @@ SELECT 1::decimal
 query I
 SELECT 1::float
 ----
-1
+1.0
 
 query I
 SELECT 1::float::float
 ----
-1
+1.0
 
 query I
 SELECT 1::int

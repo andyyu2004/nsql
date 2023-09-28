@@ -9,6 +9,7 @@ use std::fmt;
 use std::ops::Deref;
 use std::str::FromStr;
 
+pub use anyhow;
 pub use oid::{Oid, UntypedOid};
 use smol_str::SmolStr;
 pub use ty::{LogicalType, Schema};
@@ -96,4 +97,20 @@ impl Borrow<str> for Name {
     fn borrow(&self) -> &str {
         self.name.as_ref()
     }
+}
+
+#[macro_export]
+macro_rules! not_implemented {
+    ($msg:literal) => {
+        $crate::anyhow::bail!("not implemented: {}", $msg)
+    };
+}
+
+#[macro_export]
+macro_rules! not_implemented_if {
+    ($cond:expr) => {
+        if $cond {
+            $crate::anyhow::bail!("not implemented: {}", stringify!($cond))
+        }
+    };
 }

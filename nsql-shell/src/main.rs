@@ -41,10 +41,17 @@ impl reedline::Validator for Validator {
             return ValidationResult::Incomplete;
         }
 
-        match nsql::parse(line) {
-            Ok(_) => ValidationResult::Complete,
-            Err(_) => ValidationResult::Incomplete,
+        if line.trim_end().ends_with(';') {
+            return ValidationResult::Complete;
         }
+
+        ValidationResult::Incomplete
+
+        // the following isn't smart enough
+        // match nsql::parse(line) {
+        //     Ok(_) => ValidationResult::Complete,
+        //     Err(_) => ValidationResult::Incomplete,
+        // }
     }
 }
 
@@ -86,7 +93,10 @@ fn main() -> nsql::Result<()> {
 
     let mut line_editor = Reedline::create()
         .with_edit_mode(Box::new(Vi::new(ikb, default_vi_normal_keybindings())))
-        .with_history(Box::new(FileBackedHistory::with_file(500, "/tmp/nsql-history.txt".into())?))
+        .with_history(Box::new(FileBackedHistory::with_file(
+            500,
+            dirs::data_dir().unwrap_or_else(|| "/tmp".into()).join("nsql/nsql_history"),
+        )?))
         .with_validator(Box::new(Validator))
         .with_hinter(Box::new(
             DefaultHinter::default().with_style(Style::new().italic().fg(Color::DarkGray)),

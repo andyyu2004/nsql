@@ -49,6 +49,9 @@ fn build_pipelines<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>
 trait PhysicalNode<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>:
     Explain<'env, S> + fmt::Debug + 'txn
 {
+    /// The width of the tuples produced by this node
+    fn width(&self) -> usize;
+
     fn children(&self) -> &[Arc<dyn PhysicalNode<'env, 'txn, S, M>>];
 
     fn as_source(

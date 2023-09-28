@@ -20,6 +20,10 @@ impl PhysicalShow {
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode<'env, 'txn, S, M>
     for PhysicalShow
 {
+    fn width(&self) -> usize {
+        1
+    }
+
     fn children(&self) -> &[Arc<dyn PhysicalNode<'env, 'txn, S, M>>] {
         &[]
     }
@@ -68,7 +72,11 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
     }
 }
 
-impl<S: StorageEngine> Explain<'_, S> for PhysicalShow {
+impl<'env, S: StorageEngine> Explain<'env, S> for PhysicalShow {
+    fn as_dyn(&self) -> &dyn Explain<'env, S> {
+        self
+    }
+
     fn explain(
         &self,
         _catalog: Catalog<'_, S>,
