@@ -1,4 +1,3 @@
-use std::collections::BTreeMap;
 use std::error::Error;
 use std::path::Path;
 
@@ -8,7 +7,7 @@ use nsql_core::LogicalType;
 use nsql_lmdb::LmdbStorageEngine;
 use nsql_redb::RedbStorageEngine;
 use nsql_storage_engine::StorageEngine;
-use sqllogictest::{ColumnType, DBOutput, Runner, DB};
+use sqllogictest::{AsyncDB, ColumnType, DBOutput, Runner};
 use tracing_subscriber::EnvFilter;
 
 fn nsql_sqllogictest(path: &Path) -> nsql::Result<(), Box<dyn Error>> {
@@ -23,8 +22,11 @@ fn nsql_sqllogictest(path: &Path) -> nsql::Result<(), Box<dyn Error>> {
             std::any::type_name::<S>(),
             db_path.display(),
         );
-        let db = TestDb::new(Nsql::<S>::create(db_path).unwrap());
-        let mut tester = Runner::new(db);
+        let db = Nsql::<S>::create(db_path)?;
+        let mut tester = Runner::new(|| async {
+            let (conn, scx) = db.connect();
+            Ok(TestConnection { conn, scx })
+        });
         tester.with_hash_threshold(70);
         tester.run_file(path)?;
         Ok(())
@@ -78,44 +80,35 @@ impl ColumnType for TypeWrapper {
     }
 }
 
-pub struct TestDb<S: StorageEngine> {
-    db: Nsql<S>,
-    connections: BTreeMap<Option<String>, (Connection<S>, SessionContext<'static, S>)>,
-}
-
-impl<S: StorageEngine> TestDb<S> {
-    pub fn new(db: Nsql<S>) -> Self {
-        Self { db, connections: Default::default() }
-    }
+pub struct TestConnection<S: StorageEngine> {
+    conn: Connection<S>,
+    scx: SessionContext<'static, S>,
 }
 
 #[derive(thiserror::Error, Debug)]
 #[error(transparent)]
 pub struct ErrorWrapper(#[from] anyhow::Error);
 
-impl<S: StorageEngine> DB for TestDb<S> {
+#[async_trait::async_trait(?Send)]
+impl<S: StorageEngine> AsyncDB for TestConnection<S> {
     type Error = ErrorWrapper;
 
     type ColumnType = TypeWrapper;
 
     #[tracing::instrument(skip(self))]
-    fn run_on(
-        &mut self,
-        connection_name: Option<&str>,
-        sql: &str,
-    ) -> Result<DBOutput<Self::ColumnType>, Self::Error> {
-        let (conn, state) = self
-            .connections
-            .entry(connection_name.map(Into::into))
-            // Safety: We don't close the storage engine until the end of the test, so this
-            // lifetime extension is ok.
-            .or_insert_with(|| {
-                let (conn, state) = self.db.connect();
-                (conn, unsafe { std::mem::transmute(state) })
-            });
+    async fn run(&mut self, sql: &str) -> Result<DBOutput<Self::ColumnType>, Self::Error> {
+        // let (conn, state) = self
+        //     .connections
+        //     .entry(connection_name.map(Into::into))
+        //     // Safety: We don't close the storage engine until the end of the test, so this
+        //     // lifetime extension is ok.
+        //     .or_insert_with(|| {
+        //         let (conn, state) = self.db.connect();
+        //         (conn, unsafe { std::mem::transmute(state) })
+        //     });
 
         // transmute the lifetime back to whatever we need, not sure about safety on this one but it's a test so we'll find out
-        let output = conn.query(unsafe { std::mem::transmute(state) }, sql)?;
+        let output = self.conn.query(unsafe { std::mem::transmute(&self.scx) }, sql)?;
         Ok(DBOutput::Rows {
             types: output.schema.into_iter().map(TypeWrapper).collect(),
             rows: output

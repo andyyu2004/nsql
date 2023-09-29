@@ -1,39 +1,49 @@
-statement ok con1
+connection con1
+statement ok 
 CREATE TABLE t(id int PRIMARY KEY)
 
-statement ok con1
+connection con1
+statement ok 
 BEGIN READ ONLY
 
-statement ok con2
+connection con2
+statement ok 
 BEGIN
 
-statement ok con2
+connection con2
+statement ok 
 DROP TABLE t;
 
 # we should see our own deletion
-query T rowsort con2
+connection con2
+query T rowsort
 SHOW TABLES
 ----
 
 # con1 should not see the deletion
-query T rowsort con1
+connection con1
+query T rowsort 
 SHOW TABLES
 ----
 t
 
-statement ok con2
+connection con2
+statement ok 
 COMMIT;
 
 # con1 should still not see the deletion after con2 commits
-query T rowsort con1
+connection con1
+query T rowsort
 SHOW TABLES
 ----
 t
 
-statement ok con1
+connection con1
+statement ok 
 COMMIT;
 
 # once con1 commits it should see the deletion due to a fresh transaction
-query T rowsort con1
+connection con1
+query T rowsort
 SHOW TABLES
 ----

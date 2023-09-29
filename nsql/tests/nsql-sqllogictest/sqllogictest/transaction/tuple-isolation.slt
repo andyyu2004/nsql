@@ -4,57 +4,69 @@ CREATE TABLE t(x int PRIMARY KEY);
 statement ok
 INSERT INTO t VALUES (1);
 
-statement ok con0
+connection con0
+statement ok 
 BEGIN READ ONLY
 
-statement ok con1
+connection con1
+statement ok 
 BEGIN
 
-statement ok con2
+connection con2
+statement ok 
 BEGIN READ ONLY
 
-statement ok con1
+connection con1
+statement ok 
 INSERT INTO t VALUES (2);
 
 # con1 can see the row it inserted
-query I rowsort con1
+connection con1
+query I rowsort 
 SELECT x from t;
 ----
 1
 2
 
 # but no one else should be able to as it's not committed
-query I con0
+connection con0
+query I 
 SELECT x from t;
 ----
 1
 
-query I con2
+connection con2
+query I 
 SELECT x from t;
 ----
 1
 
-query I con3
+connection con3
+query I 
 SELECT x from t;
 ----
 1
 
-statement ok con1
+connection con1
+statement ok 
 COMMIT;
 
 # after con1 commits, con0 and con2 should still not be able to see the row due to SI
-query I con0
+connection con0
+query I 
 SELECT x from t;
 ----
 1
 
-query I con2
+connection con2
+query I 
 SELECT x from t;
 ----
 1
 
 # however, a fresh connection should see the row
-query I con4
+connection con4
+query I 
 SELECT x from t;
 ----
 1

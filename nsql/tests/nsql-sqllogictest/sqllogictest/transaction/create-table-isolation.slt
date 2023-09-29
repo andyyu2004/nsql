@@ -1,22 +1,27 @@
 statement ok
 CREATE TABLE a (id int PRIMARY KEY)
 
-statement ok con1
+connection con1
+statement ok
 BEGIN
 
-statement ok con1
+connection con1
+statement ok 
 CREATE TABLE b (id int PRIMARY KEY)
 
-query T rowsort con1
+connection con1
+query T rowsort 
 SHOW TABLES
 ----
 a
 b
 
-query T rowsort con2
+connection con2
+query T rowsort 
 SHOW TABLES
 ----
 a
 
-statement ok con1
+connection con1
+statement ok 
 COMMIT

@@ -31,7 +31,7 @@ INSERT INTO book VALUES
     (4, 'Unknown', NULL)
 
 
-query ITIIT ok
+query ITIIT 
 SELECT * FROM book CROSS JOIN author ORDER BY book_id, author_id
 ----
 1 The Hobbit 1 1 J.R.R. Tolkien
@@ -47,7 +47,7 @@ SELECT * FROM book CROSS JOIN author ORDER BY book_id, author_id
 4 Unknown NULL 2 Leo Tolstoy
 4 Unknown NULL 3 Unknown Author
 
-query ITIIT ok
+query ITIIT 
 SELECT * FROM book JOIN author ORDER BY book_id, author_id
 ----
 1 The Hobbit 1 1 J.R.R. Tolkien
@@ -63,7 +63,7 @@ SELECT * FROM book JOIN author ORDER BY book_id, author_id
 4 Unknown NULL 2 Leo Tolstoy
 4 Unknown NULL 3 Unknown Author
 
-query ITIIT ok
+query ITIIT 
 SELECT * FROM book INNER JOIN author ON book.author = author.author_id ORDER BY book_id
 ----
 1 The Hobbit 1 1 J.R.R. Tolkien
@@ -71,14 +71,14 @@ SELECT * FROM book INNER JOIN author ON book.author = author.author_id ORDER BY 
 3 War and Peace 2 2 Leo Tolstoy
 
 # test subquery in ON
-# query ITIIT ok
+# query ITIIT 
 # SELECT * FROM book INNER JOIN author ON (SELECT book.author = author.author_id) ORDER BY book_id
 # ----
 # 1 The Hobbit 1 1 J.R.R. Tolkien
 # 2 The Silmarillion 1 1 J.R.R. Tolkien
 # 3 War and Peace 2 2 Leo Tolstoy
 
-query ITIIT ok
+query ITIIT 
 SELECT * FROM book LEFT JOIN author ON book.author = author.author_id ORDER BY book_id
 ----
 1 The Hobbit 1 1 J.R.R. Tolkien

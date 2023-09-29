@@ -23,7 +23,6 @@ mimalloc = { version = "*", default-features = false }
 tracing-tree = "0.2.4"
 
 [dev-dependencies]
-sqllogictest = { path = "../vendor/sqllogictest/sqllogictest" }
 nsql-test = { path = "../nsql-test" }
 datatest-stable = "0.1.3"
 tracing-subscriber = { version = "0.3.16", features = ["env-filter"] }
@@ -31,6 +30,8 @@ expect-test = "1.4.1"
 thiserror = "1.0.40"
 criterion = "0.5.1"
 criterion-macro = "0.4"
+sqllogictest = { git = "https://github.com/andyyu2004/sqllogictest-rs", branch = "main" }
+async-trait = "0.1"
 
 [[test]]
 name = "nsql-sqllogictest"

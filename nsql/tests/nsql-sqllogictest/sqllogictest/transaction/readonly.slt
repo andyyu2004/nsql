@@ -1,8 +1,10 @@
-statement ok con1
+connection con1
+statement ok 
 BEGIN READ ONLY
 
 # multiple readonly transactions shouldn't block
-statement ok con2
+connection con2
+statement ok 
 BEGIN READ ONLY
 
 
