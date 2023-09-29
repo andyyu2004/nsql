@@ -1580,6 +1580,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
     ) -> Result<ir::Expr> {
         let (ty, kind) = match expr {
             ast::Expr::Value(literal) => return Ok(self.bind_value_expr(literal)),
+            ast::Expr::Nested(expr) => return self.walk_expr(tx, scope, expr, f),
             ast::Expr::Identifier(ident) => {
                 let (ty, col) = self.bind_ident(scope, ident)?;
                 (ty, ir::ExprKind::ColumnRef(col))
