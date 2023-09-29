@@ -37,7 +37,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalNode<'env, 'txn, S, ReadWriteEx
     for PhysicalUpdate<'env, 'txn, S>
 {
     fn width(&self) -> usize {
-        self.children[0].width()
+        self.returning.width()
     }
 
     #[inline]

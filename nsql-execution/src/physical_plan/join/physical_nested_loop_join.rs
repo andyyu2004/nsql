@@ -113,6 +113,9 @@ impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalOperator<'
         ecx: &'txn ExecutionContext<'_, 'env, S, M>,
         lhs_tuple: Tuple,
     ) -> ExecutionResult<OperatorState<Tuple>> {
+        let lhs_width = lhs_tuple.width();
+        debug_assert_eq!(lhs_width, self.lhs_node().width());
+
         let storage = ecx.storage();
         let tx = ecx.tx();
         let rhs_tuples = self.rhs_tuples.get().expect("probing before build is finished");

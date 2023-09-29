@@ -42,7 +42,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalNode<'env, 'txn, S, ReadWriteEx
     for PhysicalInsert<'env, 'txn, S>
 {
     fn width(&self) -> usize {
-        self.children[0].width()
+        self.returning.width()
     }
 
     fn children(&self) -> &[Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode>>] {
