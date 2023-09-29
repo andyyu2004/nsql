@@ -14,6 +14,8 @@ impl Operator {
         IS_DISTINCT_FROM_ANY,
         IS_NOT_DISTINCT_FROM_ANY,
         NEG_INT,
+        NEG_FLOAT,
+        NEG_DEC,
         NOT_BOOL,
         ADD_INT,
         ADD_FLOAT,
@@ -82,6 +84,8 @@ impl Operator {
         // the macro assumes that the corresponding `Function::$oid` is the same name as the `Operator::$oid`
         vec![
             unary!(MINUS, NEG_INT),
+            unary!(MINUS, NEG_FLOAT),
+            unary!(MINUS, NEG_DEC),
             unary!(NOT, NOT_BOOL),
             binary!(PLUS, ADD_INT),
             binary!(PLUS, ADD_FLOAT),

@@ -1,0 +1,31 @@
+query I
+SELECT abs(1)
+----
+1
+
+query I
+SELECT abs(-1)
+----
+1
+
+query R
+SELECT abs(1::float)
+----
+1.0
+
+query R
+SELECT abs(-1::float)
+----
+1.0
+
+query D
+SELECT abs(1.00::decimal)
+----
+1.00
+
+query D
+SELECT abs(-1.00::decimal)
+----
+1.00
+
+

@@ -40,6 +40,19 @@ macro_rules! comparison {
     };
 }
 
+macro_rules! method {
+    ($method:ident: $ty:ty) => {
+        |_catalog, _tx, mut args| {
+            assert_eq!(args.len(), 1);
+            let x: Option<$ty> = args[0].take().cast().unwrap();
+            match x {
+                Some(x) => Ok(Value::from(x.$method())),
+                _ => Ok(Value::Null),
+            }
+        }
+    };
+}
+
 macro_rules! comparison_include_null {
     ($op:tt: $ty:ty) => {
         |_catalog, _tx, mut args| {
@@ -85,6 +98,8 @@ macro_rules! prefix_op {
 pub(crate) fn get_scalar_function<S: StorageEngine>(oid: Oid<Function>) -> Option<ScalarFunction<S>> {
     Some(match oid {
         _ if oid == Function::NEG_INT   => prefix_op!(- : i64),
+        _ if oid == Function::NEG_FLOAT => prefix_op!(- : f64),
+        _ if oid == Function::NEG_DEC   => prefix_op!(- : Decimal),
         _ if oid == Function::NOT_BOOL  => prefix_op!(! : bool),
         _ if oid == Function::ADD_INT   => infix_op!(+ : i64),
         _ if oid == Function::ADD_FLOAT => infix_op!(+ : f64),
@@ -98,16 +113,19 @@ pub(crate) fn get_scalar_function<S: StorageEngine>(oid: Oid<Function>) -> Optio
         _ if oid == Function::DIV_INT   => infix_op!(/ : i64),
         _ if oid == Function::DIV_FLOAT => infix_op!(/ : f64),
         _ if oid == Function::DIV_DEC   => infix_op!(/ : Decimal),
-        _ if oid == Function::EQ_ANY        => comparison!(== : Value),
-        _ if oid == Function::NEQ_ANY       => comparison!(!= : Value),
-        _ if oid == Function::LT_ANY        => comparison!(<  : Value),
-        _ if oid == Function::LTE_ANY       => comparison!(<= : Value),
-        _ if oid == Function::GTE_ANY       => comparison!(>= : Value),
-        _ if oid == Function::GT_ANY        => comparison!(>  : Value),
+        _ if oid == Function::EQ_ANY    => comparison!(== : Value),
+        _ if oid == Function::NEQ_ANY   => comparison!(!= : Value),
+        _ if oid == Function::LT_ANY    => comparison!(<  : Value),
+        _ if oid == Function::LTE_ANY   => comparison!(<= : Value),
+        _ if oid == Function::GTE_ANY   => comparison!(>= : Value),
+        _ if oid == Function::GT_ANY    => comparison!(>  : Value),
         _ if oid == Function::OR_BOOL   => comparison!(|| : bool),
         _ if oid == Function::AND_BOOL  => comparison!(&& : bool),
         _ if oid == Function::IS_DISTINCT_FROM_ANY => comparison_include_null!(!= : Value),
         _ if oid == Function::IS_NOT_DISTINCT_FROM_ANY => comparison_include_null!(== : Value),
+        _ if oid == Function::ABS_INT   => method!(abs: i64),
+        _ if oid == Function::ABS_FLOAT => method!(abs: f64),
+        _ if oid == Function::ABS_DEC   => method!(abs: Decimal),
         // casts
         _ if oid == Function::CAST_SELF         => cast_to!(Value),
         _ if oid == Function::CAST_INT_TO_DEC   => cast_to!(Decimal),

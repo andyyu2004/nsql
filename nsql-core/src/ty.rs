@@ -83,7 +83,7 @@ impl fmt::Display for LogicalType {
             LogicalType::Bool => write!(f, "boolean"),
             LogicalType::Byte => write!(f, "byte"),
             LogicalType::Int64 => write!(f, "int"),
-            LogicalType::Float64 => write!(f, "double"),
+            LogicalType::Float64 => write!(f, "float"),
             LogicalType::Decimal => write!(f, "decimal"),
             LogicalType::Text => write!(f, "text"),
             LogicalType::Null => write!(f, "null"),

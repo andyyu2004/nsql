@@ -167,7 +167,7 @@ impl BootstrapData {
             .into_vec()
             .into_iter()
             .map(|op| {
-                let f = &functions_map[&op.function];
+                let f = &functions_map.get(&op.function).expect("function not found for operator");
                 match op.kind {
                     OperatorKind::Unary => assert_eq!(
                         f.args().len(),
