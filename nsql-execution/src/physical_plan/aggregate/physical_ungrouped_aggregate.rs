@@ -37,11 +37,9 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
         self: Arc<Self>,
         _ecx: &'txn ExecutionContext<'_, 'env, S, M>,
     ) -> ExecutionResult<TupleStream<'txn>> {
-        let values = mem::take(&mut *self.aggregate_functions.lock())
-            .into_iter()
-            .map(|f| f.finalize())
-            .collect();
-        Ok(Box::new(fallible_iterator::once(Tuple::new(values))))
+        let values =
+            mem::take(&mut *self.aggregate_functions.lock()).into_iter().map(|f| f.finalize());
+        Ok(Box::new(fallible_iterator::once(Tuple::from_iter(values))))
     }
 }
 

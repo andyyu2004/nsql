@@ -1,23 +1,3 @@
-CREATE TABLE employee (
-    id int PRIMARY KEY,
-    name text,
-    department text,
-    salary int
-);
-
-INSERT INTO employee (id, name, department, salary)
-VALUES (1, 'Alice', 'HR',          50),
-       (2, 'Bob',   'Engineering', 100),
-       (3, 'Carol', 'Engineering', 70),
-       (4, 'Dan',   'Engineering', 60),
-       (5, 'Eve',   'HR',          50),
-       (6, 'Frank', 'Engineering', 80);
-
-
-SELECT id,
-       name,
-       (SELECT salary
-          FROM employee
-       WHERE emp.department <> 'bad') AS salary
-   FROM employee emp;
-
+CREATE TABLE integers(i integer, id integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY);
+INSERT INTO integers VALUES (0), (1), (2), (NULL);
+SELECT i, EXISTS(SELECT i FROM integers WHERE i1.i>2) FROM integers i1 ORDER BY i;

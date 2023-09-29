@@ -91,7 +91,7 @@ impl Expr {
 
 impl fmt::Display for Expr {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if f.alternate() { write!(f, "{:#}", self.kind) } else { write!(f, "{}", self.kind) }
+        self.kind.fmt(f)
     }
 }
 
@@ -297,17 +297,9 @@ impl fmt::Display for ExprKind {
 
                 write!(f, "END")
             }
-            ExprKind::Subquery(kind, plan) => match kind {
-                SubqueryKind::Scalar => {
-                    write!(f, "(")?;
-                    plan.fmt(f)?;
-                    write!(f, ")")
-                }
-                SubqueryKind::Exists => {
-                    write!(f, "EXISTS (")?;
-                    plan.fmt(f)?;
-                    write!(f, ")")
-                }
+            ExprKind::Subquery(kind, _plan) => match kind {
+                SubqueryKind::Scalar => write!(f, "<scalar-subquery"),
+                SubqueryKind::Exists => write!(f, "EXISTS (<subquery>"),
             },
             ExprKind::UnaryOperator { operator, expr } => {
                 operator.fmt(f)?;

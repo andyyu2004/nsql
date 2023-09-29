@@ -50,6 +50,7 @@ fn optimize_query(mut plan: Box<ir::QueryPlan>) -> Query {
             plan.validate().unwrap_or_else(|err| {
                 panic!("invalid plan after pass `{}`: {err}\n{plan:#}", pass.name())
             });
+            tracing::debug!("plan after pass `{}`:\n{:#}", pass.name(), plan);
         }
 
         if plan == pre_opt_plan {

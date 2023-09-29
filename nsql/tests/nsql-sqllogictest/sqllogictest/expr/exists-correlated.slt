@@ -1,0 +1,19 @@
+statement ok
+CREATE TABLE integers(i integer, id integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY)
+
+# important to start from 0 otherwise `id` and `i` will be the same and we can miss off by one errors
+statement ok
+INSERT INTO integers VALUES (0), (1), (2), (NULL)
+
+# correlated EXISTS
+query IB rowsort
+SELECT i, EXISTS(SELECT i FROM integers WHERE i = i1.i) FROM integers i1
+----
+0	true
+1	true
+2	true
+NULL	false
+
+
+
+

@@ -32,10 +32,16 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
         rhs_node: Arc<dyn PhysicalNode<'env, 'txn, S, M>>,
     ) -> Arc<dyn PhysicalNode<'env, 'txn, S, M>> {
         assert!(!join_kind.is_right(), "right joins are not supported by nested-loop join");
+
+        let rhs_width = match join_kind {
+            ir::JoinKind::Mark => 1,
+            _ => rhs_node.width(),
+        };
+
         Arc::new(Self {
             join_kind,
             join_predicate,
-            rhs_width: rhs_node.width(),
+            rhs_width,
             children: [lhs_node, rhs_node],
             found_match_for_lhs_tuple: AtomicBool::new(false),
             rhs_index: AtomicUsize::new(0),
@@ -139,7 +145,12 @@ impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalOperator<'
                     tracing::debug!(
                         "no match found, emitting tuple padded with nulls for left join"
                     );
-                    return Ok(OperatorState::Yield(lhs_tuple.pad_right(self.rhs_width)));
+                    return match self.join_kind {
+                        ir::JoinKind::Mark => {
+                            Ok(OperatorState::Yield(lhs_tuple.pad_right_with(1, || false)))
+                        }
+                        _ => Ok(OperatorState::Yield(lhs_tuple.pad_right(self.rhs_width))),
+                    };
                 }
 
                 tracing::debug!("completed loop, continuing with next lhs tuple");
@@ -166,6 +177,14 @@ impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalOperator<'
                 // Reset the rhs and continue to the next lhs tuple.
                 self.rhs_index.store(0, atomic::Ordering::Relaxed);
                 Ok(OperatorState::Yield(joint_tuple))
+            } else if matches!(self.join_kind, ir::JoinKind::Mark) {
+                // If this is a mark join, we only want to emit the lhs tuple.
+                // Reset the rhs and continue to the next lhs tuple.
+                self.rhs_index.store(0, atomic::Ordering::Relaxed);
+                let lhs_tuple = Tuple::from_iter(
+                    joint_tuple.into_iter().take(lhs_width).chain(std::iter::once(true.into())),
+                );
+                Ok(OperatorState::Yield(lhs_tuple))
             } else {
                 self.found_match_for_lhs_tuple.store(true, atomic::Ordering::Relaxed);
                 Ok(OperatorState::Again(Some(joint_tuple)))

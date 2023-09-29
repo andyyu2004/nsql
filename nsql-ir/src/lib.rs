@@ -423,7 +423,9 @@ impl<Q: fmt::Display> fmt::Display for Plan<Q> {
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum JoinKind {
-    /// Similar to a `LEFT OUTER JOIN` but returns at most one matching row from the right side (NULL if no match)
+    /// Similar to a `LEFT JOIN` but returns only a boolean indicating whether a match was found
+    Mark,
+    /// Similar to a `LEFT JOIN` but returns at most one matching row from the right side (NULL if no match)
     Single,
     Inner,
     Left,
@@ -448,7 +450,7 @@ impl FromStr for JoinKind {
 impl JoinKind {
     #[inline]
     pub fn is_left(&self) -> bool {
-        matches!(self, JoinKind::Left | JoinKind::Full | JoinKind::Single)
+        matches!(self, JoinKind::Left | JoinKind::Full | JoinKind::Single | JoinKind::Mark)
     }
 
     #[inline]
@@ -460,6 +462,7 @@ impl JoinKind {
 impl fmt::Display for JoinKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            JoinKind::Mark => write!(f, "MARK"),
             JoinKind::Inner => write!(f, "INNER"),
             JoinKind::Left => write!(f, "LEFT"),
             JoinKind::Right => write!(f, "RIGHT"),
@@ -611,7 +614,12 @@ impl QueryPlan {
 
     #[inline]
     fn unconditional_join(self: Box<Self>, join: JoinKind, rhs: Box<Self>) -> Box<Self> {
-        let schema = self.schema().iter().chain(rhs.schema().iter()).cloned().collect();
+        let schema = match join {
+            JoinKind::Mark => {
+                self.schema().iter().cloned().chain(std::iter::once(LogicalType::Bool)).collect()
+            }
+            _ => self.schema().iter().chain(rhs.schema().iter()).cloned().collect(),
+        };
         Box::new(Self::Join { schema, join, lhs: self, rhs })
     }
 

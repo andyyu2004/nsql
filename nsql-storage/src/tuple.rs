@@ -3,12 +3,10 @@ use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::ops::{Add, Index, IndexMut};
 use std::str::FromStr;
-use std::sync::OnceLock;
 
 use anyhow::bail;
 use itertools::Itertools;
-use nsql_core::Schema;
-use rkyv::with::{RefAsBox, Skip};
+use rkyv::with::RefAsBox;
 use rkyv::{Archive, Archived, Deserialize, Serialize};
 
 use crate::value::{CastError, FromValue, Value};
@@ -17,8 +15,6 @@ use crate::value::{CastError, FromValue, Value};
 #[derive(Clone, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
 pub struct Tuple {
     values: Box<[Value]>,
-    #[with(Skip)]
-    cached_schema: OnceLock<Schema>,
 }
 
 impl fmt::Debug for Tuple {
@@ -59,8 +55,8 @@ pub struct TupleRef<'a>(#[with(RefAsBox)] &'a [Value]);
 
 impl Tuple {
     #[inline]
-    pub fn new(values: Box<[Value]>) -> Self {
-        Self { values, cached_schema: Default::default() }
+    pub fn new(values: impl Into<Box<[Value]>>) -> Self {
+        Self { values: values.into() }
     }
 
     #[inline]
@@ -75,7 +71,7 @@ impl Tuple {
 
     #[inline]
     pub fn empty() -> Self {
-        Self::new(Box::new([]))
+        Self::new([])
     }
 
     #[inline]
@@ -103,10 +99,14 @@ impl Tuple {
 
     #[inline]
     pub fn pad_right(self, n: usize) -> Tuple {
+        self.pad_right_with(n, || Value::Null)
+    }
+
+    pub fn pad_right_with<V: Into<Value>>(self, n: usize, f: impl Fn() -> V) -> Tuple {
         let mut values = self.values.into_vec();
         let new_len = values.len() + n;
         values.reserve_exact(n);
-        values.resize_with(new_len, || Value::Null);
+        values.resize_with(new_len, || f().into());
         debug_assert_eq!(values.len(), new_len);
         debug_assert_eq!(values.capacity(), new_len);
         Self::new(values.into_boxed_slice())
@@ -144,7 +144,7 @@ impl From<Vec<Value>> for Tuple {
 impl<const N: usize> From<[Value; N]> for Tuple {
     #[inline]
     fn from(values: [Value; N]) -> Self {
-        Self::new(values.into())
+        Self::new(values)
     }
 }
 
@@ -158,7 +158,7 @@ impl From<Box<[Value]>> for Tuple {
 impl FromIterator<Value> for Tuple {
     #[inline]
     fn from_iter<I: IntoIterator<Item = Value>>(iter: I) -> Self {
-        Self::new(iter.into_iter().collect())
+        Self::new(iter.into_iter().collect::<Box<[_]>>())
     }
 }
 
@@ -301,7 +301,7 @@ pub trait IntoTuple {
 impl IntoTuple for Value {
     #[inline]
     fn into_tuple(self) -> Tuple {
-        Tuple::new(Box::new([self]))
+        Tuple::new([self])
     }
 }
 
