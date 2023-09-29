@@ -671,6 +671,20 @@ impl QueryPlan {
             .collect::<Box<_>>()
     }
 
+    pub fn build_rightmost_k_projection(&self, k: usize) -> Box<[Expr]> {
+        let schema = self.schema();
+        assert!(k <= schema.len(), "k must be less than or equal to the number of columns");
+        (schema.len() - k..schema.len())
+            .map(|i| Expr {
+                ty: schema[i].clone(),
+                kind: ExprKind::ColumnRef(ColumnRef::new(
+                    TupleIndex::new(i),
+                    QPath::new("", format!("{i}")),
+                )),
+            })
+            .collect::<Box<_>>()
+    }
+
     #[inline]
     pub fn build_identity_projection(&self) -> Box<[Expr]> {
         self.build_leftmost_k_projection(self.schema().len())
@@ -680,6 +694,11 @@ impl QueryPlan {
     #[inline]
     pub fn project_leftmost_k(self: Box<Self>, k: usize) -> Box<Self> {
         let projection = self.build_leftmost_k_projection(k);
+        self.project(projection)
+    }
+
+    pub fn project_rightmost_k(self: Box<Self>, k: usize) -> Box<Self> {
+        let projection = self.build_rightmost_k_projection(k);
         self.project(projection)
     }
 

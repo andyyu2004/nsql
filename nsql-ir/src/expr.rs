@@ -284,7 +284,7 @@ impl fmt::Display for ExprKind {
                 write!(f, "CASE ")?;
                 scrutinee.fmt(f)?;
                 for case in cases.iter() {
-                    write!(f, " WHEN")?;
+                    write!(f, " WHEN ")?;
                     case.when.fmt(f)?;
                     write!(f, " THEN ")?;
                     case.then.fmt(f)?;
@@ -295,7 +295,7 @@ impl fmt::Display for ExprKind {
                     else_result.fmt(f)?;
                 }
 
-                write!(f, "END")
+                write!(f, " END")
             }
             ExprKind::Subquery(kind, _plan) => match kind {
                 SubqueryKind::Scalar => write!(f, "<scalar-subquery"),

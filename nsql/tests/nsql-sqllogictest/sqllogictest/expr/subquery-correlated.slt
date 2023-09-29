@@ -47,6 +47,16 @@ SELECT i FROM integers WHERE i = (SELECT i WHERE i = 2);
 ----
 2
 
+# COUNT(*) with no matches in subquery should still be 0 not null
+query II rowsort
+SELECT i, (SELECT COUNT(*) FROM integers WHERE i = i1.i) AS j FROM integers i1;
+----
+0 1
+1 1
+2 1
+NULL 0
+
+
 statement ok
 CREATE TABLE employee (
     id int PRIMARY KEY,

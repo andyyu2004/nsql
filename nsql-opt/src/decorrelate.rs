@@ -78,24 +78,24 @@ impl Flattener {
 
         let shift = correlated_plan.schema().len();
         // join the delim rhs back with the original plan on the correlated columns (see the slides for details)
-        let join_predicates = correlated_columns.iter().map(|cor| {
-            ir::Expr::call(
-                // we need an `is not distinct from` join, (then we can add the distinct up top back)
-                ir::MonoFunction::new(ir::Function::is_not_distinct_from(), LogicalType::Bool),
-                [
-                    // the column in the lhs of the join
-                    ir::Expr::column_ref(cor.ty.clone(), cor.col.qpath.clone(), cor.col.index),
-                    // the column belonging on the rhs of the join
-                    ir::Expr::column_ref(
-                        cor.ty.clone(),
-                        cor.col.qpath.clone(),
-                        correlated_map[&cor.col.index] + shift,
-                    ),
-                ],
-            )
-        });
-
-        let join_predicate = join_predicates
+        let join_predicate = correlated_columns
+            .iter()
+            .map(|cor| {
+                ir::Expr::call(
+                    // we need an `is not distinct from` join, (then we can add the distinct up top back)
+                    ir::MonoFunction::new(ir::Function::is_not_distinct_from(), LogicalType::Bool),
+                    [
+                        // the column in the lhs of the join
+                        ir::Expr::column_ref(cor.ty.clone(), cor.col.qpath.clone(), cor.col.index),
+                        // the column belonging on the rhs of the join
+                        ir::Expr::column_ref(
+                            cor.ty.clone(),
+                            cor.col.qpath.clone(),
+                            correlated_map[&cor.col.index] + shift,
+                        ),
+                    ],
+                )
+            })
             .reduce(|a, b| {
                 ir::Expr::call(
                     ir::MonoFunction::new(ir::Function::and(), LogicalType::Bool),
