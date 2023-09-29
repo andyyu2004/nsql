@@ -97,30 +97,31 @@ macro_rules! prefix_op {
 #[rustfmt::skip]
 pub(crate) fn get_scalar_function<S: StorageEngine>(oid: Oid<Function>) -> Option<ScalarFunction<S>> {
     Some(match oid {
-        _ if oid == Function::NEG_INT   => prefix_op!(- : i64),
-        _ if oid == Function::NEG_FLOAT => prefix_op!(- : f64),
-        _ if oid == Function::NEG_DEC   => prefix_op!(- : Decimal),
-        _ if oid == Function::NOT_BOOL  => prefix_op!(! : bool),
-        _ if oid == Function::ADD_INT   => infix_op!(+ : i64),
-        _ if oid == Function::ADD_FLOAT => infix_op!(+ : f64),
-        _ if oid == Function::ADD_DEC   => infix_op!(+ : Decimal),
-        _ if oid == Function::SUB_INT   => infix_op!(- : i64),
-        _ if oid == Function::SUB_FLOAT => infix_op!(- : f64),
-        _ if oid == Function::SUB_DEC   => infix_op!(- : Decimal),
-        _ if oid == Function::MUL_INT   => infix_op!(* : i64),
-        _ if oid == Function::MUL_FLOAT => infix_op!(* : f64),
-        _ if oid == Function::MUL_DEC   => infix_op!(* : Decimal),
-        _ if oid == Function::DIV_INT   => infix_op!(/ : i64),
-        _ if oid == Function::DIV_FLOAT => infix_op!(/ : f64),
-        _ if oid == Function::DIV_DEC   => infix_op!(/ : Decimal),
-        _ if oid == Function::EQ_ANY    => comparison!(== : Value),
-        _ if oid == Function::NEQ_ANY   => comparison!(!= : Value),
-        _ if oid == Function::LT_ANY    => comparison!(<  : Value),
-        _ if oid == Function::LTE_ANY   => comparison!(<= : Value),
-        _ if oid == Function::GTE_ANY   => comparison!(>= : Value),
-        _ if oid == Function::GT_ANY    => comparison!(>  : Value),
-        _ if oid == Function::OR_BOOL   => comparison!(|| : bool),
-        _ if oid == Function::AND_BOOL  => comparison!(&& : bool),
+        _ if oid == Function::NEG_INT     => prefix_op!(- : i64),
+        _ if oid == Function::NEG_FLOAT   => prefix_op!(- : f64),
+        _ if oid == Function::NEG_DEC     => prefix_op!(- : Decimal),
+        _ if oid == Function::NOT_BOOL    => prefix_op!(! : bool),
+        _ if oid == Function::ADD_INT     => infix_op!(+ : i64),
+        _ if oid == Function::ADD_FLOAT   => infix_op!(+ : f64),
+        _ if oid == Function::ADD_DEC     => infix_op!(+ : Decimal),
+        _ if oid == Function::SUB_INT     => infix_op!(- : i64),
+        _ if oid == Function::SUB_FLOAT   => infix_op!(- : f64),
+        _ if oid == Function::SUB_DEC     => infix_op!(- : Decimal),
+        _ if oid == Function::MUL_INT     => infix_op!(* : i64),
+        _ if oid == Function::MUL_FLOAT   => infix_op!(* : f64),
+        _ if oid == Function::MUL_DEC     => infix_op!(* : Decimal),
+        _ if oid == Function::DIV_INT     => infix_op!(/ : i64),
+        _ if oid == Function::DIV_FLOAT   => infix_op!(/ : f64),
+        _ if oid == Function::DIV_DEC     => infix_op!(/ : Decimal),
+        _ if oid == Function::BETWEEN_ANY => between,
+        _ if oid == Function::EQ_ANY      => comparison!(== : Value),
+        _ if oid == Function::NEQ_ANY     => comparison!(!= : Value),
+        _ if oid == Function::LT_ANY      => comparison!(<  : Value),
+        _ if oid == Function::LTE_ANY     => comparison!(<= : Value),
+        _ if oid == Function::GTE_ANY     => comparison!(>= : Value),
+        _ if oid == Function::GT_ANY      => comparison!(>  : Value),
+        _ if oid == Function::OR_BOOL     => comparison!(|| : bool),
+        _ if oid == Function::AND_BOOL    => comparison!(&& : bool),
         _ if oid == Function::IS_DISTINCT_FROM_ANY => comparison_include_null!(!= : Value),
         _ if oid == Function::IS_NOT_DISTINCT_FROM_ANY => comparison_include_null!(== : Value),
         _ if oid == Function::ABS_INT   => method!(abs: i64),
@@ -181,6 +182,34 @@ pub(crate) fn get_scalar_function<S: StorageEngine>(oid: Oid<Function>) -> Optio
         },
         _ => return None,
     })
+}
+
+#[allow(clippy::boxed_local)]
+fn between<'env, S: StorageEngine>(
+    _catalog: Catalog<'env, S>,
+    _tx: &dyn Transaction<'env, S>,
+    mut args: Box<[Value]>,
+) -> Result<Value> {
+    assert_eq!(args.len(), 3);
+    let target = args[0].take();
+    let lower = args[1].take();
+    let upper = args[2].take();
+    debug_assert!(
+        target.is_comparable_with(&lower)
+            && target.is_comparable_with(&upper)
+            && lower.is_comparable_with(&upper),
+        "cannot compare `{target}` and `{lower}` and `{upper}` (this should have been a type error)"
+    );
+
+    let target: Option<Value> = target.cast().unwrap();
+    let lower: Option<Value> = lower.cast().unwrap();
+    let upper: Option<Value> = upper.cast().unwrap();
+    match (target, lower, upper) {
+        (Some(target), Some(lower), Some(upper)) => {
+            Ok(Value::Bool(lower <= target && target <= upper))
+        }
+        _ => Ok(Value::Null),
+    }
 }
 
 pub(crate) fn get_aggregate_function(

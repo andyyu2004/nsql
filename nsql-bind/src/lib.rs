@@ -1710,6 +1710,37 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                     },
                 )
             }
+            ast::Expr::Between { expr, negated, low, high } => {
+                if *negated {
+                    return self.walk_expr(
+                        tx,
+                        scope,
+                        &ast::Expr::UnaryOp {
+                            op: ast::UnaryOperator::Not,
+                            expr: Box::new(ast::Expr::Between {
+                                expr: expr.clone(),
+                                negated: false,
+                                low: low.clone(),
+                                high: high.clone(),
+                            }),
+                        },
+                        f,
+                    );
+                }
+
+                // implement `BETWEEN` as it's own function rather than desugaring to `x >= low AND x <= high` for potential efficiency gains
+                let expr = f(expr)?;
+                let low = f(low)?;
+                let high = f(high)?;
+                let args = [expr.ty(), low.ty(), high.ty()];
+                let function =
+                    self.resolve_function(tx, &Path::qualified(MAIN_SCHEMA, "between"), &args)?;
+                (
+                    function.return_type(),
+                    ir::ExprKind::FunctionCall { function, args: [expr, low, high].into() },
+                )
+            }
+
             ast::Expr::Cast { expr, data_type } => {
                 let expr = f(expr)?;
                 let target = self.lower_ty(data_type)?;

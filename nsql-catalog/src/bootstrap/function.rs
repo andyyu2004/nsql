@@ -84,6 +84,7 @@ impl Function {
         ABS_INT,
         ABS_FLOAT,
         ABS_DEC,
+        BETWEEN_ANY,
         OR_BOOL,
         AND_BOOL,
         ARRAY_ELEMENT,
@@ -161,6 +162,7 @@ impl Function {
             scalar!(RANGE2    range : (Int64, Int64) -> array(Int64)),
             scalar!(ARRAY_ELEMENT array_element : (array(Any), Int64) -> Any),
             scalar!(ARRAY_POSITION array_position : (array(Any), Any) -> Int64),
+            scalar!(BETWEEN_ANY between : (Any, Any, Any) -> Bool),
             // aggregates
             aggregate!(SUM_INT     sum     : (Int64) -> Int64),
             aggregate!(AVG_INT     avg     : (Int64) -> Float64),
