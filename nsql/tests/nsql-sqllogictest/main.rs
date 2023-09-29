@@ -25,6 +25,7 @@ fn nsql_sqllogictest(path: &Path) -> nsql::Result<(), Box<dyn Error>> {
         );
         let db = TestDb::new(Nsql::<S>::create(db_path).unwrap());
         let mut tester = Runner::new(db);
+        tester.with_hash_threshold(70);
         tester.run_file(path)?;
         Ok(())
     }
@@ -116,7 +117,7 @@ impl<S: StorageEngine> DB for TestDb<S> {
         // transmute the lifetime back to whatever we need, not sure about safety on this one but it's a test so we'll find out
         let output = conn.query(unsafe { std::mem::transmute(state) }, sql)?;
         Ok(DBOutput::Rows {
-            types: output.types.into_iter().map(TypeWrapper).collect(),
+            types: output.schema.into_iter().map(TypeWrapper).collect(),
             rows: output
                 .tuples
                 .iter()

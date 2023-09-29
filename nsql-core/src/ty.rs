@@ -111,6 +111,16 @@ impl fmt::Display for Schema {
     }
 }
 
+impl IntoIterator for Schema {
+    type Item = LogicalType;
+    type IntoIter = std::vec::IntoIter<LogicalType>;
+
+    #[inline]
+    fn into_iter(self) -> Self::IntoIter {
+        self.types.into_vec().into_iter()
+    }
+}
+
 impl<'a> IntoIterator for &'a Schema {
     type Item = &'a LogicalType;
     type IntoIter = std::slice::Iter<'a, LogicalType>;

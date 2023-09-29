@@ -10,6 +10,7 @@ use mimalloc::MiMalloc;
 use nsql_bind::Binder;
 use nsql_catalog::Catalog;
 pub use nsql_core::LogicalType;
+use nsql_core::Schema;
 use nsql_execution::config::SessionConfig;
 use nsql_execution::{ExecutionContext, PhysicalPlanner, TransactionContext, TransactionState};
 pub use nsql_lmdb::LmdbStorageEngine;
@@ -39,7 +40,7 @@ impl<S> Clone for Nsql<S> {
 
 #[derive(Debug)]
 pub struct MaterializedQueryOutput {
-    pub types: Vec<LogicalType>,
+    pub schema: Schema,
     pub tuples: Vec<Tuple>,
 }
 
@@ -131,7 +132,7 @@ impl<S: StorageEngine> Shared<S> {
         let stmts = nsql_parse::parse_statements(query)?;
 
         match &stmts[..] {
-            [] => Ok(MaterializedQueryOutput { types: vec![], tuples: vec![] }),
+            [] => Ok(MaterializedQueryOutput { schema: Schema::empty(), tuples: vec![] }),
             [stmts @ .., last] => {
                 for stmt in stmts {
                     let _output = self.execute(ctx, stmt);
@@ -177,6 +178,7 @@ impl<S: StorageEngine> Shared<S> {
             }
         };
 
+        let schema = Schema::new(plan.schema());
         let plan = optimize(plan);
 
         let (tx, tuples) = match tx {
@@ -221,7 +223,7 @@ impl<S: StorageEngine> Shared<S> {
                     }
                     TransactionState::Active => {
                         ctx.current_tx.store(Some(Arc::new(ReadOrWriteTransaction::Write(tx))));
-                        return Ok(MaterializedQueryOutput { types: vec![], tuples });
+                        return Ok(MaterializedQueryOutput { schema, tuples });
                     }
                     TransactionState::Committed => {
                         tracing::info!("committing write transaction");
@@ -243,7 +245,6 @@ impl<S: StorageEngine> Shared<S> {
             ctx.current_tx.store(Some(Arc::new(tx)));
         }
 
-        // FIXME need to get the types
-        Ok(MaterializedQueryOutput { types: vec![], tuples })
+        Ok(MaterializedQueryOutput { schema, tuples })
     }
 }
