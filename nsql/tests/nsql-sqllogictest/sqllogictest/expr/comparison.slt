@@ -104,4 +104,24 @@ SELECT 1 IS DISTINCT FROM 2
 ----
 true
 
+query B
+SELECT NULL IS NULL
+----
+true
+
+query B
+SELECT NULL IS NOT NULL
+----
+false
+
+query B
+SELECT 1 IS NULL
+----
+false
+
+query B
+SELECT 1 IS NOT NULL
+----
+true
+
 

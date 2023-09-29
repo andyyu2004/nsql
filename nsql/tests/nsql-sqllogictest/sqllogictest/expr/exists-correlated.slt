@@ -14,6 +14,14 @@ SELECT i, EXISTS(SELECT i FROM integers WHERE i = i1.i) FROM integers i1
 2	true
 NULL	false
 
+query I
+SELECT i FROM integers i1 WHERE EXISTS(SELECT i FROM integers WHERE i=i1.i) ORDER BY i;
+----
+0
+1
+2
+
+
 
 
 

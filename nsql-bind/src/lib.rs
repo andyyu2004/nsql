@@ -1665,6 +1665,50 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                 )?;
                 (operator.return_type(), ir::ExprKind::BinaryOperator { operator, lhs, rhs })
             }
+            // Implement `x IS NULL` as `x IS NOT DISTINCT FROM NULL` for now although this is not quite spec compliant.
+            // https://stackoverflow.com/questions/58997907/is-there-a-difference-between-is-null-and-is-not-distinct-from-null
+            ast::Expr::IsNull(expr) => {
+                let expr = Box::new(f(expr)?);
+                let operator = self.bind_binary_operator(
+                    tx,
+                    Operator::IS_NOT_DISTINCT_FROM,
+                    expr.ty(),
+                    expr.ty(),
+                )?;
+                let ty = expr.ty();
+                (
+                    operator.return_type(),
+                    ir::ExprKind::BinaryOperator {
+                        operator,
+                        lhs: expr,
+                        rhs: Box::new(ir::Expr {
+                            ty,
+                            kind: ir::ExprKind::Literal(ir::Value::Null),
+                        }),
+                    },
+                )
+            }
+            ast::Expr::IsNotNull(expr) => {
+                let expr = Box::new(f(expr)?);
+                let operator = self.bind_binary_operator(
+                    tx,
+                    Operator::IS_DISTINCT_FROM,
+                    expr.ty(),
+                    expr.ty(),
+                )?;
+                let ty = expr.ty();
+                (
+                    operator.return_type(),
+                    ir::ExprKind::BinaryOperator {
+                        operator,
+                        lhs: expr,
+                        rhs: Box::new(ir::Expr {
+                            ty,
+                            kind: ir::ExprKind::Literal(ir::Value::Null),
+                        }),
+                    },
+                )
+            }
             ast::Expr::Cast { expr, data_type } => {
                 let expr = f(expr)?;
                 let target = self.lower_ty(data_type)?;
