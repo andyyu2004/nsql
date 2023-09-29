@@ -115,7 +115,10 @@ impl<S: StorageEngine> Connection<S> {
 
             Ok(output)
         }))
-        .map_err(|_data| anyhow!("caught panic"))?
+        .map_err(|data| match data.downcast::<String>() {
+            Ok(msg) => anyhow!("{msg}"),
+            Err(_) => anyhow!("caught panic"),
+        })?
     }
 }
 
