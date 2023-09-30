@@ -41,6 +41,7 @@ datatest_stable::harness!(
     nsql_sqllogictest,
     format!("{}/{}", env!("CARGO_MANIFEST_DIR"), "tests/nsql-sqllogictest/sqllogictest"),
     r"^.*/*.slt",
+    (ignore r"^.*/*.slow.slt"),
 );
 
 #[derive(Debug, Eq, PartialEq, Clone)]

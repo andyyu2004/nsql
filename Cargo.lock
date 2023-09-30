@@ -541,8 +541,7 @@ dependencies = [
 [[package]]
 name = "datatest-stable"
 version = "0.2.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "22a384d02609f0774f4dbf0c38fc57eb2769b24c30b9185911ff657ec14837da"
+source = "git+https://github.com/andyyu2004/datatest-stable?branch=main#a8b7984cd307e130d3e7410f7eb08ad068f84f59"
 dependencies = [
  "camino",
  "libtest-mimic",
