@@ -15,7 +15,6 @@ impl PushdownDependentJoin {
         correlated_plan: Box<ir::QueryPlan>,
         correlated_map: FxHashMap<ir::TupleIndex, ir::TupleIndex>,
     ) -> Self {
-        debug_assert!(!correlated_plan.is_correlated());
         Self { correlated_plan, correlated_map }
     }
 }
