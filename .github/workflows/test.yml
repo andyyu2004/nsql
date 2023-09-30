@@ -13,4 +13,4 @@ jobs:
         with:
           toolchain: nightly
           override: true
-      - run: cargo test --release --ignored
+      - run: cargo test --release -- --ignored
