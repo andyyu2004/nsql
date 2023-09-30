@@ -20,7 +20,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     PhysicalOperator<'env, 'txn, S, M> for PhysicalProjection<'env, 'txn, S, M>
 {
-    #[tracing::instrument(skip(self, ecx, input))]
+    #[tracing::instrument(level = "debug", skip(self, ecx, input))]
     fn execute(
         &self,
         ecx: &'txn ExecutionContext<'_, 'env, S, M>,

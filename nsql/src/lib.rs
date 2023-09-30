@@ -158,7 +158,7 @@ impl<S: StorageEngine> Shared<S> {
         let binder = Binder::new(catalog);
         let (auto_commit, tx, plan) = match tx {
             Some(tx) => {
-                tracing::info!("reusing existing transaction");
+                tracing::debug!("reusing existing transaction");
                 let plan = binder.bind_with(&tx, stmt)?;
                 (false, tx, plan)
             }
@@ -166,11 +166,11 @@ impl<S: StorageEngine> Shared<S> {
                 let plan = binder.bind(stmt)?;
                 let tx = match plan.required_transaction_mode() {
                     ir::TransactionMode::ReadOnly => {
-                        tracing::info!("beginning fresh read transaction");
+                        tracing::debug!("beginning fresh read transaction");
                         ReadOrWriteTransaction::Read(storage.begin()?)
                     }
                     ir::TransactionMode::ReadWrite => {
-                        tracing::info!("beginning fresh write transaction");
+                        tracing::debug!("beginning fresh write transaction");
                         ReadOrWriteTransaction::Write(storage.begin_write()?)
                     }
                 };
@@ -183,7 +183,7 @@ impl<S: StorageEngine> Shared<S> {
 
         let (tx, tuples) = match tx {
             ReadOrWriteTransaction::Read(tx) => {
-                tracing::info!("executing readonly query");
+                tracing::debug!("executing readonly query");
                 let mut planner = PhysicalPlanner::new(catalog);
                 let physical_plan = planner.plan(&tx, plan)?;
                 drop(planner);
@@ -192,14 +192,14 @@ impl<S: StorageEngine> Shared<S> {
                 let tuples = nsql_execution::execute(&ecx, physical_plan)?;
                 let (auto_commit, state, tx) = ecx.take_txn();
                 if auto_commit || !matches!(state, TransactionState::Active) {
-                    tracing::info!("ending readonly transaction");
+                    tracing::debug!("ending readonly transaction");
                     (None, tuples)
                 } else {
                     (Some(ReadOrWriteTransaction::<S>::Read(tx)), tuples)
                 }
             }
             ReadOrWriteTransaction::Write(tx) => {
-                tracing::info!("executing write query");
+                tracing::debug!("executing write query");
                 let mut planner = PhysicalPlanner::new(catalog);
                 let physical_plan = planner.plan_write(&tx, plan)?;
                 drop(planner);
@@ -208,7 +208,7 @@ impl<S: StorageEngine> Shared<S> {
                 let tuples = match nsql_execution::execute_write(&ecx, physical_plan) {
                     Ok(tuples) => tuples,
                     Err(err) => {
-                        tracing::info!(error = %err, "aborting write transaction due to error during execution");
+                        tracing::debug!(error = %err, "aborting write transaction due to error during execution");
                         let (_, _, tx) = ecx.take_txn();
                         tx.abort()?;
                         return Err(err);
@@ -218,7 +218,7 @@ impl<S: StorageEngine> Shared<S> {
                 let (auto_commit, tx_state, tx) = ecx.take_txn();
                 match tx_state {
                     TransactionState::Active if auto_commit => {
-                        tracing::info!("auto-committing write transaction");
+                        tracing::debug!("auto-committing write transaction");
                         tx.commit()?;
                     }
                     TransactionState::Active => {
@@ -226,11 +226,11 @@ impl<S: StorageEngine> Shared<S> {
                         return Ok(MaterializedQueryOutput { schema, tuples });
                     }
                     TransactionState::Committed => {
-                        tracing::info!("committing write transaction");
+                        tracing::debug!("committing write transaction");
                         tx.commit()?
                     }
                     TransactionState::Aborted => {
-                        tracing::info!("aborting write transaction");
+                        tracing::debug!("aborting write transaction");
                         tx.abort()?
                     }
                 }

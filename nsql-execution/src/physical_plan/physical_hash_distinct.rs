@@ -21,7 +21,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     PhysicalOperator<'env, 'txn, S, M> for PhysicalHashDistinct<'env, 'txn, S, M>
 {
-    #[tracing::instrument(skip(self, _ecx, tuple))]
+    #[tracing::instrument(level = "debug", skip(self, _ecx, tuple))]
     fn execute(
         &self,
         _ecx: &'txn ExecutionContext<'_, 'env, S, M>,

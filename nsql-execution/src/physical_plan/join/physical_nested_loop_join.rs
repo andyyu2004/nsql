@@ -113,7 +113,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode
 impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalOperator<'env, 'txn, S, M>
     for PhysicalNestedLoopJoin<'env, 'txn, S, M>
 {
-    #[tracing::instrument(skip(self, ecx))]
+    #[tracing::instrument(level = "debug", skip(self, ecx))]
     fn execute(
         &self,
         ecx: &'txn ExecutionContext<'_, 'env, S, M>,
