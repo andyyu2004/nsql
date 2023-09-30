@@ -390,6 +390,7 @@ impl fmt::Display for PlanFormatter<'_> {
             QueryPlan::CteScan { name, schema: _ } => writeln!(f, "CTE scan on `{name}`"),
             QueryPlan::Cte { cte, child } => {
                 writeln!(f, "CTE {}", cte.name)?;
+                self.child(&cte.plan).fmt(f)?;
                 self.child(child).fmt(f)
             }
             QueryPlan::Distinct { source } => {

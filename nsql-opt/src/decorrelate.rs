@@ -1,6 +1,9 @@
 mod rewrite_correlated_exprs;
 
-use rustc_hash::FxHashMap;
+use std::hash::{Hash, Hasher};
+
+use nsql_core::Name;
+use rustc_hash::{FxHashMap, FxHasher};
 
 use super::*;
 use crate::decorrelate::rewrite_correlated_exprs::*;
@@ -73,7 +76,23 @@ impl Flattener {
         let delim_correlated_plan =
             correlated_plan.clone().project(correlated_projection).distinct();
 
-        let magic = PushdownDependentJoin::new(delim_correlated_plan, correlated_map.clone())
+        fn hash<T: Hash>(t: &T) -> u64 {
+            let mut s = FxHasher::default();
+            t.hash(&mut s);
+            s.finish()
+        }
+
+        // generating a unique name by hashing the correlated plan
+        // FIXME each plan should probably get assigned an id so we don't need this hack
+        let delim_scan_name =
+            Name::from(format!("$__delim_scan_{:x}", hash(&delim_correlated_plan)));
+
+        let delim_scan = Box::new(ir::QueryPlan::CteScan {
+            name: Name::clone(&delim_scan_name),
+            schema: delim_correlated_plan.schema().clone(),
+        });
+
+        let magic = PushdownDependentJoin::new(delim_scan, correlated_map.clone())
             .fold_boxed_plan(subquery_plan);
 
         let shift = correlated_plan.schema().len();
@@ -109,7 +128,9 @@ impl Flattener {
             ir::SubqueryKind::Scalar => ir::JoinKind::Single,
         };
 
-        *plan = *correlated_plan.join(join_kind, magic, join_predicate);
+        *plan = *correlated_plan
+            .join(join_kind, magic, join_predicate)
+            .with_cte(ir::Cte { name: delim_scan_name, plan: delim_correlated_plan });
 
         // TODO is the last column always the correct one?
         let idx = plan.schema().len() - 1;
