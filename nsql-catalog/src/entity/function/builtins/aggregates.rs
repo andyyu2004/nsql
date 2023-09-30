@@ -10,6 +10,7 @@ impl AggregateFunctionInstance for SumInt {
     fn update(&mut self, value: Option<Value>) {
         match value.expect("sum should be passed an argument") {
             Value::Int64(n) => self.state += n,
+            Value::Null => (),
             _ => panic!(),
         }
     }
@@ -36,6 +37,7 @@ impl AggregateFunctionInstance for ProductInt {
     fn update(&mut self, value: Option<Value>) {
         match value.expect("product should be passed an argument") {
             Value::Int64(i) => self.state *= i,
+            Value::Null => (),
             _ => panic!(),
         }
     }
@@ -60,6 +62,7 @@ impl AggregateFunctionInstance for AverageInt {
                 self.value += n;
                 self.count += 1;
             }
+            Value::Null => (),
             _ => panic!(),
         }
     }

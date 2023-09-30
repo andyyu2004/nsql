@@ -69,6 +69,12 @@ impl PlanFold for Plan {
     }
 }
 
+impl PlanFold for Cte {
+    fn fold_with(self, folder: &mut dyn Folder) -> Self {
+        Self { name: self.name, plan: folder.fold_boxed_plan(self.plan) }
+    }
+}
+
 impl PlanFold for QueryPlan {
     #[inline]
     fn super_fold_with(self, folder: &mut dyn Folder) -> Self {
@@ -152,7 +158,7 @@ impl PlanFold for QueryPlan {
                         .map(|(f, args)| (f, folder.fold_exprs(&mut source, args)))
                         .collect(),
                     group_by: folder.fold_exprs(&mut source, group_by),
-                    source: folder.fold_boxed_plan(source),
+                    source,
                     schema,
                 }
             }

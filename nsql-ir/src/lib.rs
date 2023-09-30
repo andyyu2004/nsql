@@ -288,8 +288,8 @@ impl fmt::Display for PlanFormatter<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{:indent$}", "", indent = self.indent)?;
         match self.plan {
-            QueryPlan::Empty { .. } => write!(f, "empty"),
-            QueryPlan::DummyScan => write!(f, "dummy scan"),
+            QueryPlan::Empty { .. } => writeln!(f, "empty"),
+            QueryPlan::DummyScan => writeln!(f, "dummy scan"),
             QueryPlan::Aggregate { aggregates, source, group_by, schema } => {
                 write!(f, "aggregate ")?;
                 aggregates

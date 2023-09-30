@@ -10,7 +10,8 @@ use std::mem;
 
 pub use egg::Id as NodeId;
 use ir::fold::{ExprFold, Folder, PlanFold};
-use nsql_core::LogicalType;
+use nsql_core::{LogicalType, Name};
+use rustc_hash::FxHashSet;
 
 use self::decorrelate::Decorrelate;
 pub use self::view::{CallExpr, Expr, Plan, Query};
@@ -43,6 +44,7 @@ fn optimize_query(mut plan: Box<ir::QueryPlan>) -> Query {
             &mut IdentityProjectionElimination as &mut dyn Pass,
             &mut EmptyPlanElimination,
             &mut Decorrelate,
+            &mut DeduplicateCtes::default(),
         ];
         let pre_opt_plan = plan.clone();
         for pass in passes {
@@ -143,6 +145,41 @@ impl Folder for EmptyPlanElimination {
                 }
             }
             _ => plan.fold_with(self),
+        }
+    }
+}
+
+/// With all the rewriting we do, sometimes we end up with the cte node being copied around.
+/// This results in the same cte being evaluated multiple times, which is wasteful (and also causes errors as we check for this)
+#[derive(Default)]
+struct DeduplicateCtes {
+    ctes: FxHashSet<Name>,
+}
+
+impl Pass for DeduplicateCtes {
+    fn name(&self) -> &'static str {
+        "cte deduplication"
+    }
+}
+
+impl Folder for DeduplicateCtes {
+    fn as_dyn(&mut self) -> &mut dyn Folder {
+        self
+    }
+
+    fn fold_plan(&mut self, plan: ir::QueryPlan) -> ir::QueryPlan {
+        match plan {
+            ir::QueryPlan::Cte { cte, child } => {
+                if self.ctes.insert(Name::clone(&cte.name)) {
+                    ir::QueryPlan::Cte {
+                        cte: cte.fold_with(self),
+                        child: self.fold_boxed_plan(child),
+                    }
+                } else {
+                    *self.fold_boxed_plan(child)
+                }
+            }
+            plan => plan.fold_with(self),
         }
     }
 }

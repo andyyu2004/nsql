@@ -56,6 +56,29 @@ SELECT i, (SELECT COUNT(*) FROM integers WHERE i = i1.i) AS j FROM integers i1;
 2 1
 NULL 0
 
+# regression test where the uncorrelated subquery would make the `count(*)` be NULL
+query III rowsort
+SELECT 
+    i, 
+    (SELECT avg(i) FROM integers),
+    (SELECT count(*) FROM integers WHERE i = i1.i)
+FROM integers i1
+----
+0 1.0 1
+1 1.0 1
+2 1.0 1
+NULL 1.0 0
+
+# regression test with subqueries everywhere. This would result in ctes being pushed down and evaluated multiple times.
+query III
+SELECT i,
+       (SELECT avg(i) FROM integers),
+       (SELECT count(*) FROM integers AS t WHERE t.i>i1.i)
+FROM integers i1
+WHERE EXISTS(SELECT 1 FROM integers AS x WHERE x.i<i1.i)
+----
+1 1.0 1
+2 1.0 0
 
 statement ok
 CREATE TABLE employee (
