@@ -69,12 +69,15 @@ impl fmt::Display for MaterializedQueryOutput {
         use tabled::builder::Builder;
         use tabled::settings::Style;
         let mut builder = Builder::default();
+
+        builder.push_record(self.schema.iter().map(|t| t.to_string()));
+
         for tuple in &self.tuples {
             builder.push_record(tuple.values().map(|v| v.to_string()));
         }
 
         let mut table = builder.build();
-        table.with(Style::empty());
+        table.with(Style::psql());
         table.fmt(f)
     }
 }
