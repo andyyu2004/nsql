@@ -9,6 +9,11 @@ use crate::{ColumnIdentity, SystemEntityPrivate};
 
 mod builtins;
 
+// need this to use the phf
+pub type ErasedCatalog = ();
+
+pub type ErasedTx = ();
+
 pub type ScalarFunction<S> = for<'env, 'txn> fn(
     Catalog<'env, S>,
     &'txn dyn Transaction<'env, S>,

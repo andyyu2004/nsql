@@ -422,6 +422,8 @@ impl<Q: fmt::Display> fmt::Display for Plan<Q> {
     }
 }
 
+// Refer to `The complete story of joins in hyper` for a deep-dive on all the join kinds.
+// http://btw2017.informatik.uni-stuttgart.de/slidesandpapers/F1-10-37/paper_web.pdf
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum JoinKind {
     /// Similar to a `LEFT JOIN` but returns only a boolean indicating whether a match was found

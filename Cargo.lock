@@ -1285,6 +1285,7 @@ dependencies = [
  "nsql-storage-engine",
  "nsql-util",
  "parking_lot",
+ "phf",
  "rkyv",
  "tracing",
 ]
@@ -1295,6 +1296,8 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "itertools 0.11.0",
+ "phf",
+ "phf_shared",
  "rkyv",
  "smol_str",
 ]

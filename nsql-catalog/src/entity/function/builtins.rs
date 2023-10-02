@@ -96,6 +96,10 @@ macro_rules! prefix_op {
 
 #[rustfmt::skip]
 pub(crate) fn get_scalar_function<S: StorageEngine>(oid: Oid<Function>) -> Option<ScalarFunction<S>> {
+
+    // static SCALAR_FUNCTIONS: phf::Map<Oid<Function>, ScalarFunction<S>> = phf::phf_map! {};
+
+    // SCALAR_FUNCTIONS.get(&oid).copied();
     Some(match oid {
         _ if oid == Function::NEG_INT     => prefix_op!(- : i64),
         _ if oid == Function::NEG_FLOAT   => prefix_op!(- : f64),

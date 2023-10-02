@@ -17,6 +17,20 @@ pub struct Oid<T: ?Sized> {
     marker: PhantomData<fn() -> T>,
 }
 
+impl<T: ?Sized> phf::PhfHash for Oid<T> {
+    #[inline]
+    fn phf_hash<H: Hasher>(&self, state: &mut H) {
+        self.oid.hash(state);
+    }
+}
+
+impl<T: ?Sized> phf_shared::PhfBorrow<Self> for Oid<T> {
+    #[inline]
+    fn borrow(&self) -> &Self {
+        self
+    }
+}
+
 impl<T: ?Sized> PartialEq for Oid<T> {
     #[inline]
     fn eq(&self, other: &Self) -> bool {
