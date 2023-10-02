@@ -12,10 +12,8 @@ SELECT * FROM nsql_catalog.nsql_namespace;
 #1000 test
 #1001 test2
 
-statement error
+statement error identity column must be of type int
 CREATE TABLE t(x text PRIMARY KEY GENERATED ALWAYS AS IDENTITY)
-----
-identity column must be of type int
 
 statement ok
 CREATE TABLE t(x int PRIMARY KEY GENERATED ALWAYS AS IDENTITY, y int)

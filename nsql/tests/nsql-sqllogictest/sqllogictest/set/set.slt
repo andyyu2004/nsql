@@ -1,12 +1,8 @@
-statement error
+statement error invalid value for explain output, must be one of `physical`, `pipeline`, `logical`, or `all`
 SET LOCAL explain_output = 'bad';
-----
-invalid value for explain output, must be one of `physical`, `pipeline`, `logical`, or `all`
 
-statement error
+statement error value for `explain_output` must be of type text
 SET LOCAL explain_output = 42;
-----
-value for `explain_output` must be of type text
 
 statement ok
 SET LOCAL explain_output = 'all';

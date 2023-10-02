@@ -1,10 +1,8 @@
 statement ok
 CREATE TABLE t(id int PRIMARY KEY)
 
-statement error
+statement error cannot update primary key column `id` of table `t`
 UPDATE t SET id = 1 WHERE id = 1
-----
-cannot update primary key column `id` of table `t`
 
 
 

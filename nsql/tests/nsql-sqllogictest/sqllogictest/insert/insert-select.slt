@@ -1,10 +1,8 @@
 statement ok
 CREATE TABLE t (x int PRIMARY KEY);
 
-statement error
+statement error column `x` not in scope
 INSERT INTO t SELECT x FROM unnest(range(1, 2))
-----
-column `x` not in scope
 
 # default column name is `unnest`
 statement ok

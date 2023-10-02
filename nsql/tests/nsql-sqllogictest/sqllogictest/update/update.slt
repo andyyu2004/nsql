@@ -4,10 +4,8 @@ CREATE TABLE t(id int PRIMARY KEY, b boolean);
 statement ok
 INSERT INTO t(id, b) VALUES (1, false);
 
-statement error
+statement error expected predicate type of WHERE to be of type bool, got type int
 UPDATE t SET b = true WHERE 99;
-----
-expected predicate type of WHERE to be of type bool, got type int
 
 statement ok
 UPDATE t SET b = true WHERE b;
