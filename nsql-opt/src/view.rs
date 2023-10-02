@@ -78,6 +78,7 @@ impl Query {
                 Expr::Case(CaseExpr { scrutinee, cases: self.nodes(cases), else_expr })
             }
             Node::QuotedExpr(expr) => Expr::Quote(QuotedExpr(expr)),
+            Node::Coalesce(ref exprs) => Expr::Coalesce(CoalesceExpr(exprs)),
             Node::Subquery(_) | Node::Exists(..) => {
                 panic!("subquery nodes should have been flattened during optimization")
             }
@@ -138,6 +139,7 @@ impl Query {
             Node::CteScan(ref name) => Plan::CteScan(CteScan { name }),
             Node::Distinct(source) => Plan::Distinct(Distinct { source }),
             Node::Desc(_)
+            | Node::Coalesce(..)
             | Node::QuotedExpr(_)
             | Node::Nodes(_)
             | Node::Table(_)
@@ -516,6 +518,7 @@ pub enum Expr<'a> {
     ColumnRef(ir::ColumnRef),
     Literal(LiteralExpr),
     Array(ArrayExpr<'a>),
+    Coalesce(CoalesceExpr<'a>),
     Call(CallExpr<'a>),
     Case(CaseExpr<'a>),
     Quote(QuotedExpr),
@@ -559,8 +562,11 @@ impl<'q> fmt::Display for ExprDisplay<'q> {
                 write!(f, " ELSE {} ", case.else_expr(q).display(q))?;
                 write!(f, "END")
             }
-            Expr::Compiled(expr) => write!(f, "{expr}"),
+            Expr::Compiled(expr) => expr.fmt(f),
             Expr::Quote(expr) => write!(f, "'({})", expr.expr(q).display(q)),
+            Expr::Coalesce(expr) => {
+                write!(f, "COALESCE({})", expr.exprs(q).map(|expr| expr.display(q)).format(", "))
+            }
         }
     }
 }
@@ -603,6 +609,16 @@ impl<'a> CallExpr<'a> {
     #[inline]
     pub fn args(self, g: &'a Query) -> impl ExactSizeIterator<Item = Expr<'a>> + 'a {
         self.args.iter().map(|&id| g.expr(id))
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct CoalesceExpr<'a>(&'a [Id]);
+
+impl<'a> CoalesceExpr<'a> {
+    #[inline]
+    pub fn exprs(self, g: &'a Query) -> impl ExactSizeIterator<Item = Expr<'a>> + 'a {
+        self.0.iter().map(move |&id| g.expr(id))
     }
 }
 

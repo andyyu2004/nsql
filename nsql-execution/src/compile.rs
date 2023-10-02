@@ -83,6 +83,38 @@ impl<F> Compiler<F> {
                 }
                 self.emit(ExprOp::Call { function });
             }
+            opt::Expr::Coalesce(coalesce) => {
+                let exprs = coalesce.exprs(q);
+                let mut next_branch_marker: Option<JumpMarker<F>> = None;
+                let mut end_markers = Vec::with_capacity(exprs.len());
+                for expr in exprs {
+                    if let Some(marker) = next_branch_marker.take() {
+                        marker.backpatch(self);
+                        // pop the duplicated of the prior branch
+                        self.emit(ExprOp::Pop);
+                    }
+
+                    self.build(catalog, tx, q, &expr)?;
+                    // we need to duplicate the value because we need to keep it on the stack if it is non-null
+                    self.emit(ExprOp::Dup);
+                    next_branch_marker = Some(self.emit_jmp(ExprOp::IfNullJmp));
+                    end_markers.push(self.emit_jmp(ExprOp::Jmp));
+                }
+
+                // if all cases fail, jump to the "default" case
+                next_branch_marker
+                    .take()
+                    .expect("this should exist as cases are non-empty")
+                    .backpatch(self);
+
+                for marker in end_markers {
+                    marker.backpatch(self);
+                }
+
+                // Each case should have left it's value on top of the stack.
+                // (If the last case was null, then there's a null on top of the stack which is what we need).
+                // So we're done.
+            }
             opt::Expr::Case(case) => {
                 let scrutinee = case.scrutinee(q);
                 let cases = case.cases(q);
@@ -103,12 +135,12 @@ impl<F> Compiler<F> {
                     self.build(catalog, tx, q, &scrutinee)?;
                     // push the comparison expression onto the stack
                     self.build(catalog, tx, q, &when)?;
-                    // if the comparison is false, jump to the the branch
-                    next_branch_marker = Some(self.emit_jmp(|offset| ExprOp::IfNeJmp { offset }));
-                    // otherwise, build the then expression
+                    // if the comparison is false, jump to the next `when` branch
+                    next_branch_marker = Some(self.emit_jmp(ExprOp::IfNeJmp));
+                    // build the `then` expression
                     self.build(catalog, tx, q, &then)?;
                     // and jump to the end of the case
-                    end_markers.push(self.emit_jmp(|offset| ExprOp::Jmp { offset }));
+                    end_markers.push(self.emit_jmp(ExprOp::Jmp));
                 }
 
                 // if all branches fail, jump to the else branch

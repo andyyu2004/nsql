@@ -1431,13 +1431,55 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
         tx: &dyn Transaction<'env, S>,
         scope: &Scope,
         f: &ast::Function,
-    ) -> Result<(ir::MonoFunction, Box<[ir::Expr]>)> {
+    ) -> Result<ir::Expr> {
         let ast::Function { name, args, over, distinct, special, order_by } = f;
         not_implemented_if!(over.is_some());
         not_implemented_if!(*distinct);
         not_implemented_if!(*special);
         not_implemented_if!(!order_by.is_empty());
 
+        if f.name.0.len() == 1 && f.name.0[0].value.to_lowercase() == "coalesce" {
+            let ast::Function { name: _, args, over, distinct, special, order_by } = f;
+            // should probably give a more specific error for coalesce
+            not_implemented_if!(over.is_some());
+            not_implemented_if!(*distinct);
+            not_implemented_if!(*special);
+            not_implemented_if!(!order_by.is_empty());
+
+            ensure!(!args.is_empty(), "coalesce requires at least one argument");
+
+            let args = self.bind_args(tx, scope, args)?;
+            let ty = self
+                .ensure_exprs_have_compat_types(&args)
+                .map_err(|(expected, actual)| {
+                    anyhow!(
+                        "`coalesce` arguments must have compatible types: expected type {}, got {}",
+                        expected,
+                        actual
+                    )
+                })?
+                // if all arguments are `NULL` then default to the `NULL` type
+                .unwrap_or(LogicalType::Null);
+            return Ok(ir::Expr { ty, kind: ir::ExprKind::Coalesce(args) });
+        }
+
+        let args = self.bind_args(tx, scope, args)?;
+        let arg_types = args.iter().map(|arg| arg.ty.clone()).collect::<Box<_>>();
+        let path = self.lower_path(&name.0)?;
+        let function = self.resolve_function(tx, &path, &arg_types)?;
+
+        Ok(ir::Expr {
+            ty: function.return_type(),
+            kind: ir::ExprKind::FunctionCall { function, args },
+        })
+    }
+
+    fn bind_args(
+        &self,
+        tx: &dyn Transaction<'env, S>,
+        scope: &Scope,
+        args: &[ast::FunctionArg],
+    ) -> Result<Box<[ir::Expr]>> {
         let args = args
             .iter()
             // filter out any wildcard parameters, we just treat it like it's not there for now
@@ -1459,12 +1501,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
             })
             .collect::<Result<Vec<&ast::Expr>, _>>()?;
 
-        let args =
-            args.iter().map(|arg| self.bind_expr(tx, scope, arg)).collect::<Result<Box<_>, _>>()?;
-        let arg_types = args.iter().map(|arg| arg.ty.clone()).collect::<Box<_>>();
-        let path = self.lower_path(&name.0)?;
-        let function = self.resolve_function(tx, &path, &arg_types)?;
-        Ok((function, args))
+        args.iter().map(|arg| self.bind_expr(tx, scope, arg)).collect::<Result<Box<_>, _>>()
     }
 
     fn bind_unary_operator(
@@ -1764,39 +1801,28 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                 )
             }
             ast::Expr::Array(array) => {
-                let mut expected_ty = None;
-                let exprs = array
-                    .elem
-                    .iter()
-                    .map(|e| {
-                        let expr = f(e)?;
-                        if let Some(expected) = &expected_ty {
-                            ensure!(
-                                &expr.ty.is_subtype_of(expected),
-                                "cannot create array of type {} with element of type {}",
-                                expected,
-                                expr.ty
-                            );
-                        } else if !expr.ty.is_null() {
-                            expected_ty = Some(expr.ty.clone());
-                        }
-
-                        Ok(expr)
-                    })
-                    .collect::<Result<Box<_>, _>>()?;
+                let exprs = array.elem.iter().map(f).collect::<Result<Box<_>, _>>()?;
+                let ty =
+                    self.ensure_exprs_have_compat_types(&exprs).map_err(|(actual, expected)| {
+                        anyhow!(
+                            "cannot create array of type {expected} with element of type {actual}",
+                        )
+                    })?;
 
                 // default type to `Int64` if there are no non-null elements
-                let ty = expected_ty.unwrap_or(LogicalType::Int64);
+                let ty = ty.unwrap_or(LogicalType::Int64);
                 (LogicalType::Array(Box::new(ty)), ir::ExprKind::Array(exprs))
             }
             ast::Expr::Function(f) => {
-                let (function, args) = self.bind_function(tx, scope, f)?;
-                let return_type = function.return_type();
-                match function.kind() {
-                    FunctionKind::Scalar => {
-                        (return_type, ir::ExprKind::FunctionCall { function, args })
+                let expr = self.bind_function(tx, scope, f)?;
+                match expr.kind {
+                    ir::ExprKind::FunctionCall { function, .. }
+                        if matches!(function.kind(), FunctionKind::Aggregate) =>
+                    {
+                        // fixme better message
+                        bail!("aggregate function not allowed here")
                     }
-                    FunctionKind::Aggregate => bail!("aggregate not allowed here"),
+                    kind => (expr.ty, kind),
                 }
             }
             ast::Expr::Subquery(subquery) => {
@@ -1875,6 +1901,25 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
         };
 
         Ok(ir::Expr { ty, kind })
+    }
+
+    // Ensure that all expressions have compatible types.
+    fn ensure_exprs_have_compat_types(
+        &self,
+        exprs: &[ir::Expr],
+    ) -> Result<Option<LogicalType>, (LogicalType, LogicalType)> {
+        let mut expected_ty = None;
+        for expr in exprs {
+            if let Some(expected) = &expected_ty {
+                if !expr.ty.is_subtype_of(expected) {
+                    return Err((expected.clone(), expr.ty.clone()));
+                }
+            } else if !expr.ty.is_null() {
+                expected_ty = Some(expr.ty.clone());
+            }
+        }
+
+        Ok(expected_ty)
     }
 
     fn bind_expr(

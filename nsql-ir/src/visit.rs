@@ -137,6 +137,7 @@ pub trait Visitor {
             }
             ExprKind::Compiled(_expr) => ControlFlow::Continue(()),
             ExprKind::Quote(expr) => self.visit_expr(plan, expr),
+            ExprKind::Coalesce(exprs) => self.visit_exprs(plan, exprs),
         }
     }
 }

@@ -120,6 +120,8 @@ pub enum ExprKind {
         lhs: Box<Expr>,
         rhs: Box<Expr>,
     },
+    // consider making this a function if we have other variadic functions in the future
+    Coalesce(Box<[Expr]>),
     Case {
         scrutinee: Box<Expr>,
         cases: Box<[Case]>,
@@ -310,8 +312,18 @@ impl fmt::Display for ExprKind {
                 write!(f, " {operator} ")?;
                 rhs.fmt(f)
             }
-            ExprKind::Compiled(expr) => write!(f, "{expr}"),
-            ExprKind::Quote(expr) => write!(f, "'({expr})"),
+            ExprKind::Compiled(expr) => expr.fmt(f),
+            ExprKind::Quote(expr) => {
+                write!(f, "QUOTE(")?;
+                expr.fmt(f)?;
+                write!(f, ")")
+            }
+
+            ExprKind::Coalesce(exprs) => {
+                write!(f, "COALESCE(")?;
+                exprs.iter().format(", ").fmt(f)?;
+                write!(f, ")")
+            }
         }
     }
 }

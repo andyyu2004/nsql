@@ -281,11 +281,11 @@ impl<'a, 'env, S: StorageEngine> SelectBinder<'a, 'env, S> {
     ) -> Result<ir::Expr> {
         match expr {
             ast::Expr::Function(f) => {
-                let (function, args) = self.binder.bind_function(tx, scope, f)?;
-                let ty = function.return_type();
-                let kind = match function.kind() {
-                    FunctionKind::Scalar => ir::ExprKind::FunctionCall { function, args },
-                    FunctionKind::Aggregate => {
+                let function_expr = self.binder.bind_function(tx, scope, f)?;
+                let kind = match function_expr.kind {
+                    ir::ExprKind::FunctionCall { function, args }
+                        if matches!(function.kind(), FunctionKind::Aggregate) =>
+                    {
                         let (idx, _exists) = self.aggregates.insert_full((function, args));
                         ir::ExprKind::ColumnRef(ir::ColumnRef::new(
                             // the first N columns are the group by columns followed by the aggregate columns
@@ -293,9 +293,9 @@ impl<'a, 'env, S: StorageEngine> SelectBinder<'a, 'env, S> {
                             QPath::new("agg", expr.to_string()),
                         ))
                     }
+                    kind => kind,
                 };
-
-                Ok(ir::Expr { ty, kind })
+                Ok(ir::Expr { ty: function_expr.ty, kind })
             }
             _ => self
                 .binder

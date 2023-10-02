@@ -1,0 +1,40 @@
+query error 
+SELECT COALESCE()
+----
+COALESCE requires at least one argument
+
+query I
+SELECT coalesce(1)
+----
+1
+
+query I
+SELECT CoAlEsCe(NULL)
+----
+NULL
+
+query I
+SELECT COALESCE(NULL, NULL)
+----
+NULL
+
+query I
+SELECT COALESCE(1, 2, 3, 4, 5)
+----
+1
+
+query I
+SELECT COALESCE(NULL, 2, NULL, 4, 5)
+----
+2
+
+query I
+SELECT COALESCE(1, NULL, 3, NULL, 5)
+----
+1
+
+query I
+SELECT COALESCE(2 + 2, 3 * 3, 4 - 1)
+----
+4
+

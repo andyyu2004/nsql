@@ -250,8 +250,11 @@ pub enum ExprOp<F = UntypedOid> {
     Project { index: TupleIndex },
     MkArray { len: usize },
     Call { function: F },
-    IfNeJmp { offset: u32 },
-    Jmp { offset: u32 },
+    IfNeJmp(u32),
+    IfNullJmp(u32),
+    Jmp(u32),
+    Dup,
+    Pop,
     Return,
 }
 
@@ -277,14 +280,25 @@ impl<S: StorageEngine> ExprOp<Arc<dyn ScalarFunction<S>>> {
                 let args = stack.drain(stack.len() - function.arity()..).collect::<Box<[Value]>>();
                 function.invoke(storage, tx, args)?
             }
-            ExprOp::IfNeJmp { offset } => {
+            ExprOp::IfNeJmp(offset) => {
                 let rhs = stack.pop().unwrap();
                 let lhs = stack.pop().unwrap();
                 *ip += if lhs != rhs { *offset as usize } else { 1 };
                 return Ok(());
             }
-            ExprOp::Jmp { offset } => {
+            ExprOp::IfNullJmp(offset) => {
+                let value = stack.pop().unwrap();
+                *ip += if value.is_null() { *offset as usize } else { 1 };
+                return Ok(());
+            }
+            ExprOp::Jmp(offset) => {
                 *ip += *offset as usize;
+                return Ok(());
+            }
+            ExprOp::Dup => stack.last().unwrap().clone(),
+            ExprOp::Pop => {
+                stack.pop().unwrap();
+                *ip += 1;
                 return Ok(());
             }
             ExprOp::Return => return Ok(()),

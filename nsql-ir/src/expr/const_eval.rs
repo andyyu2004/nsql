@@ -10,13 +10,14 @@ impl Expr {
         match &self.kind {
             ExprKind::Literal(val) => Ok(val.clone()),
             ExprKind::Alias { expr, .. } => expr.const_eval(),
-            // we can actually recurse for this case but not necessary for now
             ExprKind::Array(exprs) => exprs
                 .iter()
                 .map(|expr| expr.const_eval())
                 .collect::<Result<_, _>>()
                 .map(Value::Array),
+            // we can actually recurse for some of these cases but no need for now
             ExprKind::UnaryOperator { .. }
+            | ExprKind::Coalesce(..)
             | ExprKind::BinaryOperator { .. }
             | ExprKind::Subquery(..)
             | ExprKind::ColumnRef { .. }

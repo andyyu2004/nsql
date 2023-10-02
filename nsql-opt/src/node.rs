@@ -20,6 +20,7 @@ define_language! {
         ColumnRef(ir::ColumnRef, Id),           // (column-ref <index> <plan>)
         "union" = Union([Id; 2]),               // (union <lhs> <rhs>)
         "array" = Array(Box<[Id]>),
+        "coalesce" = Coalesce(Box<[Id]>),
         "distinct" = Distinct(Id),
         "quote" = QuotedExpr(Id),
         "subquery" = Subquery(Id),
@@ -267,6 +268,9 @@ impl Builder {
             },
             ir::ExprKind::Compiled(expr) => Node::CompiledExpr(expr.clone()),
             ir::ExprKind::Quote(expr) => Node::QuotedExpr(self.build_expr(plan, expr)),
+            ir::ExprKind::Coalesce(exprs) => {
+                Node::Coalesce(exprs.iter().map(|expr| self.build_expr(plan, expr)).collect())
+            }
         };
 
         self.add(node)
