@@ -55,8 +55,6 @@ impl Error for CastError {}
 #[omit_bounds]
 #[archive(bound(serialize = "__S: rkyv::ser::ScratchSpace + rkyv::ser::Serializer"))]
 pub enum Value {
-    #[default]
-    Null,
     Byte(u8),
     Int64(i64),
     Float64(u64),
@@ -70,6 +68,8 @@ pub enum Value {
     Type(LogicalType),
     Expr(#[omit_bounds] Expr),
     TupleExpr(TupleExpr),
+    #[default]
+    Null, // put this variant here so NULL sorts last
 }
 
 /// very limited implementation of `FromStr` for literal values (used for egg)

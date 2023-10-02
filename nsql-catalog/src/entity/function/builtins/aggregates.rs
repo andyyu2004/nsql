@@ -162,7 +162,11 @@ pub(super) struct Max {
 impl AggregateFunctionInstance for Max {
     #[inline]
     fn update(&mut self, value: Option<Value>) {
-        self.value = self.value.take().max(value.expect("max should be passed an argument"))
+        self.value = match (self.value.take(), value.expect("max should be passed an argument")) {
+            (current, Value::Null) => current,
+            (Value::Null, v) => v,
+            (current, v) => current.max(v),
+        }
     }
 
     #[inline]
