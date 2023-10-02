@@ -257,12 +257,12 @@ impl Value {
     /// Sanity check routine to ensure we haven't messed up the types to badly.
     /// We should never be comparing `INT` with `TEXT` directly for example.
     #[inline]
-    pub fn is_comparable_with(&self, other: &Self) -> bool {
+    pub fn is_compat_with(&self, other: &Self) -> bool {
         match (self, other) {
             (Value::Null, _) | (_, Value::Null) => true,
             (Value::Array(xs), Value::Array(ys)) if xs.is_empty() && ys.is_empty() => true,
             (Value::Array(xs), Value::Array(ys)) if !xs.is_empty() && !ys.is_empty() => {
-                xs[0].is_comparable_with(&ys[0])
+                xs[0].is_compat_with(&ys[0])
             }
             _ => mem::discriminant(self) == mem::discriminant(other),
         }

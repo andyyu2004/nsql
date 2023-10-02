@@ -1,7 +1,18 @@
 query B
 SELECT NULL AND FALSE
 ----
+false
+
+query B
+SELECT FALSE AND NULL
+----
+false
+
+query B
+SELECT NULL AND TRUE
+----
 NULL
+
 
 query B
 SELECT FALSE AND FALSE
@@ -22,6 +33,17 @@ query B
 SELECT TRUE AND TRUE
 ----
 true
+
+query B
+SELECT NULL OR TRUE
+----
+true
+
+query B
+SELECT TRUE OR NULL
+----
+true
+
 
 query B
 SELECT NULL OR FALSE

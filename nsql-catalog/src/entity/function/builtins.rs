@@ -27,7 +27,7 @@ macro_rules! comparison {
             assert_eq!(args.len(), 2);
             let a = args[0].take();
             let b = args[1].take();
-            debug_assert!(a.is_comparable_with(&b), "cannot compare `{a}` and `{b}` (this should have been a type error)");
+            debug_assert!(a.is_compat_with(&b), "cannot compare `{a}` and `{b}` (this should have been a type error)");
             let a: Option<$ty> = a.cast().unwrap();
             let b: Option<$ty> = b.cast().unwrap();
             match (a, b) {
@@ -59,10 +59,29 @@ macro_rules! comparison_include_null {
             assert_eq!(args.len(), 2);
             let a = args[0].take();
             let b = args[1].take();
-            debug_assert!(a.is_comparable_with(&b), "cannot compare `{a}` and `{b}` (this should have been a type error)");
+            debug_assert!(a.is_compat_with(&b), "cannot compare `{a}` and `{b}` (this should have been a type error)");
             let a: Option<$ty> = a.cast().unwrap();
             let b: Option<$ty> = b.cast().unwrap();
             Ok(Value::Bool(a $op b))
+        }
+    };
+}
+
+macro_rules! arbitary_binary_op {
+    ($ty:ty, |$x:ident, $y:ident| $expr:expr) => {
+        |_catalog, _tx, mut args| {
+            assert_eq!(args.len(), 2);
+            let a = args[0].take();
+            let b = args[1].take();
+            debug_assert!(
+                a.is_compat_with(&b),
+                "cannot perform binary operation with `{a}` and `{b}` (this should have been a type error)"
+            );
+
+            let a: Option<$ty> = a.cast().unwrap();
+            let b: Option<$ty> = b.cast().unwrap();
+            let f = |$x, $y| $expr;
+            Ok(f(a, b))
         }
     };
 }
@@ -120,8 +139,16 @@ pub(crate) fn get_scalar_function<S: StorageEngine>(oid: Oid<Function>) -> Optio
         _ if oid == Function::LTE_ANY     => comparison!(<= : Value),
         _ if oid == Function::GTE_ANY     => comparison!(>= : Value),
         _ if oid == Function::GT_ANY      => comparison!(>  : Value),
-        _ if oid == Function::OR_BOOL     => comparison!(|| : bool),
-        _ if oid == Function::AND_BOOL    => comparison!(&& : bool),
+        _ if oid == Function::OR_BOOL     => arbitary_binary_op!(bool, |a, b| match (a, b) {
+            (Some(a), Some(b)) => Value::Bool(a || b),
+            (Some(true), _) | (_, Some(true)) => Value::Bool(true),
+            _ => Value::Null,
+        }),
+        _ if oid == Function::AND_BOOL    => arbitary_binary_op!(bool, |a, b| match (a, b) {
+            (Some(a), Some(b)) => Value::Bool(a && b),
+            (Some(false), _) | (_, Some(false)) => Value::Bool(false),
+            _ => Value::Null,
+        }),
         _ if oid == Function::IS_DISTINCT_FROM_ANY => comparison_include_null!(!= : Value),
         _ if oid == Function::IS_NOT_DISTINCT_FROM_ANY => comparison_include_null!(== : Value),
         _ if oid == Function::ABS_INT   => method!(abs: i64),
@@ -195,9 +222,9 @@ fn between<'env, S: StorageEngine>(
     let lower = args[1].take();
     let upper = args[2].take();
     debug_assert!(
-        target.is_comparable_with(&lower)
-            && target.is_comparable_with(&upper)
-            && lower.is_comparable_with(&upper),
+        target.is_compat_with(&lower)
+            && target.is_compat_with(&upper)
+            && lower.is_compat_with(&upper),
         "cannot compare `{target}` and `{lower}` and `{upper}` (this should have been a type error)"
     );
 
