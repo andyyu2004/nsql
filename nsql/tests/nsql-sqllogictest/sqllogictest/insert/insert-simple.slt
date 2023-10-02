@@ -66,3 +66,13 @@ SELECT x, y FROM zs
 4 42
 5 42
 
+# composite primary key
+statement ok
+CREATE TABLE ws(x int, y int, PRIMARY KEY (x, y)) 
+
+statement ok
+INSERT INTO ws VALUES (1, 1), (1, 2), (2, 1), (2, 2)
+
+statement error duplicate key
+INSERT INTO ws VALUES (3, 3), (3, 3)
+

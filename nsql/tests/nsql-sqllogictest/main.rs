@@ -37,6 +37,17 @@ fn nsql_sqllogictest(path: &Path) -> nsql::Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+#[test]
+fn test_scratch_sqllogictest() -> nsql::Result<(), Box<dyn Error>> {
+    let stmts = std::fs::read_to_string(format!(
+        "{}/{}",
+        env!("CARGO_MANIFEST_DIR"),
+        "tests/nsql-sqllogictest/sqllogictest/scratch.slt"
+    ))?;
+
+    nsql_sqllogictest::<LmdbStorageEngine>(&stmts)?;
+}
+
 datatest_stable::harness!(
     nsql_sqllogictest,
     format!("{}/{}", env!("CARGO_MANIFEST_DIR"), "tests/nsql-sqllogictest/sqllogictest"),

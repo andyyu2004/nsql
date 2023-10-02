@@ -62,13 +62,13 @@ impl Scope {
         &self,
         binder: &Binder<'env, S>,
         tx: &dyn Transaction<'env, S>,
-        path: Path,
+        path: &Path,
         alias: Option<&TableAlias>,
     ) -> Result<(Scope, TableBinding)> {
         match path {
-            Path::Unqualified(name) if let Some((kind, scope, plan)) = binder.ctes.borrow().get(&name) => match kind {
+            Path::Unqualified(name) if let Some((kind, scope, plan)) = binder.ctes.borrow().get(name) => match kind {
                 CteKind::Inline => Ok((scope.clone(), TableBinding::InlineCte(plan.clone()))),
-                CteKind::Materialized => Ok((scope.clone(), TableBinding::MaterializedCte(name, plan.schema().clone()))),
+                CteKind::Materialized => Ok((scope.clone(), TableBinding::MaterializedCte(name.clone(), plan.schema().clone()))),
             }
             _ => {
                 let (scope, table) = self.bind_base_table(binder, tx, path, alias)?;
@@ -83,7 +83,7 @@ impl Scope {
         &self,
         binder: &Binder<'env, S>,
         tx: &dyn Transaction<'env, S>,
-        path: Path,
+        path: &Path,
         alias: Option<&TableAlias>,
     ) -> Result<(Scope, Oid<Table>)> {
         tracing::debug!("binding table");
@@ -107,7 +107,7 @@ impl Scope {
 
         let path = match alias {
             Some(alias) => Path::Unqualified(alias.table_name.clone()),
-            None => path,
+            None => path.clone(),
         };
 
         for (i, column) in table_columns.into_iter().enumerate() {

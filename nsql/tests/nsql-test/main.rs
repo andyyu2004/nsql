@@ -30,7 +30,7 @@ fn nsql_debug_scratch<S: StorageEngine>(sql: &str) -> nsql::Result<(), Box<dyn E
 
 // copy whatever sql you want to run into `scratch.slt` and debug this test
 #[test]
-fn test_scratch_sqllogictest() -> nsql::Result<(), Box<dyn Error>> {
+fn test_scratch_sql() -> nsql::Result<(), Box<dyn Error>> {
     let stmts = std::fs::read_to_string(format!(
         "{}/{}",
         env!("CARGO_MANIFEST_DIR"),

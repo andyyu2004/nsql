@@ -168,8 +168,66 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                     &CreateSequenceInfo { namespace, name, start, step },
                 )?)
             }
-            ast::Statement::CreateTable { .. } => {
-                ir::Plan::Query(self.bind_create_table(tx, stmt)?)
+            ast::Statement::CreateTable {
+                or_replace,
+                temporary,
+                external,
+                global,
+                if_not_exists,
+                transient,
+                name,
+                columns,
+                constraints,
+                hive_distribution,
+                hive_formats,
+                table_properties,
+                with_options,
+                file_format,
+                location,
+                query,
+                without_rowid,
+                like,
+                clone,
+                engine,
+                default_charset,
+                collation,
+                on_commit,
+                on_cluster,
+                order_by,
+                strict,
+            } => {
+                not_implemented_if!(*strict);
+                not_implemented_if!(*or_replace);
+                not_implemented_if!(*temporary);
+                not_implemented_if!(*external);
+                not_implemented_if!(global.is_some());
+                not_implemented_if!(*if_not_exists);
+                not_implemented_if!(*hive_distribution != ast::HiveDistributionStyle::NONE);
+                not_implemented_if!(hive_formats.is_none());
+                not_implemented_if!(!table_properties.is_empty());
+                not_implemented_if!(!with_options.is_empty());
+                not_implemented_if!(file_format.is_some());
+                not_implemented_if!(location.is_some());
+                not_implemented_if!(query.is_some());
+                not_implemented_if!(*without_rowid);
+                not_implemented_if!(like.is_some());
+                not_implemented_if!(clone.is_some());
+                not_implemented_if!(engine.is_some());
+                not_implemented_if!(default_charset.is_some());
+                not_implemented_if!(collation.is_some());
+                not_implemented_if!(on_commit.is_some());
+                not_implemented_if!(on_cluster.is_some());
+                not_implemented_if!(*transient);
+                not_implemented_if!(order_by.is_some());
+
+                let path = self.lower_path(&name.0)?;
+                let namespace = self.bind_namespace(tx, &path)?;
+                let pk_constraints = self.lower_table_constraints(&columns, constraints)?;
+                let columns = self.lower_columns(tx, &path, columns, pk_constraints)?;
+                let name = path.name();
+
+                let plan = self.bind_create_table(tx, &namespace, name, columns)?;
+                ir::Plan::Query(plan)
             }
             ast::Statement::Insert { .. } => {
                 let (_scope, query) = self.bind_insert(tx, scope, stmt)?;
@@ -343,64 +401,114 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
         Ok(projections.into_boxed_slice())
     }
 
-    fn lower_columns(
+    fn lower_table_constraints(
         &self,
-        tx: &dyn Transaction<'env, S>,
-        columns: &[ast::ColumnDef],
-    ) -> Result<Vec<CreateColumnInfo>> {
-        ensure!(columns.len() < u8::MAX as usize, "too many columns (max 256)");
-        columns.iter().map(|col| self.lower_column(tx, col)).collect()
-    }
-
-    fn lower_column(
-        &self,
-        tx: &dyn Transaction<'env, S>,
-        column: &ast::ColumnDef,
-    ) -> Result<CreateColumnInfo> {
-        not_implemented_if!(column.collation.is_some());
-
-        let mut is_primary_key = false;
-        let mut identity = ColumnIdentity::None;
-        let mut default_expr = None;
-
-        for option in &column.options {
-            match &option.option {
-                ast::ColumnOption::Unique { is_primary } if *is_primary => is_primary_key = true,
-                ast::ColumnOption::Generated {
-                    generated_as,
-                    sequence_options,
-                    generation_expr,
-                } => {
-                    not_implemented_if!(generation_expr.is_some());
-                    match generated_as {
-                        ast::GeneratedAs::Always => identity = ColumnIdentity::Always,
-                        ast::GeneratedAs::ByDefault => identity = ColumnIdentity::ByDefault,
-                        ast::GeneratedAs::ExpStored => {
-                            not_implemented!("generated expression stored")
-                        }
+        column_defs: &[ast::ColumnDef],
+        constraints: &[ast::TableConstraint],
+    ) -> Result<Vec<PrimaryKeyConstraint>> {
+        let mut primary_key_constraints = vec![];
+        for constraint in constraints {
+            match constraint {
+                ast::TableConstraint::Unique { name: _, columns, is_primary } => {
+                    if !is_primary {
+                        bail!("unique constraints")
                     }
 
-                    match sequence_options {
-                        Some(options) if !options.is_empty() => {
-                            not_implemented!("sequence options")
-                        }
-                        _ => (),
-                    }
+                    // FIXME short term implementation just for PKs, we need to store metadata about this in the catalog etc
+                    let column_indices = columns
+                        .iter()
+                        .map(|col| {
+                            column_defs.iter().position(|def| col == &def.name).ok_or_else(|| {
+                                anyhow!("column `y` named in primary key does not exist")
+                            })
+                        })
+                        .collect::<Result<Vec<_>, _>>()?;
+                    primary_key_constraints.push(PrimaryKeyConstraint { column_indices });
                 }
-                ast::ColumnOption::Default(expr) => {
-                    default_expr = Some(self.bind_expr(tx, &Scope::default(), expr)?)
+                ast::TableConstraint::ForeignKey { .. } => {
+                    not_implemented!("foreign key constraints")
                 }
-                _ => not_implemented!("column option"),
+                ast::TableConstraint::Check { .. } => not_implemented!("check constraints"),
+                ast::TableConstraint::Index { .. } => not_implemented!("index constraints"),
+                ast::TableConstraint::FulltextOrSpatial { .. } => not_implemented!("constraints"),
             }
         }
 
-        Ok(CreateColumnInfo {
-            name: self.lower_name(&column.name),
-            ty: self.lower_ty(&column.data_type)?,
-            identity,
-            is_primary_key,
-            default_expr,
-        })
+        Ok(primary_key_constraints)
+    }
+
+    fn lower_columns(
+        &self,
+        tx: &dyn Transaction<'env, S>,
+        table_path: &Path,
+        columns: &[ast::ColumnDef],
+        mut primary_key_constraints: Vec<PrimaryKeyConstraint>,
+    ) -> Result<Vec<CreateColumnInfo>> {
+        ensure!(columns.len() < u8::MAX as usize, "too many columns (max 256)");
+
+        let mut columns = columns
+            .iter()
+            .enumerate()
+            .map(|(idx, column)| {
+                not_implemented_if!(column.collation.is_some());
+
+                let mut identity = ColumnIdentity::None;
+                let mut default_expr = None;
+
+                for option in &column.options {
+                    match &option.option {
+                        ast::ColumnOption::Unique { is_primary } if *is_primary => {
+                            primary_key_constraints
+                                .push(PrimaryKeyConstraint { column_indices: vec![idx] })
+                        }
+                        ast::ColumnOption::Generated {
+                            generated_as,
+                            sequence_options,
+                            generation_expr,
+                        } => {
+                            not_implemented_if!(generation_expr.is_some());
+                            match generated_as {
+                                ast::GeneratedAs::Always => identity = ColumnIdentity::Always,
+                                ast::GeneratedAs::ByDefault => identity = ColumnIdentity::ByDefault,
+                                ast::GeneratedAs::ExpStored => {
+                                    not_implemented!("generated expression stored")
+                                }
+                            }
+
+                            match sequence_options {
+                                Some(options) if !options.is_empty() => {
+                                    not_implemented!("sequence options")
+                                }
+                                _ => (),
+                            }
+                        }
+                        ast::ColumnOption::Default(expr) => {
+                            default_expr = Some(self.bind_expr(tx, &Scope::default(), expr)?)
+                        }
+                        _ => not_implemented!("column option"),
+                    }
+                }
+
+                Ok(CreateColumnInfo {
+                    name: self.lower_name(&column.name),
+                    ty: self.lower_ty(&column.data_type)?,
+                    identity,
+                    is_primary_key: false, // this will be filled in after
+                    default_expr,
+                })
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+
+        match &primary_key_constraints[..] {
+            [] => bail!("table `{table_path}` must have a primary key"),
+            [pk] => pk.column_indices.iter().for_each(|&idx| {
+                columns[idx].is_primary_key = true;
+            }),
+
+            _ => bail!("multiple primary keys for table `{table_path}` are not allowed"),
+        };
+
+        Ok(columns)
     }
 
     fn lower_ty(&self, ty: &ast::DataType) -> Result<LogicalType> {
@@ -629,7 +737,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
         seq: &CreateSequenceInfo<'_>,
     ) -> Result<Box<ir::QueryPlan>> {
         // This is the plan to create the underlying sequence data table.
-        let create_seq_table_plan = self.bind_create_table_inner(
+        let create_seq_table_plan = self.bind_create_table(
             tx,
             seq.namespace,
             Name::clone(&seq.name),
@@ -727,7 +835,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
         Ok((scope, Box::new(ir::QueryPlan::Update { table, source, returning, schema })))
     }
 
-    fn bind_create_table_inner(
+    fn bind_create_table(
         &self,
         tx: &dyn Transaction<'env, S>,
         namespace: &Namespace,
@@ -890,75 +998,6 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
             .into(),
         )])
         .with_cte(ir::Cte { name: Name::clone(&cte_name), plan: insert_table_plan }))
-    }
-
-    fn bind_create_table(
-        &self,
-        tx: &dyn Transaction<'env, S>,
-        stmt: &ast::Statement,
-    ) -> Result<Box<ir::QueryPlan>> {
-        let ast::Statement::CreateTable {
-            or_replace,
-            temporary,
-            external,
-            global,
-            if_not_exists,
-            transient,
-            name,
-            columns,
-            constraints,
-            hive_distribution,
-            hive_formats: _,
-            table_properties,
-            with_options,
-            file_format,
-            location,
-            query,
-            without_rowid,
-            like,
-            clone,
-            engine,
-            default_charset,
-            collation,
-            on_commit,
-            on_cluster,
-            order_by,
-            strict,
-        } = stmt
-        else {
-            panic!("expected create table statement")
-        };
-
-        not_implemented_if!(*strict);
-        not_implemented_if!(*or_replace);
-        not_implemented_if!(*temporary);
-        not_implemented_if!(*external);
-        not_implemented_if!(global.is_some());
-        not_implemented_if!(*if_not_exists);
-        not_implemented_if!(!constraints.is_empty());
-        not_implemented_if!(*hive_distribution != ast::HiveDistributionStyle::NONE);
-        not_implemented_if!(!table_properties.is_empty());
-        not_implemented_if!(!with_options.is_empty());
-        not_implemented_if!(file_format.is_some());
-        not_implemented_if!(location.is_some());
-        not_implemented_if!(query.is_some());
-        not_implemented_if!(*without_rowid);
-        not_implemented_if!(like.is_some());
-        not_implemented_if!(clone.is_some());
-        not_implemented_if!(engine.is_some());
-        not_implemented_if!(default_charset.is_some());
-        not_implemented_if!(collation.is_some());
-        not_implemented_if!(on_commit.is_some());
-        not_implemented_if!(on_cluster.is_some());
-        not_implemented_if!(*transient);
-        not_implemented_if!(order_by.is_some());
-
-        let path = self.lower_path(&name.0)?;
-        let namespace = self.bind_namespace(tx, &path)?;
-        let columns = self.lower_columns(tx, columns)?;
-        let name = path.name();
-
-        self.bind_create_table_inner(tx, &namespace, name, columns)
     }
 
     fn bind_insert(
@@ -1235,7 +1274,8 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                 not_implemented_if!(args.is_some());
                 not_implemented_if!(!with_hints.is_empty());
 
-                let (scope, table) = self.bind_table(tx, scope, name, alias.as_ref())?;
+                let path = self.lower_path(&name.0)?;
+                let (scope, table) = self.bind_table(tx, scope, &path, alias.as_ref())?;
                 let plan = match table {
                     TableBinding::MaterializedCte(name, schema) => {
                         ir::QueryPlan::cte_scan(name, schema)
@@ -1283,12 +1323,10 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
         &self,
         tx: &dyn Transaction<'env, S>,
         scope: &Scope,
-        table_name: &ast::ObjectName,
+        path: &Path,
         alias: Option<&ast::TableAlias>,
     ) -> Result<(Scope, TableBinding)> {
         let alias = alias.map(|alias| self.lower_table_alias(alias));
-        let path = self.lower_path(&table_name.0)?;
-
         scope.bind_table(self, tx, path, alias.as_ref())
     }
 
@@ -1301,8 +1339,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
     ) -> Result<(Scope, Oid<Table>)> {
         let alias = alias.map(|alias| self.lower_table_alias(alias));
         let path = self.lower_path(&table_name.0)?;
-
-        scope.bind_base_table(self, tx, path, alias.as_ref())
+        scope.bind_base_table(self, tx, &path, alias.as_ref())
     }
 
     fn lower_table_alias(&self, alias: &ast::TableAlias) -> TableAlias {
@@ -2046,4 +2083,9 @@ struct CreateSequenceInfo<'a> {
     name: Name,
     start: i64,
     step: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct PrimaryKeyConstraint {
+    column_indices: Vec<usize>,
 }
