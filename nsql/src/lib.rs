@@ -1,5 +1,6 @@
 #![deny(rust_2018_idioms)]
 
+use core::fmt;
 use std::panic::AssertUnwindSafe;
 use std::path::Path;
 use std::sync::Arc;
@@ -42,6 +43,21 @@ impl<S> Clone for Nsql<S> {
 pub struct MaterializedQueryOutput {
     pub schema: Schema,
     pub tuples: Vec<Tuple>,
+}
+
+impl fmt::Display for MaterializedQueryOutput {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        use tabled::builder::Builder;
+        use tabled::settings::Style;
+        let mut builder = Builder::default();
+        for tuple in &self.tuples {
+            builder.push_record(tuple.values().map(|v| v.to_string()));
+        }
+
+        let mut table = builder.build();
+        table.with(Style::empty());
+        table.fmt(f)
+    }
 }
 
 impl<S: StorageEngine> Nsql<S> {

@@ -21,6 +21,7 @@ tracing = "0.1.37"
 nsql-util = { path = "../nsql-util" }
 mimalloc = { version = "*", default-features = false }
 tracing-tree = "0.2.4"
+tabled = { version = "0.14.0", default-features = false, features = ["std"] }
 
 [dev-dependencies]
 nsql-test = { path = "../nsql-test" }

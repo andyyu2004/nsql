@@ -2,15 +2,13 @@ use std::borrow::Cow;
 use std::path::PathBuf;
 
 use argh::FromArgs;
-use nsql::{LmdbStorageEngine, MaterializedQueryOutput, Nsql};
+use nsql::{LmdbStorageEngine, Nsql};
 use nu_ansi_term::{Color, Style};
 use reedline::{
     default_vi_insert_keybindings, default_vi_normal_keybindings, DefaultHinter, DefaultValidator,
     FileBackedHistory, KeyCode, KeyModifiers, PromptEditMode, PromptHistorySearch,
     PromptHistorySearchStatus, PromptViMode, Reedline, ReedlineEvent, Signal, ValidationResult, Vi,
 };
-use tabled::builder::Builder;
-use tabled::Table;
 use tracing_subscriber::prelude::*;
 use tracing_subscriber::EnvFilter;
 
@@ -79,10 +77,10 @@ fn main() -> nsql::Result<()> {
         match conn.query(&state, &cmd) {
             Ok(output) => {
                 if !args.silent {
-                    println!("{}", tabulate(output))
+                    println!("{output}")
                 }
             }
-            Err(e) => println!("{}", e),
+            Err(e) => println!("{e}"),
         }
 
         return Ok(());
@@ -108,21 +106,13 @@ fn main() -> nsql::Result<()> {
         let sig = line_editor.read_line(&prompt)?;
         match sig {
             Signal::Success(buffer) => match conn.query(&state, &buffer) {
-                Ok(output) => println!("{}", tabulate(output)),
+                Ok(output) => println!("{output}"),
                 Err(e) => println!("{}", e),
             },
             Signal::CtrlC => continue,
             Signal::CtrlD => break Ok(()),
         }
     }
-}
-
-fn tabulate(output: MaterializedQueryOutput) -> Table {
-    let mut builder = Builder::default();
-    for tuple in output.tuples {
-        builder.push_record(tuple.values().map(|v| v.to_string()));
-    }
-    builder.build()
 }
 
 pub static DEFAULT_VI_INSERT_PROMPT_INDICATOR: &str = "> ";
