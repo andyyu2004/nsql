@@ -101,7 +101,7 @@ impl Builder {
     fn build_query(&mut self, query: &ir::QueryPlan) -> Id {
         let expr = match query {
             ir::QueryPlan::DummyScan => Node::DummyScan,
-            ir::QueryPlan::Empty { schema } => Node::EmptyPlan(schema.len()),
+            ir::QueryPlan::Empty { schema } => Node::EmptyPlan(schema.width()),
             ir::QueryPlan::Aggregate { aggregates, source, group_by, schema: _ } => {
                 let source = self.build_query(source);
                 let group_by = self.build_exprs(source, group_by);

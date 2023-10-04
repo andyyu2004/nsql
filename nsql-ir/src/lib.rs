@@ -660,7 +660,7 @@ impl QueryPlan {
 
     pub fn build_leftmost_k_projection(&self, k: usize) -> Box<[Expr]> {
         let schema = self.schema();
-        assert!(k <= schema.len(), "k must be less than or equal to the number of columns");
+        assert!(k <= schema.width(), "k must be less than or equal to the number of columns");
         (0..k)
             .map(|i| Expr {
                 ty: schema[i].clone(),
@@ -674,8 +674,8 @@ impl QueryPlan {
 
     pub fn build_rightmost_k_projection(&self, k: usize) -> Box<[Expr]> {
         let schema = self.schema();
-        assert!(k <= schema.len(), "k must be less than or equal to the number of columns");
-        (schema.len() - k..schema.len())
+        assert!(k <= schema.width(), "k must be less than or equal to the number of columns");
+        (schema.width() - k..schema.width())
             .map(|i| Expr {
                 ty: schema[i].clone(),
                 kind: ExprKind::ColumnRef(ColumnRef::new(
@@ -688,7 +688,7 @@ impl QueryPlan {
 
     #[inline]
     pub fn build_identity_projection(&self) -> Box<[Expr]> {
-        self.build_leftmost_k_projection(self.schema().len())
+        self.build_leftmost_k_projection(self.schema().width())
     }
 
     /// Create a projection that projects the first `k` columns of the plan

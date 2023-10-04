@@ -23,7 +23,7 @@ impl Folder for Decorrelate {
     }
 
     fn fold_plan(&mut self, plan: ir::QueryPlan) -> ir::QueryPlan {
-        let original_plan_columns = plan.schema().len();
+        let original_plan_columns = plan.schema().width();
         let mut flattener = Flattener;
         // apply the flattener to one layer of the plan
         let plan = plan.fold_with(&mut flattener);
@@ -31,8 +31,11 @@ impl Folder for Decorrelate {
         // then recurse
         let plan = plan.fold_with(self.as_dyn());
 
-        debug_assert!(plan.schema().len() >= original_plan_columns, "plan lost columns after pass");
-        if plan.schema().len() > original_plan_columns {
+        debug_assert!(
+            plan.schema().width() >= original_plan_columns,
+            "plan lost columns after pass"
+        );
+        if plan.schema().width() > original_plan_columns {
             // if the flattener added a column, we need to project it away
             *Box::new(plan).project_leftmost_k(original_plan_columns)
         } else {
@@ -95,7 +98,7 @@ impl Flattener {
         let magic = PushdownDependentJoin::new(delim_scan, correlated_map.clone())
             .fold_boxed_plan(subquery_plan);
 
-        let shift = correlated_plan.schema().len();
+        let shift = correlated_plan.schema().width();
         // join the delim rhs back with the original plan on the correlated columns (see the slides for details)
         let join_predicate = correlated_columns
             .iter()
@@ -133,7 +136,7 @@ impl Flattener {
             .with_cte(ir::Cte { name: delim_scan_name, plan: delim_correlated_plan });
 
         // TODO is the last column always the correct one?
-        let idx = plan.schema().len() - 1;
+        let idx = plan.schema().width() - 1;
         ir::Expr::column_ref(
             plan.schema()[idx].clone(),
             ir::QPath::new("", "__correlated_scalar__"),
@@ -149,7 +152,7 @@ impl Flattener {
     ) -> ir::Expr {
         match kind {
             ir::SubqueryKind::Scalar => {
-                assert_eq!(subquery_plan.schema().len(), 1);
+                assert_eq!(subquery_plan.schema().width(), 1);
                 let ty = subquery_plan.schema()[0].clone();
                 let subquery_plan = subquery_plan
                     // add a `strict limit 1` as the subquery should not return more than one row
@@ -165,7 +168,7 @@ impl Flattener {
                         .into(),
                     )]);
 
-                let i = ir::TupleIndex::new(plan.schema().len());
+                let i = ir::TupleIndex::new(plan.schema().width());
                 // Replace the parent plan with a join of the former parent plan and the subquery plan.
                 // This will add a new column to the parent plan's schema, which we will then reference
                 *plan = *Box::new(mem::take(plan)).cross_join(subquery_plan);
@@ -204,7 +207,7 @@ impl Flattener {
                     }]);
 
                 // again, we replace the parent with a cross join
-                let i = ir::TupleIndex::new(plan.schema().len());
+                let i = ir::TupleIndex::new(plan.schema().width());
                 *plan = *Box::new(mem::take(plan)).cross_join(subquery_plan);
 
                 ir::Expr::column_ref(

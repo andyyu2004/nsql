@@ -222,7 +222,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
 
                 let path = self.lower_path(&name.0)?;
                 let namespace = self.bind_namespace(tx, &path)?;
-                let pk_constraints = self.lower_table_constraints(&columns, constraints)?;
+                let pk_constraints = self.lower_table_constraints(columns, constraints)?;
                 let columns = self.lower_columns(tx, &path, columns, pk_constraints)?;
                 let name = path.name();
 
@@ -1042,12 +1042,12 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
 
         let table_columns = self.catalog.get::<Table>(tx, table)?.columns(self.catalog, tx)?;
 
-        if source.schema().len() > table_columns.len() {
+        if source.schema().width() > table_columns.len() {
             bail!(
                 "table `{}` has {} columns but {} columns were supplied",
                 table_name,
                 table_columns.len(),
-                source.schema().len()
+                source.schema().width()
             )
         }
 
@@ -1058,7 +1058,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                 .enumerate()
                 .map(|(i, column)| {
                     let ty = column.logical_type().clone();
-                    if i < source.schema().len() {
+                    if i < source.schema().width() {
                         ir::Expr::column_ref(
                             ty,
                             QPath::new(table.to_string().as_ref(), column.name()),
@@ -1110,7 +1110,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
         source = source.project(projection);
 
         let source_schema = source.schema();
-        assert_eq!(source_schema.len(), table_columns.len());
+        assert_eq!(source_schema.width(), table_columns.len());
 
         for (column, ty) in table_columns.iter().zip(source_schema) {
             ensure!(

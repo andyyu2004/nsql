@@ -45,6 +45,17 @@ pub struct MaterializedQueryOutput {
     pub tuples: Vec<Tuple>,
 }
 
+impl MaterializedQueryOutput {
+    fn new(schema: Schema, mut tuples: Vec<Tuple>) -> Self {
+        if !tuples.is_empty() {
+            assert_eq!(tuples[0].width(), schema.width());
+        }
+
+        tuples.shrink_to_fit();
+        Self { schema, tuples }
+    }
+}
+
 impl fmt::Display for MaterializedQueryOutput {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use tabled::builder::Builder;
@@ -261,6 +272,6 @@ impl<S: StorageEngine> Shared<S> {
             ctx.current_tx.store(Some(Arc::new(tx)));
         }
 
-        Ok(MaterializedQueryOutput { schema, tuples })
+        Ok(MaterializedQueryOutput::new(schema, tuples))
     }
 }

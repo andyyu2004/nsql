@@ -29,10 +29,10 @@ impl Visitor for Validator {
     fn visit_expr(&mut self, plan: &QueryPlan, expr: &Expr) -> ControlFlow<()> {
         match &expr.kind {
             ExprKind::ColumnRef(ColumnRef { qpath, index, level: 0 }) => {
-                if index.as_usize() >= plan.schema().len() {
+                if index.as_usize() >= plan.schema().width() {
                     self.errors.push(anyhow!(
                         "column reference out of bounds: {index} >= {} (path: {qpath}) (plan:\n{plan:#})",
-                        plan.schema().len(),
+                        plan.schema().width(),
                     ));
                 }
                 ControlFlow::Continue(())

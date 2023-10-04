@@ -57,9 +57,9 @@ impl Expr {
     pub fn scalar_subquery(plan: Box<QueryPlan>) -> anyhow::Result<Expr> {
         let schema = plan.schema();
         ensure!(
-            schema.len() == 1,
+            schema.width() == 1,
             "subquery expression must return exactly one column, got {}",
-            schema.len()
+            schema.width()
         );
 
         let ty = schema[0].clone();

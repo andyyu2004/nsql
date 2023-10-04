@@ -22,7 +22,7 @@ fn nsql_debug_scratch<S: StorageEngine>(sql: &str) -> nsql::Result<(), Box<dyn E
         let db = Nsql::<S>::create(db_path).unwrap();
         let (conn, state) = db.connect();
         let output = conn.query(&state, sql)?;
-        eprintln!("{output:?}");
+        eprintln!("{output}");
 
         Ok(())
     })

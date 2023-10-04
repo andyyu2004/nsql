@@ -154,7 +154,7 @@ impl Schema {
     }
 
     #[inline]
-    pub fn len(&self) -> usize {
+    pub fn width(&self) -> usize {
         self.types.len()
     }
 

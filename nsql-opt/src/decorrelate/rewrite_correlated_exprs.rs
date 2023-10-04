@@ -80,7 +80,7 @@ impl Folder for PushdownDependentJoin {
 
                 let mut plan = ir::QueryPlan::aggregate(source, group_by, aggregates);
 
-                debug_assert_eq!(correlated_columns.len(), self.correlated_plan.schema().len());
+                debug_assert_eq!(correlated_columns.len(), self.correlated_plan.schema().width());
                 if requires_left_join {
                     // Left join the delim lhs with the aggregate to get the lost groups back.
                     // Join on the correlated columns as usual
@@ -123,7 +123,7 @@ impl Folder for PushdownDependentJoin {
                         })
                         .expect("there is at least one correlated column");
 
-                    let k = plan.schema().len();
+                    let k = plan.schema().width();
                     plan = self
                         // should probably use a CTE instead of recomputing the correlated plan
                         .correlated_plan
@@ -196,7 +196,7 @@ impl Folder for PushdownDependentJoin {
                     self.correlated_map[&col.index]
                 } else {
                     // The original projections are shifted to the right hence the new index is `old + shift`
-                    col.index + self.correlated_plan.schema().len()
+                    col.index + self.correlated_plan.schema().width()
                 };
 
                 ir::Expr::column_ref(expr.ty, col.qpath, new_index)
