@@ -79,9 +79,6 @@ impl Query {
             }
             Node::QuotedExpr(expr) => Expr::Quote(QuotedExpr(expr)),
             Node::Coalesce(ref exprs) => Expr::Coalesce(CoalesceExpr(exprs)),
-            Node::Subquery(_) | Node::Exists(..) => {
-                panic!("subquery nodes should have been flattened during optimization")
-            }
             ref node @ (Node::DummyScan
             | Node::EmptyPlan(..)
             | Node::Nodes(_)
@@ -148,10 +145,8 @@ impl Query {
             | Node::Literal(_)
             | Node::ColumnRef(..)
             | Node::Array(_)
-            | Node::Exists(_)
             | Node::Case(_)
-            | Node::CompiledExpr(..)
-            | Node::Subquery(_) => unreachable!("not a plan node"),
+            | Node::CompiledExpr(..) => unreachable!("not a plan node"),
         }
     }
 }

@@ -23,8 +23,6 @@ define_language! {
         "coalesce" = Coalesce(Box<[Id]>),
         "distinct" = Distinct(Id),
         "quote" = QuotedExpr(Id),
-        "subquery" = Subquery(Id),
-        "exists" = Exists(Id),
         "case" = Case([Id; 3]), // (case <scrutinee> (<condition> <then> <condition> <then> ...) <else>)
 
         // a "list" of nodes
@@ -78,14 +76,11 @@ impl Builder {
         impl egg::CostFunction<Node> for CostFunction {
             type Cost = usize;
 
-            fn cost<C>(&mut self, node: &Node, _costs: C) -> Self::Cost
+            fn cost<C>(&mut self, _node: &Node, _costs: C) -> Self::Cost
             where
                 C: FnMut(Id) -> Self::Cost,
             {
-                match node {
-                    Node::Subquery(..) | Node::Exists(..) => 100000,
-                    _ => 1,
-                }
+                1
             }
         }
 
@@ -262,10 +257,9 @@ impl Builder {
 
                 Node::Case([scrutinee, self.add(Node::Nodes(cases)), else_result])
             }
-            ir::ExprKind::Subquery(kind, query) => match kind {
-                ir::SubqueryKind::Scalar => Node::Subquery(self.build_query(query)),
-                ir::SubqueryKind::Exists => Node::Exists(self.build_query(query)),
-            },
+            ir::ExprKind::Subquery(..) => {
+                panic!("subquery nodes should have been flattened by now")
+            }
             ir::ExprKind::Compiled(expr) => Node::CompiledExpr(expr.clone()),
             ir::ExprKind::Quote(expr) => Node::QuotedExpr(self.build_expr(plan, expr)),
             ir::ExprKind::Coalesce(exprs) => {
