@@ -130,8 +130,8 @@ impl Function {
             // `(a, a) -> bool` operations
             comparison!(EQ_ANY                   =                    : Any),
             comparison!(NEQ_ANY                  !=                   : Any),
-            comparison!(LT_ANY                   >                    : Any),
-            comparison!(LTE_ANY                  >=                   : Any),
+            comparison!(LT_ANY                   <                    : Any),
+            comparison!(LTE_ANY                  <=                   : Any),
             comparison!(GTE_ANY                  >=                   : Any),
             comparison!(GT_ANY                   >                    : Any),
             comparison!(IS_DISTINCT_FROM_ANY     is_distinct_from     : Any),
