@@ -325,6 +325,57 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                         .unwrap_or(ir::VariableScope::Global),
                 }
             }
+            ast::Statement::Copy { source, to, target, options, legacy_options, values } => {
+                not_implemented_if!(!legacy_options.is_empty());
+                not_implemented_if!(!options.is_empty());
+                not_implemented_if!(!values.is_empty());
+
+                let src = match source {
+                    ast::CopySource::Table { table_name, columns } => {
+                        let name = table_name.clone();
+                        let (scope, mut plan) = self.bind_table_factor(
+                            tx,
+                            &Scope::default(),
+                            &ast::TableFactor::Table {
+                                name,
+                                alias: None,
+                                args: None,
+                                with_hints: vec![],
+                            },
+                        )?;
+
+                        if !columns.is_empty() {
+                            let projection = columns
+                                .iter()
+                                .map(|name| {
+                                    self.bind_expr(tx, &scope, &ast::Expr::Identifier(name.clone()))
+                                })
+                                .collect::<Result<Box<_>>>()?;
+                            plan = plan.project(projection);
+                        }
+
+                        plan
+                    }
+                    ast::CopySource::Query(query) => self.bind_query(tx, scope, query)?.1,
+                };
+
+                let dst = match target {
+                    ast::CopyTarget::Stdin => not_implemented!("stdin"),
+                    ast::CopyTarget::Stdout => not_implemented!("stdout"),
+                    ast::CopyTarget::File { filename } => {
+                        ir::CopyDestination::File(filename.into())
+                    }
+                    ast::CopyTarget::Program { .. } => not_implemented!("program"),
+                };
+
+                let copy = if *to {
+                    ir::Copy::To(ir::CopyTo { src, dst })
+                } else {
+                    not_implemented!("copy from")
+                };
+
+                ir::Plan::Copy(copy)
+            }
             _ => unimplemented!("unimplemented statement: {:?}", stmt),
         };
 

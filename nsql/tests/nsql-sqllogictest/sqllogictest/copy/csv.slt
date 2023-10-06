@@ -1,0 +1,6 @@
+# this needs some proper testing probably by using COPY FROM once that's ready
+control substitution on 
+
+statement ok
+ COPY (SELECT 42) TO '$__TEST_DIR__/test.csv'
+

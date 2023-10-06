@@ -22,7 +22,7 @@ impl Folder for Decorrelate {
         self
     }
 
-    fn fold_plan(&mut self, plan: ir::QueryPlan) -> ir::QueryPlan {
+    fn fold_query_plan(&mut self, plan: ir::QueryPlan) -> ir::QueryPlan {
         let original_plan_columns = plan.schema().width();
         let mut flattener = Flattener;
         // apply the flattener to one layer of the plan
@@ -96,7 +96,7 @@ impl Flattener {
         });
 
         let magic = PushdownDependentJoin::new(delim_scan, correlated_map.clone())
-            .fold_boxed_plan(subquery_plan);
+            .fold_boxed_query_plan(subquery_plan);
 
         let shift = correlated_plan.schema().width();
         // join the delim rhs back with the original plan on the correlated columns (see the slides for details)
@@ -225,7 +225,7 @@ impl Folder for Flattener {
         self
     }
 
-    fn fold_plan(&mut self, plan: ir::QueryPlan) -> ir::QueryPlan {
+    fn fold_query_plan(&mut self, plan: ir::QueryPlan) -> ir::QueryPlan {
         // we only flatten one layer of the plan at a time, we don't recurse here
         plan
     }

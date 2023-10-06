@@ -1,6 +1,6 @@
 use std::ops::ControlFlow;
 
-use crate::{Expr, ExprKind, Plan, QueryPlan};
+use crate::{Copy, CopyTo, Expr, ExprKind, Plan, QueryPlan};
 
 /// A trait for walking a plan and its expressions.
 /// The `visit_*` methods are called when the walker encounters the corresponding node and are
@@ -24,6 +24,9 @@ pub trait Visitor {
             Plan::SetVariable { .. } => ControlFlow::Continue(()),
             Plan::Explain(plan) => self.walk_plan(plan),
             Plan::Query(plan) => self.visit_query_plan(plan),
+            Plan::Copy(copy) => match copy {
+                Copy::To(CopyTo { src, dst: _ }) => self.visit_query_plan(src),
+            },
         }
     }
 

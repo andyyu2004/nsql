@@ -1,6 +1,7 @@
 mod aggregate;
 pub(crate) mod explain;
 mod join;
+mod physical_copy_to;
 mod physical_cte;
 mod physical_cte_scan;
 mod physical_drop;
@@ -34,6 +35,7 @@ use nsql_storage_engine::{StorageEngine, Transaction};
 use self::aggregate::{PhysicalHashAggregate, PhysicalUngroupedAggregate};
 pub use self::explain::Explain;
 use self::join::PhysicalNestedLoopJoin;
+use self::physical_copy_to::PhysicalCopyTo;
 use self::physical_cte::PhysicalCte;
 use self::physical_cte_scan::PhysicalCteScan;
 use self::physical_drop::PhysicalDrop;
@@ -93,16 +95,29 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
             ir::Plan::Transaction(kind) => PhysicalTransaction::plan(kind),
             ir::Plan::SetVariable { name, value, scope } => PhysicalSet::plan(name, value, scope),
             ir::Plan::Show(object_type) => PhysicalShow::plan(object_type),
-            ir::Plan::Query(q) => self.plan_node(tx, &q, q.root())?,
+            ir::Plan::Query(q) => self.plan_root_node(tx, &q)?,
             ir::Plan::Explain(logical_plan) => {
                 let logical_explain = logical_plan.to_string();
                 let physical_plan = self.plan(tx, logical_plan)?;
                 PhysicalExplain::plan(logical_explain, physical_plan.0)
             }
             ir::Plan::Drop(..) => unreachable!("write plans should go through plan_write_node"),
+            ir::Plan::Copy(cp) => match cp {
+                ir::Copy::To(ir::CopyTo { src, dst }) => {
+                    PhysicalCopyTo::plan(self.plan_root_node(tx, &src)?, dst)
+                }
+            },
         };
 
         Ok(PhysicalPlan(node))
+    }
+
+    fn plan_root_node(
+        &mut self,
+        tx: &dyn Transaction<'env, S>,
+        q: &opt::Query,
+    ) -> Result<Arc<dyn PhysicalNode<'env, 'txn, S, M>>> {
+        self.plan_node(tx, q, q.root())
     }
 
     fn plan_node(
@@ -288,9 +303,6 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalPlanner<'env, 'txn, S, ReadWrit
         plan: Box<ir::Plan<opt::Query>>,
     ) -> Result<PhysicalPlan<'env, 'txn, S, ReadWriteExecutionMode>> {
         let node = match *plan {
-            ir::Plan::Transaction(kind) => PhysicalTransaction::plan(kind),
-            ir::Plan::SetVariable { name, value, scope } => PhysicalSet::plan(name, value, scope),
-            ir::Plan::Show(object_type) => PhysicalShow::plan(object_type),
             ir::Plan::Drop(refs) => PhysicalDrop::plan(refs),
             ir::Plan::Query(q) => self.plan_write_query(tx, &q, q.root())?,
             ir::Plan::Explain(logical_plan) => {
@@ -298,6 +310,10 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalPlanner<'env, 'txn, S, ReadWrit
                 let physical_plan = self.plan_write(tx, logical_plan)?;
                 PhysicalExplain::plan(logical_explain, physical_plan.0)
             }
+            ir::Plan::Copy(..)
+            | ir::Plan::Transaction(..)
+            | ir::Plan::SetVariable { .. }
+            | ir::Plan::Show(..) => return self.plan(tx, plan),
         };
 
         Ok(PhysicalPlan(node))

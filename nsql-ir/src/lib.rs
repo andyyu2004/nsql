@@ -5,6 +5,7 @@ pub mod fold;
 mod validate;
 pub mod visit;
 use std::ops::ControlFlow;
+use std::path::PathBuf;
 use std::str::FromStr;
 use std::{fmt, mem};
 
@@ -19,8 +20,9 @@ pub use nsql_storage::value::{Decimal, Value};
 pub use self::expr::*;
 use crate::visit::Visitor;
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
 pub enum TransactionMode {
+    #[default]
     ReadOnly,
     ReadWrite,
 }
@@ -192,42 +194,9 @@ impl QueryPlan {
     }
 
     pub fn required_transaction_mode(&self) -> TransactionMode {
-        struct V {
-            requires_write: bool,
-        }
-
-        impl Visitor for V {
-            fn visit_query_plan(&mut self, plan: &QueryPlan) -> ControlFlow<()> {
-                match plan {
-                    QueryPlan::Update { .. } | QueryPlan::Insert { .. } => {
-                        self.requires_write = true;
-                        ControlFlow::Break(())
-                    }
-                    _ => self.walk_query_plan(plan),
-                }
-            }
-
-            fn visit_expr(&mut self, plan: &QueryPlan, expr: &Expr) -> ControlFlow<()> {
-                match &expr.kind {
-                    ExprKind::FunctionCall { function, args: _ } => {
-                        // FIXME a function should probably be able to specify its required transaction mode or something like that.
-                        // Or maybe something more general like it's purity.
-                        // Special casing them for now
-                        if function.oid() == Function::NEXTVAL {
-                            self.requires_write = true;
-                            ControlFlow::Break(())
-                        } else {
-                            self.walk_expr(plan, expr)
-                        }
-                    }
-                    _ => self.walk_expr(plan, expr),
-                }
-            }
-        }
-
-        let mut v = V { requires_write: false };
+        let mut v = RequiredTransactionModeVisitor::default();
         v.visit_query_plan(self);
-        if v.requires_write { TransactionMode::ReadWrite } else { TransactionMode::ReadOnly }
+        v.required_mode
     }
 }
 
@@ -238,6 +207,7 @@ pub enum Plan<Q = Box<QueryPlan>> {
     Transaction(TransactionStmt),
     SetVariable { name: Name, value: Value, scope: VariableScope },
     Explain(Box<Plan<Q>>),
+    Copy(Copy<Q>),
     Query(Q),
 }
 
@@ -255,19 +225,9 @@ impl Plan {
     }
 
     pub fn required_transaction_mode(&self) -> TransactionMode {
-        match self {
-            Plan::Drop(_) => TransactionMode::ReadWrite,
-            Plan::Transaction(kind) => match kind {
-                TransactionStmt::Begin(mode) => *mode,
-                TransactionStmt::Commit | TransactionStmt::Abort => TransactionMode::ReadOnly,
-            },
-            Plan::Show(..) => TransactionMode::ReadOnly,
-            Plan::SetVariable { .. } => TransactionMode::ReadOnly,
-            // even though `explain` doesn't execute the plan, the planning stage currently
-            // still checks we have a write transaction available
-            Plan::Explain(plan) => plan.required_transaction_mode(),
-            Plan::Query(query) => query.required_transaction_mode(),
-        }
+        let mut v = RequiredTransactionModeVisitor::default();
+        v.visit_plan(self);
+        v.required_mode
     }
 }
 
@@ -410,14 +370,19 @@ impl fmt::Display for QueryPlan {
 }
 
 impl<Q: fmt::Display> fmt::Display for Plan<Q> {
+    // write the recursive calls in a way such that the same `f` is used
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Plan::Show(kind) => write!(f, "SHOW {kind}"),
             Plan::Drop(_refs) => write!(f, "DROP"),
             Plan::Transaction(tx) => write!(f, "{tx}"),
             Plan::SetVariable { name, value, scope } => write!(f, "SET {scope} {name} = {value}"),
-            Plan::Explain(query) => write!(f, "EXPLAIN {query}"),
-            Plan::Query(query) => write!(f, "{query}"),
+            Plan::Explain(query) => {
+                write!(f, "EXPLAIN ")?;
+                query.fmt(f)
+            }
+            Plan::Query(query) => query.fmt(f),
+            Plan::Copy(copy) => copy.fmt(f),
         }
     }
 }
@@ -732,7 +697,9 @@ impl Plan {
     pub fn schema(&self) -> &[LogicalType] {
         match self {
             Plan::Show(..) | Plan::Explain(..) => &[LogicalType::Text],
-            Plan::Drop(..) | Plan::Transaction(..) | Plan::SetVariable { .. } => &[],
+            Plan::Copy(_) | Plan::Drop(..) | Plan::Transaction(..) | Plan::SetVariable { .. } => {
+                &[]
+            }
             Plan::Query(query) => query.schema(),
         }
     }
@@ -857,6 +824,98 @@ impl fmt::Display for Path {
         match self {
             Path::Qualified(qpath) => write!(f, "{qpath}"),
             Path::Unqualified(name) => write!(f, "{name}"),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum Copy<Q = Box<QueryPlan>> {
+    To(CopyTo<Q>),
+}
+
+impl<Q: fmt::Display> fmt::Display for Copy<Q> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::To(copy_to) => copy_to.fmt(f),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct CopyTo<Q = Box<QueryPlan>> {
+    pub src: Q,
+    pub dst: CopyDestination,
+}
+
+impl<Q: fmt::Display> fmt::Display for CopyTo<Q> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.src.fmt(f)?;
+        write!(f, " TO ")?;
+        self.dst.fmt(f)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum CopyDestination {
+    File(PathBuf),
+}
+
+impl fmt::Display for CopyDestination {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::File(path) => write!(f, "{}", path.display()),
+        }
+    }
+}
+
+#[derive(Default)]
+struct RequiredTransactionModeVisitor {
+    required_mode: TransactionMode,
+}
+
+impl RequiredTransactionModeVisitor {
+    fn requires_write(&mut self) -> ControlFlow<()> {
+        self.required_mode = TransactionMode::ReadWrite;
+        ControlFlow::Break(())
+    }
+}
+
+impl Visitor for RequiredTransactionModeVisitor {
+    fn visit_plan(&mut self, plan: &Plan) -> ControlFlow<()> {
+        match plan {
+            Plan::Drop(_) => self.requires_write(),
+            Plan::Transaction(kind) => match kind {
+                TransactionStmt::Begin(TransactionMode::ReadWrite) => self.requires_write(),
+                _ => ControlFlow::Continue(()),
+            },
+            _ => self.walk_plan(plan),
+        }
+    }
+
+    fn visit_query_plan(&mut self, plan: &QueryPlan) -> ControlFlow<()> {
+        match plan {
+            QueryPlan::Update { .. } | QueryPlan::Insert { .. } => {
+                self.required_mode = TransactionMode::ReadWrite;
+                ControlFlow::Break(())
+            }
+            _ => self.walk_query_plan(plan),
+        }
+    }
+
+    fn visit_expr(&mut self, plan: &QueryPlan, expr: &Expr) -> ControlFlow<()> {
+        match &expr.kind {
+            ExprKind::FunctionCall { function, args: _ } => {
+                // FIXME a function should probably be able to specify its required transaction mode or something like that.
+                // Or maybe something more general like it's purity.
+                // Special casing them for now
+                if function.oid() == Function::NEXTVAL {
+                    self.required_mode = TransactionMode::ReadWrite;
+                    ControlFlow::Break(())
+                } else {
+                    self.walk_expr(plan, expr)
+                }
+            }
+            _ => self.walk_expr(plan, expr),
         }
     }
 }

@@ -31,6 +31,11 @@ pub fn optimize(plan: Box<ir::Plan>) -> Box<ir::Plan<Query>> {
         }
         ir::Plan::Explain(query) => ir::Plan::Explain(optimize(query)),
         ir::Plan::Query(query) => ir::Plan::Query(optimize_query(query)),
+        ir::Plan::Copy(cp) => ir::Plan::Copy(match cp {
+            ir::Copy::To(ir::CopyTo { src, dst }) => {
+                ir::Copy::To(ir::CopyTo { src: optimize_query(src), dst })
+            }
+        }),
     };
 
     Box::new(optimized)
@@ -48,7 +53,7 @@ fn optimize_query(mut plan: Box<ir::QueryPlan>) -> Query {
         ];
         let pre_opt_plan = plan.clone();
         for pass in passes {
-            plan = pass.fold_boxed_plan(plan);
+            plan = pass.fold_boxed_query_plan(plan);
             plan.validate().unwrap_or_else(|err| {
                 panic!("invalid plan after pass `{}`: {err}\n{plan:#}", pass.name())
             });
@@ -79,7 +84,7 @@ impl Folder for IdentityProjectionElimination {
         self
     }
 
-    fn fold_plan(&mut self, plan: ir::QueryPlan) -> ir::QueryPlan {
+    fn fold_query_plan(&mut self, plan: ir::QueryPlan) -> ir::QueryPlan {
         fn is_identity_projection(source_schema: &[LogicalType], projection: &[ir::Expr]) -> bool {
             source_schema.len() == projection.len()
                 && projection.iter().enumerate().all(|(i, expr)| match &expr.kind {
@@ -114,7 +119,7 @@ impl Folder for EmptyPlanElimination {
         self
     }
 
-    fn fold_plan(&mut self, plan: ir::QueryPlan) -> ir::QueryPlan {
+    fn fold_query_plan(&mut self, plan: ir::QueryPlan) -> ir::QueryPlan {
         match plan {
             ir::QueryPlan::DummyScan => ir::QueryPlan::DummyScan,
             ir::QueryPlan::Limit { source, limit: 0, exceeded_message: None } => {
@@ -126,7 +131,7 @@ impl Folder for EmptyPlanElimination {
                 ir::QueryPlan::Empty { schema: source.schema().clone() }
             }
             ir::QueryPlan::Projection { source, projection, projected_schema } => {
-                let source = self.fold_boxed_plan(source);
+                let source = self.fold_boxed_query_plan(source);
                 if source.is_empty() {
                     ir::QueryPlan::Empty { schema: projected_schema }
                 } else {
@@ -134,8 +139,8 @@ impl Folder for EmptyPlanElimination {
                 }
             }
             ir::QueryPlan::Join { join, lhs, rhs, schema } => {
-                let lhs = self.fold_boxed_plan(lhs);
-                let rhs = self.fold_boxed_plan(rhs);
+                let lhs = self.fold_boxed_query_plan(lhs);
+                let rhs = self.fold_boxed_query_plan(rhs);
 
                 // FIXME there's a lot more cases where we can eliminate the join
                 if (lhs.is_empty() || rhs.is_empty()) && matches!(join, ir::JoinKind::Inner) {
@@ -167,16 +172,16 @@ impl Folder for DeduplicateCtes {
         self
     }
 
-    fn fold_plan(&mut self, plan: ir::QueryPlan) -> ir::QueryPlan {
+    fn fold_query_plan(&mut self, plan: ir::QueryPlan) -> ir::QueryPlan {
         match plan {
             ir::QueryPlan::Cte { cte, child } => {
                 if self.ctes.insert(Name::clone(&cte.name)) {
                     ir::QueryPlan::Cte {
                         cte: cte.fold_with(self),
-                        child: self.fold_boxed_plan(child),
+                        child: self.fold_boxed_query_plan(child),
                     }
                 } else {
-                    *self.fold_boxed_plan(child)
+                    *self.fold_boxed_query_plan(child)
                 }
             }
             plan => plan.fold_with(self),

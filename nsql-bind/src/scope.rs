@@ -89,7 +89,7 @@ impl Scope {
         tracing::debug!("binding table");
         let mut columns = self.columns.clone();
 
-        let table_oid = binder.bind_namespaced_entity::<Table>(tx, &path)?;
+        let table_oid = binder.bind_namespaced_entity::<Table>(tx, path)?;
         let table = binder.catalog.table(tx, table_oid)?;
         let table_columns = table.columns(binder.catalog, tx)?;
 

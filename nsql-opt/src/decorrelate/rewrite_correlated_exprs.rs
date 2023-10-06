@@ -24,7 +24,7 @@ impl Folder for PushdownDependentJoin {
         self
     }
 
-    fn fold_plan(&mut self, plan: ir::QueryPlan) -> ir::QueryPlan {
+    fn fold_query_plan(&mut self, plan: ir::QueryPlan) -> ir::QueryPlan {
         let correlated_columns = plan.correlated_columns();
         if correlated_columns.is_empty() {
             // no more dependent columns on the rhs, can replace the (implicit) dependent join with a cross product
@@ -49,7 +49,7 @@ impl Folder for PushdownDependentJoin {
             }
             ir::QueryPlan::Cte { cte: _, child: _ } => todo!(),
             ir::QueryPlan::Aggregate { aggregates, source, group_by, schema: _ } => {
-                let mut source = self.fold_boxed_plan(source);
+                let mut source = self.fold_boxed_query_plan(source);
 
                 let aggregates = aggregates
                     .into_vec()
@@ -166,7 +166,7 @@ impl Folder for PushdownDependentJoin {
                 *plan
             }
             ir::QueryPlan::Projection { source, projection, projected_schema: _ } => {
-                let mut source = self.fold_boxed_plan(source);
+                let mut source = self.fold_boxed_query_plan(source);
 
                 let original_projection = self.fold_exprs(&mut source, projection).into_vec();
 
