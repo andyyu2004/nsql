@@ -231,8 +231,10 @@ fn between<'env, S: StorageEngine>(
     let target: Option<Value> = target.cast().unwrap();
     let lower: Option<Value> = lower.cast().unwrap();
     let upper: Option<Value> = upper.cast().unwrap();
-    match (target, lower, upper) {
-        (Some(target), Some(lower), Some(upper)) => {
+    match (lower, target, upper) {
+        (Some(lower), Some(target), _) if target < lower => Ok(Value::Bool(false)),
+        (_, Some(target), Some(upper)) if target > upper => Ok(Value::Bool(false)),
+        (Some(lower), Some(target), Some(upper)) => {
             Ok(Value::Bool(lower <= target && target <= upper))
         }
         _ => Ok(Value::Null),

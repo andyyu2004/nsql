@@ -137,7 +137,7 @@ false
 query B
 SELECT 1 BETWEEN 2 AND NULL
 ----
-NULL
+false
 
 query B
 SELECT 1 NOT BETWEEN 1 AND 2
@@ -152,7 +152,22 @@ true
 query B
 SELECT 1 NOT BETWEEN 2 AND NULL
 ----
-NULL
+true
+
+query B
+SELECT 3 BETWEEN NULL AND 2
+----
+false
+
+query B
+SELECT 3 NOT BETWEEN NULL AND 2
+----
+true
+
+query B
+SELECT 0 BETWEEN 1 AND NULL
+----
+false
 
 
 
