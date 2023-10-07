@@ -142,23 +142,17 @@ impl Folder for PushdownDependentJoin {
                         );
                     }
 
-                    // meanwhile we take the opportunity rewrite `COUNT(*)` as `CASE COUNT(*) WHEN NULL THEN 0 ELSE COUNT(*) END`
+                    // meanwhile we take the opportunity rewrite `COUNT(*)` -> `COALESCE(COUNT(*), 0)`
                     for idx in special_aggregate_indices {
                         // the first `n` columns are the group_by columns, but we want the aggregates.
                         let idx = idx + correlated_columns.len();
                         let expr = mem::take(&mut projection[idx]);
                         projection[idx] = ir::Expr {
                             ty: expr.ty(),
-                            kind: ir::ExprKind::Case {
-                                scrutinee: Box::new(expr.clone()),
-                                cases: [ir::Case {
-                                    when: ir::Expr::NULL,
-                                    then: ir::Expr::lit(LogicalType::Int64, 0),
-                                }]
-                                .into(),
-                                else_result: Some(Box::new(expr)),
-                            },
-                        }
+                            kind: ir::ExprKind::Coalesce(
+                                [expr, ir::Expr::lit(LogicalType::Int64, 0)].into(),
+                            ),
+                        };
                     }
                     plan = plan.project(projection)
                 }

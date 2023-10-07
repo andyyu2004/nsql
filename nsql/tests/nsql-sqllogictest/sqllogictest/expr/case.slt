@@ -3,6 +3,12 @@ SELECT CASE WHEN true THEN 1 ELSE 0 END
 ----
 1
 
+# nulls are not equal
+query I
+SELECT CASE NULL WHEN NULL THEN 1 ELSE 0 END
+----
+0
+
 query I
 SELECT CASE WHEN false THEN 1 ELSE 0 END
 ----

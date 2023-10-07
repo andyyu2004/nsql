@@ -283,7 +283,9 @@ impl<S: StorageEngine> ExprOp<Arc<dyn ScalarFunction<S>>> {
             ExprOp::IfNeJmp(offset) => {
                 let rhs = stack.pop().unwrap();
                 let lhs = stack.pop().unwrap();
-                *ip += if lhs != rhs { *offset as usize } else { 1 };
+                // maybe we should just call the `NOT_EQUAL` function but that would be slower
+                *ip +=
+                    if lhs.is_null() || rhs.is_null() || lhs != rhs { *offset as usize } else { 1 };
                 return Ok(());
             }
             ExprOp::IfNullJmp(offset) => {
