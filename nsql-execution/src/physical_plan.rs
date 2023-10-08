@@ -72,6 +72,13 @@ pub struct PhysicalPlanner<'env, 'txn, S, M> {
 /// Opaque physical plan that is ready to be executed
 pub struct PhysicalPlan<'env, 'txn, S, M>(Arc<dyn PhysicalNode<'env, 'txn, S, M>>);
 
+impl<'env, 'txn, S, M> Clone for PhysicalPlan<'env, 'txn, S, M> {
+    #[inline]
+    fn clone(&self) -> Self {
+        Self(Arc::clone(&self.0))
+    }
+}
+
 impl<'env, 'txn, S, M> PhysicalPlan<'env, 'txn, S, M> {
     pub(crate) fn root(&self) -> Arc<dyn PhysicalNode<'env, 'txn, S, M>> {
         Arc::clone(&self.0)
@@ -91,28 +98,52 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
         tx: &dyn Transaction<'env, S>,
         plan: Box<ir::Plan<opt::Query>>,
     ) -> Result<PhysicalPlan<'env, 'txn, S, M>> {
+        self.fold_plan(
+            plan,
+            |planner, plan| Ok(planner.plan(tx, plan)?.0),
+            |planner, q| planner.plan_root_query(tx, q),
+        )
+        .map(PhysicalPlan)
+    }
+
+    fn fold_plan(
+        &mut self,
+        plan: Box<ir::Plan<opt::Query>>,
+        mut f: impl FnMut(
+            &mut Self,
+            Box<ir::Plan<opt::Query>>,
+        ) -> Result<Arc<dyn PhysicalNode<'env, 'txn, S, M>>>,
+        plan_query: impl FnOnce(
+            &mut Self,
+            &opt::Query,
+        ) -> Result<Arc<dyn PhysicalNode<'env, 'txn, S, M>>>,
+    ) -> Result<Arc<dyn PhysicalNode<'env, 'txn, S, M>>> {
         let node = match *plan {
             ir::Plan::Transaction(kind) => PhysicalTransaction::plan(kind),
             ir::Plan::SetVariable { name, value, scope } => PhysicalSet::plan(name, value, scope),
             ir::Plan::Show(object_type) => PhysicalShow::plan(object_type),
-            ir::Plan::Query(q) => self.plan_root_node(tx, &q)?,
-            ir::Plan::Explain(logical_plan) => {
-                let logical_explain = logical_plan.to_string();
-                let physical_plan = self.plan(tx, logical_plan)?;
-                PhysicalExplain::plan(logical_explain, physical_plan.0)
+            ir::Plan::Query(q) => plan_query(self, &q)?,
+            ir::Plan::Explain(opts, logical_plan) => {
+                let logical_explain = if opts.verbose {
+                    format!("{logical_plan:#}")
+                } else {
+                    format!("{logical_plan}")
+                };
+                let physical_plan = f(self, logical_plan)?;
+                PhysicalExplain::plan(opts, logical_explain, PhysicalPlan(physical_plan))
             }
             ir::Plan::Drop(..) => unreachable!("write plans should go through plan_write_node"),
             ir::Plan::Copy(cp) => match cp {
                 ir::Copy::To(ir::CopyTo { src, dst }) => {
-                    PhysicalCopyTo::plan(self.plan_root_node(tx, &src)?, dst)
+                    PhysicalCopyTo::plan(plan_query(self, &src)?, dst)
                 }
             },
         };
 
-        Ok(PhysicalPlan(node))
+        Ok(node)
     }
 
-    fn plan_root_node(
+    fn plan_root_query(
         &mut self,
         tx: &dyn Transaction<'env, S>,
         q: &opt::Query,
@@ -126,10 +157,10 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
         q: &opt::Query,
         plan: opt::Plan<'_>,
     ) -> Result<Arc<dyn PhysicalNode<'env, 'txn, S, M>>> {
-        self.fold_plan_node(tx, q, plan, |planner, node| planner.plan_node(tx, q, node))
+        self.fold_query_plan(tx, q, plan, |planner, node| planner.plan_node(tx, q, node))
     }
 
-    fn fold_plan_node(
+    fn fold_query_plan(
         &mut self,
         tx: &dyn Transaction<'env, S>,
         q: &opt::Query,
@@ -302,21 +333,24 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalPlanner<'env, 'txn, S, ReadWrit
         tx: &dyn Transaction<'env, S>,
         plan: Box<ir::Plan<opt::Query>>,
     ) -> Result<PhysicalPlan<'env, 'txn, S, ReadWriteExecutionMode>> {
-        let node = match *plan {
+        let plan = match *plan {
             ir::Plan::Drop(refs) => PhysicalDrop::plan(refs),
-            ir::Plan::Query(q) => self.plan_write_query(tx, &q, q.root())?,
-            ir::Plan::Explain(logical_plan) => {
-                let logical_explain = logical_plan.to_string();
-                let physical_plan = self.plan_write(tx, logical_plan)?;
-                PhysicalExplain::plan(logical_explain, physical_plan.0)
-            }
-            ir::Plan::Copy(..)
-            | ir::Plan::Transaction(..)
-            | ir::Plan::SetVariable { .. }
-            | ir::Plan::Show(..) => return self.plan(tx, plan),
+            _ => self.fold_plan(
+                plan,
+                |planner, plan| Ok(planner.plan_write(tx, plan)?.0),
+                |planner, q| planner.plan_root_write_query(tx, q),
+            )?,
         };
 
-        Ok(PhysicalPlan(node))
+        Ok(PhysicalPlan(plan))
+    }
+
+    fn plan_root_write_query(
+        &mut self,
+        tx: &dyn Transaction<'env, S>,
+        q: &opt::Query,
+    ) -> Result<Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode>>> {
+        self.plan_write_query(tx, q, q.root())
     }
 
     fn plan_write_query(
@@ -337,7 +371,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalPlanner<'env, 'txn, S, ReadWrit
                 self.compile_exprs(tx, q, insert.returning(q))?,
             ),
             _ => {
-                return self.fold_plan_node(tx, q, plan, |planner, node| {
+                return self.fold_query_plan(tx, q, plan, |planner, node| {
                     planner.plan_write_query(tx, q, node)
                 });
             }

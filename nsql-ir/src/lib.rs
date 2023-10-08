@@ -206,9 +206,15 @@ pub enum Plan<Q = Box<QueryPlan>> {
     Drop(Vec<EntityRef>),
     Transaction(TransactionStmt),
     SetVariable { name: Name, value: Value, scope: VariableScope },
-    Explain(Box<Plan<Q>>),
+    Explain(ExplainOptions, Box<Plan<Q>>),
     Copy(Copy<Q>),
     Query(Q),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct ExplainOptions {
+    pub analyze: bool,
+    pub verbose: bool,
 }
 
 impl Default for Plan {
@@ -377,8 +383,14 @@ impl<Q: fmt::Display> fmt::Display for Plan<Q> {
             Plan::Drop(_refs) => write!(f, "DROP"),
             Plan::Transaction(tx) => write!(f, "{tx}"),
             Plan::SetVariable { name, value, scope } => write!(f, "SET {scope} {name} = {value}"),
-            Plan::Explain(query) => {
+            Plan::Explain(opts, query) => {
                 write!(f, "EXPLAIN ")?;
+                if opts.analyze {
+                    write!(f, "ANALYZE ")?;
+                }
+                if opts.verbose {
+                    write!(f, "VERBOSE ")?;
+                }
                 query.fmt(f)
             }
             Plan::Query(query) => query.fmt(f),

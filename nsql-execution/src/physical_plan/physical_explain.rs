@@ -5,8 +5,9 @@ use super::*;
 use crate::config::ExplainOutput;
 
 pub struct PhysicalExplain<'env, 'txn, S, M> {
+    opts: ir::ExplainOptions,
     logical_plan_explain: String,
-    children: [Arc<dyn PhysicalNode<'env, 'txn, S, M>>; 1],
+    physical_plan: PhysicalPlan<'env, 'txn, S, M>,
 }
 
 impl<S, M> fmt::Debug for PhysicalExplain<'_, '_, S, M> {
@@ -20,10 +21,11 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
 {
     #[inline]
     pub(crate) fn plan(
+        opts: ir::ExplainOptions,
         logical_plan: impl Into<String>,
-        physical_plan: Arc<dyn PhysicalNode<'env, 'txn, S, M>>,
+        physical_plan: PhysicalPlan<'env, 'txn, S, M>,
     ) -> Arc<dyn PhysicalNode<'env, 'txn, S, M>> {
-        Arc::new(Self { logical_plan_explain: logical_plan.into(), children: [physical_plan] })
+        Arc::new(Self { opts, logical_plan_explain: logical_plan.into(), physical_plan })
     }
 }
 
@@ -35,8 +37,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode
     }
 
     fn children(&self) -> &[Arc<dyn PhysicalNode<'env, 'txn, S, M>>] {
-        // no children as we don't actually need to run anything (unless we're doing an analyse which is not implemented)
-        &[]
+        if self.opts.analyze { std::slice::from_ref(&self.physical_plan.0) } else { &[] }
     }
 
     fn as_source(
@@ -50,7 +51,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode
         self: Arc<Self>,
     ) -> Result<Arc<dyn PhysicalSink<'env, 'txn, S, M>>, Arc<dyn PhysicalNode<'env, 'txn, S, M>>>
     {
-        Err(self)
+        Ok(self)
     }
 
     fn as_operator(
@@ -58,6 +59,34 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode
     ) -> Result<Arc<dyn PhysicalOperator<'env, 'txn, S, M>>, Arc<dyn PhysicalNode<'env, 'txn, S, M>>>
     {
         Err(self)
+    }
+
+    fn build_pipelines(
+        self: Arc<Self>,
+        arena: &mut PipelineBuilderArena<'env, 'txn, S, M>,
+        meta_builder: Idx<MetaPipelineBuilder<'env, 'txn, S, M>>,
+        current: Idx<PipelineBuilder<'env, 'txn, S, M>>,
+    ) {
+        arena[current].set_source(self.clone());
+        if self.opts.analyze {
+            let child = self.physical_plan.root();
+            let child_meta_builder = arena.new_child_meta_pipeline(meta_builder, self);
+            arena.build(child_meta_builder, child);
+        }
+    }
+}
+
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSink<'env, 'txn, S, M>
+    for PhysicalExplain<'env, 'txn, S, M>
+{
+    fn sink(
+        &self,
+        _ecx: &'txn ExecutionContext<'_, 'env, S, M>,
+        _tuple: Tuple,
+    ) -> ExecutionResult<()> {
+        // drop any tuples as we don't really care
+        // we could capture metrics here if we wanted about how many output rows etc
+        Ok(())
     }
 }
 
@@ -71,15 +100,11 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
         let scx = ecx.scx();
         let catalog = ecx.catalog();
         let tx = ecx.tx();
-        let physical_plan = &self.children[0];
+        let physical_plan = &self.physical_plan;
 
-        let physical_explain =
-            PhysicalPlan(Arc::clone(physical_plan)).display(catalog, &tx).to_string();
+        let physical_explain = physical_plan.display(catalog, &tx).to_string();
 
-        let pipeline = crate::build_pipelines(
-            Arc::new(OutputSink::new()),
-            PhysicalPlan(Arc::clone(physical_plan)),
-        );
+        let pipeline = crate::build_pipelines(Arc::new(OutputSink::new()), physical_plan.clone());
         let pipeline_explain = pipeline.display(catalog, &tx).to_string();
 
         let logical_explain = self.logical_plan_explain.clone();

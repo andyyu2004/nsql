@@ -29,7 +29,7 @@ pub fn optimize(plan: Box<ir::Plan>) -> Box<ir::Plan<Query>> {
         ir::Plan::SetVariable { name, value, scope } => {
             ir::Plan::SetVariable { name, value, scope }
         }
-        ir::Plan::Explain(query) => ir::Plan::Explain(optimize(query)),
+        ir::Plan::Explain(opts, query) => ir::Plan::Explain(opts, optimize(query)),
         ir::Plan::Query(query) => ir::Plan::Query(optimize_query(query)),
         ir::Plan::Copy(cp) => ir::Plan::Copy(match cp {
             ir::Copy::To(ir::CopyTo { src, dst }) => {

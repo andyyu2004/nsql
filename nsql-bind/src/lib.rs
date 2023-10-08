@@ -300,10 +300,10 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                 ir::Plan::Drop(refs)
             }
             ast::Statement::Explain { describe_alias: _, analyze, verbose, statement, format } => {
-                not_implemented_if!(*analyze);
                 not_implemented_if!(format.is_some());
                 not_implemented_if!(*verbose);
-                ir::Plan::Explain(self.bind_with(tx, statement)?)
+                let opts = ir::ExplainOptions { analyze: *analyze, verbose: *verbose };
+                ir::Plan::Explain(opts, self.bind_with(tx, statement)?)
             }
             ast::Statement::SetVariable { local, hivevar, variable, value } => {
                 not_implemented_if!(*hivevar);

@@ -79,7 +79,7 @@ impl PlanFold for Plan {
             | Plan::Drop(_)
             | Plan::Transaction(_)
             | Plan::SetVariable { name: _, value: _, scope: _ } => self,
-            Plan::Explain(query) => Plan::Explain(Box::new(query.fold_with(folder))),
+            Plan::Explain(opts, query) => Plan::Explain(opts, Box::new(query.fold_with(folder))),
             Plan::Query(query) => Plan::Query(Box::new(query.fold_with(folder))),
             Plan::Copy(copy) => Plan::Copy(copy.fold_with(folder)),
         }

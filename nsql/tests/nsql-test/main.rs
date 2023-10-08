@@ -9,6 +9,7 @@ use tracing_subscriber::Registry;
 use tracing_tree::HierarchicalLayer;
 
 mod explain;
+mod explain_analyze;
 mod opt;
 
 fn nsql_debug_scratch<S: StorageEngine>(sql: &str) -> nsql::Result<(), Box<dyn Error>> {

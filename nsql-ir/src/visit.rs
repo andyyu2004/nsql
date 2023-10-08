@@ -22,7 +22,7 @@ pub trait Visitor {
             Plan::Drop(_refs) => ControlFlow::Continue(()),
             Plan::Transaction(_tx) => ControlFlow::Continue(()),
             Plan::SetVariable { .. } => ControlFlow::Continue(()),
-            Plan::Explain(plan) => self.walk_plan(plan),
+            Plan::Explain(_opts, plan) => self.walk_plan(plan),
             Plan::Query(plan) => self.visit_query_plan(plan),
             Plan::Copy(copy) => match copy {
                 Copy::To(CopyTo { src, dst: _ }) => self.visit_query_plan(src),
