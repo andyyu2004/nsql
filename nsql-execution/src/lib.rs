@@ -8,12 +8,13 @@ mod physical_plan;
 mod pipeline;
 
 use std::fmt;
+use std::ops::Index;
 use std::sync::atomic::{self, AtomicBool};
 use std::sync::Arc;
 
 pub use anyhow::Error;
 use dashmap::DashMap;
-use nsql_arena::Idx;
+use nsql_arena::{Arena, Idx};
 use nsql_catalog::Catalog;
 use nsql_core::Name;
 use nsql_storage::tuple::Tuple;
@@ -36,13 +37,46 @@ pub type ExecutionResult<T, E = Error> = std::result::Result<T, E>;
 
 fn build_pipelines<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
     sink: Arc<dyn PhysicalSink<'env, 'txn, S, M>>,
-    plan: PhysicalPlan<'env, 'txn, S, M>,
+    plan: &PhysicalPlan<'env, 'txn, S, M>,
 ) -> RootPipeline<'env, 'txn, S, M> {
     let (mut builder, root_meta_pipeline) = PipelineBuilderArena::new(sink);
-    builder.build(root_meta_pipeline, plan.root());
+    builder.build(plan.arena(), root_meta_pipeline, plan.root());
     let arena = builder.finish();
     RootPipeline { arena }
 }
+
+struct PhysicalNodeArena<'env, 'txn, S, M> {
+    // FIXME change to box dyn once first pass is done
+    nodes: Arena<Arc<dyn PhysicalNode<'env, 'txn, S, M>>>,
+}
+
+impl<'env, 'txn, S, M> Clone for PhysicalNodeArena<'env, 'txn, S, M> {
+    fn clone(&self) -> Self {
+        Self { nodes: self.nodes.clone() }
+    }
+}
+
+impl<'env, 'txn, S, M> Index<PhysicalNodeId<'env, 'txn, S, M>>
+    for PhysicalNodeArena<'env, 'txn, S, M>
+{
+    type Output = Arc<dyn PhysicalNode<'env, 'txn, S, M>>;
+
+    #[inline]
+    fn index(&self, index: PhysicalNodeId<'env, 'txn, S, M>) -> &Self::Output {
+        &self.nodes[index]
+    }
+}
+
+impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNodeArena<'env, 'txn, S, M> {
+    pub fn alloc(
+        &mut self,
+        node: Arc<dyn PhysicalNode<'env, 'txn, S, M>>,
+    ) -> PhysicalNodeId<'env, 'txn, S, M> {
+        self.nodes.alloc(node)
+    }
+}
+
+type PhysicalNodeId<'env, 'txn, S, M> = Idx<Arc<dyn PhysicalNode<'env, 'txn, S, M>>>;
 
 // keep this trait crate-private
 #[allow(clippy::type_complexity)]
@@ -50,9 +84,9 @@ trait PhysicalNode<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>
     Explain<'env, S> + fmt::Debug + 'txn
 {
     /// The width of the tuples produced by this node
-    fn width(&self) -> usize;
+    fn width(&self, nodes: &PhysicalNodeArena<'env, 'txn, S, M>) -> usize;
 
-    fn children(&self) -> &[Arc<dyn PhysicalNode<'env, 'txn, S, M>>];
+    fn children(&self) -> &[PhysicalNodeId<'env, 'txn, S, M>];
 
     fn as_source(
         self: Arc<Self>,
@@ -68,25 +102,28 @@ trait PhysicalNode<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>
 
     fn build_pipelines(
         self: Arc<Self>,
+        nodes: &PhysicalNodeArena<'env, 'txn, S, M>,
         arena: &mut PipelineBuilderArena<'env, 'txn, S, M>,
         meta_builder: Idx<MetaPipelineBuilder<'env, 'txn, S, M>>,
         current: Idx<PipelineBuilder<'env, 'txn, S, M>>,
     ) {
         match self.as_sink() {
             Ok(sink) => {
-                assert_eq!(
-                    sink.children().len(),
-                    1,
-                    "default `build_pipelines` implementation only supports unary nodes for sinks"
-                );
-                let child = Arc::clone(&sink.children()[0]);
                 // If we have a sink node (which is also a source),
                 // - set it to be the source of the current pipeline,
                 // - recursively build the pipeline for its child with `sink` as the sink of the new metapipeline
                 arena[current]
                     .set_source(Arc::clone(&sink) as Arc<dyn PhysicalSource<'env, 'txn, S, M>>);
-                let child_meta_builder = arena.new_child_meta_pipeline(meta_builder, sink);
-                arena.build(child_meta_builder, child);
+                assert!(
+                    sink.children().len() <= 1,
+                    "default `build_pipelines` implementation only supports unary or nullary nodes for sinks"
+                );
+
+                if !sink.children().is_empty() {
+                    let child = sink.children()[0];
+                    let child_meta_builder = arena.new_child_meta_pipeline(meta_builder, sink);
+                    arena.build(nodes, child_meta_builder, child);
+                }
             }
             Err(node) => match node.as_source() {
                 Ok(source) => {
@@ -105,9 +142,9 @@ trait PhysicalNode<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>
                         1,
                         "default `build_pipelines` implementation only supports unary operators"
                     );
-                    let child = Arc::clone(&children[0]);
+                    let child = operator.children()[0];
                     arena[current].add_operator(operator);
-                    child.build_pipelines(arena, meta_builder, current)
+                    nodes[child].clone().build_pipelines(nodes, arena, meta_builder, current)
                 }
             },
         }

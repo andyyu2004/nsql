@@ -3,9 +3,11 @@ use nsql_storage_engine::fallible_iterator;
 
 use super::*;
 use crate::config::ExplainOutput;
+use crate::executor::OutputSink;
 
 pub struct PhysicalExplain<'env, 'txn, S, M> {
     opts: ir::ExplainOptions,
+    child: PhysicalNodeId<'env, 'txn, S, M>,
     logical_plan_explain: String,
     physical_plan: PhysicalPlan<'env, 'txn, S, M>,
 }
@@ -25,19 +27,24 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
         logical_plan: impl Into<String>,
         physical_plan: PhysicalPlan<'env, 'txn, S, M>,
     ) -> Arc<dyn PhysicalNode<'env, 'txn, S, M>> {
-        Arc::new(Self { opts, logical_plan_explain: logical_plan.into(), physical_plan })
+        Arc::new(Self {
+            opts,
+            logical_plan_explain: logical_plan.into(),
+            child: physical_plan.root(),
+            physical_plan,
+        })
     }
 }
 
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode<'env, 'txn, S, M>
     for PhysicalExplain<'env, 'txn, S, M>
 {
-    fn width(&self) -> usize {
+    fn width(&self, _nodes: &PhysicalNodeArena<'env, 'txn, S, M>) -> usize {
         1
     }
 
-    fn children(&self) -> &[Arc<dyn PhysicalNode<'env, 'txn, S, M>>] {
-        if self.opts.analyze { std::slice::from_ref(&self.physical_plan.0) } else { &[] }
+    fn children(&self) -> &[PhysicalNodeId<'env, 'txn, S, M>] {
+        if self.opts.analyze { std::slice::from_ref(&self.child) } else { &[] }
     }
 
     fn as_source(
@@ -59,20 +66,6 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode
     ) -> Result<Arc<dyn PhysicalOperator<'env, 'txn, S, M>>, Arc<dyn PhysicalNode<'env, 'txn, S, M>>>
     {
         Err(self)
-    }
-
-    fn build_pipelines(
-        self: Arc<Self>,
-        arena: &mut PipelineBuilderArena<'env, 'txn, S, M>,
-        meta_builder: Idx<MetaPipelineBuilder<'env, 'txn, S, M>>,
-        current: Idx<PipelineBuilder<'env, 'txn, S, M>>,
-    ) {
-        arena[current].set_source(self.clone());
-        if self.opts.analyze {
-            let child = self.physical_plan.root();
-            let child_meta_builder = arena.new_child_meta_pipeline(meta_builder, self);
-            arena.build(child_meta_builder, child);
-        }
     }
 }
 
@@ -103,8 +96,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
         let physical_plan = &self.physical_plan;
 
         let physical_explain = physical_plan.display(catalog, &tx).to_string();
-
-        let pipeline = crate::build_pipelines(Arc::new(OutputSink::new()), physical_plan.clone());
+        let pipeline = crate::build_pipelines(Arc::new(OutputSink::new()), physical_plan);
         let pipeline_explain = pipeline.display(catalog, &tx).to_string();
 
         let logical_explain = self.logical_plan_explain.clone();

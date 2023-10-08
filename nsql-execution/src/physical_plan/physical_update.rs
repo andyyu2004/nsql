@@ -8,7 +8,7 @@ use crate::ReadWriteExecutionMode;
 
 #[derive(Debug)]
 pub(crate) struct PhysicalUpdate<'env, 'txn, S> {
-    children: [Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode>>; 1],
+    children: [PhysicalNodeId<'env, 'txn, S, ReadWriteExecutionMode>; 1],
     table: Oid<Table>,
     tuples: RwLock<Vec<Tuple>>,
     returning: ExecutableTupleExpr<S>,
@@ -20,7 +20,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalUpdate<'env, 'txn, S> {
         table: Oid<Table>,
         // This is the source of the updates.
         // The schema should be that of the table being updated + the `tid` in the rightmost column
-        source: Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode>>,
+        source: PhysicalNodeId<'env, 'txn, S, ReadWriteExecutionMode>,
         returning: ExecutableTupleExpr<S>,
     ) -> Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode>> {
         Arc::new(Self {
@@ -36,12 +36,12 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalUpdate<'env, 'txn, S> {
 impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode>
     for PhysicalUpdate<'env, 'txn, S>
 {
-    fn width(&self) -> usize {
+    fn width(&self, _nodes: &PhysicalNodeArena<'env, 'txn, S, ReadWriteExecutionMode>) -> usize {
         self.returning.width()
     }
 
     #[inline]
-    fn children(&self) -> &[Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode>>] {
+    fn children(&self) -> &[PhysicalNodeId<'env, 'txn, S, ReadWriteExecutionMode>] {
         &self.children
     }
 

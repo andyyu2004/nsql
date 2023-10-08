@@ -43,11 +43,11 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode<'env, 'txn, S, M>
     for PhysicalSet
 {
-    fn width(&self) -> usize {
+    fn width(&self, _nodes: &PhysicalNodeArena<'env, 'txn, S, M>) -> usize {
         0
     }
 
-    fn children(&self) -> &[Arc<dyn PhysicalNode<'env, 'txn, S, M>>] {
+    fn children(&self) -> &[PhysicalNodeId<'env, 'txn, S, M>] {
         &[]
     }
 

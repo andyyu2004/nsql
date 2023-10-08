@@ -3,7 +3,10 @@ use std::sync::Arc;
 pub(crate) use nsql_arena::{Arena, Idx};
 use nsql_storage_engine::StorageEngine;
 
-use crate::{ExecutionMode, PhysicalNode, PhysicalOperator, PhysicalSink, PhysicalSource};
+use crate::{
+    ExecutionMode, PhysicalNode, PhysicalNodeArena, PhysicalNodeId, PhysicalOperator, PhysicalSink,
+    PhysicalSource,
+};
 
 pub(crate) struct MetaPipeline<'env, 'txn, S, M> {
     pub(crate) pipelines: Vec<Idx<Pipeline<'env, 'txn, S, M>>>,
@@ -154,12 +157,18 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     #[track_caller]
     pub(crate) fn build(
         &mut self,
+        nodes: &PhysicalNodeArena<'env, 'txn, S, M>,
         meta_pipeline: Idx<MetaPipelineBuilder<'env, 'txn, S, M>>,
-        node: Arc<dyn PhysicalNode<'env, 'txn, S, M>>,
+        node: PhysicalNodeId<'env, 'txn, S, M>,
     ) {
         assert_eq!(self[meta_pipeline].pipelines.len(), 1);
         assert!(self[meta_pipeline].children.is_empty());
-        node.build_pipelines(self, meta_pipeline, self[meta_pipeline].pipelines[0])
+        nodes[node].clone().build_pipelines(
+            nodes,
+            self,
+            meta_pipeline,
+            self[meta_pipeline].pipelines[0],
+        )
     }
 }
 

@@ -9,7 +9,7 @@ use crate::pipeline::{MetaPipelineBuilder, PipelineBuilder, PipelineBuilderArena
 
 #[derive(Debug)]
 pub(crate) struct PhysicalUnion<'env, 'txn, S, M> {
-    children: [Arc<dyn PhysicalNode<'env, 'txn, S, M>>; 2],
+    children: [PhysicalNodeId<'env, 'txn, S, M>; 2],
     buffer: Mutex<Vec<Tuple>>,
 }
 
@@ -17,8 +17,8 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     PhysicalUnion<'env, 'txn, S, M>
 {
     pub fn plan(
-        lhs: Arc<dyn PhysicalNode<'env, 'txn, S, M>>,
-        rhs: Arc<dyn PhysicalNode<'env, 'txn, S, M>>,
+        lhs: PhysicalNodeId<'env, 'txn, S, M>,
+        rhs: PhysicalNodeId<'env, 'txn, S, M>,
     ) -> Arc<dyn PhysicalNode<'env, 'txn, S, M>> {
         Arc::new(Self { children: [lhs, rhs], buffer: Default::default() })
     }
@@ -27,12 +27,15 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode<'env, 'txn, S, M>
     for PhysicalUnion<'env, 'txn, S, M>
 {
-    fn width(&self) -> usize {
-        debug_assert_eq!(self.children[0].width(), self.children[1].width());
-        self.children[0].width()
+    fn width(&self, nodes: &PhysicalNodeArena<'env, 'txn, S, M>) -> usize {
+        debug_assert_eq!(
+            nodes[self.children[0]].width(nodes),
+            nodes[self.children[1]].width(nodes)
+        );
+        nodes[self.children[0]].width(nodes)
     }
 
-    fn children(&self) -> &[Arc<dyn PhysicalNode<'env, 'txn, S, M>>] {
+    fn children(&self) -> &[PhysicalNodeId<'env, 'txn, S, M>] {
         &self.children
     }
 
@@ -59,6 +62,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode
 
     fn build_pipelines(
         self: Arc<Self>,
+        nodes: &PhysicalNodeArena<'env, 'txn, S, M>,
         arena: &mut PipelineBuilderArena<'env, 'txn, S, M>,
         meta_builder: Idx<MetaPipelineBuilder<'env, 'txn, S, M>>,
         current: Idx<PipelineBuilder<'env, 'txn, S, M>>,
@@ -79,10 +83,10 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode
 
         let sink = Arc::clone(&self) as Arc<dyn PhysicalSink<'env, 'txn, S, M>>;
         let lhs_meta_builder = arena.new_child_meta_pipeline(meta_builder, Arc::clone(&sink));
-        arena.build(lhs_meta_builder, Arc::clone(&self.children[0]));
+        arena.build(nodes, lhs_meta_builder, self.children[0]);
 
         let rhs_meta_builder = arena.new_child_meta_pipeline(meta_builder, sink);
-        arena.build(rhs_meta_builder, Arc::clone(&self.children[1]));
+        arena.build(nodes, rhs_meta_builder, self.children[1]);
 
         arena[current].set_source(self);
     }

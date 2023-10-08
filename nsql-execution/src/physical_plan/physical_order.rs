@@ -8,7 +8,7 @@ use super::*;
 
 #[derive(Debug)]
 pub struct PhysicalOrder<'env, 'txn, S, M> {
-    child: Arc<dyn PhysicalNode<'env, 'txn, S, M>>,
+    child: PhysicalNodeId<'env, 'txn, S, M>,
     ordering: Box<[ir::OrderExpr<ExecutableExpr<S>>]>,
     tuples: RwLock<Vec<Tuple>>,
 }
@@ -17,7 +17,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     PhysicalOrder<'env, 'txn, S, M>
 {
     pub(crate) fn plan(
-        source: Arc<dyn PhysicalNode<'env, 'txn, S, M>>,
+        source: PhysicalNodeId<'env, 'txn, S, M>,
         ordering: Box<[ir::OrderExpr<ExecutableExpr<S>>]>,
     ) -> Arc<dyn PhysicalNode<'env, 'txn, S, M>> {
         Arc::new(Self { child: source, ordering, tuples: Default::default() })
@@ -84,11 +84,11 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSink
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode<'env, 'txn, S, M>
     for PhysicalOrder<'env, 'txn, S, M>
 {
-    fn width(&self) -> usize {
-        self.child.width()
+    fn width(&self, nodes: &PhysicalNodeArena<'env, 'txn, S, M>) -> usize {
+        nodes[self.child].width(nodes)
     }
 
-    fn children(&self) -> &[Arc<dyn PhysicalNode<'env, 'txn, S, M>>] {
+    fn children(&self) -> &[PhysicalNodeId<'env, 'txn, S, M>] {
         std::slice::from_ref(&self.child)
     }
 

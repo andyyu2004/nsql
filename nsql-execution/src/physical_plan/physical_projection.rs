@@ -2,7 +2,7 @@ use super::*;
 
 #[derive(Debug)]
 pub struct PhysicalProjection<'env, 'txn, S, M> {
-    children: [Arc<dyn PhysicalNode<'env, 'txn, S, M>>; 1],
+    children: PhysicalNodeId<'env, 'txn, S, M>,
     projection: ExecutableTupleExpr<S>,
 }
 
@@ -10,10 +10,10 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     PhysicalProjection<'env, 'txn, S, M>
 {
     pub(crate) fn plan(
-        source: Arc<dyn PhysicalNode<'env, 'txn, S, M>>,
+        source: PhysicalNodeId<'env, 'txn, S, M>,
         projection: ExecutableTupleExpr<S>,
     ) -> Arc<dyn PhysicalNode<'env, 'txn, S, M>> {
-        Arc::new(Self { children: [source], projection })
+        Arc::new(Self { children: source, projection })
     }
 }
 
@@ -37,12 +37,12 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode<'env, 'txn, S, M>
     for PhysicalProjection<'env, 'txn, S, M>
 {
-    fn width(&self) -> usize {
+    fn width(&self, _nodes: &PhysicalNodeArena<'env, 'txn, S, M>) -> usize {
         self.projection.width()
     }
 
-    fn children(&self) -> &[Arc<dyn PhysicalNode<'env, 'txn, S, M>>] {
-        &self.children
+    fn children(&self) -> &[PhysicalNodeId<'env, 'txn, S, M>] {
+        std::slice::from_ref(&self.children)
     }
 
     fn as_source(

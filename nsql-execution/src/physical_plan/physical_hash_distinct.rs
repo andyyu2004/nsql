@@ -4,7 +4,7 @@ use super::*;
 
 #[derive(Debug)]
 pub struct PhysicalHashDistinct<'env, 'txn, S, M> {
-    child: Arc<dyn PhysicalNode<'env, 'txn, S, M>>,
+    child: PhysicalNodeId<'env, 'txn, S, M>,
     seen: DashSet<Tuple>,
 }
 
@@ -12,7 +12,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     PhysicalHashDistinct<'env, 'txn, S, M>
 {
     pub(crate) fn plan(
-        child: Arc<dyn PhysicalNode<'env, 'txn, S, M>>,
+        child: PhysicalNodeId<'env, 'txn, S, M>,
     ) -> Arc<dyn PhysicalNode<'env, 'txn, S, M>> {
         Arc::new(Self { child, seen: Default::default() })
     }
@@ -40,12 +40,12 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode<'env, 'txn, S, M>
     for PhysicalHashDistinct<'env, 'txn, S, M>
 {
-    fn width(&self) -> usize {
-        self.child.width()
+    fn width(&self, nodes: &PhysicalNodeArena<'env, 'txn, S, M>) -> usize {
+        nodes[self.child].width(nodes)
     }
 
     #[inline]
-    fn children(&self) -> &[Arc<dyn PhysicalNode<'env, 'txn, S, M>>] {
+    fn children(&self) -> &[PhysicalNodeId<'env, 'txn, S, M>] {
         std::slice::from_ref(&self.child)
     }
 

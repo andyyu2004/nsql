@@ -6,7 +6,7 @@ use super::*;
 
 #[derive(Debug)]
 pub struct PhysicalLimit<'env, 'txn, S, M> {
-    child: Arc<dyn PhysicalNode<'env, 'txn, S, M>>,
+    child: PhysicalNodeId<'env, 'txn, S, M>,
     yielded: AtomicU64,
     limit: u64,
     exceeded_message: Option<String>,
@@ -16,7 +16,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     PhysicalLimit<'env, 'txn, S, M>
 {
     pub(crate) fn plan(
-        source: Arc<dyn PhysicalNode<'env, 'txn, S, M>>,
+        source: PhysicalNodeId<'env, 'txn, S, M>,
         limit: u64,
         exceeded_message: Option<String>,
     ) -> Arc<dyn PhysicalNode<'env, 'txn, S, M>> {
@@ -48,11 +48,11 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode<'env, 'txn, S, M>
     for PhysicalLimit<'env, 'txn, S, M>
 {
-    fn width(&self) -> usize {
-        self.child.width()
+    fn width(&self, nodes: &PhysicalNodeArena<'env, 'txn, S, M>) -> usize {
+        nodes[self.child].width(nodes)
     }
 
-    fn children(&self) -> &[Arc<dyn PhysicalNode<'env, 'txn, S, M>>] {
+    fn children(&self) -> &[PhysicalNodeId<'env, 'txn, S, M>] {
         std::slice::from_ref(&self.child)
     }
 

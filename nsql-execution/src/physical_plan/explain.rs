@@ -1,5 +1,4 @@
 use std::fmt;
-use std::sync::Arc;
 
 use nsql_arena::Idx;
 use nsql_catalog::Catalog;
@@ -7,7 +6,7 @@ use nsql_storage_engine::{StorageEngine, Transaction};
 
 use super::PhysicalPlan;
 use crate::pipeline::MetaPipeline;
-use crate::{ExecutionMode, PhysicalNode, RootPipeline};
+use crate::{ExecutionMode, PhysicalNodeArena, PhysicalNodeId, RootPipeline};
 
 pub type Result<T = ()> = anyhow::Result<T>;
 
@@ -153,28 +152,30 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Explain<'env
         tx: &dyn Transaction<'env, S>,
         f: &mut fmt::Formatter<'_>,
     ) -> Result {
-        PhysicalNodeExplainer { node: self.root(), indent: 0 }.explain(catalog, tx, f)
+        PhysicalNodeExplainer { nodes: &self.nodes, node: self.root(), indent: 0 }
+            .explain(catalog, tx, f)
     }
 }
 
-pub struct PhysicalNodeExplainer<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> {
-    node: Arc<dyn PhysicalNode<'env, 'txn, S, M>>,
+pub struct PhysicalNodeExplainer<'a, 'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> {
+    nodes: &'a PhysicalNodeArena<'env, 'txn, S, M>,
+    node: PhysicalNodeId<'env, 'txn, S, M>,
     indent: usize,
 }
 
-impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
-    PhysicalNodeExplainer<'env, 'txn, S, M>
+impl<'a, 'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
+    PhysicalNodeExplainer<'a, 'env, 'txn, S, M>
 {
     fn explain_child(
         &self,
-        node: Arc<dyn PhysicalNode<'env, 'txn, S, M>>,
-    ) -> PhysicalNodeExplainer<'env, 'txn, S, M> {
-        PhysicalNodeExplainer { node, indent: self.indent + 2 }
+        node: PhysicalNodeId<'env, 'txn, S, M>,
+    ) -> PhysicalNodeExplainer<'a, 'env, 'txn, S, M> {
+        PhysicalNodeExplainer { nodes: self.nodes, node, indent: self.indent + 2 }
     }
 }
 
-impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Explain<'env, S>
-    for PhysicalNodeExplainer<'env, 'txn, S, M>
+impl<'a, 'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Explain<'env, S>
+    for PhysicalNodeExplainer<'a, 'env, 'txn, S, M>
 {
     fn as_dyn(&self) -> &dyn Explain<'env, S> {
         self
@@ -187,11 +188,11 @@ impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Explain<'env, S>
         f: &mut fmt::Formatter<'_>,
     ) -> Result {
         write!(f, "{:indent$}", "", indent = self.indent)?;
-        self.node.explain(catalog, tx, f)?;
+        self.nodes[self.node].explain(catalog, tx, f)?;
         writeln!(f)?;
 
-        for child in self.node.children() {
-            self.explain_child(Arc::clone(child)).explain(catalog, tx, f)?;
+        for &child in self.nodes[self.node].children() {
+            self.explain_child(child).explain(catalog, tx, f)?;
         }
 
         Ok(())

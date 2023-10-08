@@ -3,17 +3,25 @@ use parking_lot::RwLock;
 use super::*;
 
 pub(crate) struct Executor<'env, 'txn, S, M> {
-    arena: PipelineArena<'env, 'txn, S, M>,
+    nodes: PhysicalNodeArena<'env, 'txn, S, M>,
+    pipelines: PipelineArena<'env, 'txn, S, M>,
     _marker: std::marker::PhantomData<(S, M)>,
 }
 
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Executor<'env, 'txn, S, M> {
+    pub(crate) fn new(
+        nodes: PhysicalNodeArena<'env, 'txn, S, M>,
+        pipelines: PipelineArena<'env, 'txn, S, M>,
+    ) -> Self {
+        Self { nodes, pipelines, _marker: std::marker::PhantomData }
+    }
+
     fn execute(
         self: Arc<Self>,
         ecx: &'txn ExecutionContext<'_, 'env, S, M>,
         root: Idx<MetaPipeline<'env, 'txn, S, M>>,
     ) -> ExecutionResult<()> {
-        let root = &self.arena[root];
+        let root = &self.pipelines[root];
         for &child in &root.children {
             Arc::clone(&self).execute(ecx, child)?;
         }
@@ -30,7 +38,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Executor<'en
         ecx: &'txn ExecutionContext<'_, 'env, S, M>,
         pipeline: Idx<Pipeline<'env, 'txn, S, M>>,
     ) -> ExecutionResult<()> {
-        let pipeline: &Pipeline<'env, 'txn, S, M> = &self.arena[pipeline];
+        let pipeline: &Pipeline<'env, 'txn, S, M> = &self.pipelines[pipeline];
         let mut stream = Arc::clone(&pipeline.source).source(ecx)?;
 
         'main_loop: while let Some(tuple) = stream.next()? {
@@ -103,19 +111,21 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Executor<'en
 
 fn execute_root_pipeline<'env, 'txn, S: StorageEngine>(
     ecx: &'txn ExecutionContext<'_, 'env, S, ReadonlyExecutionMode>,
+    plan: PhysicalPlan<'env, 'txn, S, ReadonlyExecutionMode>,
     pipeline: RootPipeline<'env, 'txn, S, ReadonlyExecutionMode>,
 ) -> ExecutionResult<()> {
     let root = pipeline.arena.root();
-    let executor = Arc::new(Executor { arena: pipeline.arena, _marker: std::marker::PhantomData });
+    let executor = Arc::new(Executor::new(plan.into_arena(), pipeline.arena));
     executor.execute(ecx, root)
 }
 
 fn execute_root_pipeline_write<'env, 'txn, S: StorageEngine>(
     ecx: &'txn ExecutionContext<'_, 'env, S, ReadWriteExecutionMode>,
+    plan: PhysicalPlan<'env, 'txn, S, ReadWriteExecutionMode>,
     pipeline: RootPipeline<'env, 'txn, S, ReadWriteExecutionMode>,
 ) -> ExecutionResult<()> {
     let root = pipeline.arena.root();
-    let executor = Arc::new(Executor { arena: pipeline.arena, _marker: std::marker::PhantomData });
+    let executor = Arc::new(Executor::new(plan.into_arena(), pipeline.arena));
     executor.execute(ecx, root)
 }
 
@@ -126,10 +136,10 @@ pub fn execute<'env: 'txn, 'txn, S: StorageEngine>(
     let sink = Arc::new(OutputSink::new());
     let root_pipeline = build_pipelines(
         Arc::clone(&sink) as Arc<dyn PhysicalSink<'env, 'txn, S, ReadonlyExecutionMode> + 'txn>,
-        plan,
+        &plan,
     );
 
-    execute_root_pipeline(ecx, root_pipeline)?;
+    execute_root_pipeline(ecx, plan, root_pipeline)?;
 
     Ok(Arc::try_unwrap(sink).expect("should be last reference to output sink").tuples.into_inner())
 }
@@ -142,10 +152,10 @@ pub fn execute_write<'env: 'txn, 'txn, S: StorageEngine>(
 
     let root_pipeline = build_pipelines(
         Arc::clone(&sink) as Arc<dyn PhysicalSink<'env, 'txn, S, ReadWriteExecutionMode> + 'txn>,
-        plan,
+        &plan,
     );
 
-    execute_root_pipeline_write(ecx, root_pipeline)?;
+    execute_root_pipeline_write(ecx, plan, root_pipeline)?;
 
     Ok(Arc::try_unwrap(sink).expect("should be last reference to output sink").tuples.into_inner())
 }
@@ -165,14 +175,14 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode
     for OutputSink
 {
     #[inline]
-    fn width(&self) -> usize {
+    fn width(&self, _nodes: &PhysicalNodeArena<'env, 'txn, S, M>) -> usize {
         unimplemented!(
             "does anyone need to know the width of this one as it will always be at the root?"
         )
     }
 
     #[inline]
-    fn children(&self) -> &[Arc<dyn PhysicalNode<'env, 'txn, S, M>>] {
+    fn children(&self) -> &[PhysicalNodeId<'env, 'txn, S, M>] {
         &[]
     }
 

@@ -56,32 +56,37 @@ use self::physical_unnest::PhysicalUnnest;
 use self::physical_update::PhysicalUpdate;
 use self::physical_values::PhysicalValues;
 use crate::compile::Compiler;
-use crate::executor::OutputSink;
 use crate::pipeline::*;
 use crate::{
     ExecutionContext, ExecutionMode, ExecutionResult, OperatorState, PhysicalNode,
-    PhysicalOperator, PhysicalSink, PhysicalSource, ReadWriteExecutionMode, Tuple, TupleStream,
+    PhysicalNodeArena, PhysicalNodeId, PhysicalOperator, PhysicalSink, PhysicalSource,
+    ReadWriteExecutionMode, Tuple, TupleStream,
 };
 
 pub struct PhysicalPlanner<'env, 'txn, S, M> {
+    arena: PhysicalNodeArena<'env, 'txn, S, M>,
     catalog: Catalog<'env, S>,
     compiler: Compiler<ExecutableFunction<S>>,
-    ctes: HashMap<Name, Arc<dyn PhysicalNode<'env, 'txn, S, M>>>,
+    ctes: HashMap<Name, PhysicalNodeId<'env, 'txn, S, M>>,
 }
 
 /// Opaque physical plan that is ready to be executed
-pub struct PhysicalPlan<'env, 'txn, S, M>(Arc<dyn PhysicalNode<'env, 'txn, S, M>>);
-
-impl<'env, 'txn, S, M> Clone for PhysicalPlan<'env, 'txn, S, M> {
-    #[inline]
-    fn clone(&self) -> Self {
-        Self(Arc::clone(&self.0))
-    }
+pub struct PhysicalPlan<'env, 'txn, S, M> {
+    nodes: PhysicalNodeArena<'env, 'txn, S, M>,
+    root: PhysicalNodeId<'env, 'txn, S, M>,
 }
 
 impl<'env, 'txn, S, M> PhysicalPlan<'env, 'txn, S, M> {
-    pub(crate) fn root(&self) -> Arc<dyn PhysicalNode<'env, 'txn, S, M>> {
-        Arc::clone(&self.0)
+    pub(crate) fn root(&self) -> PhysicalNodeId<'env, 'txn, S, M> {
+        self.root
+    }
+
+    pub(crate) fn arena(&self) -> &PhysicalNodeArena<'env, 'txn, S, M> {
+        &self.nodes
+    }
+
+    pub(crate) fn into_arena(self) -> PhysicalNodeArena<'env, 'txn, S, M> {
+        self.nodes
     }
 }
 
@@ -89,21 +94,34 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     PhysicalPlanner<'env, 'txn, S, M>
 {
     pub fn new(catalog: Catalog<'env, S>) -> Self {
-        Self { catalog, compiler: Default::default(), ctes: Default::default() }
+        Self {
+            catalog,
+            arena: PhysicalNodeArena { nodes: Arena::new() },
+            compiler: Default::default(),
+            ctes: Default::default(),
+        }
     }
 
     #[inline]
     pub fn plan(
-        &mut self,
+        mut self,
         tx: &dyn Transaction<'env, S>,
         plan: Box<ir::Plan<opt::Query>>,
     ) -> Result<PhysicalPlan<'env, 'txn, S, M>> {
+        self.do_plan(tx, plan).map(|root| PhysicalPlan { nodes: self.arena, root })
+    }
+
+    #[inline]
+    fn do_plan(
+        &mut self,
+        tx: &dyn Transaction<'env, S>,
+        plan: Box<ir::Plan<opt::Query>>,
+    ) -> Result<PhysicalNodeId<'env, 'txn, S, M>> {
         self.fold_plan(
             plan,
-            |planner, plan| Ok(planner.plan(tx, plan)?.0),
+            |planner, plan| planner.do_plan(tx, plan),
             |planner, q| planner.plan_root_query(tx, q),
         )
-        .map(PhysicalPlan)
     }
 
     fn fold_plan(
@@ -112,25 +130,24 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
         mut f: impl FnMut(
             &mut Self,
             Box<ir::Plan<opt::Query>>,
-        ) -> Result<Arc<dyn PhysicalNode<'env, 'txn, S, M>>>,
-        plan_query: impl FnOnce(
-            &mut Self,
-            &opt::Query,
-        ) -> Result<Arc<dyn PhysicalNode<'env, 'txn, S, M>>>,
-    ) -> Result<Arc<dyn PhysicalNode<'env, 'txn, S, M>>> {
+        ) -> Result<PhysicalNodeId<'env, 'txn, S, M>>,
+        plan_query: impl FnOnce(&mut Self, &opt::Query) -> Result<PhysicalNodeId<'env, 'txn, S, M>>,
+    ) -> Result<PhysicalNodeId<'env, 'txn, S, M>> {
         let node = match *plan {
             ir::Plan::Transaction(kind) => PhysicalTransaction::plan(kind),
             ir::Plan::SetVariable { name, value, scope } => PhysicalSet::plan(name, value, scope),
             ir::Plan::Show(object_type) => PhysicalShow::plan(object_type),
-            ir::Plan::Query(q) => plan_query(self, &q)?,
+            ir::Plan::Query(q) => return plan_query(self, &q),
             ir::Plan::Explain(opts, logical_plan) => {
                 let logical_explain = if opts.verbose {
                     format!("{logical_plan:#}")
                 } else {
                     format!("{logical_plan}")
                 };
-                let physical_plan = f(self, logical_plan)?;
-                PhysicalExplain::plan(opts, logical_explain, PhysicalPlan(physical_plan))
+
+                let root = f(self, logical_plan)?;
+                let physical_plan = PhysicalPlan { nodes: self.arena.clone(), root };
+                PhysicalExplain::plan(opts, logical_explain, physical_plan)
             }
             ir::Plan::Drop(..) => unreachable!("write plans should go through plan_write_node"),
             ir::Plan::Copy(cp) => match cp {
@@ -140,14 +157,14 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
             },
         };
 
-        Ok(node)
+        Ok(self.arena.alloc(node))
     }
 
     fn plan_root_query(
         &mut self,
         tx: &dyn Transaction<'env, S>,
         q: &opt::Query,
-    ) -> Result<Arc<dyn PhysicalNode<'env, 'txn, S, M>>> {
+    ) -> Result<PhysicalNodeId<'env, 'txn, S, M>> {
         self.plan_node(tx, q, q.root())
     }
 
@@ -156,7 +173,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
         tx: &dyn Transaction<'env, S>,
         q: &opt::Query,
         plan: opt::Plan<'_>,
-    ) -> Result<Arc<dyn PhysicalNode<'env, 'txn, S, M>>> {
+    ) -> Result<PhysicalNodeId<'env, 'txn, S, M>> {
         self.fold_query_plan(tx, q, plan, |planner, node| planner.plan_node(tx, q, node))
     }
 
@@ -165,8 +182,8 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
         tx: &dyn Transaction<'env, S>,
         q: &opt::Query,
         plan: opt::Plan<'_>,
-        mut f: impl FnMut(&mut Self, opt::Plan<'_>) -> Result<Arc<dyn PhysicalNode<'env, 'txn, S, M>>>,
-    ) -> Result<Arc<dyn PhysicalNode<'env, 'txn, S, M>>> {
+        mut f: impl FnMut(&mut Self, opt::Plan<'_>) -> Result<PhysicalNodeId<'env, 'txn, S, M>>,
+    ) -> Result<PhysicalNodeId<'env, 'txn, S, M>> {
         let plan = match plan {
             opt::Plan::Projection(projection) => {
                 let source = projection.source(q);
@@ -180,6 +197,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
                     self.compile_expr(tx, q, filter.predicate(q))?,
                     f(self, join.lhs(q))?,
                     f(self, join.rhs(q))?,
+                    &self.arena,
                 ),
                 _ => {
                     let source = f(self, filter.source(q))?;
@@ -194,6 +212,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
                     eval::Expr::literal(true),
                     f(self, join.lhs(q))?,
                     f(self, join.rhs(q))?,
+                    &self.arena,
                 ),
                 _ => unreachable!("expected non-dependent join to be the child of a filter"),
             },
@@ -254,12 +273,12 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
             }
             opt::Plan::Cte(cte) => {
                 let cte_plan = f(self, cte.cte_plan(q))?;
-                self.ctes.insert(cte.name(), Arc::clone(&cte_plan));
+                self.ctes.insert(cte.name(), cte_plan);
                 PhysicalCte::plan(cte.name(), cte_plan, f(self, cte.child(q))?)
             }
         };
 
-        Ok(plan)
+        Ok(self.arena.alloc(plan))
     }
 
     fn compile_order_exprs(
@@ -329,27 +348,33 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
 
 impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalPlanner<'env, 'txn, S, ReadWriteExecutionMode> {
     pub fn plan_write(
-        &mut self,
+        mut self,
         tx: &dyn Transaction<'env, S>,
         plan: Box<ir::Plan<opt::Query>>,
     ) -> Result<PhysicalPlan<'env, 'txn, S, ReadWriteExecutionMode>> {
-        let plan = match *plan {
-            ir::Plan::Drop(refs) => PhysicalDrop::plan(refs),
+        self.do_plan_write(tx, plan).map(|root| PhysicalPlan { nodes: self.arena, root })
+    }
+
+    fn do_plan_write(
+        &mut self,
+        tx: &dyn Transaction<'env, S>,
+        plan: Box<ir::Plan<opt::Query>>,
+    ) -> Result<PhysicalNodeId<'env, 'txn, S, ReadWriteExecutionMode>> {
+        match *plan {
+            ir::Plan::Drop(refs) => Ok(self.arena.alloc(PhysicalDrop::plan(refs))),
             _ => self.fold_plan(
                 plan,
-                |planner, plan| Ok(planner.plan_write(tx, plan)?.0),
+                |planner, plan| planner.do_plan_write(tx, plan),
                 |planner, q| planner.plan_root_write_query(tx, q),
-            )?,
-        };
-
-        Ok(PhysicalPlan(plan))
+            ),
+        }
     }
 
     fn plan_root_write_query(
         &mut self,
         tx: &dyn Transaction<'env, S>,
         q: &opt::Query,
-    ) -> Result<Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode>>> {
+    ) -> Result<PhysicalNodeId<'env, 'txn, S, ReadWriteExecutionMode>> {
         self.plan_write_query(tx, q, q.root())
     }
 
@@ -358,7 +383,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalPlanner<'env, 'txn, S, ReadWrit
         tx: &dyn Transaction<'env, S>,
         q: &opt::Query,
         plan: opt::Plan<'_>,
-    ) -> Result<Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode>>> {
+    ) -> Result<PhysicalNodeId<'env, 'txn, S, ReadWriteExecutionMode>> {
         let plan = match plan {
             opt::Plan::Update(insert) => PhysicalUpdate::plan(
                 insert.table(q),
@@ -377,6 +402,6 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalPlanner<'env, 'txn, S, ReadWrit
             }
         };
 
-        Ok(plan)
+        Ok(self.arena.alloc(plan))
     }
 }

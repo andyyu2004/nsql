@@ -2,7 +2,7 @@ use super::*;
 
 #[derive(Debug)]
 pub struct PhysicalFilter<'env, 'txn, S, M> {
-    child: Arc<dyn PhysicalNode<'env, 'txn, S, M>>,
+    child: PhysicalNodeId<'env, 'txn, S, M>,
     predicate: ExecutableExpr<S>,
 }
 
@@ -10,7 +10,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     PhysicalFilter<'env, 'txn, S, M>
 {
     pub(crate) fn plan(
-        source: Arc<dyn PhysicalNode<'env, 'txn, S, M>>,
+        source: PhysicalNodeId<'env, 'txn, S, M>,
         predicate: ExecutableExpr<S>,
     ) -> Arc<dyn PhysicalNode<'env, 'txn, S, M>> {
         Arc::new(Self { child: source, predicate })
@@ -45,12 +45,12 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode<'env, 'txn, S, M>
     for PhysicalFilter<'env, 'txn, S, M>
 {
-    fn width(&self) -> usize {
-        self.child.width()
+    fn width(&self, nodes: &PhysicalNodeArena<'env, 'txn, S, M>) -> usize {
+        nodes[self.child].width(nodes)
     }
 
     #[inline]
-    fn children(&self) -> &[Arc<dyn PhysicalNode<'env, 'txn, S, M>>] {
+    fn children(&self) -> &[PhysicalNodeId<'env, 'txn, S, M>] {
         std::slice::from_ref(&self.child)
     }
 

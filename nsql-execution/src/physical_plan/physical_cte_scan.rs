@@ -7,7 +7,7 @@ use super::*;
 pub struct PhysicalCteScan<'env, 'txn, S, M> {
     cte_name: Name,
     /// The cte node that produces the data for this scan
-    cte: Arc<dyn PhysicalNode<'env, 'txn, S, M>>,
+    cte: PhysicalNodeId<'env, 'txn, S, M>,
 }
 
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
@@ -15,7 +15,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
 {
     pub(crate) fn plan(
         cte_name: Name,
-        cte: Arc<dyn PhysicalNode<'env, 'txn, S, M>>,
+        cte: PhysicalNodeId<'env, 'txn, S, M>,
     ) -> Arc<dyn PhysicalNode<'env, 'txn, S, M>> {
         Arc::new(Self { cte_name, cte })
     }
@@ -45,11 +45,11 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode<'env, 'txn, S, M>
     for PhysicalCteScan<'env, 'txn, S, M>
 {
-    fn width(&self) -> usize {
-        self.cte.width()
+    fn width(&self, nodes: &PhysicalNodeArena<'env, 'txn, S, M>) -> usize {
+        nodes[self.cte].width(nodes)
     }
 
-    fn children(&self) -> &[Arc<dyn PhysicalNode<'env, 'txn, S, M>>] {
+    fn children(&self) -> &[PhysicalNodeId<'env, 'txn, S, M>] {
         &[]
     }
 

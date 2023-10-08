@@ -8,15 +8,15 @@ use super::*;
 #[derive(Debug)]
 pub struct PhysicalCte<'env, 'txn, S, M> {
     name: Name,
-    children: [Arc<dyn PhysicalNode<'env, 'txn, S, M>>; 2],
+    children: [PhysicalNodeId<'env, 'txn, S, M>; 2],
     materialized_data: Mutex<Vec<Tuple>>,
 }
 
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalCte<'env, 'txn, S, M> {
     pub(crate) fn plan(
         name: Name,
-        cte: Arc<dyn PhysicalNode<'env, 'txn, S, M>>,
-        child: Arc<dyn PhysicalNode<'env, 'txn, S, M>>,
+        cte: PhysicalNodeId<'env, 'txn, S, M>,
+        child: PhysicalNodeId<'env, 'txn, S, M>,
     ) -> Arc<dyn PhysicalNode<'env, 'txn, S, M>> {
         Arc::new(Self { name, children: [cte, child], materialized_data: Default::default() })
     }
@@ -25,12 +25,12 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalCte<
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode<'env, 'txn, S, M>
     for PhysicalCte<'env, 'txn, S, M>
 {
-    fn width(&self) -> usize {
-        self.children[1].width()
+    fn width(&self, nodes: &PhysicalNodeArena<'env, 'txn, S, M>) -> usize {
+        nodes[self.children[1]].width(nodes)
     }
 
     #[inline]
-    fn children(&self) -> &[Arc<dyn PhysicalNode<'env, 'txn, S, M>>] {
+    fn children(&self) -> &[PhysicalNodeId<'env, 'txn, S, M>] {
         &self.children
     }
 
@@ -47,7 +47,8 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode
         self: Arc<Self>,
     ) -> Result<Arc<dyn PhysicalSource<'env, 'txn, S, M>>, Arc<dyn PhysicalNode<'env, 'txn, S, M>>>
     {
-        Arc::clone(&self.children[1]).as_source()
+        todo!()
+        // Arc::clone(&self.children[1]).as_source()
     }
 
     #[inline]
@@ -55,22 +56,24 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode
         self: Arc<Self>,
     ) -> Result<Arc<dyn PhysicalOperator<'env, 'txn, S, M>>, Arc<dyn PhysicalNode<'env, 'txn, S, M>>>
     {
-        Arc::clone(&self.children[1]).as_operator()
+        todo!()
+        // Arc::clone(&self.children[1]).as_operator()
     }
 
     fn build_pipelines(
         self: Arc<Self>,
-        arena: &mut PipelineBuilderArena<'env, 'txn, S, M>,
+        nodes: &PhysicalNodeArena<'env, 'txn, S, M>,
+        pipelines: &mut PipelineBuilderArena<'env, 'txn, S, M>,
         meta_builder: Idx<MetaPipelineBuilder<'env, 'txn, S, M>>,
         current: Idx<PipelineBuilder<'env, 'txn, S, M>>,
     ) {
         let cte_sink = Arc::clone(&self) as Arc<dyn PhysicalSink<'env, 'txn, S, M>>;
         // push data from the cte plan into ourselves
-        let cte_builder = arena.new_child_meta_pipeline(meta_builder, cte_sink);
-        arena.build(cte_builder, Arc::clone(&self.children[0]));
+        let cte_builder = pipelines.new_child_meta_pipeline(meta_builder, cte_sink);
+        pipelines.build(nodes, cte_builder, self.children[0]);
 
         // recursively build onto `current` with the child plan
-        Arc::clone(&self.children[1]).build_pipelines(arena, meta_builder, current);
+        nodes[self.children[1]].clone().build_pipelines(nodes, pipelines, meta_builder, current);
     }
 }
 
