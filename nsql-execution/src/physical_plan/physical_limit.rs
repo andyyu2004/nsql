@@ -6,6 +6,7 @@ use super::*;
 
 #[derive(Debug)]
 pub struct PhysicalLimit<'env, 'txn, S, M> {
+    id: PhysicalNodeId<'env, 'txn, S, M>,
     child: PhysicalNodeId<'env, 'txn, S, M>,
     yielded: AtomicU64,
     limit: u64,
@@ -19,8 +20,17 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
         source: PhysicalNodeId<'env, 'txn, S, M>,
         limit: u64,
         exceeded_message: Option<String>,
-    ) -> Arc<dyn PhysicalNode<'env, 'txn, S, M>> {
-        Arc::new(Self { child: source, limit, yielded: AtomicU64::new(0), exceeded_message })
+        arena: &mut PhysicalNodeArena<'env, 'txn, S, M>,
+    ) -> PhysicalNodeId<'env, 'txn, S, M> {
+        arena.alloc_with(|id| {
+            Arc::new(Self {
+                id,
+                child: source,
+                limit,
+                yielded: AtomicU64::new(0),
+                exceeded_message,
+            })
+        })
     }
 }
 
@@ -48,6 +58,10 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode<'env, 'txn, S, M>
     for PhysicalLimit<'env, 'txn, S, M>
 {
+    fn id(&self) -> PhysicalNodeId<'env, 'txn, S, M> {
+        self.id
+    }
+
     fn width(&self, nodes: &PhysicalNodeArena<'env, 'txn, S, M>) -> usize {
         nodes[self.child].width(nodes)
     }

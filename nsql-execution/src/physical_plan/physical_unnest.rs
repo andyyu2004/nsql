@@ -5,20 +5,22 @@ use super::*;
 use crate::TupleStream;
 
 #[derive(Debug)]
-pub struct PhysicalUnnest<S> {
+pub struct PhysicalUnnest<'env, 'txn, S, M> {
+    id: PhysicalNodeId<'env, 'txn, S, M>,
     expr: ExecutableExpr<S>,
 }
 
-impl<S: StorageEngine> PhysicalUnnest<S> {
-    pub(crate) fn plan<'env: 'txn, 'txn, M: ExecutionMode<'env, S>>(
+impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalUnnest<'env, 'txn, S, M> {
+    pub(crate) fn plan(
         expr: ExecutableExpr<S>,
-    ) -> Arc<dyn PhysicalNode<'env, 'txn, S, M>> {
-        Arc::new(Self { expr })
+        arena: &mut PhysicalNodeArena<'env, 'txn, S, M>,
+    ) -> PhysicalNodeId<'env, 'txn, S, M> {
+        arena.alloc_with(|id| Arc::new(Self { id, expr }))
     }
 }
 
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSource<'env, 'txn, S, M>
-    for PhysicalUnnest<S>
+    for PhysicalUnnest<'env, 'txn, S, M>
 {
     fn source(
         self: Arc<Self>,
@@ -39,8 +41,12 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
 }
 
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode<'env, 'txn, S, M>
-    for PhysicalUnnest<S>
+    for PhysicalUnnest<'env, 'txn, S, M>
 {
+    fn id(&self) -> PhysicalNodeId<'env, 'txn, S, M> {
+        self.id
+    }
+
     fn width(&self, _nodes: &PhysicalNodeArena<'env, 'txn, S, M>) -> usize {
         1
     }
@@ -71,7 +77,9 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine> Explain<'env, S> for PhysicalUnnest<S> {
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Explain<'env, S>
+    for PhysicalUnnest<'env, 'txn, S, M>
+{
     fn as_dyn(&self) -> &dyn Explain<'env, S> {
         self
     }

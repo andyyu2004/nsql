@@ -3,27 +3,33 @@ use nsql_storage_engine::fallible_iterator;
 use super::*;
 use crate::{ReadWriteExecutionMode, TupleStream};
 
-pub struct PhysicalDrop {
+pub struct PhysicalDrop<'env, 'txn, S> {
+    id: PhysicalNodeId<'env, 'txn, S, ReadWriteExecutionMode>,
     refs: Vec<ir::EntityRef>,
 }
 
-impl fmt::Debug for PhysicalDrop {
+impl<'env, 'txn, S> fmt::Debug for PhysicalDrop<'env, 'txn, S> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("PhysicalDrop").field("refs", &self.refs).finish()
     }
 }
 
-impl<'env: 'txn, 'txn> PhysicalDrop {
-    pub(crate) fn plan<S: StorageEngine>(
+impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalDrop<'env, 'txn, S> {
+    pub(crate) fn plan(
         refs: Vec<ir::EntityRef>,
-    ) -> Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode>> {
-        Arc::new(Self { refs })
+        arena: &mut PhysicalNodeArena<'env, 'txn, S, ReadWriteExecutionMode>,
+    ) -> PhysicalNodeId<'env, 'txn, S, ReadWriteExecutionMode> {
+        arena.alloc_with(|id| Arc::new(Self { id, refs }))
     }
 }
 
 impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode>
-    for PhysicalDrop
+    for PhysicalDrop<'env, 'txn, S>
 {
+    fn id(&self) -> PhysicalNodeId<'env, 'txn, S, ReadWriteExecutionMode> {
+        self.id
+    }
+
     fn width(&self, _nodes: &PhysicalNodeArena<'env, 'txn, S, ReadWriteExecutionMode>) -> usize {
         0
     }
@@ -61,7 +67,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalNode<'env, 'txn, S, ReadWriteEx
 }
 
 impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSource<'env, 'txn, S, ReadWriteExecutionMode>
-    for PhysicalDrop
+    for PhysicalDrop<'env, 'txn, S>
 {
     fn source(
         self: Arc<Self>,
@@ -84,7 +90,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSource<'env, 'txn, S, ReadWrite
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine> Explain<'env, S> for PhysicalDrop {
+impl<'env: 'txn, 'txn, S: StorageEngine> Explain<'env, S> for PhysicalDrop<'env, 'txn, S> {
     fn as_dyn(&self) -> &dyn Explain<'env, S> {
         self
     }

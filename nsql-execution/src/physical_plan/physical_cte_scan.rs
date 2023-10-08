@@ -5,6 +5,7 @@ use super::*;
 
 #[derive(Debug)]
 pub struct PhysicalCteScan<'env, 'txn, S, M> {
+    id: PhysicalNodeId<'env, 'txn, S, M>,
     cte_name: Name,
     /// The cte node that produces the data for this scan
     cte: PhysicalNodeId<'env, 'txn, S, M>,
@@ -16,8 +17,9 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     pub(crate) fn plan(
         cte_name: Name,
         cte: PhysicalNodeId<'env, 'txn, S, M>,
-    ) -> Arc<dyn PhysicalNode<'env, 'txn, S, M>> {
-        Arc::new(Self { cte_name, cte })
+        arena: &mut PhysicalNodeArena<'env, 'txn, S, M>,
+    ) -> PhysicalNodeId<'env, 'txn, S, M> {
+        arena.alloc_with(|id| Arc::new(Self { id, cte_name, cte }))
     }
 }
 
@@ -45,6 +47,10 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode<'env, 'txn, S, M>
     for PhysicalCteScan<'env, 'txn, S, M>
 {
+    fn id(&self) -> PhysicalNodeId<'env, 'txn, S, M> {
+        self.id
+    }
+
     fn width(&self, nodes: &PhysicalNodeArena<'env, 'txn, S, M>) -> usize {
         nodes[self.cte].width(nodes)
     }

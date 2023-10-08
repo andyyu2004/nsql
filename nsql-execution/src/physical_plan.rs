@@ -76,6 +76,12 @@ pub struct PhysicalPlan<'env, 'txn, S, M> {
     root: PhysicalNodeId<'env, 'txn, S, M>,
 }
 
+impl<'env, 'txn, S, M> Clone for PhysicalPlan<'env, 'txn, S, M> {
+    fn clone(&self) -> Self {
+        Self { nodes: self.nodes.clone(), root: self.root }
+    }
+}
+
 impl<'env, 'txn, S, M> PhysicalPlan<'env, 'txn, S, M> {
     pub(crate) fn root(&self) -> PhysicalNodeId<'env, 'txn, S, M> {
         self.root
@@ -83,6 +89,10 @@ impl<'env, 'txn, S, M> PhysicalPlan<'env, 'txn, S, M> {
 
     pub(crate) fn arena(&self) -> &PhysicalNodeArena<'env, 'txn, S, M> {
         &self.nodes
+    }
+
+    pub(crate) fn arena_mut(&mut self) -> &mut PhysicalNodeArena<'env, 'txn, S, M> {
+        &mut self.nodes
     }
 
     pub(crate) fn into_arena(self) -> PhysicalNodeArena<'env, 'txn, S, M> {
@@ -134,10 +144,12 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
         plan_query: impl FnOnce(&mut Self, &opt::Query) -> Result<PhysicalNodeId<'env, 'txn, S, M>>,
     ) -> Result<PhysicalNodeId<'env, 'txn, S, M>> {
         let node = match *plan {
-            ir::Plan::Transaction(kind) => PhysicalTransaction::plan(kind),
-            ir::Plan::SetVariable { name, value, scope } => PhysicalSet::plan(name, value, scope),
-            ir::Plan::Show(object_type) => PhysicalShow::plan(object_type),
-            ir::Plan::Query(q) => return plan_query(self, &q),
+            ir::Plan::Transaction(kind) => PhysicalTransaction::plan(kind, &mut self.arena),
+            ir::Plan::SetVariable { name, value, scope } => {
+                PhysicalSet::plan(name, value, scope, &mut self.arena)
+            }
+            ir::Plan::Show(object_type) => PhysicalShow::plan(object_type, &mut self.arena),
+            ir::Plan::Query(q) => plan_query(self, &q)?,
             ir::Plan::Explain(opts, logical_plan) => {
                 let logical_explain = if opts.verbose {
                     format!("{logical_plan:#}")
@@ -147,17 +159,17 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
 
                 let root = f(self, logical_plan)?;
                 let physical_plan = PhysicalPlan { nodes: self.arena.clone(), root };
-                PhysicalExplain::plan(opts, logical_explain, physical_plan)
+                PhysicalExplain::plan(opts, logical_explain, physical_plan, &mut self.arena)
             }
             ir::Plan::Drop(..) => unreachable!("write plans should go through plan_write_node"),
             ir::Plan::Copy(cp) => match cp {
                 ir::Copy::To(ir::CopyTo { src, dst }) => {
-                    PhysicalCopyTo::plan(plan_query(self, &src)?, dst)
+                    PhysicalCopyTo::plan(plan_query(self, &src)?, dst, &mut self.arena)
                 }
             },
         };
 
-        Ok(self.arena.alloc(node))
+        Ok(node)
     }
 
     fn plan_root_query(
@@ -188,7 +200,11 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
             opt::Plan::Projection(projection) => {
                 let source = projection.source(q);
                 let exprs = projection.exprs(q);
-                PhysicalProjection::plan(f(self, source)?, self.compile_exprs(tx, q, exprs)?)
+                PhysicalProjection::plan(
+                    f(self, source)?,
+                    self.compile_exprs(tx, q, exprs)?,
+                    &mut self.arena,
+                )
             }
             opt::Plan::Filter(filter) => match filter.source(q) {
                 // we expect a join node to be followed by a filter
@@ -197,12 +213,12 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
                     self.compile_expr(tx, q, filter.predicate(q))?,
                     f(self, join.lhs(q))?,
                     f(self, join.rhs(q))?,
-                    &self.arena,
+                    &mut self.arena,
                 ),
                 _ => {
                     let source = f(self, filter.source(q))?;
                     let predicate = self.compile_expr(tx, q, filter.predicate(q))?;
-                    PhysicalFilter::plan(source, predicate)
+                    PhysicalFilter::plan(source, predicate, &mut self.arena)
                 }
             },
             opt::Plan::Join(join) => match join.kind() {
@@ -212,29 +228,35 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
                     eval::Expr::literal(true),
                     f(self, join.lhs(q))?,
                     f(self, join.rhs(q))?,
-                    &self.arena,
+                    &mut self.arena,
                 ),
                 _ => unreachable!("expected non-dependent join to be the child of a filter"),
             },
             opt::Plan::Limit(limit) => {
                 let source = f(self, limit.source(q))?;
-                PhysicalLimit::plan(source, limit.limit(q), limit.limit_exceeded_message(q))
+                PhysicalLimit::plan(
+                    source,
+                    limit.limit(q),
+                    limit.limit_exceeded_message(q),
+                    &mut self.arena,
+                )
             }
             opt::Plan::Distinct(distinct) => {
                 let source = f(self, distinct.source(q))?;
-                PhysicalHashDistinct::plan(source)
+                PhysicalHashDistinct::plan(source, &mut self.arena)
             }
             opt::Plan::Aggregate(agg) => {
                 let aggregates = self.compile_aggregate_functions(tx, q, agg.aggregates(q))?;
                 let group_by = agg.group_by(q);
                 let source = f(self, agg.source(q))?;
                 if group_by.is_empty() {
-                    PhysicalUngroupedAggregate::plan(aggregates, source)
+                    PhysicalUngroupedAggregate::plan(aggregates, source, &mut self.arena)
                 } else {
                     PhysicalHashAggregate::plan(
                         aggregates,
                         source,
                         self.compile_exprs(tx, q, group_by)?,
+                        &mut self.arena,
                     )
                 }
             }
@@ -243,23 +265,27 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
                     .rows(q)
                     .map(|exprs| self.compile_exprs(tx, q, exprs))
                     .collect::<Result<_>>()?,
+                &mut self.arena,
             ),
             opt::Plan::Order(order) => PhysicalOrder::plan(
                 f(self, order.source(q))?,
                 self.compile_order_exprs(tx, q, order.order_exprs(q))?,
+                &mut self.arena,
             ),
             opt::Plan::TableScan(scan) => {
                 let table = self.catalog.table(tx, scan.table(q))?;
                 let columns = table.columns(self.catalog, tx)?;
-                PhysicalTableScan::plan(table, columns, None)
+                PhysicalTableScan::plan(table, columns, None, &mut self.arena)
             }
-            opt::Plan::DummyScan => PhysicalDummyScan::plan(None),
-            opt::Plan::Empty(empty) => PhysicalDummyScan::plan(Some(empty.width())),
+            opt::Plan::DummyScan => PhysicalDummyScan::plan(None, &mut self.arena),
+            opt::Plan::Empty(empty) => {
+                PhysicalDummyScan::plan(Some(empty.width()), &mut self.arena)
+            }
             opt::Plan::Union(union) => {
-                PhysicalUnion::plan(f(self, union.lhs(q))?, f(self, union.rhs(q))?)
+                PhysicalUnion::plan(f(self, union.lhs(q))?, f(self, union.rhs(q))?, &mut self.arena)
             }
             opt::Plan::Unnest(unnest) => {
-                PhysicalUnnest::plan(self.compile_expr(tx, q, unnest.expr(q))?)
+                PhysicalUnnest::plan(self.compile_expr(tx, q, unnest.expr(q))?, &mut self.arena)
             }
             opt::Plan::Update(..) | opt::Plan::Insert(..) => unreachable!(
                 "write query plans should go through plan_write_query_node, got plan {:?}",
@@ -269,16 +295,16 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
                 let name = scan.name();
                 let cte =
                     self.ctes.get(&name).cloned().expect("cte should be planned before the scan");
-                PhysicalCteScan::plan(name, cte)
+                PhysicalCteScan::plan(name, cte, &mut self.arena)
             }
             opt::Plan::Cte(cte) => {
                 let cte_plan = f(self, cte.cte_plan(q))?;
                 self.ctes.insert(cte.name(), cte_plan);
-                PhysicalCte::plan(cte.name(), cte_plan, f(self, cte.child(q))?)
+                PhysicalCte::plan(cte.name(), cte_plan, f(self, cte.child(q))?, &mut self.arena)
             }
         };
 
-        Ok(self.arena.alloc(plan))
+        Ok(plan)
     }
 
     fn compile_order_exprs(
@@ -361,7 +387,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalPlanner<'env, 'txn, S, ReadWrit
         plan: Box<ir::Plan<opt::Query>>,
     ) -> Result<PhysicalNodeId<'env, 'txn, S, ReadWriteExecutionMode>> {
         match *plan {
-            ir::Plan::Drop(refs) => Ok(self.arena.alloc(PhysicalDrop::plan(refs))),
+            ir::Plan::Drop(refs) => Ok(PhysicalDrop::plan(refs, &mut self.arena)),
             _ => self.fold_plan(
                 plan,
                 |planner, plan| planner.do_plan_write(tx, plan),
@@ -389,11 +415,13 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalPlanner<'env, 'txn, S, ReadWrit
                 insert.table(q),
                 self.plan_write_query(tx, q, insert.source(q))?,
                 self.compile_exprs(tx, q, insert.returning(q))?,
+                &mut self.arena,
             ),
             opt::Plan::Insert(insert) => PhysicalInsert::plan(
                 insert.table(q),
                 self.plan_write_query(tx, q, insert.source(q))?,
                 self.compile_exprs(tx, q, insert.returning(q))?,
+                &mut self.arena,
             ),
             _ => {
                 return self.fold_query_plan(tx, q, plan, |planner, node| {
@@ -402,6 +430,6 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalPlanner<'env, 'txn, S, ReadWrit
             }
         };
 
-        Ok(self.arena.alloc(plan))
+        Ok(plan)
     }
 }

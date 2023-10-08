@@ -3,20 +3,24 @@ use nsql_storage_engine::fallible_iterator;
 use super::*;
 
 #[derive(Debug)]
-pub struct PhysicalValues<S> {
+pub struct PhysicalValues<'env, 'txn, S, M> {
+    id: PhysicalNodeId<'env, 'txn, S, M>,
     values: Box<[ExecutableTupleExpr<S>]>,
 }
 
-impl<S: StorageEngine> PhysicalValues<S> {
-    pub(crate) fn plan<'env: 'txn, 'txn, M: ExecutionMode<'env, S>>(
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
+    PhysicalValues<'env, 'txn, S, M>
+{
+    pub(crate) fn plan(
         values: Box<[ExecutableTupleExpr<S>]>,
-    ) -> Arc<dyn PhysicalNode<'env, 'txn, S, M>> {
-        Arc::new(PhysicalValues { values })
+        arena: &mut PhysicalNodeArena<'env, 'txn, S, M>,
+    ) -> PhysicalNodeId<'env, 'txn, S, M> {
+        arena.alloc_with(|id| Arc::new(Self { id, values }))
     }
 }
 
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSource<'env, 'txn, S, M>
-    for PhysicalValues<S>
+    for PhysicalValues<'env, 'txn, S, M>
 {
     fn source(
         self: Arc<Self>,
@@ -41,8 +45,12 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
 }
 
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode<'env, 'txn, S, M>
-    for PhysicalValues<S>
+    for PhysicalValues<'env, 'txn, S, M>
 {
+    fn id(&self) -> PhysicalNodeId<'env, 'txn, S, M> {
+        self.id
+    }
+
     fn width(&self, _nodes: &PhysicalNodeArena<'env, 'txn, S, M>) -> usize {
         debug_assert!(!self.values.is_empty());
         self.values[0].width()
@@ -78,7 +86,9 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine> Explain<'env, S> for PhysicalValues<S> {
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Explain<'env, S>
+    for PhysicalValues<'env, 'txn, S, M>
+{
     fn as_dyn(&self) -> &dyn Explain<'env, S> {
         self
     }

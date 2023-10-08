@@ -22,7 +22,7 @@ pub use nsql_redb::RedbStorageEngine;
 pub use nsql_storage::tuple::Tuple;
 use nsql_storage::Storage;
 pub use nsql_storage_engine::StorageEngine;
-use nsql_storage_engine::{ReadOrWriteTransaction, WriteTransaction};
+use nsql_storage_engine::{ReadOrWriteTransaction, ReadonlyExecutionMode, WriteTransaction};
 
 pub type Result<T, E = anyhow::Error> = std::result::Result<T, E>;
 
@@ -215,7 +215,8 @@ impl<S: StorageEngine> Shared<S> {
                 let physical_plan = planner.plan(&tx, plan)?;
                 let ecx =
                     ExecutionContext::new(catalog, TransactionContext::new(tx, auto_commit), ctx);
-                let tuples = nsql_execution::execute(&ecx, physical_plan)?;
+                let tuples =
+                    nsql_execution::execute::<S, ReadonlyExecutionMode>(&ecx, physical_plan)?;
                 let (auto_commit, state, tx) = ecx.take_txn();
                 if auto_commit || !matches!(state, TransactionState::Active) {
                     tracing::debug!("ending readonly transaction");
@@ -230,7 +231,7 @@ impl<S: StorageEngine> Shared<S> {
                 let physical_plan = planner.plan_write(&tx, plan)?;
                 let ecx =
                     ExecutionContext::new(catalog, TransactionContext::new(tx, auto_commit), ctx);
-                let tuples = match nsql_execution::execute_write(&ecx, physical_plan) {
+                let tuples = match nsql_execution::execute(&ecx, physical_plan) {
                     Ok(tuples) => tuples,
                     Err(err) => {
                         tracing::debug!(error = %err, "aborting write transaction due to error during execution");

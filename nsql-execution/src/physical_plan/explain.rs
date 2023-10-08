@@ -101,9 +101,10 @@ impl<'a, 'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
             )?;
 
             let pipeline = &arena[pipeline];
+            let nodes = &self.root.root_pipeline.nodes;
             for node in pipeline.nodes().rev() {
                 write!(f, "{:indent$}", "", indent = self.indent + 4)?;
-                node.explain(catalog, tx, f)?;
+                nodes[node].explain(catalog, tx, f)?;
                 writeln!(f)?;
             }
         }

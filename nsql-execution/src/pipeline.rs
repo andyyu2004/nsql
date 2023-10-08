@@ -1,12 +1,24 @@
-use std::sync::Arc;
-
 pub(crate) use nsql_arena::{Arena, Idx};
 use nsql_storage_engine::StorageEngine;
 
 use crate::{
-    ExecutionMode, PhysicalNode, PhysicalNodeArena, PhysicalNodeId, PhysicalOperator, PhysicalSink,
+    ExecutionMode, PhysicalNodeArena, PhysicalNodeId, PhysicalOperator, PhysicalSink,
     PhysicalSource,
 };
+
+pub(crate) struct RootPipeline<'env, 'txn, S, M> {
+    pub arena: PipelineArena<'env, 'txn, S, M>,
+    pub nodes: PhysicalNodeArena<'env, 'txn, S, M>,
+}
+
+impl<'env, 'txn, S, M> RootPipeline<'env, 'txn, S, M> {
+    pub fn new(
+        arena: PipelineArena<'env, 'txn, S, M>,
+        nodes: PhysicalNodeArena<'env, 'txn, S, M>,
+    ) -> Self {
+        Self { arena, nodes }
+    }
+}
 
 pub(crate) struct MetaPipeline<'env, 'txn, S, M> {
     pub(crate) pipelines: Vec<Idx<Pipeline<'env, 'txn, S, M>>>,
@@ -17,7 +29,6 @@ pub(crate) struct MetaPipeline<'env, 'txn, S, M> {
 pub(crate) struct MetaPipelineBuilder<'env, 'txn, S, M> {
     pipelines: Vec<Idx<PipelineBuilder<'env, 'txn, S, M>>>,
     children: Vec<Idx<MetaPipelineBuilder<'env, 'txn, S, M>>>,
-    // sink: Arc<dyn PhysicalSink<'env, 'txn, S, M>>,
 }
 
 #[derive(Debug)]
@@ -27,9 +38,11 @@ pub(crate) struct PipelineBuilderArena<'env, 'txn, S, M> {
     meta_pipelines: Arena<MetaPipelineBuilder<'env, 'txn, S, M>>,
 }
 
-impl<'env, 'txn, S, M> PipelineBuilderArena<'env, 'txn, S, M> {
+impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
+    PipelineBuilderArena<'env, 'txn, S, M>
+{
     pub(crate) fn new(
-        sink: Arc<dyn PhysicalSink<'env, 'txn, S, M>>,
+        sink: &dyn PhysicalSink<'env, 'txn, S, M>,
     ) -> (Self, Idx<MetaPipelineBuilder<'env, 'txn, S, M>>) {
         let mut builder =
             Self { pipelines: Default::default(), meta_pipelines: Default::default(), root: None };
@@ -112,15 +125,16 @@ impl<'env, 'txn, S, M> PipelineArena<'env, 'txn, S, M> {
 impl_index!(PipelineArena.pipelines: Pipeline);
 impl_index!(PipelineArena.meta_pipelines: MetaPipeline);
 
-impl<'env, 'txn, S, M> MetaPipelineBuilder<'env, 'txn, S, M> {
+impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
+    MetaPipelineBuilder<'env, 'txn, S, M>
+{
     pub(crate) fn new(
         arena: &mut PipelineBuilderArena<'env, 'txn, S, M>,
-        sink: Arc<dyn PhysicalSink<'env, 'txn, S, M>>,
+        sink: &dyn PhysicalSink<'env, 'txn, S, M>,
     ) -> Idx<Self> {
         arena.meta_pipelines.alloc(Self {
-            pipelines: vec![arena.pipelines.alloc(PipelineBuilder::new(Arc::clone(&sink)))],
+            pipelines: vec![arena.pipelines.alloc(PipelineBuilder::new(sink))],
             children: Default::default(),
-            // sink,
         })
     }
 
@@ -129,10 +143,6 @@ impl<'env, 'txn, S, M> MetaPipelineBuilder<'env, 'txn, S, M> {
         let children = self.children.iter().map(|idx| idx.cast()).collect();
         MetaPipeline { pipelines, children }
     }
-
-    // pub(crate) fn sink(&self) -> Arc<dyn PhysicalSink<'env, 'txn, S, M>> {
-    //     Arc::clone(&self.sink)
-    // }
 }
 
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
@@ -141,7 +151,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     pub(crate) fn new_child_meta_pipeline(
         &mut self,
         parent: Idx<MetaPipelineBuilder<'env, 'txn, S, M>>,
-        sink: Arc<dyn PhysicalSink<'env, 'txn, S, M>>,
+        sink: &dyn PhysicalSink<'env, 'txn, S, M>,
     ) -> Idx<MetaPipelineBuilder<'env, 'txn, S, M>> {
         let child = MetaPipelineBuilder::new(self, sink);
 
@@ -173,48 +183,45 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
 }
 
 pub struct Pipeline<'env, 'txn, S, M> {
-    pub(crate) source: Arc<dyn PhysicalSource<'env, 'txn, S, M>>,
+    pub(crate) source: PhysicalNodeId<'env, 'txn, S, M>,
     /// The operators in the pipeline, ordered from source to sink.
-    pub(crate) operators: Vec<Arc<dyn PhysicalOperator<'env, 'txn, S, M>>>,
-    pub(crate) sink: Arc<dyn PhysicalSink<'env, 'txn, S, M>>,
+    pub(crate) operators: Box<[PhysicalNodeId<'env, 'txn, S, M>]>,
+    pub(crate) sink: PhysicalNodeId<'env, 'txn, S, M>,
 }
 
 impl<'env, 'txn, S, M> Pipeline<'env, 'txn, S, M> {
     /// Returns an iterator over all nodes in the pipeline starting from the source and ending at the sink.
     pub(crate) fn nodes(
         &self,
-    ) -> impl DoubleEndedIterator<Item = &dyn PhysicalNode<'env, 'txn, S, M>> + '_ {
-        std::iter::once(self.source.as_ref() as _)
-            .chain(self.operators.iter().map(|op| op.as_ref() as _))
-            .chain(Some(self.sink.as_ref() as _))
+    ) -> impl DoubleEndedIterator<Item = PhysicalNodeId<'env, 'txn, S, M>> + '_ {
+        std::iter::once(self.source as _)
+            .chain(self.operators.iter().copied())
+            .chain(Some(self.sink))
     }
 }
 
 #[derive(Debug)]
 pub(crate) struct PipelineBuilder<'env, 'txn, S, M> {
-    source: Option<Arc<dyn PhysicalSource<'env, 'txn, S, M>>>,
-    operators: Vec<Arc<dyn PhysicalOperator<'env, 'txn, S, M>>>,
-    sink: Arc<dyn PhysicalSink<'env, 'txn, S, M>>,
+    source: Option<PhysicalNodeId<'env, 'txn, S, M>>,
+    operators: Vec<PhysicalNodeId<'env, 'txn, S, M>>,
+    sink: PhysicalNodeId<'env, 'txn, S, M>,
 }
 
-impl<'env, 'txn, S, M> PipelineBuilder<'env, 'txn, S, M> {
-    pub(crate) fn new(sink: Arc<dyn PhysicalSink<'env, 'txn, S, M>>) -> Self {
-        Self { source: None, operators: vec![], sink }
-    }
-
-    #[allow(dead_code)]
-    pub(crate) fn sink(&self) -> Arc<dyn PhysicalSink<'env, 'txn, S, M>> {
-        Arc::clone(&self.sink)
+impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PipelineBuilder<'env, 'txn, S, M> {
+    // NOTE: we require these methods to require the trait object even though we only need the id for type safety.
+    // The id doesn't tell us which of the 3 traits are implemented.
+    pub(crate) fn new(sink: &dyn PhysicalSink<'env, 'txn, S, M>) -> Self {
+        Self { source: None, operators: vec![], sink: sink.id() }
     }
 
     #[track_caller]
-    pub(crate) fn set_source(&mut self, source: Arc<dyn PhysicalSource<'env, 'txn, S, M>>) {
+    pub(crate) fn set_source(&mut self, source: &dyn PhysicalSource<'env, 'txn, S, M>) {
         assert!(self.source.is_none(), "pipeline source already set");
-        self.source = Some(source);
+        self.source = Some(source.id());
     }
 
-    pub(crate) fn add_operator(&mut self, operator: Arc<dyn PhysicalOperator<'env, 'txn, S, M>>) {
-        self.operators.push(operator);
+    pub(crate) fn add_operator(&mut self, operator: &dyn PhysicalOperator<'env, 'txn, S, M>) {
+        self.operators.push(operator.id());
     }
 
     pub(crate) fn finish(mut self) -> Pipeline<'env, 'txn, S, M> {
@@ -223,7 +230,7 @@ impl<'env, 'txn, S, M> PipelineBuilder<'env, 'txn, S, M> {
         self.operators.reverse();
         Pipeline {
             source: self.source.expect("did not provide source of pipeline to pipeline builder"),
-            operators: self.operators,
+            operators: self.operators.into_boxed_slice(),
             sink: self.sink,
         }
     }

@@ -8,6 +8,7 @@ use crate::ReadWriteExecutionMode;
 
 #[derive(Debug)]
 pub(crate) struct PhysicalUpdate<'env, 'txn, S> {
+    id: PhysicalNodeId<'env, 'txn, S, ReadWriteExecutionMode>,
     children: [PhysicalNodeId<'env, 'txn, S, ReadWriteExecutionMode>; 1],
     table: Oid<Table>,
     tuples: RwLock<Vec<Tuple>>,
@@ -22,13 +23,17 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalUpdate<'env, 'txn, S> {
         // The schema should be that of the table being updated + the `tid` in the rightmost column
         source: PhysicalNodeId<'env, 'txn, S, ReadWriteExecutionMode>,
         returning: ExecutableTupleExpr<S>,
-    ) -> Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode>> {
-        Arc::new(Self {
-            table,
-            returning,
-            tuples: Default::default(),
-            children: [source],
-            returning_tuples: Default::default(),
+        arena: &mut PhysicalNodeArena<'env, 'txn, S, ReadWriteExecutionMode>,
+    ) -> PhysicalNodeId<'env, 'txn, S, ReadWriteExecutionMode> {
+        arena.alloc_with(|id| {
+            Arc::new(Self {
+                id,
+                table,
+                returning,
+                tuples: Default::default(),
+                children: [source],
+                returning_tuples: Default::default(),
+            })
         })
     }
 }
@@ -36,6 +41,10 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalUpdate<'env, 'txn, S> {
 impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode>
     for PhysicalUpdate<'env, 'txn, S>
 {
+    fn id(&self) -> PhysicalNodeId<'env, 'txn, S, ReadWriteExecutionMode> {
+        self.id
+    }
+
     fn width(&self, _nodes: &PhysicalNodeArena<'env, 'txn, S, ReadWriteExecutionMode>) -> usize {
         self.returning.width()
     }

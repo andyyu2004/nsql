@@ -5,13 +5,14 @@ use nsql_storage_engine::FallibleIterator;
 
 use super::*;
 
-pub struct PhysicalTableScan {
+pub struct PhysicalTableScan<'env, 'txn, S, M> {
+    id: PhysicalNodeId<'env, 'txn, S, M>,
     table: Table,
     columns: Box<[Column]>,
     projection: Option<Box<[ColumnIndex]>>,
 }
 
-impl fmt::Debug for PhysicalTableScan {
+impl<'env, 'txn, S, M> fmt::Debug for PhysicalTableScan<'env, 'txn, S, M> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("PhysicalTableScan")
             .field("table", &self.table)
@@ -20,18 +21,21 @@ impl fmt::Debug for PhysicalTableScan {
     }
 }
 
-impl<'env: 'txn, 'txn> PhysicalTableScan {
-    pub(crate) fn plan<S: StorageEngine, M: ExecutionMode<'env, S>>(
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
+    PhysicalTableScan<'env, 'txn, S, M>
+{
+    pub(crate) fn plan(
         table: Table,
         columns: impl Into<Box<[Column]>>,
         projection: Option<Box<[ColumnIndex]>>,
-    ) -> Arc<dyn PhysicalNode<'env, 'txn, S, M>> {
-        Arc::new(Self { table, columns: columns.into(), projection })
+        arena: &mut PhysicalNodeArena<'env, 'txn, S, M>,
+    ) -> PhysicalNodeId<'env, 'txn, S, M> {
+        arena.alloc_with(|id| Arc::new(Self { id, table, columns: columns.into(), projection }))
     }
 }
 
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSource<'env, 'txn, S, M>
-    for PhysicalTableScan
+    for PhysicalTableScan<'env, 'txn, S, M>
 {
     #[tracing::instrument(skip(self, ecx))]
     fn source(
@@ -53,8 +57,12 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
 }
 
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode<'env, 'txn, S, M>
-    for PhysicalTableScan
+    for PhysicalTableScan<'env, 'txn, S, M>
 {
+    fn id(&self) -> PhysicalNodeId<'env, 'txn, S, M> {
+        self.id
+    }
+
     fn width(&self, _nodes: &PhysicalNodeArena<'env, 'txn, S, M>) -> usize {
         self.projection.as_ref().map_or_else(|| self.columns.len(), |p| p.len())
     }
@@ -85,7 +93,9 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode
     }
 }
 
-impl<'env, S: StorageEngine> Explain<'env, S> for PhysicalTableScan {
+impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> Explain<'env, S>
+    for PhysicalTableScan<'env, '_, S, M>
+{
     fn as_dyn(&self) -> &dyn Explain<'env, S> {
         self
     }

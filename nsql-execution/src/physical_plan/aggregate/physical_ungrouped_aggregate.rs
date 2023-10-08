@@ -8,6 +8,7 @@ use super::*;
 
 #[derive(Debug)]
 pub struct PhysicalUngroupedAggregate<'env, 'txn, S, M> {
+    id: PhysicalNodeId<'env, 'txn, S, M>,
     functions: Box<[(ir::Function, Option<ExecutableExpr<S>>)]>,
     aggregate_functions: Mutex<Vec<Box<dyn AggregateFunctionInstance>>>,
     children: [PhysicalNodeId<'env, 'txn, S, M>; 1],
@@ -19,13 +20,17 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     pub(crate) fn plan(
         functions: Box<[(ir::Function, Option<ExecutableExpr<S>>)]>,
         source: PhysicalNodeId<'env, 'txn, S, M>,
-    ) -> Arc<dyn PhysicalNode<'env, 'txn, S, M>> {
-        Arc::new(Self {
-            aggregate_functions: Mutex::new(
-                functions.iter().map(|(f, _args)| f.get_aggregate_instance()).collect(),
-            ),
-            functions,
-            children: [source],
+        arena: &mut PhysicalNodeArena<'env, 'txn, S, M>,
+    ) -> PhysicalNodeId<'env, 'txn, S, M> {
+        arena.alloc_with(|id| {
+            Arc::new(Self {
+                id,
+                aggregate_functions: Mutex::new(
+                    functions.iter().map(|(f, _args)| f.get_aggregate_instance()).collect(),
+                ),
+                functions,
+                children: [source],
+            })
         })
     }
 }
@@ -66,6 +71,10 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSink
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode<'env, 'txn, S, M>
     for PhysicalUngroupedAggregate<'env, 'txn, S, M>
 {
+    fn id(&self) -> PhysicalNodeId<'env, 'txn, S, M> {
+        self.id
+    }
+
     fn width(&self, _nodes: &PhysicalNodeArena<'env, 'txn, S, M>) -> usize {
         self.functions.len()
     }

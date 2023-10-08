@@ -9,6 +9,7 @@ use super::*;
 
 #[derive(Debug)]
 pub struct PhysicalHashAggregate<'env, 'txn, S, M> {
+    id: PhysicalNodeId<'env, 'txn, S, M>,
     aggregates: Box<[(ir::Function, Option<ExecutableExpr<S>>)]>,
     children: [PhysicalNodeId<'env, 'txn, S, M>; 1],
     group_expr: ExecutableTupleExpr<S>,
@@ -22,12 +23,16 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
         aggregates: Box<[(ir::Function, Option<ExecutableExpr<S>>)]>,
         source: PhysicalNodeId<'env, 'txn, S, M>,
         group_expr: ExecutableTupleExpr<S>,
-    ) -> Arc<dyn PhysicalNode<'env, 'txn, S, M>> {
-        Arc::new(Self {
-            aggregates,
-            group_expr,
-            children: [source],
-            output_groups: Default::default(),
+        arena: &mut PhysicalNodeArena<'env, 'txn, S, M>,
+    ) -> PhysicalNodeId<'env, 'txn, S, M> {
+        arena.alloc_with(|id| {
+            Arc::new(Self {
+                id,
+                aggregates,
+                group_expr,
+                children: [source],
+                output_groups: Default::default(),
+            })
         })
     }
 }
@@ -82,6 +87,10 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSink
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode<'env, 'txn, S, M>
     for PhysicalHashAggregate<'env, 'txn, S, M>
 {
+    fn id(&self) -> PhysicalNodeId<'env, 'txn, S, M> {
+        self.id
+    }
+
     fn width(&self, _nodes: &PhysicalNodeArena<'env, 'txn, S, M>) -> usize {
         self.aggregates.len() + self.group_expr.width()
     }

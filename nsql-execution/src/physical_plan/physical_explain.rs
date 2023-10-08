@@ -6,6 +6,7 @@ use crate::config::ExplainOutput;
 use crate::executor::OutputSink;
 
 pub struct PhysicalExplain<'env, 'txn, S, M> {
+    id: PhysicalNodeId<'env, 'txn, S, M>,
     opts: ir::ExplainOptions,
     child: PhysicalNodeId<'env, 'txn, S, M>,
     logical_plan_explain: String,
@@ -26,12 +27,16 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
         opts: ir::ExplainOptions,
         logical_plan: impl Into<String>,
         physical_plan: PhysicalPlan<'env, 'txn, S, M>,
-    ) -> Arc<dyn PhysicalNode<'env, 'txn, S, M>> {
-        Arc::new(Self {
-            opts,
-            logical_plan_explain: logical_plan.into(),
-            child: physical_plan.root(),
-            physical_plan,
+        arena: &mut PhysicalNodeArena<'env, 'txn, S, M>,
+    ) -> PhysicalNodeId<'env, 'txn, S, M> {
+        arena.alloc_with(|id| {
+            Arc::new(Self {
+                id,
+                opts,
+                logical_plan_explain: logical_plan.into(),
+                child: physical_plan.root(),
+                physical_plan,
+            })
         })
     }
 }
@@ -39,6 +44,10 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode<'env, 'txn, S, M>
     for PhysicalExplain<'env, 'txn, S, M>
 {
+    fn id(&self) -> PhysicalNodeId<'env, 'txn, S, M> {
+        self.id
+    }
+
     fn width(&self, _nodes: &PhysicalNodeArena<'env, 'txn, S, M>) -> usize {
         1
     }
@@ -93,10 +102,11 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
         let scx = ecx.scx();
         let catalog = ecx.catalog();
         let tx = ecx.tx();
-        let physical_plan = &self.physical_plan;
+        let mut physical_plan = self.physical_plan.clone();
 
         let physical_explain = physical_plan.display(catalog, &tx).to_string();
-        let pipeline = crate::build_pipelines(Arc::new(OutputSink::new()), physical_plan);
+        let sink = OutputSink::plan(physical_plan.arena_mut());
+        let pipeline = crate::build_pipelines(sink.as_ref(), physical_plan);
         let pipeline_explain = pipeline.display(catalog, &tx).to_string();
 
         let logical_explain = self.logical_plan_explain.clone();

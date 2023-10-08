@@ -19,14 +19,15 @@ use nsql_catalog::Catalog;
 use nsql_core::Name;
 use nsql_storage::tuple::Tuple;
 use nsql_storage_engine::{
-    ExecutionMode, FallibleIterator, ReadWriteExecutionMode, ReadonlyExecutionMode, StorageEngine,
-    Transaction, TransactionConversionHack,
+    ExecutionMode, FallibleIterator, ReadWriteExecutionMode, StorageEngine, Transaction,
+    TransactionConversionHack,
 };
 use nsql_util::atomic::AtomicEnum;
 pub use physical_plan::PhysicalPlanner;
+use pipeline::RootPipeline;
 
 use self::config::SessionConfig;
-pub use self::executor::{execute, execute_write};
+pub use self::executor::execute;
 use self::physical_plan::{explain, Explain, PhysicalPlan};
 use self::pipeline::{
     MetaPipeline, MetaPipelineBuilder, Pipeline, PipelineArena, PipelineBuilder,
@@ -36,13 +37,13 @@ use self::pipeline::{
 pub type ExecutionResult<T, E = Error> = std::result::Result<T, E>;
 
 fn build_pipelines<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
-    sink: Arc<dyn PhysicalSink<'env, 'txn, S, M>>,
-    plan: &PhysicalPlan<'env, 'txn, S, M>,
+    sink: &dyn PhysicalSink<'env, 'txn, S, M>,
+    plan: PhysicalPlan<'env, 'txn, S, M>,
 ) -> RootPipeline<'env, 'txn, S, M> {
     let (mut builder, root_meta_pipeline) = PipelineBuilderArena::new(sink);
     builder.build(plan.arena(), root_meta_pipeline, plan.root());
     let arena = builder.finish();
-    RootPipeline { arena }
+    RootPipeline::new(arena, plan.into_arena())
 }
 
 struct PhysicalNodeArena<'env, 'txn, S, M> {
@@ -68,11 +69,11 @@ impl<'env, 'txn, S, M> Index<PhysicalNodeId<'env, 'txn, S, M>>
 }
 
 impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNodeArena<'env, 'txn, S, M> {
-    pub fn alloc(
+    pub fn alloc_with(
         &mut self,
-        node: Arc<dyn PhysicalNode<'env, 'txn, S, M>>,
+        mk: impl FnOnce(PhysicalNodeId<'env, 'txn, S, M>) -> Arc<dyn PhysicalNode<'env, 'txn, S, M>>,
     ) -> PhysicalNodeId<'env, 'txn, S, M> {
-        self.nodes.alloc(node)
+        self.nodes.alloc(mk(self.nodes.next_idx()))
     }
 }
 
@@ -83,6 +84,8 @@ type PhysicalNodeId<'env, 'txn, S, M> = Idx<Arc<dyn PhysicalNode<'env, 'txn, S, 
 trait PhysicalNode<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>:
     Explain<'env, S> + fmt::Debug + 'txn
 {
+    fn id(&self) -> PhysicalNodeId<'env, 'txn, S, M>;
+
     /// The width of the tuples produced by this node
     fn width(&self, nodes: &PhysicalNodeArena<'env, 'txn, S, M>) -> usize;
 
@@ -112,8 +115,7 @@ trait PhysicalNode<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>
                 // If we have a sink node (which is also a source),
                 // - set it to be the source of the current pipeline,
                 // - recursively build the pipeline for its child with `sink` as the sink of the new metapipeline
-                arena[current]
-                    .set_source(Arc::clone(&sink) as Arc<dyn PhysicalSource<'env, 'txn, S, M>>);
+                arena[current].set_source(sink.as_ref());
                 assert!(
                     sink.children().len() <= 1,
                     "default `build_pipelines` implementation only supports unary or nullary nodes for sinks"
@@ -121,7 +123,8 @@ trait PhysicalNode<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>
 
                 if !sink.children().is_empty() {
                     let child = sink.children()[0];
-                    let child_meta_builder = arena.new_child_meta_pipeline(meta_builder, sink);
+                    let child_meta_builder =
+                        arena.new_child_meta_pipeline(meta_builder, sink.as_ref());
                     arena.build(nodes, child_meta_builder, child);
                 }
             }
@@ -131,7 +134,7 @@ trait PhysicalNode<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>
                         source.children().is_empty(),
                         "default `build_pipelines` implementation only supports sources at the leaf"
                     );
-                    arena[current].set_source(source)
+                    arena[current].set_source(source.as_ref())
                 }
                 Err(operator) => {
                     let operator =
@@ -143,7 +146,7 @@ trait PhysicalNode<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>
                         "default `build_pipelines` implementation only supports unary operators"
                     );
                     let child = operator.children()[0];
-                    arena[current].add_operator(operator);
+                    arena[current].add_operator(operator.as_ref());
                     nodes[child].clone().build_pipelines(nodes, arena, meta_builder, current)
                 }
             },
@@ -323,8 +326,4 @@ impl<'a, 'env, S: StorageEngine, M: ExecutionMode<'env, S>> ExecutionContext<'a,
     pub fn storage(&self) -> &'env S {
         self.catalog.storage()
     }
-}
-
-struct RootPipeline<'env, 'txn, S, M> {
-    arena: PipelineArena<'env, 'txn, S, M>,
 }

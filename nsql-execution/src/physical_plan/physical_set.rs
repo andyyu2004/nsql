@@ -5,24 +5,26 @@ use nsql_storage_engine::fallible_iterator;
 use super::*;
 
 #[derive(Debug)]
-pub struct PhysicalSet {
+pub struct PhysicalSet<'env, 'txn, S, M> {
+    id: PhysicalNodeId<'env, 'txn, S, M>,
     name: Name,
     value: Value,
     scope: ir::VariableScope,
 }
 
-impl PhysicalSet {
-    pub(crate) fn plan<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSet<'env, 'txn, S, M> {
+    pub(crate) fn plan(
         name: Name,
         value: Value,
         scope: ir::VariableScope,
-    ) -> Arc<dyn PhysicalNode<'env, 'txn, S, M>> {
-        Arc::new(Self { name, value, scope })
+        arena: &mut PhysicalNodeArena<'env, 'txn, S, M>,
+    ) -> PhysicalNodeId<'env, 'txn, S, M> {
+        arena.alloc_with(|id| Arc::new(Self { id, name, value, scope }))
     }
 }
 
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSource<'env, 'txn, S, M>
-    for PhysicalSet
+    for PhysicalSet<'env, 'txn, S, M>
 {
     fn source(
         self: Arc<Self>,
@@ -41,8 +43,12 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
 }
 
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode<'env, 'txn, S, M>
-    for PhysicalSet
+    for PhysicalSet<'env, 'txn, S, M>
 {
+    fn id(&self) -> PhysicalNodeId<'env, 'txn, S, M> {
+        self.id
+    }
+
     fn width(&self, _nodes: &PhysicalNodeArena<'env, 'txn, S, M>) -> usize {
         0
     }
@@ -73,7 +79,9 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine> Explain<'env, S> for PhysicalSet {
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Explain<'env, S>
+    for PhysicalSet<'env, 'txn, S, M>
+{
     fn as_dyn(&self) -> &dyn Explain<'env, S> {
         self
     }

@@ -5,21 +5,27 @@ use nsql_storage_engine::{FallibleIterator, TransactionConversionHack};
 use super::*;
 
 #[derive(Debug)]
-pub struct PhysicalShow {
+pub struct PhysicalShow<'env, 'txn, S, M> {
+    id: PhysicalNodeId<'env, 'txn, S, M>,
     object_type: ir::ObjectType,
 }
 
-impl PhysicalShow {
-    pub(crate) fn plan<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalShow<'env, 'txn, S, M> {
+    pub(crate) fn plan(
         object_type: ir::ObjectType,
-    ) -> Arc<dyn PhysicalNode<'env, 'txn, S, M>> {
-        Arc::new(Self { object_type })
+        arena: &mut PhysicalNodeArena<'env, 'txn, S, M>,
+    ) -> PhysicalNodeId<'env, 'txn, S, M> {
+        arena.alloc_with(|id| Arc::new(Self { id, object_type }))
     }
 }
 
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode<'env, 'txn, S, M>
-    for PhysicalShow
+    for PhysicalShow<'env, 'txn, S, M>
 {
+    fn id(&self) -> PhysicalNodeId<'env, 'txn, S, M> {
+        self.id
+    }
+
     fn width(&self, _nodes: &PhysicalNodeArena<'env, 'txn, S, M>) -> usize {
         1
     }
@@ -51,7 +57,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode
 }
 
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSource<'env, 'txn, S, M>
-    for PhysicalShow
+    for PhysicalShow<'env, 'txn, S, M>
 {
     fn source(
         self: Arc<Self>,
@@ -72,7 +78,9 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
     }
 }
 
-impl<'env, S: StorageEngine> Explain<'env, S> for PhysicalShow {
+impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> Explain<'env, S>
+    for PhysicalShow<'env, '_, S, M>
+{
     fn as_dyn(&self) -> &dyn Explain<'env, S> {
         self
     }

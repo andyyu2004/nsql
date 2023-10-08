@@ -7,6 +7,7 @@ use nsql_storage_engine::fallible_iterator;
 use super::*;
 
 pub(crate) struct PhysicalCopyTo<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> {
+    id: PhysicalNodeId<'env, 'txn, S, M>,
     children: PhysicalNodeId<'env, 'txn, S, M>,
     output_writer: OnceLock<File>, // particularly convenient to store a file for now as you can write with an `&File`
     dst: ir::CopyDestination,
@@ -26,14 +27,21 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     pub fn plan(
         source: PhysicalNodeId<'env, 'txn, S, M>,
         dst: ir::CopyDestination,
-    ) -> Arc<dyn PhysicalNode<'env, 'txn, S, M>> {
-        Arc::new(Self { dst, children: source, output_writer: Default::default() })
+        arena: &mut PhysicalNodeArena<'env, 'txn, S, M>,
+    ) -> PhysicalNodeId<'env, 'txn, S, M> {
+        arena.alloc_with(|id| {
+            Arc::new(Self { id, dst, children: source, output_writer: Default::default() })
+        })
     }
 }
 
 impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode<'env, 'txn, S, M>
     for PhysicalCopyTo<'env, 'txn, S, M>
 {
+    fn id(&self) -> PhysicalNodeId<'env, 'txn, S, M> {
+        self.id
+    }
+
     fn width(&self, _nodes: &PhysicalNodeArena<'env, 'txn, S, M>) -> usize {
         0
     }
@@ -46,7 +54,7 @@ impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode<'env,
         self: Arc<Self>,
     ) -> Result<Arc<dyn PhysicalSource<'env, 'txn, S, M>>, Arc<dyn PhysicalNode<'env, 'txn, S, M>>>
     {
-        Err(self)
+        Ok(self)
     }
 
     fn as_sink(

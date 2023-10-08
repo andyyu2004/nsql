@@ -13,6 +13,7 @@ use crate::ReadWriteExecutionMode;
 
 #[derive(Debug)]
 pub(crate) struct PhysicalInsert<'env, 'txn, S: StorageEngine> {
+    id: PhysicalNodeId<'env, 'txn, S, ReadWriteExecutionMode>,
     children: [PhysicalNodeId<'env, 'txn, S, ReadWriteExecutionMode>; 1],
     table_oid: Oid<Table>,
     storage: OnceLock<Mutex<Option<TableStorage<'env, 'txn, S, ReadWriteExecutionMode>>>>,
@@ -26,14 +27,18 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalInsert<'env, 'txn, S> {
         table_oid: Oid<Table>,
         source: PhysicalNodeId<'env, 'txn, S, ReadWriteExecutionMode>,
         returning: ExecutableTupleExpr<S>,
-    ) -> Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode>> {
-        Arc::new(Self {
-            table_oid,
-            returning,
-            children: [source],
-            storage: Default::default(),
-            table: Default::default(),
-            returning_tuples: Default::default(),
+        arena: &mut PhysicalNodeArena<'env, 'txn, S, ReadWriteExecutionMode>,
+    ) -> PhysicalNodeId<'env, 'txn, S, ReadWriteExecutionMode> {
+        arena.alloc_with(|id| {
+            Arc::new(Self {
+                id,
+                table_oid,
+                returning,
+                children: [source],
+                storage: Default::default(),
+                table: Default::default(),
+                returning_tuples: Default::default(),
+            })
         })
     }
 }
@@ -41,6 +46,10 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalInsert<'env, 'txn, S> {
 impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode>
     for PhysicalInsert<'env, 'txn, S>
 {
+    fn id(&self) -> PhysicalNodeId<'env, 'txn, S, ReadWriteExecutionMode> {
+        self.id
+    }
+
     fn width(&self, _nodes: &PhysicalNodeArena<'env, 'txn, S, ReadWriteExecutionMode>) -> usize {
         self.returning.width()
     }

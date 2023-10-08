@@ -2,6 +2,7 @@ use super::*;
 
 #[derive(Debug)]
 pub struct PhysicalProjection<'env, 'txn, S, M> {
+    id: PhysicalNodeId<'env, 'txn, S, M>,
     children: PhysicalNodeId<'env, 'txn, S, M>,
     projection: ExecutableTupleExpr<S>,
 }
@@ -12,8 +13,9 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     pub(crate) fn plan(
         source: PhysicalNodeId<'env, 'txn, S, M>,
         projection: ExecutableTupleExpr<S>,
-    ) -> Arc<dyn PhysicalNode<'env, 'txn, S, M>> {
-        Arc::new(Self { children: source, projection })
+        arena: &mut PhysicalNodeArena<'env, 'txn, S, M>,
+    ) -> PhysicalNodeId<'env, 'txn, S, M> {
+        arena.alloc_with(|id| Arc::new(Self { id, children: source, projection }))
     }
 }
 
@@ -37,6 +39,10 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode<'env, 'txn, S, M>
     for PhysicalProjection<'env, 'txn, S, M>
 {
+    fn id(&self) -> PhysicalNodeId<'env, 'txn, S, M> {
+        self.id
+    }
+
     fn width(&self, _nodes: &PhysicalNodeArena<'env, 'txn, S, M>) -> usize {
         self.projection.width()
     }

@@ -4,6 +4,7 @@ use super::*;
 
 #[derive(Debug)]
 pub struct PhysicalHashDistinct<'env, 'txn, S, M> {
+    id: PhysicalNodeId<'env, 'txn, S, M>,
     child: PhysicalNodeId<'env, 'txn, S, M>,
     seen: DashSet<Tuple>,
 }
@@ -13,8 +14,9 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
 {
     pub(crate) fn plan(
         child: PhysicalNodeId<'env, 'txn, S, M>,
-    ) -> Arc<dyn PhysicalNode<'env, 'txn, S, M>> {
-        Arc::new(Self { child, seen: Default::default() })
+        arena: &mut PhysicalNodeArena<'env, 'txn, S, M>,
+    ) -> PhysicalNodeId<'env, 'txn, S, M> {
+        arena.alloc_with(|id| Arc::new(Self { id, child, seen: Default::default() }))
     }
 }
 
@@ -40,6 +42,10 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode<'env, 'txn, S, M>
     for PhysicalHashDistinct<'env, 'txn, S, M>
 {
+    fn id(&self) -> PhysicalNodeId<'env, 'txn, S, M> {
+        self.id
+    }
+
     fn width(&self, nodes: &PhysicalNodeArena<'env, 'txn, S, M>) -> usize {
         nodes[self.child].width(nodes)
     }

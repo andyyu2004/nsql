@@ -8,6 +8,7 @@ use super::*;
 
 #[derive(Debug)]
 pub struct PhysicalOrder<'env, 'txn, S, M> {
+    id: PhysicalNodeId<'env, 'txn, S, M>,
     child: PhysicalNodeId<'env, 'txn, S, M>,
     ordering: Box<[ir::OrderExpr<ExecutableExpr<S>>]>,
     tuples: RwLock<Vec<Tuple>>,
@@ -19,8 +20,11 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     pub(crate) fn plan(
         source: PhysicalNodeId<'env, 'txn, S, M>,
         ordering: Box<[ir::OrderExpr<ExecutableExpr<S>>]>,
-    ) -> Arc<dyn PhysicalNode<'env, 'txn, S, M>> {
-        Arc::new(Self { child: source, ordering, tuples: Default::default() })
+        arena: &mut PhysicalNodeArena<'env, 'txn, S, M>,
+    ) -> PhysicalNodeId<'env, 'txn, S, M> {
+        arena.alloc_with(|id| {
+            Arc::new(Self { id, child: source, ordering, tuples: Default::default() })
+        })
     }
 }
 
@@ -84,6 +88,10 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSink
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode<'env, 'txn, S, M>
     for PhysicalOrder<'env, 'txn, S, M>
 {
+    fn id(&self) -> PhysicalNodeId<'env, 'txn, S, M> {
+        self.id
+    }
+
     fn width(&self, nodes: &PhysicalNodeArena<'env, 'txn, S, M>) -> usize {
         nodes[self.child].width(nodes)
     }

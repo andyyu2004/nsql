@@ -218,7 +218,7 @@ impl<T> Arena<T> {
     /// Returns the index of the next value allocated on the arena.
     ///
     /// This method should remain private to make creating invalid `Idx`s harder.
-    fn next_idx(&self) -> Idx<T> {
+    pub fn next_idx(&self) -> Idx<T> {
         Idx::from_raw(RawIdx(self.data.len() as u32))
     }
 }
