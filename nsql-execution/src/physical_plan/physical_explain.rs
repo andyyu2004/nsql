@@ -85,6 +85,10 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
     ) -> ExecutionResult<TupleStream<'_>> {
         let scx = ecx.scx();
 
+        if self.opts.analyze {
+            todo!("{:?}", ecx.profiler())
+        }
+
         let logical_explain = self.logical_explain.clone();
         let physical_explain = self.physical_explain.clone();
         let pipeline_explain = self.pipeline_explain.clone();
@@ -96,8 +100,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
             ExplainOutput::Logical => logical_explain,
             ExplainOutput::All => {
                 format!(
-                    "Logical:\n{}\n\nPhysical:\n{}\n\nPipeline:\n{}",
-                    logical_explain, physical_explain, pipeline_explain
+                    "Logical:\n{logical_explain}\n\nPhysical:\n{physical_explain}\n\nPipeline:\n{pipeline_explain}",
                 )
             }
         };

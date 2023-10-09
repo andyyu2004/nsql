@@ -1,5 +1,6 @@
 use super::*;
 use crate::pipeline::RootPipeline;
+use crate::profiler::PhysicalNodeProfileExt;
 
 pub(crate) struct Executor<'env, 'txn, S, M> {
     nodes: PhysicalNodeArena<'env, 'txn, S, M>,
@@ -54,19 +55,19 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Executor<'en
             refs
         }
 
+        let profiler = &ecx.profiler;
         let pipeline: &Pipeline<'env, 'txn, S, M> = &self.pipelines[pipeline];
         let node_ids = pipeline.nodes();
         // Safety: a pipeline should never have duplicate nodes
         let mut nodes_mut = unsafe { get_mut_refs_unchecked(&mut self.nodes, node_ids) };
         let [source, operators @ .., sink] = &mut nodes_mut[..] else { panic!() };
-        let source = source.as_source_mut().expect("expected source");
+        let mut source = (*source).as_source_mut().expect("expected source").profiled(profiler);
         let mut operators = operators
             .iter_mut()
-            .map(|op| op.as_operator_mut().expect("expected operator"))
+            .map(|op| op.as_operator_mut().expect("expected operator").profiled(profiler))
             .collect::<Box<_>>();
-        let sink = sink.as_sink_mut().expect("expected sink");
+        let mut sink = sink.as_sink_mut().expect("expected sink").profiled(profiler);
 
-        // let mut source = source.profiled(profiler);
         let mut stream = source.source(ecx)?;
 
         'main_loop: while let Some(tuple) = stream.next()? {
