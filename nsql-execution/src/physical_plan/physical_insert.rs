@@ -145,9 +145,9 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSource<'env, 'txn, S, ReadWrite
     for PhysicalInsert<'env, 'txn, S>
 {
     fn source(
-        self: Arc<Self>,
+        &self,
         _ecx: &'txn ExecutionContext<'_, 'env, S, ReadWriteExecutionMode>,
-    ) -> ExecutionResult<TupleStream<'txn>> {
+    ) -> ExecutionResult<TupleStream<'_>> {
         let returning = std::mem::take(&mut *self.returning_tuples.write());
         Ok(Box::new(fallible_iterator::convert(returning.into_iter().map(Ok))))
     }

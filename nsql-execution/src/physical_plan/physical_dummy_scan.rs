@@ -23,9 +23,9 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
     for PhysicalDummyScan<'env, 'txn, S, M>
 {
     fn source(
-        self: Arc<Self>,
+        &self,
         _ecx: &'txn ExecutionContext<'_, 'env, S, M>,
-    ) -> ExecutionResult<TupleStream<'txn>> {
+    ) -> ExecutionResult<TupleStream<'_>> {
         if self.width.is_some() {
             Ok(Box::new(fallible_iterator::empty()))
         } else {

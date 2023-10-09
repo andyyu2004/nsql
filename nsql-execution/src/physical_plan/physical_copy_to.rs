@@ -76,9 +76,9 @@ impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSource<'en
     for PhysicalCopyTo<'env, 'txn, S, M>
 {
     fn source(
-        self: Arc<Self>,
+        &self,
         _ecx: &'txn ExecutionContext<'_, 'env, S, M>,
-    ) -> ExecutionResult<TupleStream<'txn>> {
+    ) -> ExecutionResult<TupleStream<'_>> {
         Ok(Box::new(fallible_iterator::empty()))
     }
 }

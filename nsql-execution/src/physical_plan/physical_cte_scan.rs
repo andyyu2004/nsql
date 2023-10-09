@@ -28,9 +28,9 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
 {
     #[tracing::instrument(skip(self, ecx))]
     fn source(
-        self: Arc<Self>,
+        &self,
         ecx: &'txn ExecutionContext<'_, 'env, S, M>,
-    ) -> ExecutionResult<TupleStream<'txn>> {
+    ) -> ExecutionResult<TupleStream<'_>> {
         // the materialized ctes should be populated by the `PhysicalCte` node
         let tuples = ecx.get_materialized_cte_data(&self.cte_name);
         let mut i = 0;

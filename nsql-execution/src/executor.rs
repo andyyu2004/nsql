@@ -201,9 +201,9 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
     for OutputSink<'env, 'txn, S, M>
 {
     fn source(
-        self: Arc<Self>,
+        &self,
         _ecx: &'txn ExecutionContext<'_, 'env, S, M>,
-    ) -> ExecutionResult<TupleStream<'txn>> {
+    ) -> ExecutionResult<TupleStream<'_>> {
         unimplemented!()
     }
 }

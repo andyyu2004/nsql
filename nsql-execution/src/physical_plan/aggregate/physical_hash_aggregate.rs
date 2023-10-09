@@ -41,9 +41,9 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
     for PhysicalHashAggregate<'env, 'txn, S, M>
 {
     fn source(
-        self: Arc<Self>,
+        &self,
         _ecx: &'txn ExecutionContext<'_, 'env, S, M>,
-    ) -> ExecutionResult<TupleStream<'txn>> {
+    ) -> ExecutionResult<TupleStream<'_>> {
         let mut output = vec![];
         for entry in self.output_groups.iter() {
             // FIXME is there a way to consume the map without mutable access/ownership? i.e. a drain or something

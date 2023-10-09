@@ -27,9 +27,9 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
     for PhysicalSet<'env, 'txn, S, M>
 {
     fn source(
-        self: Arc<Self>,
+        &self,
         ecx: &'txn ExecutionContext<'_, 'env, S, M>,
-    ) -> ExecutionResult<TupleStream<'txn>> {
+    ) -> ExecutionResult<TupleStream<'_>> {
         let scx = ecx.scx();
         match self.scope {
             // TODO we should store global configuration in the catalog

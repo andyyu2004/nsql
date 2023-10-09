@@ -60,9 +60,9 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
     for PhysicalShow<'env, 'txn, S, M>
 {
     fn source(
-        self: Arc<Self>,
+        &self,
         ecx: &'txn ExecutionContext<'_, 'env, S, M>,
-    ) -> ExecutionResult<TupleStream<'txn>> {
+    ) -> ExecutionResult<TupleStream<'_>> {
         let tx: M::TransactionRef<'txn> = ecx.tx();
         let tx: &'txn dyn Transaction<'env, S> = tx.dyn_ref();
         let catalog = ecx.catalog();

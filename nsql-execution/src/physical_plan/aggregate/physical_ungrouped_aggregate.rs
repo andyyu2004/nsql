@@ -39,9 +39,9 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
     for PhysicalUngroupedAggregate<'env, 'txn, S, M>
 {
     fn source(
-        self: Arc<Self>,
+        &self,
         _ecx: &'txn ExecutionContext<'_, 'env, S, M>,
-    ) -> ExecutionResult<TupleStream<'txn>> {
+    ) -> ExecutionResult<TupleStream<'_>> {
         let values =
             mem::take(&mut *self.aggregate_functions.lock()).into_iter().map(|f| f.finalize());
         Ok(Box::new(fallible_iterator::once(Tuple::from_iter(values))))

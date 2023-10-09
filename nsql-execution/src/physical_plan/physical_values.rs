@@ -23,9 +23,9 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
     for PhysicalValues<'env, 'txn, S, M>
 {
     fn source(
-        self: Arc<Self>,
+        &self,
         ecx: &'txn ExecutionContext<'_, 'env, S, M>,
-    ) -> ExecutionResult<TupleStream<'txn>> {
+    ) -> ExecutionResult<TupleStream<'_>> {
         let storage = ecx.storage();
         let tx = ecx.tx();
         let mut index = 0;

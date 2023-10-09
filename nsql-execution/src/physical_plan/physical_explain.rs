@@ -96,9 +96,9 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
     for PhysicalExplain<'env, 'txn, S, M>
 {
     fn source(
-        self: Arc<Self>,
+        &self,
         ecx: &'txn ExecutionContext<'_, 'env, S, M>,
-    ) -> ExecutionResult<TupleStream<'txn>> {
+    ) -> ExecutionResult<TupleStream<'_>> {
         let scx = ecx.scx();
         let catalog = ecx.catalog();
         let tx = ecx.tx();

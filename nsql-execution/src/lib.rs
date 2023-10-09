@@ -176,16 +176,16 @@ trait PhysicalOperator<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env
     ) -> ExecutionResult<OperatorState<T>>;
 }
 
-type TupleStream<'txn> = Box<dyn FallibleIterator<Item = Tuple, Error = anyhow::Error> + 'txn>;
+type TupleStream<'a> = Box<dyn FallibleIterator<Item = Tuple, Error = anyhow::Error> + 'a>;
 
 trait PhysicalSource<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T = Tuple>:
     PhysicalNode<'env, 'txn, S, M>
 {
     /// Return the next chunk from the source. An empty chunk indicates that the source is exhausted.
     fn source(
-        self: Arc<Self>,
+        &self,
         ecx: &'txn ExecutionContext<'_, 'env, S, M>,
-    ) -> ExecutionResult<TupleStream<'txn>>;
+    ) -> ExecutionResult<TupleStream<'_>>;
 }
 
 trait PhysicalSink<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>:
