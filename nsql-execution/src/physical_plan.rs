@@ -23,8 +23,8 @@ mod physical_update;
 mod physical_values;
 
 use std::collections::HashMap;
-use std::fmt;
 use std::sync::Arc;
+use std::{fmt, mem};
 
 use anyhow::Result;
 use nsql_catalog::Catalog;
@@ -56,11 +56,12 @@ use self::physical_unnest::PhysicalUnnest;
 use self::physical_update::PhysicalUpdate;
 use self::physical_values::PhysicalValues;
 use crate::compile::Compiler;
+use crate::executor::OutputSink;
 use crate::pipeline::*;
 use crate::{
-    ExecutionContext, ExecutionMode, ExecutionResult, OperatorState, PhysicalNode,
-    PhysicalNodeArena, PhysicalNodeId, PhysicalOperator, PhysicalSink, PhysicalSource,
-    ReadWriteExecutionMode, Tuple, TupleStream,
+    impl_physical_node_conversions, ExecutionContext, ExecutionMode, ExecutionResult,
+    OperatorState, PhysicalNode, PhysicalNodeArena, PhysicalNodeId, PhysicalOperator, PhysicalSink,
+    PhysicalSource, ReadWriteExecutionMode, Tuple, TupleStream,
 };
 
 pub struct PhysicalPlanner<'env, 'txn, S, M> {
@@ -78,7 +79,8 @@ pub struct PhysicalPlan<'env, 'txn, S, M> {
 
 impl<'env, 'txn, S, M> Clone for PhysicalPlan<'env, 'txn, S, M> {
     fn clone(&self) -> Self {
-        Self { nodes: self.nodes.clone(), root: self.root }
+        todo!()
+        // Self { nodes: self.nodes.clone(), root: self.root }
     }
 }
 
@@ -128,6 +130,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
         plan: Box<ir::Plan<opt::Query>>,
     ) -> Result<PhysicalNodeId<'env, 'txn, S, M>> {
         self.fold_plan(
+            tx,
             plan,
             |planner, plan| planner.do_plan(tx, plan),
             |planner, q| planner.plan_root_query(tx, q),
@@ -136,6 +139,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
 
     fn fold_plan(
         &mut self,
+        tx: &dyn Transaction<'env, S>,
         plan: Box<ir::Plan<opt::Query>>,
         mut f: impl FnMut(
             &mut Self,
@@ -158,8 +162,21 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
                 };
 
                 let root = f(self, logical_plan)?;
-                let physical_plan = PhysicalPlan { nodes: self.arena.clone(), root };
-                PhysicalExplain::plan(opts, logical_explain, physical_plan, &mut self.arena)
+                let mut physical_plan = PhysicalPlan { nodes: mem::take(&mut self.arena), root };
+                let physical_explain = physical_plan.display(self.catalog, tx).to_string();
+                let sink = OutputSink::plan(physical_plan.arena_mut());
+                let pipeline = crate::build_pipelines(sink, physical_plan);
+                let pipeline_explain = pipeline.display(self.catalog, &tx).to_string();
+                let (_pipelines, arena) = pipeline.into_parts();
+                self.arena = arena;
+                PhysicalExplain::plan(
+                    opts,
+                    root,
+                    logical_explain,
+                    physical_explain,
+                    pipeline_explain,
+                    &mut self.arena,
+                )
             }
             ir::Plan::Drop(..) => unreachable!("write plans should go through plan_write_node"),
             ir::Plan::Copy(cp) => match cp {
@@ -389,6 +406,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalPlanner<'env, 'txn, S, ReadWrit
         match *plan {
             ir::Plan::Drop(refs) => Ok(PhysicalDrop::plan(refs, &mut self.arena)),
             _ => self.fold_plan(
+                tx,
                 plan,
                 |planner, plan| planner.do_plan_write(tx, plan),
                 |planner, q| planner.plan_root_write_query(tx, q),

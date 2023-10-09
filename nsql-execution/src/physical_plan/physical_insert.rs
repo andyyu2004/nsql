@@ -30,7 +30,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalInsert<'env, 'txn, S> {
         arena: &mut PhysicalNodeArena<'env, 'txn, S, ReadWriteExecutionMode>,
     ) -> PhysicalNodeId<'env, 'txn, S, ReadWriteExecutionMode> {
         arena.alloc_with(|id| {
-            Arc::new(Self {
+            Box::new(Self {
                 id,
                 table_oid,
                 returning,
@@ -46,6 +46,8 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalInsert<'env, 'txn, S> {
 impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode>
     for PhysicalInsert<'env, 'txn, S>
 {
+    impl_physical_node_conversions!(ReadWriteExecutionMode; source, sink; not operator);
+
     fn id(&self) -> PhysicalNodeId<'env, 'txn, S, ReadWriteExecutionMode> {
         self.id
     }
@@ -56,33 +58,6 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalNode<'env, 'txn, S, ReadWriteEx
 
     fn children(&self) -> &[PhysicalNodeId<'env, 'txn, S, ReadWriteExecutionMode>] {
         &self.children
-    }
-
-    fn as_source(
-        self: Arc<Self>,
-    ) -> Result<
-        Arc<dyn PhysicalSource<'env, 'txn, S, ReadWriteExecutionMode>>,
-        Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode>>,
-    > {
-        Ok(self)
-    }
-
-    fn as_sink(
-        self: Arc<Self>,
-    ) -> Result<
-        Arc<dyn PhysicalSink<'env, 'txn, S, ReadWriteExecutionMode>>,
-        Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode>>,
-    > {
-        Ok(self)
-    }
-
-    fn as_operator(
-        self: Arc<Self>,
-    ) -> Result<
-        Arc<dyn PhysicalOperator<'env, 'txn, S, ReadWriteExecutionMode>>,
-        Arc<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode>>,
-    > {
-        Err(self)
     }
 }
 

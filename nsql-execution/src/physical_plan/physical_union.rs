@@ -23,7 +23,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
         arena: &mut PhysicalNodeArena<'env, 'txn, S, M>,
     ) -> PhysicalNodeId<'env, 'txn, S, M> {
         arena.alloc_with(|id| {
-            Arc::new(Self { id, children: [lhs, rhs], buffer: Default::default() })
+            Box::new(Self { id, children: [lhs, rhs], buffer: Default::default() })
         })
     }
 }
@@ -31,6 +31,8 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode<'env, 'txn, S, M>
     for PhysicalUnion<'env, 'txn, S, M>
 {
+    impl_physical_node_conversions!(M; source, sink; not operator);
+
     fn id(&self) -> PhysicalNodeId<'env, 'txn, S, M> {
         self.id
     }
@@ -47,29 +49,8 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode
         &self.children
     }
 
-    fn as_source(
-        self: Arc<Self>,
-    ) -> Result<Arc<dyn PhysicalSource<'env, 'txn, S, M>>, Arc<dyn PhysicalNode<'env, 'txn, S, M>>>
-    {
-        Ok(self)
-    }
-
-    fn as_sink(
-        self: Arc<Self>,
-    ) -> Result<Arc<dyn PhysicalSink<'env, 'txn, S, M>>, Arc<dyn PhysicalNode<'env, 'txn, S, M>>>
-    {
-        Ok(self)
-    }
-
-    fn as_operator(
-        self: Arc<Self>,
-    ) -> Result<Arc<dyn PhysicalOperator<'env, 'txn, S, M>>, Arc<dyn PhysicalNode<'env, 'txn, S, M>>>
-    {
-        Err(self)
-    }
-
     fn build_pipelines(
-        self: Arc<Self>,
+        &self,
         nodes: &PhysicalNodeArena<'env, 'txn, S, M>,
         arena: &mut PipelineBuilderArena<'env, 'txn, S, M>,
         meta_builder: Idx<MetaPipelineBuilder<'env, 'txn, S, M>>,
@@ -89,13 +70,13 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode
         // but it's unclear where to set the source of the current pipeline
         // arena[current].set_source(sink); this would set the the source to itself which is dumb
 
-        let lhs_meta_builder = arena.new_child_meta_pipeline(meta_builder, self.as_ref());
+        let lhs_meta_builder = arena.new_child_meta_pipeline(meta_builder, self);
         arena.build(nodes, lhs_meta_builder, self.children[0]);
 
-        let rhs_meta_builder = arena.new_child_meta_pipeline(meta_builder, self.as_ref());
+        let rhs_meta_builder = arena.new_child_meta_pipeline(meta_builder, self);
         arena.build(nodes, rhs_meta_builder, self.children[1]);
 
-        arena[current].set_source(self.as_ref());
+        arena[current].set_source(self);
     }
 }
 

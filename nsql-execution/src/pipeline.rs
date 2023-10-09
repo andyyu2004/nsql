@@ -18,6 +18,12 @@ impl<'env, 'txn, S, M> RootPipeline<'env, 'txn, S, M> {
     ) -> Self {
         Self { arena, nodes }
     }
+
+    pub fn into_parts(
+        self,
+    ) -> (PipelineArena<'env, 'txn, S, M>, PhysicalNodeArena<'env, 'txn, S, M>) {
+        (self.arena, self.nodes)
+    }
 }
 
 pub(crate) struct MetaPipeline<'env, 'txn, S, M> {
@@ -173,12 +179,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     ) {
         assert_eq!(self[meta_pipeline].pipelines.len(), 1);
         assert!(self[meta_pipeline].children.is_empty());
-        nodes[node].clone().build_pipelines(
-            nodes,
-            self,
-            meta_pipeline,
-            self[meta_pipeline].pipelines[0],
-        )
+        nodes[node].build_pipelines(nodes, self, meta_pipeline, self[meta_pipeline].pipelines[0])
     }
 }
 

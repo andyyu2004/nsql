@@ -1,4 +1,4 @@
-use parking_lot::RwLock;
+use parking_lot::Mutex;
 
 use super::*;
 use crate::pipeline::RootPipeline;
@@ -13,17 +13,22 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Executor<'en
         Self { nodes: pipeline.nodes, pipelines: pipeline.arena }
     }
 
+    pub(crate) fn into_pipeline(self) -> RootPipeline<'env, 'txn, S, M> {
+        RootPipeline { nodes: self.nodes, arena: self.pipelines }
+    }
+
     fn execute_metapipeline(
-        &self,
+        &mut self,
         ecx: &'txn ExecutionContext<'_, 'env, S, M>,
         root: Idx<MetaPipeline<'env, 'txn, S, M>>,
     ) -> ExecutionResult<()> {
-        let root = &self.pipelines[root];
-        for &child in &root.children {
+        let children = self.pipelines[root].children.clone();
+        for child in children {
             self.execute_metapipeline(ecx, child)?;
         }
 
-        for &pipeline in &root.pipelines {
+        let pipelines = self.pipelines[root].pipelines.clone();
+        for pipeline in pipelines {
             self.execute_pipeline(ecx, pipeline)?;
         }
 
@@ -32,18 +37,18 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Executor<'en
 
     #[tracing::instrument(skip(self, ecx), level = "info")]
     fn execute_pipeline(
-        &self,
+        &mut self,
         ecx: &'txn ExecutionContext<'_, 'env, S, M>,
         pipeline: Idx<Pipeline<'env, 'txn, S, M>>,
     ) -> ExecutionResult<()> {
         let pipeline: &Pipeline<'env, 'txn, S, M> = &self.pipelines[pipeline];
-        let source = self.nodes[pipeline.source].clone().as_source().expect("expected source");
+        let source = self.nodes[pipeline.source].as_source().expect("expected source");
         let operators = &pipeline
             .operators
             .iter()
-            .map(|&op| self.nodes[op].clone().as_operator().expect("expected operator"))
+            .map(|&op| self.nodes[op].as_operator().expect("expected operator"))
             .collect::<Box<_>>();
-        let sink = self.nodes[pipeline.sink].clone().as_sink().expect("expected sink");
+        let sink = self.nodes[pipeline.sink].as_sink().expect("expected sink");
 
         let mut stream = source.source(ecx)?;
 
@@ -115,10 +120,11 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Executor<'en
 fn execute_root_pipeline<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
     ecx: &'txn ExecutionContext<'_, 'env, S, M>,
     pipeline: RootPipeline<'env, 'txn, S, M>,
-) -> ExecutionResult<()> {
+) -> ExecutionResult<RootPipeline<'env, 'txn, S, M>> {
     let root = pipeline.arena.root();
-    let executor = Executor::new(pipeline);
-    executor.execute_metapipeline(ecx, root)
+    let mut executor = Executor::new(pipeline);
+    executor.execute_metapipeline(ecx, root)?;
+    Ok(executor.into_pipeline())
 }
 
 pub fn execute<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
@@ -126,9 +132,11 @@ pub fn execute<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
     mut plan: PhysicalPlan<'env, 'txn, S, M>,
 ) -> ExecutionResult<Vec<Tuple>> {
     let sink = OutputSink::plan(plan.arena_mut());
-    let root_pipeline = build_pipelines(sink.as_ref(), plan);
-    execute_root_pipeline(ecx, root_pipeline)?;
-    Ok(Arc::try_unwrap(sink).expect("should be last reference to output sink").tuples.into_inner())
+    let root_pipeline = build_pipelines(sink, plan);
+    let root_pipeline = execute_root_pipeline(ecx, root_pipeline)?;
+    let sink = &root_pipeline.nodes[sink];
+    let tuples = &mut *sink.hack_tmp_as_output_sink().tuples.lock();
+    Ok(std::mem::take(tuples))
 }
 
 // FIXME this is a hack, we shouldn't need this random sink at the root
@@ -136,20 +144,14 @@ pub fn execute<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
 #[derive(Debug)]
 pub(crate) struct OutputSink<'env, 'txn, S, M> {
     id: PhysicalNodeId<'env, 'txn, S, M>,
-    tuples: RwLock<Vec<Tuple>>,
+    tuples: Mutex<Vec<Tuple>>,
 }
 
 impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> OutputSink<'env, 'txn, S, M> {
     pub(crate) fn plan(
         arena: &mut PhysicalNodeArena<'env, 'txn, S, M>,
-    ) -> Arc<OutputSink<'env, 'txn, S, M>> {
-        let mut sink = None;
-        arena.alloc_with(|id| {
-            sink = Some(Arc::new(Self { id, tuples: Default::default() }));
-            sink.clone().unwrap()
-        });
-
-        sink.unwrap()
+    ) -> PhysicalNodeId<'env, 'txn, S, M> {
+        arena.alloc_with(|id| Box::new(Self { id, tuples: Default::default() }))
     }
 }
 
@@ -172,28 +174,10 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode
         &[]
     }
 
-    #[inline]
-    fn as_source(
-        self: Arc<Self>,
-    ) -> Result<Arc<dyn PhysicalSource<'env, 'txn, S, M>>, Arc<dyn PhysicalNode<'env, 'txn, S, M>>>
-    {
-        Err(self)
-    }
+    impl_physical_node_conversions!(M; source, sink; not operator);
 
-    #[inline]
-    fn as_sink(
-        self: Arc<Self>,
-    ) -> Result<Arc<dyn PhysicalSink<'env, 'txn, S, M>>, Arc<dyn PhysicalNode<'env, 'txn, S, M>>>
-    {
-        Ok(self)
-    }
-
-    #[inline]
-    fn as_operator(
-        self: Arc<Self>,
-    ) -> Result<Arc<dyn PhysicalOperator<'env, 'txn, S, M>>, Arc<dyn PhysicalNode<'env, 'txn, S, M>>>
-    {
-        Err(self)
+    fn hack_tmp_as_output_sink(&self) -> &OutputSink<'env, 'txn, S, M> {
+        self
     }
 }
 
@@ -216,7 +200,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSink
         _ecx: &'txn ExecutionContext<'_, 'env, S, M>,
         tuple: Tuple,
     ) -> ExecutionResult<()> {
-        self.tuples.write().push(tuple);
+        self.tuples.lock().push(tuple);
         Ok(())
     }
 }

@@ -30,7 +30,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
         arena: &mut PhysicalNodeArena<'env, 'txn, S, M>,
     ) -> PhysicalNodeId<'env, 'txn, S, M> {
         arena.alloc_with(|id| {
-            Arc::new(Self { id, dst, children: source, output_writer: Default::default() })
+            Box::new(Self { id, dst, children: source, output_writer: Default::default() })
         })
     }
 }
@@ -38,6 +38,8 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
 impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode<'env, 'txn, S, M>
     for PhysicalCopyTo<'env, 'txn, S, M>
 {
+    impl_physical_node_conversions!(M; source, sink; not operator);
+
     fn id(&self) -> PhysicalNodeId<'env, 'txn, S, M> {
         self.id
     }
@@ -48,27 +50,6 @@ impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode<'env,
 
     fn children(&self) -> &[PhysicalNodeId<'env, 'txn, S, M>] {
         std::slice::from_ref(&self.children)
-    }
-
-    fn as_source(
-        self: Arc<Self>,
-    ) -> Result<Arc<dyn PhysicalSource<'env, 'txn, S, M>>, Arc<dyn PhysicalNode<'env, 'txn, S, M>>>
-    {
-        Ok(self)
-    }
-
-    fn as_sink(
-        self: Arc<Self>,
-    ) -> Result<Arc<dyn PhysicalSink<'env, 'txn, S, M>>, Arc<dyn PhysicalNode<'env, 'txn, S, M>>>
-    {
-        Ok(self)
-    }
-
-    fn as_operator(
-        self: Arc<Self>,
-    ) -> Result<Arc<dyn PhysicalOperator<'env, 'txn, S, M>>, Arc<dyn PhysicalNode<'env, 'txn, S, M>>>
-    {
-        Err(self)
     }
 }
 

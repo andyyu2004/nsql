@@ -8,12 +8,13 @@ mod physical_plan;
 mod pipeline;
 
 use std::fmt;
-use std::ops::Index;
+use std::ops::{Index, IndexMut};
 use std::sync::atomic::{self, AtomicBool};
 use std::sync::Arc;
 
 pub use anyhow::Error;
 use dashmap::DashMap;
+use executor::OutputSink;
 use nsql_arena::{Arena, Idx};
 use nsql_catalog::Catalog;
 use nsql_core::Name;
@@ -37,30 +38,37 @@ use self::pipeline::{
 pub type ExecutionResult<T, E = Error> = std::result::Result<T, E>;
 
 fn build_pipelines<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
-    sink: &dyn PhysicalSink<'env, 'txn, S, M>,
+    sink: PhysicalNodeId<'env, 'txn, S, M>,
     plan: PhysicalPlan<'env, 'txn, S, M>,
 ) -> RootPipeline<'env, 'txn, S, M> {
-    let (mut builder, root_meta_pipeline) = PipelineBuilderArena::new(sink);
+    let (mut builder, root_meta_pipeline) =
+        PipelineBuilderArena::new(plan.arena()[sink].as_sink().unwrap());
     builder.build(plan.arena(), root_meta_pipeline, plan.root());
     let arena = builder.finish();
     RootPipeline::new(arena, plan.into_arena())
 }
 
 struct PhysicalNodeArena<'env, 'txn, S, M> {
-    // FIXME change to box dyn once first pass is done
-    nodes: Arena<Arc<dyn PhysicalNode<'env, 'txn, S, M>>>,
+    nodes: Arena<Box<dyn PhysicalNode<'env, 'txn, S, M>>>,
 }
 
-impl<'env, 'txn, S, M> Clone for PhysicalNodeArena<'env, 'txn, S, M> {
-    fn clone(&self) -> Self {
-        Self { nodes: self.nodes.clone() }
+impl<'env, 'txn, S, M> Default for PhysicalNodeArena<'env, 'txn, S, M> {
+    fn default() -> Self {
+        Self { nodes: Default::default() }
     }
 }
+
+// impl<'env, 'txn, S, M> Clone for PhysicalNodeArena<'env, 'txn, S, M> {
+//     fn clone(&self) -> Self {
+//         todo!()
+//         // Self { nodes: self.nodes.clone() }
+//     }
+// }
 
 impl<'env, 'txn, S, M> Index<PhysicalNodeId<'env, 'txn, S, M>>
     for PhysicalNodeArena<'env, 'txn, S, M>
 {
-    type Output = Arc<dyn PhysicalNode<'env, 'txn, S, M>>;
+    type Output = Box<dyn PhysicalNode<'env, 'txn, S, M>>;
 
     #[inline]
     fn index(&self, index: PhysicalNodeId<'env, 'txn, S, M>) -> &Self::Output {
@@ -68,16 +76,116 @@ impl<'env, 'txn, S, M> Index<PhysicalNodeId<'env, 'txn, S, M>>
     }
 }
 
+impl<'env, 'txn, S, M> IndexMut<PhysicalNodeId<'env, 'txn, S, M>>
+    for PhysicalNodeArena<'env, 'txn, S, M>
+{
+    #[inline]
+    fn index_mut(&mut self, index: PhysicalNodeId<'env, 'txn, S, M>) -> &mut Self::Output {
+        &mut self.nodes[index]
+    }
+}
+
 impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNodeArena<'env, 'txn, S, M> {
     pub fn alloc_with(
         &mut self,
-        mk: impl FnOnce(PhysicalNodeId<'env, 'txn, S, M>) -> Arc<dyn PhysicalNode<'env, 'txn, S, M>>,
+        mk: impl FnOnce(PhysicalNodeId<'env, 'txn, S, M>) -> Box<dyn PhysicalNode<'env, 'txn, S, M>>,
     ) -> PhysicalNodeId<'env, 'txn, S, M> {
         self.nodes.alloc(mk(self.nodes.next_idx()))
     }
 }
 
-type PhysicalNodeId<'env, 'txn, S, M> = Idx<Arc<dyn PhysicalNode<'env, 'txn, S, M>>>;
+type PhysicalNodeId<'env, 'txn, S, M> = Idx<Box<dyn PhysicalNode<'env, 'txn, S, M>>>;
+
+macro_rules! impl_physical_node_conversions {
+    ($m_type:ty; $($trait:ident),* $(; not $($not_trait:ident),*)?) => {
+        $(
+            impl_physical_node_conversions!(@impl $trait, $m_type);
+        )*
+        $($(
+            impl_physical_node_conversions!(@not_impl $not_trait, $m_type);
+        )*)?
+    };
+
+    (@impl source, $m_type:ty) => {
+        fn as_source(
+            &self,
+        ) -> Result<&dyn PhysicalSource<'env, 'txn, S, $m_type>, &dyn PhysicalNode<'env, 'txn, S, $m_type>> {
+            Ok(self)
+        }
+        fn as_source_mut(
+            &mut self,
+        ) -> Result<&mut dyn PhysicalSource<'env, 'txn, S, $m_type>, &mut dyn PhysicalNode<'env, 'txn, S, $m_type>> {
+            Ok(self)
+        }
+    };
+
+    (@impl sink, $m_type:ty) => {
+        fn as_sink(
+            &self,
+        ) -> Result<&dyn PhysicalSink<'env, 'txn, S, $m_type>, &dyn PhysicalNode<'env, 'txn, S, $m_type>> {
+            Ok(self)
+        }
+        fn as_sink_mut(
+            &mut self,
+        ) -> Result<&mut dyn PhysicalSink<'env, 'txn, S, $m_type>, &mut dyn PhysicalNode<'env, 'txn, S, $m_type>> {
+            Ok(self)
+        }
+    };
+
+    (@impl operator, $m_type:ty) => {
+        fn as_operator(
+            &self,
+        ) -> Result<&dyn PhysicalOperator<'env, 'txn, S, $m_type>, &dyn PhysicalNode<'env, 'txn, S, $m_type>> {
+            Ok(self)
+        }
+        fn as_operator_mut(
+            &mut self,
+        ) -> Result<&mut dyn PhysicalOperator<'env, 'txn, S, $m_type>, &mut dyn PhysicalNode<'env, 'txn, S, $m_type>> {
+            Ok(self)
+        }
+    };
+
+    (@not_impl source, $m_type:ty) => {
+        fn as_source(
+            &self,
+        ) -> Result<&dyn PhysicalSource<'env, 'txn, S, $m_type>, &dyn PhysicalNode<'env, 'txn, S, $m_type>> {
+            Err(self)
+        }
+        fn as_source_mut(
+            &mut self,
+        ) -> Result<&mut dyn PhysicalSource<'env, 'txn, S, $m_type>, &mut dyn PhysicalNode<'env, 'txn, S, $m_type>> {
+            Err(self)
+        }
+    };
+
+    (@not_impl sink, $m_type:ty) => {
+        fn as_sink(
+            &self,
+        ) -> Result<&dyn PhysicalSink<'env, 'txn, S, $m_type>, &dyn PhysicalNode<'env, 'txn, S, $m_type>> {
+            Err(self)
+        }
+        fn as_sink_mut(
+            &mut self,
+        ) -> Result<&mut dyn PhysicalSink<'env, 'txn, S, $m_type>, &mut dyn PhysicalNode<'env, 'txn, S, $m_type>> {
+            Err(self)
+        }
+    };
+
+    (@not_impl operator, $m_type:ty) => {
+        fn as_operator(
+            &self,
+        ) -> Result<&dyn PhysicalOperator<'env, 'txn, S, $m_type>, &dyn PhysicalNode<'env, 'txn, S, $m_type>> {
+            Err(self)
+        }
+        fn as_operator_mut(
+            &mut self,
+        ) -> Result<&mut dyn PhysicalOperator<'env, 'txn, S, $m_type>, &mut dyn PhysicalNode<'env, 'txn, S, $m_type>> {
+            Err(self)
+        }
+    };
+}
+
+use impl_physical_node_conversions;
 
 // keep this trait crate-private
 #[allow(clippy::type_complexity)]
@@ -92,19 +200,36 @@ trait PhysicalNode<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>
     fn children(&self) -> &[PhysicalNodeId<'env, 'txn, S, M>];
 
     fn as_source(
-        self: Arc<Self>,
-    ) -> Result<Arc<dyn PhysicalSource<'env, 'txn, S, M>>, Arc<dyn PhysicalNode<'env, 'txn, S, M>>>;
+        &self,
+    ) -> Result<&dyn PhysicalSource<'env, 'txn, S, M>, &dyn PhysicalNode<'env, 'txn, S, M>>;
+
+    fn as_source_mut(
+        &mut self,
+    ) -> Result<&mut dyn PhysicalSource<'env, 'txn, S, M>, &mut dyn PhysicalNode<'env, 'txn, S, M>>;
 
     fn as_sink(
-        self: Arc<Self>,
-    ) -> Result<Arc<dyn PhysicalSink<'env, 'txn, S, M>>, Arc<dyn PhysicalNode<'env, 'txn, S, M>>>;
+        &self,
+    ) -> Result<&dyn PhysicalSink<'env, 'txn, S, M>, &dyn PhysicalNode<'env, 'txn, S, M>>;
+
+    fn as_sink_mut(
+        &mut self,
+    ) -> Result<&mut dyn PhysicalSink<'env, 'txn, S, M>, &mut dyn PhysicalNode<'env, 'txn, S, M>>;
 
     fn as_operator(
-        self: Arc<Self>,
-    ) -> Result<Arc<dyn PhysicalOperator<'env, 'txn, S, M>>, Arc<dyn PhysicalNode<'env, 'txn, S, M>>>;
+        &self,
+    ) -> Result<&dyn PhysicalOperator<'env, 'txn, S, M>, &dyn PhysicalNode<'env, 'txn, S, M>>;
+
+    fn as_operator_mut(
+        &mut self,
+    ) -> Result<&mut dyn PhysicalOperator<'env, 'txn, S, M>, &mut dyn PhysicalNode<'env, 'txn, S, M>>;
+
+    // remove this along with the outputsink hack in general
+    fn hack_tmp_as_output_sink(&self) -> &OutputSink<'env, 'txn, S, M> {
+        panic!()
+    }
 
     fn build_pipelines(
-        self: Arc<Self>,
+        &self,
         nodes: &PhysicalNodeArena<'env, 'txn, S, M>,
         arena: &mut PipelineBuilderArena<'env, 'txn, S, M>,
         meta_builder: Idx<MetaPipelineBuilder<'env, 'txn, S, M>>,
@@ -115,7 +240,7 @@ trait PhysicalNode<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>
                 // If we have a sink node (which is also a source),
                 // - set it to be the source of the current pipeline,
                 // - recursively build the pipeline for its child with `sink` as the sink of the new metapipeline
-                arena[current].set_source(sink.as_ref());
+                arena[current].set_source(sink);
                 assert!(
                     sink.children().len() <= 1,
                     "default `build_pipelines` implementation only supports unary or nullary nodes for sinks"
@@ -123,8 +248,7 @@ trait PhysicalNode<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>
 
                 if !sink.children().is_empty() {
                     let child = sink.children()[0];
-                    let child_meta_builder =
-                        arena.new_child_meta_pipeline(meta_builder, sink.as_ref());
+                    let child_meta_builder = arena.new_child_meta_pipeline(meta_builder, sink);
                     arena.build(nodes, child_meta_builder, child);
                 }
             }
@@ -134,7 +258,7 @@ trait PhysicalNode<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>
                         source.children().is_empty(),
                         "default `build_pipelines` implementation only supports sources at the leaf"
                     );
-                    arena[current].set_source(source.as_ref())
+                    arena[current].set_source(source);
                 }
                 Err(operator) => {
                     let operator =
@@ -146,8 +270,8 @@ trait PhysicalNode<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>
                         "default `build_pipelines` implementation only supports unary operators"
                     );
                     let child = operator.children()[0];
-                    arena[current].add_operator(operator.as_ref());
-                    nodes[child].clone().build_pipelines(nodes, arena, meta_builder, current)
+                    arena[current].add_operator(operator);
+                    nodes[child].build_pipelines(nodes, arena, meta_builder, current)
                 }
             },
         }

@@ -26,7 +26,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
         arena: &mut PhysicalNodeArena<'env, 'txn, S, M>,
     ) -> PhysicalNodeId<'env, 'txn, S, M> {
         arena.alloc_with(|id| {
-            Arc::new(Self {
+            Box::new(Self {
                 id,
                 aggregates,
                 group_expr,
@@ -99,26 +99,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode
         &self.children
     }
 
-    fn as_source(
-        self: Arc<Self>,
-    ) -> Result<Arc<dyn PhysicalSource<'env, 'txn, S, M>>, Arc<dyn PhysicalNode<'env, 'txn, S, M>>>
-    {
-        Ok(self)
-    }
-
-    fn as_sink(
-        self: Arc<Self>,
-    ) -> Result<Arc<dyn PhysicalSink<'env, 'txn, S, M>>, Arc<dyn PhysicalNode<'env, 'txn, S, M>>>
-    {
-        Ok(self)
-    }
-
-    fn as_operator(
-        self: Arc<Self>,
-    ) -> Result<Arc<dyn PhysicalOperator<'env, 'txn, S, M>>, Arc<dyn PhysicalNode<'env, 'txn, S, M>>>
-    {
-        Err(self)
-    }
+    impl_physical_node_conversions!(M; source, sink; not operator);
 }
 
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Explain<'env, S>

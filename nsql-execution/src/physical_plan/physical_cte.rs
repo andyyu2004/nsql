@@ -21,7 +21,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalCte<
         arena: &mut PhysicalNodeArena<'env, 'txn, S, M>,
     ) -> PhysicalNodeId<'env, 'txn, S, M> {
         arena.alloc_with(|id| {
-            Arc::new(Self {
+            Box::new(Self {
                 id,
                 name,
                 children: [cte, child],
@@ -49,44 +49,64 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode
 
     #[inline]
     fn as_sink(
-        self: Arc<Self>,
-    ) -> Result<Arc<dyn PhysicalSink<'env, 'txn, S, M>>, Arc<dyn PhysicalNode<'env, 'txn, S, M>>>
+        &self,
+    ) -> Result<&dyn PhysicalSink<'env, 'txn, S, M>, &dyn PhysicalNode<'env, 'txn, S, M>> {
+        Ok(self)
+    }
+
+    #[inline]
+    fn as_sink_mut(
+        &mut self,
+    ) -> Result<&mut dyn PhysicalSink<'env, 'txn, S, M>, &mut dyn PhysicalNode<'env, 'txn, S, M>>
     {
         Ok(self)
     }
 
     #[inline]
     fn as_source(
-        self: Arc<Self>,
-    ) -> Result<Arc<dyn PhysicalSource<'env, 'txn, S, M>>, Arc<dyn PhysicalNode<'env, 'txn, S, M>>>
+        &self,
+    ) -> Result<&dyn PhysicalSource<'env, 'txn, S, M>, &dyn PhysicalNode<'env, 'txn, S, M>> {
+        Ok(self)
+    }
+
+    #[inline]
+    fn as_source_mut(
+        &mut self,
+    ) -> Result<&mut dyn PhysicalSource<'env, 'txn, S, M>, &mut dyn PhysicalNode<'env, 'txn, S, M>>
     {
         todo!()
         // Arc::clone(&self.children[1]).as_source()
     }
 
-    #[inline]
     fn as_operator(
-        self: Arc<Self>,
-    ) -> Result<Arc<dyn PhysicalOperator<'env, 'txn, S, M>>, Arc<dyn PhysicalNode<'env, 'txn, S, M>>>
+        &self,
+    ) -> Result<&dyn PhysicalOperator<'env, 'txn, S, M>, &dyn PhysicalNode<'env, 'txn, S, M>> {
+        todo!()
+    }
+
+    #[inline]
+    fn as_operator_mut(
+        &mut self,
+    ) -> Result<&mut dyn PhysicalOperator<'env, 'txn, S, M>, &mut dyn PhysicalNode<'env, 'txn, S, M>>
     {
         todo!()
         // Arc::clone(&self.children[1]).as_operator()
     }
 
     fn build_pipelines(
-        self: Arc<Self>,
+        &self,
         nodes: &PhysicalNodeArena<'env, 'txn, S, M>,
         pipelines: &mut PipelineBuilderArena<'env, 'txn, S, M>,
         meta_builder: Idx<MetaPipelineBuilder<'env, 'txn, S, M>>,
         current: Idx<PipelineBuilder<'env, 'txn, S, M>>,
     ) {
         // push data from the cte plan into ourselves
-        let cte_builder = pipelines.new_child_meta_pipeline(meta_builder, self.as_ref());
+        let cte_builder = pipelines.new_child_meta_pipeline(meta_builder, self);
         pipelines.build(nodes, cte_builder, self.children[0]);
 
         // recursively build onto `current` with the child plan
         let child = self.children[1];
-        nodes[child].clone().build_pipelines(nodes, pipelines, meta_builder, current);
+        nodes[child].build_pipelines(nodes, pipelines, meta_builder, current);
     }
 }
 

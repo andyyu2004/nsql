@@ -3,14 +3,14 @@ use nsql_storage_engine::fallible_iterator;
 
 use super::*;
 use crate::config::ExplainOutput;
-use crate::executor::OutputSink;
 
 pub struct PhysicalExplain<'env, 'txn, S, M> {
     id: PhysicalNodeId<'env, 'txn, S, M>,
     opts: ir::ExplainOptions,
     child: PhysicalNodeId<'env, 'txn, S, M>,
-    logical_plan_explain: String,
-    physical_plan: PhysicalPlan<'env, 'txn, S, M>,
+    logical_explain: String,
+    physical_explain: String,
+    pipeline_explain: String,
 }
 
 impl<S, M> fmt::Debug for PhysicalExplain<'_, '_, S, M> {
@@ -25,17 +25,20 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     #[inline]
     pub(crate) fn plan(
         opts: ir::ExplainOptions,
-        logical_plan: impl Into<String>,
-        physical_plan: PhysicalPlan<'env, 'txn, S, M>,
+        child: PhysicalNodeId<'env, 'txn, S, M>,
+        logical_explain: impl Into<String>,
+        physical_explain: impl Into<String>,
+        pipeline_explain: impl Into<String>,
         arena: &mut PhysicalNodeArena<'env, 'txn, S, M>,
     ) -> PhysicalNodeId<'env, 'txn, S, M> {
         arena.alloc_with(|id| {
-            Arc::new(Self {
+            Box::new(Self {
                 id,
                 opts,
-                logical_plan_explain: logical_plan.into(),
-                child: physical_plan.root(),
-                physical_plan,
+                child,
+                logical_explain: logical_explain.into(),
+                physical_explain: physical_explain.into(),
+                pipeline_explain: pipeline_explain.into(),
             })
         })
     }
@@ -44,6 +47,8 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode<'env, 'txn, S, M>
     for PhysicalExplain<'env, 'txn, S, M>
 {
+    impl_physical_node_conversions!(M; source, sink; not operator);
+
     fn id(&self) -> PhysicalNodeId<'env, 'txn, S, M> {
         self.id
     }
@@ -54,27 +59,6 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode
 
     fn children(&self) -> &[PhysicalNodeId<'env, 'txn, S, M>] {
         if self.opts.analyze { std::slice::from_ref(&self.child) } else { &[] }
-    }
-
-    fn as_source(
-        self: Arc<Self>,
-    ) -> Result<Arc<dyn PhysicalSource<'env, 'txn, S, M>>, Arc<dyn PhysicalNode<'env, 'txn, S, M>>>
-    {
-        Ok(self)
-    }
-
-    fn as_sink(
-        self: Arc<Self>,
-    ) -> Result<Arc<dyn PhysicalSink<'env, 'txn, S, M>>, Arc<dyn PhysicalNode<'env, 'txn, S, M>>>
-    {
-        Ok(self)
-    }
-
-    fn as_operator(
-        self: Arc<Self>,
-    ) -> Result<Arc<dyn PhysicalOperator<'env, 'txn, S, M>>, Arc<dyn PhysicalNode<'env, 'txn, S, M>>>
-    {
-        Err(self)
     }
 }
 
@@ -100,16 +84,10 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
         ecx: &'txn ExecutionContext<'_, 'env, S, M>,
     ) -> ExecutionResult<TupleStream<'_>> {
         let scx = ecx.scx();
-        let catalog = ecx.catalog();
-        let tx = ecx.tx();
-        let mut physical_plan = self.physical_plan.clone();
 
-        let physical_explain = physical_plan.display(catalog, &tx).to_string();
-        let sink = OutputSink::plan(physical_plan.arena_mut());
-        let pipeline = crate::build_pipelines(sink.as_ref(), physical_plan);
-        let pipeline_explain = pipeline.display(catalog, &tx).to_string();
-
-        let logical_explain = self.logical_plan_explain.clone();
+        let logical_explain = self.logical_explain.clone();
+        let physical_explain = self.physical_explain.clone();
+        let pipeline_explain = self.pipeline_explain.clone();
 
         let explain_output = scx.config().explain_output();
         let stringified = match explain_output {

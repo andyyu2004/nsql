@@ -19,7 +19,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSet<
         scope: ir::VariableScope,
         arena: &mut PhysicalNodeArena<'env, 'txn, S, M>,
     ) -> PhysicalNodeId<'env, 'txn, S, M> {
-        arena.alloc_with(|id| Arc::new(Self { id, name, value, scope }))
+        arena.alloc_with(|id| Box::new(Self { id, name, value, scope }))
     }
 }
 
@@ -45,6 +45,8 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode<'env, 'txn, S, M>
     for PhysicalSet<'env, 'txn, S, M>
 {
+    impl_physical_node_conversions!(M; source; not operator, sink);
+
     fn id(&self) -> PhysicalNodeId<'env, 'txn, S, M> {
         self.id
     }
@@ -55,27 +57,6 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode
 
     fn children(&self) -> &[PhysicalNodeId<'env, 'txn, S, M>] {
         &[]
-    }
-
-    fn as_source(
-        self: Arc<Self>,
-    ) -> Result<Arc<dyn PhysicalSource<'env, 'txn, S, M>>, Arc<dyn PhysicalNode<'env, 'txn, S, M>>>
-    {
-        Ok(self)
-    }
-
-    fn as_sink(
-        self: Arc<Self>,
-    ) -> Result<Arc<dyn PhysicalSink<'env, 'txn, S, M>>, Arc<dyn PhysicalNode<'env, 'txn, S, M>>>
-    {
-        Err(self)
-    }
-
-    fn as_operator(
-        self: Arc<Self>,
-    ) -> Result<Arc<dyn PhysicalOperator<'env, 'txn, S, M>>, Arc<dyn PhysicalNode<'env, 'txn, S, M>>>
-    {
-        Err(self)
     }
 }
 
