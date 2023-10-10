@@ -66,6 +66,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Executor<'en
             .collect::<Box<_>>();
         let sink = sink.as_sink_mut().expect("expected sink");
 
+        // let mut source = source.profiled(profiler);
         let mut stream = source.source(ecx)?;
 
         'main_loop: while let Some(tuple) = stream.next()? {
