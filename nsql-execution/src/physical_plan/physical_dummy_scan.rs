@@ -23,7 +23,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
     for PhysicalDummyScan<'env, 'txn, S, M>
 {
     fn source(
-        &self,
+        &mut self,
         _ecx: &'txn ExecutionContext<'_, 'env, S, M>,
     ) -> ExecutionResult<TupleStream<'_>> {
         if self.width.is_some() {

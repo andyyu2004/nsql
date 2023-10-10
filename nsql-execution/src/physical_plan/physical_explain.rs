@@ -66,7 +66,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSink
     for PhysicalExplain<'env, 'txn, S, M>
 {
     fn sink(
-        &self,
+        &mut self,
         _ecx: &'txn ExecutionContext<'_, 'env, S, M>,
         _tuple: Tuple,
     ) -> ExecutionResult<()> {
@@ -80,7 +80,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
     for PhysicalExplain<'env, 'txn, S, M>
 {
     fn source(
-        &self,
+        &mut self,
         ecx: &'txn ExecutionContext<'_, 'env, S, M>,
     ) -> ExecutionResult<TupleStream<'_>> {
         let scx = ecx.scx();

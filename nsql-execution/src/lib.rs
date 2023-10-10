@@ -294,7 +294,7 @@ trait PhysicalOperator<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env
     PhysicalNode<'env, 'txn, S, M>
 {
     fn execute(
-        &self,
+        &mut self,
         ecx: &'txn ExecutionContext<'_, 'env, S, M>,
         input: T,
     ) -> ExecutionResult<OperatorState<T>>;
@@ -307,7 +307,7 @@ trait PhysicalSource<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, 
 {
     /// Return the next chunk from the source. An empty chunk indicates that the source is exhausted.
     fn source(
-        &self,
+        &mut self,
         ecx: &'txn ExecutionContext<'_, 'env, S, M>,
     ) -> ExecutionResult<TupleStream<'_>>;
 }
@@ -316,7 +316,7 @@ trait PhysicalSink<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>
     PhysicalSource<'env, 'txn, S, M>
 {
     fn sink(
-        &self,
+        &mut self,
         ecx: &'txn ExecutionContext<'_, 'env, S, M>,
         tuple: Tuple,
     ) -> ExecutionResult<()>;

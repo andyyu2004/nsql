@@ -41,7 +41,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
     for PhysicalHashAggregate<'env, 'txn, S, M>
 {
     fn source(
-        &self,
+        &mut self,
         _ecx: &'txn ExecutionContext<'_, 'env, S, M>,
     ) -> ExecutionResult<TupleStream<'_>> {
         let mut output = vec![];
@@ -61,7 +61,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSink
     for PhysicalHashAggregate<'env, 'txn, S, M>
 {
     fn sink(
-        &self,
+        &mut self,
         ecx: &'txn ExecutionContext<'_, 'env, S, M>,
         tuple: Tuple,
     ) -> ExecutionResult<()> {

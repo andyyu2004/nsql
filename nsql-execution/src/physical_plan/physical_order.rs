@@ -32,7 +32,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
     for PhysicalOrder<'env, 'txn, S, M>
 {
     fn source(
-        &self,
+        &mut self,
         _ecx: &'txn ExecutionContext<'_, 'env, S, M>,
     ) -> ExecutionResult<TupleStream<'_>> {
         let tuples = mem::take(&mut *self.tuples.write());
@@ -44,7 +44,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSink
     for PhysicalOrder<'env, 'txn, S, M>
 {
     fn sink(
-        &self,
+        &mut self,
         _ecx: &'txn ExecutionContext<'_, 'env, S, M>,
         tuple: Tuple,
     ) -> ExecutionResult<()> {

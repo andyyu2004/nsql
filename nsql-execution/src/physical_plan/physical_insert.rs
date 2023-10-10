@@ -65,7 +65,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSink<'env, 'txn, S, ReadWriteEx
     for PhysicalInsert<'env, 'txn, S>
 {
     fn sink(
-        &self,
+        &mut self,
         ecx: &'txn ExecutionContext<'_, 'env, S, ReadWriteExecutionMode>,
         tuple: Tuple,
     ) -> ExecutionResult<()> {
@@ -120,7 +120,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSource<'env, 'txn, S, ReadWrite
     for PhysicalInsert<'env, 'txn, S>
 {
     fn source(
-        &self,
+        &mut self,
         _ecx: &'txn ExecutionContext<'_, 'env, S, ReadWriteExecutionMode>,
     ) -> ExecutionResult<TupleStream<'_>> {
         let returning = std::mem::take(&mut *self.returning_tuples.write());

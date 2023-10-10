@@ -106,7 +106,7 @@ impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalOperator<'
 {
     #[tracing::instrument(level = "debug", skip(self, ecx))]
     fn execute(
-        &self,
+        &mut self,
         ecx: &'txn ExecutionContext<'_, 'env, S, M>,
         lhs_tuple: Tuple,
     ) -> ExecutionResult<OperatorState<Tuple>> {
@@ -190,7 +190,7 @@ impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSink<'env,
     for PhysicalNestedLoopJoin<'env, 'txn, S, M>
 {
     fn sink(
-        &self,
+        &mut self,
         _ecx: &'txn ExecutionContext<'_, 'env, S, M>,
         tuple: Tuple,
     ) -> ExecutionResult<()> {
@@ -211,7 +211,7 @@ impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSource<'en
     for PhysicalNestedLoopJoin<'env, 'txn, S, M>
 {
     fn source(
-        &self,
+        &mut self,
         _ecx: &'txn ExecutionContext<'_, 'env, S, M>,
     ) -> ExecutionResult<TupleStream<'_>> {
         todo!()

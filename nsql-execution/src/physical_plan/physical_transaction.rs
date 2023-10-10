@@ -42,7 +42,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
     for PhysicalTransaction<'env, 'txn, S, M>
 {
     fn source(
-        &self,
+        &mut self,
         ecx: &'txn ExecutionContext<'_, 'env, S, M>,
     ) -> ExecutionResult<TupleStream<'_>> {
         let tx = ecx.tcx();

@@ -45,7 +45,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSource<'env, 'txn, S, ReadWrite
     for PhysicalDrop<'env, 'txn, S>
 {
     fn source(
-        &self,
+        &mut self,
         ecx: &'txn ExecutionContext<'_, 'env, S, ReadWriteExecutionMode>,
     ) -> ExecutionResult<TupleStream<'_>> {
         tracing::debug!("executing physical drop");

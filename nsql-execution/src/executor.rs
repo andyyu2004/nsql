@@ -61,12 +61,12 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Executor<'en
         // Safety: a pipeline should never have duplicate nodes
         let mut nodes_mut = unsafe { get_mut_refs_unchecked(&mut self.nodes, node_ids) };
         let [source, operators @ .., sink] = &mut nodes_mut[..] else { panic!() };
-        let source = source.as_source().expect("expected source");
-        let operators = operators
+        let source = source.as_source_mut().expect("expected source");
+        let mut operators = operators
             .iter_mut()
-            .map(|op| op.as_operator().expect("expected operator"))
+            .map(|op| op.as_operator_mut().expect("expected operator"))
             .collect::<Box<_>>();
-        let sink = sink.as_sink().expect("expected sink");
+        let sink = sink.as_sink_mut().expect("expected sink");
 
         let mut stream = source.source(ecx)?;
 
@@ -78,7 +78,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Executor<'en
             {
                 tracing::debug!(%tuple, start = %operator_idx, "pushing tuple through pipeline");
 
-                for (idx, op) in operators.iter().enumerate().skip(operator_idx) {
+                for (idx, op) in operators.iter_mut().enumerate().skip(operator_idx) {
                     let span = tracing::debug_span!(
                         "operator",
                         "{:#}",
@@ -203,7 +203,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
     for OutputSink<'env, 'txn, S, M>
 {
     fn source(
-        &self,
+        &mut self,
         _ecx: &'txn ExecutionContext<'_, 'env, S, M>,
     ) -> ExecutionResult<TupleStream<'_>> {
         unimplemented!()
@@ -214,7 +214,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSink
     for OutputSink<'env, 'txn, S, M>
 {
     fn sink(
-        &self,
+        &mut self,
         _ecx: &'txn ExecutionContext<'_, 'env, S, M>,
         tuple: Tuple,
     ) -> ExecutionResult<()> {

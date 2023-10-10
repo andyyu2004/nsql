@@ -41,7 +41,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
     for PhysicalShow<'env, 'txn, S, M>
 {
     fn source(
-        &self,
+        &mut self,
         ecx: &'txn ExecutionContext<'_, 'env, S, M>,
     ) -> ExecutionResult<TupleStream<'_>> {
         let tx: M::TransactionRef<'txn> = ecx.tx();

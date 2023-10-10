@@ -25,7 +25,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
 {
     #[tracing::instrument(level = "debug", skip(self, _ecx, tuple))]
     fn execute(
-        &self,
+        &mut self,
         _ecx: &'txn ExecutionContext<'_, 'env, S, M>,
         tuple: Tuple,
     ) -> ExecutionResult<OperatorState<Tuple>> {
