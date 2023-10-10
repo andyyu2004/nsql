@@ -1,5 +1,3 @@
-use parking_lot::Mutex;
-
 use super::*;
 use crate::pipeline::RootPipeline;
 
@@ -151,9 +149,9 @@ pub fn execute<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
 ) -> ExecutionResult<Vec<Tuple>> {
     let sink = OutputSink::plan(plan.arena_mut());
     let root_pipeline = build_pipelines(sink, plan);
-    let root_pipeline = execute_root_pipeline(ecx, root_pipeline)?;
-    let sink = &root_pipeline.nodes[sink];
-    let tuples = &mut *sink.hack_tmp_as_output_sink().tuples.lock();
+    let mut root_pipeline = execute_root_pipeline(ecx, root_pipeline)?;
+    let sink = &mut root_pipeline.nodes[sink];
+    let tuples = &mut sink.hack_tmp_as_output_sink().tuples;
     Ok(std::mem::take(tuples))
 }
 
@@ -162,7 +160,7 @@ pub fn execute<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
 #[derive(Debug)]
 pub(crate) struct OutputSink<'env, 'txn, S, M> {
     id: PhysicalNodeId<'env, 'txn, S, M>,
-    tuples: Mutex<Vec<Tuple>>,
+    tuples: Vec<Tuple>,
 }
 
 impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> OutputSink<'env, 'txn, S, M> {
@@ -194,7 +192,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode
 
     impl_physical_node_conversions!(M; source, sink; not operator);
 
-    fn hack_tmp_as_output_sink(&self) -> &OutputSink<'env, 'txn, S, M> {
+    fn hack_tmp_as_output_sink(&mut self) -> &mut OutputSink<'env, 'txn, S, M> {
         self
     }
 }
@@ -218,7 +216,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSink
         _ecx: &'txn ExecutionContext<'_, 'env, S, M>,
         tuple: Tuple,
     ) -> ExecutionResult<()> {
-        self.tuples.lock().push(tuple);
+        self.tuples.push(tuple);
         Ok(())
     }
 }

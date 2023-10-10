@@ -1,5 +1,3 @@
-use std::sync::atomic::{self, AtomicU64};
-
 use anyhow::bail;
 
 use super::*;
@@ -8,7 +6,7 @@ use super::*;
 pub struct PhysicalLimit<'env, 'txn, S, M> {
     id: PhysicalNodeId<'env, 'txn, S, M>,
     child: PhysicalNodeId<'env, 'txn, S, M>,
-    yielded: AtomicU64,
+    yielded: u64,
     limit: u64,
     exceeded_message: Option<String>,
 }
@@ -23,13 +21,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
         arena: &mut PhysicalNodeArena<'env, 'txn, S, M>,
     ) -> PhysicalNodeId<'env, 'txn, S, M> {
         arena.alloc_with(|id| {
-            Box::new(Self {
-                id,
-                child: source,
-                limit,
-                yielded: AtomicU64::new(0),
-                exceeded_message,
-            })
+            Box::new(Self { id, child: source, limit, yielded: 0, exceeded_message })
         })
     }
 }
@@ -42,8 +34,9 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
         _ecx: &'txn ExecutionContext<'_, 'env, S, M>,
         input: Tuple,
     ) -> ExecutionResult<OperatorState<Tuple>> {
-        let yielded = self.yielded.fetch_add(1, atomic::Ordering::AcqRel);
-        if yielded >= self.limit {
+        self.yielded += 1;
+
+        if self.yielded > self.limit {
             if let Some(msg) = &self.exceeded_message {
                 bail!("{msg}");
             }

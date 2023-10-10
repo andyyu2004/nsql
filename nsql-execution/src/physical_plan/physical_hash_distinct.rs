@@ -1,4 +1,4 @@
-use dashmap::DashSet;
+use rustc_hash::FxHashSet;
 
 use super::*;
 
@@ -6,7 +6,7 @@ use super::*;
 pub struct PhysicalHashDistinct<'env, 'txn, S, M> {
     id: PhysicalNodeId<'env, 'txn, S, M>,
     child: PhysicalNodeId<'env, 'txn, S, M>,
-    seen: DashSet<Tuple>,
+    seen: FxHashSet<Tuple>,
 }
 
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>

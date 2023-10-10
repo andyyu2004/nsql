@@ -2,7 +2,6 @@ use std::{cmp, mem};
 
 use itertools::Itertools;
 use nsql_storage_engine::fallible_iterator;
-use parking_lot::RwLock;
 
 use super::*;
 
@@ -11,7 +10,7 @@ pub struct PhysicalOrder<'env, 'txn, S, M> {
     id: PhysicalNodeId<'env, 'txn, S, M>,
     child: PhysicalNodeId<'env, 'txn, S, M>,
     ordering: Box<[ir::OrderExpr<ExecutableExpr<S>>]>,
-    tuples: RwLock<Vec<Tuple>>,
+    tuples: Vec<Tuple>,
 }
 
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
@@ -35,7 +34,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
         &mut self,
         _ecx: &'txn ExecutionContext<'_, 'env, S, M>,
     ) -> ExecutionResult<TupleStream<'_>> {
-        let tuples = mem::take(&mut *self.tuples.write());
+        let tuples = mem::take(&mut self.tuples);
         Ok(Box::new(fallible_iterator::convert(tuples.into_iter().map(Ok))))
     }
 }
@@ -48,13 +47,13 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSink
         _ecx: &'txn ExecutionContext<'_, 'env, S, M>,
         tuple: Tuple,
     ) -> ExecutionResult<()> {
-        self.tuples.write().push(tuple);
+        self.tuples.push(tuple);
         Ok(())
     }
 
-    fn finalize(&self, ecx: &'txn ExecutionContext<'_, 'env, S, M>) -> ExecutionResult<()> {
+    fn finalize(&mut self, ecx: &'txn ExecutionContext<'_, 'env, S, M>) -> ExecutionResult<()> {
         // sort tuples when the sink is finalized
-        let tuples: &mut [Tuple] = &mut self.tuples.write();
+        let tuples: &mut [Tuple] = &mut self.tuples;
         let ordering = &self.ordering;
 
         let storage = ecx.storage();

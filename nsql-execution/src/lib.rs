@@ -224,7 +224,7 @@ trait PhysicalNode<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>
     ) -> Result<&mut dyn PhysicalOperator<'env, 'txn, S, M>, &mut dyn PhysicalNode<'env, 'txn, S, M>>;
 
     // remove this along with the outputsink hack in general
-    fn hack_tmp_as_output_sink(&self) -> &OutputSink<'env, 'txn, S, M> {
+    fn hack_tmp_as_output_sink(&mut self) -> &mut OutputSink<'env, 'txn, S, M> {
         panic!()
     }
 
@@ -321,7 +321,7 @@ trait PhysicalSink<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>
         tuple: Tuple,
     ) -> ExecutionResult<()>;
 
-    fn finalize(&self, _ecx: &'txn ExecutionContext<'_, 'env, S, M>) -> ExecutionResult<()> {
+    fn finalize(&mut self, _ecx: &'txn ExecutionContext<'_, 'env, S, M>) -> ExecutionResult<()> {
         Ok(())
     }
 }

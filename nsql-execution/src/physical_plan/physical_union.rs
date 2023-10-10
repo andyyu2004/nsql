@@ -2,7 +2,6 @@ use std::mem;
 
 use nsql_arena::Idx;
 use nsql_storage_engine::fallible_iterator;
-use parking_lot::Mutex;
 
 use super::*;
 use crate::pipeline::{MetaPipelineBuilder, PipelineBuilder, PipelineBuilderArena};
@@ -11,7 +10,7 @@ use crate::pipeline::{MetaPipelineBuilder, PipelineBuilder, PipelineBuilderArena
 pub(crate) struct PhysicalUnion<'env, 'txn, S, M> {
     id: PhysicalNodeId<'env, 'txn, S, M>,
     children: [PhysicalNodeId<'env, 'txn, S, M>; 2],
-    buffer: Mutex<Vec<Tuple>>,
+    buffer: Vec<Tuple>,
 }
 
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
@@ -87,7 +86,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
         &mut self,
         _ecx: &'txn ExecutionContext<'_, 'env, S, M>,
     ) -> ExecutionResult<TupleStream<'_>> {
-        let buffer = mem::take(&mut *self.buffer.lock());
+        let buffer = mem::take(&mut self.buffer);
         Ok(Box::new(fallible_iterator::convert(buffer.into_iter().map(Ok))))
     }
 }
@@ -100,7 +99,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSink
         _ecx: &'txn ExecutionContext<'_, 'env, S, M>,
         tuple: Tuple,
     ) -> ExecutionResult<()> {
-        self.buffer.lock().push(tuple);
+        self.buffer.push(tuple);
         Ok(())
     }
 }

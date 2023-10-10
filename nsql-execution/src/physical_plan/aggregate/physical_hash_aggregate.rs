@@ -1,9 +1,8 @@
 use std::mem;
 
-use dashmap::DashMap;
 use nsql_catalog::AggregateFunctionInstance;
 use nsql_storage_engine::fallible_iterator;
-use parking_lot::Mutex;
+use rustc_hash::FxHashMap;
 
 use super::*;
 
@@ -13,7 +12,7 @@ pub struct PhysicalHashAggregate<'env, 'txn, S, M> {
     aggregates: Box<[(ir::Function, Option<ExecutableExpr<S>>)]>,
     children: [PhysicalNodeId<'env, 'txn, S, M>; 1],
     group_expr: ExecutableTupleExpr<S>,
-    output_groups: DashMap<Tuple, Mutex<Vec<Box<dyn AggregateFunctionInstance>>>>,
+    output_groups: FxHashMap<Tuple, Vec<Box<dyn AggregateFunctionInstance>>>,
 }
 
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
@@ -45,10 +44,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
         _ecx: &'txn ExecutionContext<'_, 'env, S, M>,
     ) -> ExecutionResult<TupleStream<'_>> {
         let mut output = vec![];
-        for entry in self.output_groups.iter() {
-            // FIXME is there a way to consume the map without mutable access/ownership? i.e. a drain or something
-            let (group, functions) = entry.pair();
-            let mut functions = functions.lock();
+        for (group, functions) in self.output_groups.iter_mut() {
             let values = mem::take(&mut *functions).into_iter().map(|f| f.finalize());
             output.push(Tuple::from_iter(group.clone().into_iter().chain(values)));
         }
@@ -69,13 +65,10 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSink
         let tx = ecx.tx();
         let group = self.group_expr.execute(storage, &tx, &tuple)?;
         let functions = self.output_groups.entry(group).or_insert_with(|| {
-            Mutex::new(
-                self.aggregates.iter().map(|(f, _expr)| f.get_aggregate_instance()).collect(),
-            )
+            self.aggregates.iter().map(|(f, _expr)| f.get_aggregate_instance()).collect()
         });
 
-        let mut aggregate_functions = functions.lock();
-        for (state, (_f, expr)) in aggregate_functions.iter_mut().zip(&self.aggregates[..]) {
+        for (state, (_f, expr)) in functions[..].iter_mut().zip(&self.aggregates[..]) {
             let value = expr.as_ref().map(|expr| expr.execute(storage, &tx, &tuple)).transpose()?;
             state.update(value);
         }

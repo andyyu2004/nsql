@@ -6,7 +6,7 @@ use nsql_core::Oid;
 use nsql_storage::tuple::FromTuple;
 use nsql_storage::{PrimaryKeyConflict, TableStorage};
 use nsql_storage_engine::fallible_iterator;
-use parking_lot::{Mutex, RwLock};
+use parking_lot::Mutex;
 
 use super::*;
 use crate::ReadWriteExecutionMode;
@@ -19,7 +19,7 @@ pub(crate) struct PhysicalInsert<'env, 'txn, S: StorageEngine> {
     storage: OnceLock<Mutex<Option<TableStorage<'env, 'txn, S, ReadWriteExecutionMode>>>>,
     table: OnceLock<Table>,
     returning: ExecutableTupleExpr<S>,
-    returning_tuples: RwLock<Vec<Tuple>>,
+    returning_tuples: Vec<Tuple>,
 }
 
 impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalInsert<'env, 'txn, S> {
@@ -89,11 +89,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSink<'env, 'txn, S, ReadWriteEx
         })?;
 
         if !self.returning.is_empty() {
-            self.returning_tuples.write().push(self.returning.execute(
-                catalog.storage(),
-                &tx,
-                &tuple,
-            )?);
+            self.returning_tuples.push(self.returning.execute(catalog.storage(), &tx, &tuple)?);
         }
 
         // hack, if this is the insert of a `CREATE TABLE` we need to create the table storage
@@ -106,7 +102,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSink<'env, 'txn, S, ReadWriteEx
     }
 
     fn finalize(
-        &self,
+        &mut self,
         _ecx: &'txn ExecutionContext<'_, 'env, S, ReadWriteExecutionMode>,
     ) -> ExecutionResult<()> {
         // drop the storage on finalization as it is no longer needed by this node
@@ -123,7 +119,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSource<'env, 'txn, S, ReadWrite
         &mut self,
         _ecx: &'txn ExecutionContext<'_, 'env, S, ReadWriteExecutionMode>,
     ) -> ExecutionResult<TupleStream<'_>> {
-        let returning = std::mem::take(&mut *self.returning_tuples.write());
+        let returning = std::mem::take(&mut self.returning_tuples);
         Ok(Box::new(fallible_iterator::convert(returning.into_iter().map(Ok))))
     }
 }

@@ -1,7 +1,6 @@
 use std::mem;
 
 use nsql_core::Name;
-use parking_lot::Mutex;
 
 use super::*;
 
@@ -10,7 +9,7 @@ pub struct PhysicalCte<'env, 'txn, S, M> {
     id: PhysicalNodeId<'env, 'txn, S, M>,
     name: Name,
     children: [PhysicalNodeId<'env, 'txn, S, M>; 2],
-    materialized_data: Mutex<Vec<Tuple>>,
+    materialized_data: Vec<Tuple>,
 }
 
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalCte<'env, 'txn, S, M> {
@@ -119,14 +118,13 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSink
         tuple: Tuple,
     ) -> ExecutionResult<()> {
         // collect the data from the cte plan
-        let mut data = self.materialized_data.lock();
-        data.push(tuple);
+        self.materialized_data.push(tuple);
         Ok(())
     }
 
-    fn finalize(&self, ecx: &'txn ExecutionContext<'_, 'env, S, M>) -> ExecutionResult<()> {
+    fn finalize(&mut self, ecx: &'txn ExecutionContext<'_, 'env, S, M>) -> ExecutionResult<()> {
         // when finished execution the materialized cte, store the tuples in context for cte scan nodes to consume
-        let tuples = mem::take(&mut *self.materialized_data.lock());
+        let tuples = mem::take(&mut self.materialized_data);
         ecx.instantiate_materialized_cte(Name::clone(&self.name), tuples);
         Ok(())
     }

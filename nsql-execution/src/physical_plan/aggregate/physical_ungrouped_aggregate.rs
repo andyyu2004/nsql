@@ -2,7 +2,6 @@ use std::mem;
 
 use nsql_catalog::AggregateFunctionInstance;
 use nsql_storage_engine::fallible_iterator;
-use parking_lot::Mutex;
 
 use super::*;
 
@@ -10,7 +9,7 @@ use super::*;
 pub struct PhysicalUngroupedAggregate<'env, 'txn, S, M> {
     id: PhysicalNodeId<'env, 'txn, S, M>,
     functions: Box<[(ir::Function, Option<ExecutableExpr<S>>)]>,
-    aggregate_functions: Mutex<Vec<Box<dyn AggregateFunctionInstance>>>,
+    aggregate_functions: Vec<Box<dyn AggregateFunctionInstance>>,
     children: [PhysicalNodeId<'env, 'txn, S, M>; 1],
 }
 
@@ -25,9 +24,10 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
         arena.alloc_with(|id| {
             Box::new(Self {
                 id,
-                aggregate_functions: Mutex::new(
-                    functions.iter().map(|(f, _args)| f.get_aggregate_instance()).collect(),
-                ),
+                aggregate_functions: functions
+                    .iter()
+                    .map(|(f, _args)| f.get_aggregate_instance())
+                    .collect(),
                 functions,
                 children: [source],
             })
@@ -42,8 +42,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
         &mut self,
         _ecx: &'txn ExecutionContext<'_, 'env, S, M>,
     ) -> ExecutionResult<TupleStream<'_>> {
-        let values =
-            mem::take(&mut *self.aggregate_functions.lock()).into_iter().map(|f| f.finalize());
+        let values = mem::take(&mut self.aggregate_functions).into_iter().map(|f| f.finalize());
         Ok(Box::new(fallible_iterator::once(Tuple::from_iter(values))))
     }
 }
@@ -58,8 +57,8 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSink
     ) -> ExecutionResult<()> {
         let storage = ecx.storage();
         let tx = ecx.tx();
-        let mut aggregate_functions = self.aggregate_functions.lock();
-        for (state, (_f, expr)) in aggregate_functions.iter_mut().zip(&self.functions[..]) {
+        for (state, (_f, expr)) in self.aggregate_functions[..].iter_mut().zip(&self.functions[..])
+        {
             let v = expr.as_ref().map(|expr| expr.execute(storage, &tx, &tuple)).transpose()?;
             state.update(v);
         }

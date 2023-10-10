@@ -1,7 +1,6 @@
 use nsql_catalog::Table;
 use nsql_core::Oid;
 use nsql_storage_engine::fallible_iterator;
-use parking_lot::RwLock;
 
 use super::*;
 use crate::ReadWriteExecutionMode;
@@ -11,9 +10,9 @@ pub(crate) struct PhysicalUpdate<'env, 'txn, S> {
     id: PhysicalNodeId<'env, 'txn, S, ReadWriteExecutionMode>,
     children: [PhysicalNodeId<'env, 'txn, S, ReadWriteExecutionMode>; 1],
     table: Oid<Table>,
-    tuples: RwLock<Vec<Tuple>>,
+    tuples: Vec<Tuple>,
     returning: ExecutableTupleExpr<S>,
-    returning_tuples: RwLock<Vec<Tuple>>,
+    returning_tuples: Vec<Tuple>,
 }
 
 impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalUpdate<'env, 'txn, S> {
@@ -65,12 +64,12 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSink<'env, 'txn, S, ReadWriteEx
         _ecx: &'txn ExecutionContext<'_, 'env, S, ReadWriteExecutionMode>,
         tuple: Tuple,
     ) -> ExecutionResult<()> {
-        self.tuples.write().push(tuple);
+        self.tuples.push(tuple);
         Ok(())
     }
 
     fn finalize(
-        &self,
+        &mut self,
         ecx: &'txn ExecutionContext<'_, 'env, S, ReadWriteExecutionMode>,
     ) -> ExecutionResult<()> {
         let tx = ecx.tx();
@@ -78,18 +77,13 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSink<'env, 'txn, S, ReadWriteEx
         let table = catalog.table(tx, self.table)?;
         let mut storage = table.storage::<S, ReadWriteExecutionMode>(catalog, tx)?;
 
-        let tuples = self.tuples.read();
-        for tuple in &*tuples {
+        for tuple in &self.tuples {
             // FIXME we need to detect whether or not we actually updated something before adding it
             // to the returning set
             storage.update(tuple)?;
 
             if !self.returning.is_empty() {
-                self.returning_tuples.write().push(self.returning.execute(
-                    catalog.storage(),
-                    tx,
-                    tuple,
-                )?);
+                self.returning_tuples.push(self.returning.execute(catalog.storage(), tx, tuple)?);
             }
         }
 
@@ -104,7 +98,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSource<'env, 'txn, S, ReadWrite
         &mut self,
         _ecx: &'txn ExecutionContext<'_, 'env, S, ReadWriteExecutionMode>,
     ) -> ExecutionResult<TupleStream<'_>> {
-        let returning = std::mem::take(&mut *self.returning_tuples.write());
+        let returning = std::mem::take(&mut self.returning_tuples);
         Ok(Box::new(fallible_iterator::convert(returning.into_iter().map(Ok))))
     }
 }

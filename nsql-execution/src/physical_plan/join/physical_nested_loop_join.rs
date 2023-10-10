@@ -1,9 +1,8 @@
+use std::cell::OnceCell;
 use std::mem;
 use std::sync::atomic::{self, AtomicBool, AtomicUsize};
-use std::sync::OnceLock;
 
 use nsql_arena::Idx;
-use parking_lot::Mutex;
 
 use super::*;
 use crate::pipeline::{MetaPipelineBuilder, PipelineBuilder, PipelineBuilderArena};
@@ -15,9 +14,9 @@ pub(crate) struct PhysicalNestedLoopJoin<'env, 'txn, S, M> {
     join_kind: ir::JoinKind,
     join_predicate: ExecutableExpr<S>,
     // mutex is only used during build phase
-    rhs_tuples_build: Mutex<Vec<Tuple>>,
+    rhs_tuples_build: Vec<Tuple>,
     // tuples are moved into this vector during finalization (to avoid unnecessary locks)
-    rhs_tuples: OnceLock<Vec<Tuple>>,
+    rhs_tuples: OnceCell<Vec<Tuple>>,
     rhs_index: AtomicUsize,
     rhs_width: usize,
     found_match_for_lhs_tuple: AtomicBool,
@@ -195,14 +194,12 @@ impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSink<'env,
         tuple: Tuple,
     ) -> ExecutionResult<()> {
         tracing::debug!(%tuple, "building nested loop join");
-        self.rhs_tuples_build.lock().push(tuple);
+        self.rhs_tuples_build.push(tuple);
         Ok(())
     }
 
-    fn finalize(&self, _ecx: &'txn ExecutionContext<'_, 'env, S, M>) -> ExecutionResult<()> {
-        self.rhs_tuples
-            .set(mem::take(&mut self.rhs_tuples_build.lock()))
-            .expect("finalize called twice");
+    fn finalize(&mut self, _ecx: &'txn ExecutionContext<'_, 'env, S, M>) -> ExecutionResult<()> {
+        self.rhs_tuples.set(mem::take(&mut self.rhs_tuples_build)).expect("finalize called twice");
         Ok(())
     }
 }
