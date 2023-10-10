@@ -41,14 +41,32 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Executor<'en
         ecx: &'txn ExecutionContext<'_, 'env, S, M>,
         pipeline: Idx<Pipeline<'env, 'txn, S, M>>,
     ) -> ExecutionResult<()> {
+        // Safety: caller must ensure the indexes are unique
+        unsafe fn get_mut_refs_unchecked<'a, 'env, 'txn, S, M>(
+            data: &'a mut PhysicalNodeArena<'env, 'txn, S, M>,
+            indices: impl IntoIterator<Item = PhysicalNodeId<'env, 'txn, S, M>>,
+        ) -> Vec<&'a mut dyn PhysicalNode<'env, 'txn, S, M>> {
+            let mut refs = vec![];
+
+            for index in indices {
+                let r: *mut dyn PhysicalNode<'env, 'txn, S, M> = data[index].as_mut();
+                refs.push(unsafe { &mut *r });
+            }
+
+            refs
+        }
+
         let pipeline: &Pipeline<'env, 'txn, S, M> = &self.pipelines[pipeline];
-        let source = self.nodes[pipeline.source].as_source().expect("expected source");
-        let operators = &pipeline
-            .operators
-            .iter()
-            .map(|&op| self.nodes[op].as_operator().expect("expected operator"))
+        let node_ids = pipeline.nodes();
+        // Safety: a pipeline should never have duplicate nodes
+        let mut nodes_mut = unsafe { get_mut_refs_unchecked(&mut self.nodes, node_ids) };
+        let [source, operators @ .., sink] = &mut nodes_mut[..] else { panic!() };
+        let source = source.as_source().expect("expected source");
+        let operators = operators
+            .iter_mut()
+            .map(|op| op.as_operator().expect("expected operator"))
             .collect::<Box<_>>();
-        let sink = self.nodes[pipeline.sink].as_sink().expect("expected sink");
+        let sink = sink.as_sink().expect("expected sink");
 
         let mut stream = source.source(ecx)?;
 
