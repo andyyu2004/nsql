@@ -1,3 +1,4 @@
+use std::marker::PhantomData;
 use std::mem;
 
 use nsql_core::Name;
@@ -6,25 +7,27 @@ use super::*;
 
 #[derive(Debug)]
 pub struct PhysicalCte<'env, 'txn, S, M> {
-    id: PhysicalNodeId<'env, 'txn, S, M>,
+    id: PhysicalNodeId,
     name: Name,
-    children: [PhysicalNodeId<'env, 'txn, S, M>; 2],
+    children: [PhysicalNodeId; 2],
     materialized_data: Vec<Tuple>,
+    _marker: PhantomData<dyn PhysicalNode<'env, 'txn, S, M>>,
 }
 
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalCte<'env, 'txn, S, M> {
     pub(crate) fn plan(
         name: Name,
-        cte: PhysicalNodeId<'env, 'txn, S, M>,
-        child: PhysicalNodeId<'env, 'txn, S, M>,
+        cte: PhysicalNodeId,
+        child: PhysicalNodeId,
         arena: &mut PhysicalNodeArena<'env, 'txn, S, M>,
-    ) -> PhysicalNodeId<'env, 'txn, S, M> {
+    ) -> PhysicalNodeId {
         arena.alloc_with(|id| {
             Box::new(Self {
                 id,
                 name,
                 children: [cte, child],
                 materialized_data: Default::default(),
+                _marker: PhantomData,
             })
         })
     }
@@ -33,7 +36,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalCte<
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode<'env, 'txn, S, M>
     for PhysicalCte<'env, 'txn, S, M>
 {
-    fn id(&self) -> PhysicalNodeId<'env, 'txn, S, M> {
+    fn id(&self) -> PhysicalNodeId {
         self.id
     }
 
@@ -42,7 +45,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode
     }
 
     #[inline]
-    fn children(&self) -> &[PhysicalNodeId<'env, 'txn, S, M>] {
+    fn children(&self) -> &[PhysicalNodeId] {
         &self.children
     }
 

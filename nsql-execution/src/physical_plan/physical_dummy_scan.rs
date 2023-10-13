@@ -1,3 +1,5 @@
+use std::marker::PhantomData;
+
 use nsql_storage_engine::fallible_iterator;
 
 use super::*;
@@ -5,8 +7,9 @@ use crate::TupleStream;
 
 #[derive(Debug)]
 pub struct PhysicalDummyScan<'env, 'txn, S, M> {
-    id: PhysicalNodeId<'env, 'txn, S, M>,
+    id: PhysicalNodeId,
     width: Option<usize>,
+    _marker: PhantomData<dyn PhysicalNode<'env, 'txn, S, M>>,
 }
 
 impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalDummyScan<'env, 'txn, S, M> {
@@ -14,8 +17,8 @@ impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalDummyScan<
     pub(crate) fn plan(
         width: Option<usize>,
         arena: &mut PhysicalNodeArena<'env, 'txn, S, M>,
-    ) -> PhysicalNodeId<'env, 'txn, S, M> {
-        arena.alloc_with(|id| Box::new(Self { id, width }))
+    ) -> PhysicalNodeId {
+        arena.alloc_with(|id| Box::new(Self { id, width, _marker: PhantomData }))
     }
 }
 
@@ -39,7 +42,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode
 {
     impl_physical_node_conversions!(M; source; not operator, sink);
 
-    fn id(&self) -> PhysicalNodeId<'env, 'txn, S, M> {
+    fn id(&self) -> PhysicalNodeId {
         self.id
     }
 
@@ -47,7 +50,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode
         self.width.unwrap_or(0)
     }
 
-    fn children(&self) -> &[PhysicalNodeId<'env, 'txn, S, M>] {
+    fn children(&self) -> &[PhysicalNodeId] {
         &[]
     }
 }

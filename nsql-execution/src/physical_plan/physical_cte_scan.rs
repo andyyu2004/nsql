@@ -1,3 +1,5 @@
+use std::marker::PhantomData;
+
 use nsql_core::Name;
 use nsql_storage_engine::fallible_iterator;
 
@@ -5,10 +7,11 @@ use super::*;
 
 #[derive(Debug)]
 pub struct PhysicalCteScan<'env, 'txn, S, M> {
-    id: PhysicalNodeId<'env, 'txn, S, M>,
+    id: PhysicalNodeId,
     cte_name: Name,
     /// The cte node that produces the data for this scan
-    cte: PhysicalNodeId<'env, 'txn, S, M>,
+    cte: PhysicalNodeId,
+    _marker: PhantomData<dyn PhysicalNode<'env, 'txn, S, M>>,
 }
 
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
@@ -16,10 +19,10 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
 {
     pub(crate) fn plan(
         cte_name: Name,
-        cte: PhysicalNodeId<'env, 'txn, S, M>,
+        cte: PhysicalNodeId,
         arena: &mut PhysicalNodeArena<'env, 'txn, S, M>,
-    ) -> PhysicalNodeId<'env, 'txn, S, M> {
-        arena.alloc_with(|id| Box::new(Self { id, cte_name, cte }))
+    ) -> PhysicalNodeId {
+        arena.alloc_with(|id| Box::new(Self { id, cte_name, cte, _marker: PhantomData }))
     }
 }
 
@@ -49,7 +52,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode
 {
     impl_physical_node_conversions!(M; source; not operator, sink);
 
-    fn id(&self) -> PhysicalNodeId<'env, 'txn, S, M> {
+    fn id(&self) -> PhysicalNodeId {
         self.id
     }
 
@@ -57,7 +60,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode
         nodes[self.cte].width(nodes)
     }
 
-    fn children(&self) -> &[PhysicalNodeId<'env, 'txn, S, M>] {
+    fn children(&self) -> &[PhysicalNodeId] {
         &[]
     }
 }

@@ -160,17 +160,14 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Explain<'env
 
 pub struct PhysicalNodeExplainer<'a, 'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> {
     nodes: &'a PhysicalNodeArena<'env, 'txn, S, M>,
-    node: PhysicalNodeId<'env, 'txn, S, M>,
+    node: PhysicalNodeId,
     indent: usize,
 }
 
 impl<'a, 'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     PhysicalNodeExplainer<'a, 'env, 'txn, S, M>
 {
-    fn explain_child(
-        &self,
-        node: PhysicalNodeId<'env, 'txn, S, M>,
-    ) -> PhysicalNodeExplainer<'a, 'env, 'txn, S, M> {
+    fn explain_child(&self, node: PhysicalNodeId) -> PhysicalNodeExplainer<'a, 'env, 'txn, S, M> {
         PhysicalNodeExplainer { nodes: self.nodes, node, indent: self.indent + 2 }
     }
 }

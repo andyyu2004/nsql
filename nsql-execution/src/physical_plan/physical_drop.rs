@@ -1,11 +1,14 @@
+use std::marker::PhantomData;
+
 use nsql_storage_engine::fallible_iterator;
 
 use super::*;
 use crate::{ReadWriteExecutionMode, TupleStream};
 
 pub struct PhysicalDrop<'env, 'txn, S> {
-    id: PhysicalNodeId<'env, 'txn, S, ReadWriteExecutionMode>,
+    id: PhysicalNodeId,
     refs: Vec<ir::EntityRef>,
+    _marker: PhantomData<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode>>,
 }
 
 impl<'env, 'txn, S> fmt::Debug for PhysicalDrop<'env, 'txn, S> {
@@ -18,8 +21,8 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalDrop<'env, 'txn, S> {
     pub(crate) fn plan(
         refs: Vec<ir::EntityRef>,
         arena: &mut PhysicalNodeArena<'env, 'txn, S, ReadWriteExecutionMode>,
-    ) -> PhysicalNodeId<'env, 'txn, S, ReadWriteExecutionMode> {
-        arena.alloc_with(|id| Box::new(Self { id, refs }))
+    ) -> PhysicalNodeId {
+        arena.alloc_with(|id| Box::new(Self { id, refs, _marker: PhantomData }))
     }
 }
 
@@ -28,7 +31,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalNode<'env, 'txn, S, ReadWriteEx
 {
     impl_physical_node_conversions!(ReadWriteExecutionMode; source; not sink, operator);
 
-    fn id(&self) -> PhysicalNodeId<'env, 'txn, S, ReadWriteExecutionMode> {
+    fn id(&self) -> PhysicalNodeId {
         self.id
     }
 
@@ -36,7 +39,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalNode<'env, 'txn, S, ReadWriteEx
         0
     }
 
-    fn children(&self) -> &[PhysicalNodeId<'env, 'txn, S, ReadWriteExecutionMode>] {
+    fn children(&self) -> &[PhysicalNodeId] {
         &[]
     }
 }

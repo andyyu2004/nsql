@@ -1,4 +1,5 @@
 use std::cell::OnceCell;
+use std::marker::PhantomData;
 use std::mem;
 use std::sync::atomic::{self, AtomicBool, AtomicUsize};
 
@@ -9,8 +10,8 @@ use crate::pipeline::{MetaPipelineBuilder, PipelineBuilder, PipelineBuilderArena
 
 #[derive(Debug)]
 pub(crate) struct PhysicalNestedLoopJoin<'env, 'txn, S, M> {
-    id: PhysicalNodeId<'env, 'txn, S, M>,
-    children: [PhysicalNodeId<'env, 'txn, S, M>; 2],
+    id: PhysicalNodeId,
+    children: [PhysicalNodeId; 2],
     join_kind: ir::JoinKind,
     join_predicate: ExecutableExpr<S>,
     // mutex is only used during build phase
@@ -20,6 +21,7 @@ pub(crate) struct PhysicalNestedLoopJoin<'env, 'txn, S, M> {
     rhs_index: AtomicUsize,
     rhs_width: usize,
     found_match_for_lhs_tuple: AtomicBool,
+    _marker: PhantomData<dyn PhysicalNode<'env, 'txn, S, M>>,
 }
 
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
@@ -28,10 +30,10 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     pub fn plan(
         join_kind: ir::JoinKind,
         join_predicate: ExecutableExpr<S>,
-        lhs_node: PhysicalNodeId<'env, 'txn, S, M>,
-        rhs_node: PhysicalNodeId<'env, 'txn, S, M>,
+        lhs_node: PhysicalNodeId,
+        rhs_node: PhysicalNodeId,
         arena: &mut PhysicalNodeArena<'env, 'txn, S, M>,
-    ) -> PhysicalNodeId<'env, 'txn, S, M> {
+    ) -> PhysicalNodeId {
         assert!(!join_kind.is_right(), "right joins are not supported by nested-loop join");
 
         let rhs_width = match join_kind {
@@ -50,15 +52,16 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
                 rhs_index: AtomicUsize::new(0),
                 rhs_tuples_build: Default::default(),
                 rhs_tuples: Default::default(),
+                _marker: PhantomData,
             })
         })
     }
 
-    fn lhs_node(&self) -> PhysicalNodeId<'env, 'txn, S, M> {
+    fn lhs_node(&self) -> PhysicalNodeId {
         self.children[0]
     }
 
-    fn rhs_node(&self) -> PhysicalNodeId<'env, 'txn, S, M> {
+    fn rhs_node(&self) -> PhysicalNodeId {
         self.children[1]
     }
 }
@@ -68,7 +71,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode
 {
     impl_physical_node_conversions!(M; source, sink, operator);
 
-    fn id(&self) -> PhysicalNodeId<'env, 'txn, S, M> {
+    fn id(&self) -> PhysicalNodeId {
         self.id
     }
 
@@ -76,7 +79,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode
         nodes[self.lhs_node()].width(nodes) + self.rhs_width
     }
 
-    fn children(&self) -> &[PhysicalNodeId<'env, 'txn, S, M>] {
+    fn children(&self) -> &[PhysicalNodeId] {
         &self.children
     }
 

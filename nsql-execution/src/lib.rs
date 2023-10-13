@@ -40,7 +40,7 @@ use self::pipeline::{
 pub type ExecutionResult<T, E = Error> = std::result::Result<T, E>;
 
 fn build_pipelines<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
-    sink: PhysicalNodeId<'env, 'txn, S, M>,
+    sink: PhysicalNodeId,
     plan: PhysicalPlan<'env, 'txn, S, M>,
 ) -> RootPipeline<'env, 'txn, S, M> {
     let (mut builder, root_meta_pipeline) =
@@ -60,23 +60,19 @@ impl<'env, 'txn, S, M> Default for PhysicalNodeArena<'env, 'txn, S, M> {
     }
 }
 
-impl<'env, 'txn, S, M> Index<PhysicalNodeId<'env, 'txn, S, M>>
-    for PhysicalNodeArena<'env, 'txn, S, M>
-{
+impl<'env, 'txn, S, M> Index<PhysicalNodeId> for PhysicalNodeArena<'env, 'txn, S, M> {
     type Output = Box<dyn PhysicalNode<'env, 'txn, S, M> + 'txn>;
 
     #[inline]
-    fn index(&self, index: PhysicalNodeId<'env, 'txn, S, M>) -> &Self::Output {
-        &self.nodes[index]
+    fn index(&self, index: PhysicalNodeId) -> &Self::Output {
+        &self.nodes[index.cast()]
     }
 }
 
-impl<'env, 'txn, S, M> IndexMut<PhysicalNodeId<'env, 'txn, S, M>>
-    for PhysicalNodeArena<'env, 'txn, S, M>
-{
+impl<'env, 'txn, S, M> IndexMut<PhysicalNodeId> for PhysicalNodeArena<'env, 'txn, S, M> {
     #[inline]
-    fn index_mut(&mut self, index: PhysicalNodeId<'env, 'txn, S, M>) -> &mut Self::Output {
-        &mut self.nodes[index]
+    fn index_mut(&mut self, index: PhysicalNodeId) -> &mut Self::Output {
+        &mut self.nodes[index.cast()]
     }
 }
 
@@ -85,15 +81,13 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
 {
     pub fn alloc_with(
         &mut self,
-        mk: impl FnOnce(
-            PhysicalNodeId<'env, 'txn, S, M>,
-        ) -> Box<dyn PhysicalNode<'env, 'txn, S, M> + 'txn>,
-    ) -> PhysicalNodeId<'env, 'txn, S, M> {
-        self.nodes.alloc(mk(self.nodes.next_idx()))
+        mk: impl FnOnce(PhysicalNodeId) -> Box<dyn PhysicalNode<'env, 'txn, S, M> + 'txn>,
+    ) -> PhysicalNodeId {
+        self.nodes.alloc(mk(self.nodes.next_idx().cast())).cast()
     }
 }
 
-type PhysicalNodeId<'env, 'txn, S, M> = Idx<Box<dyn PhysicalNode<'env, 'txn, S, M> + 'txn>>;
+type PhysicalNodeId = Idx<()>;
 
 macro_rules! impl_physical_node_conversions {
     ($m_type:ty; $($trait:ident),* $(; not $($not_trait:ident),*)?) => {
@@ -191,12 +185,12 @@ use impl_physical_node_conversions;
 trait PhysicalNode<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>:
     Explain<'env, S> + fmt::Debug
 {
-    fn id(&self) -> PhysicalNodeId<'env, 'txn, S, M>;
+    fn id(&self) -> PhysicalNodeId;
 
     /// The width of the tuples produced by this node
     fn width(&self, nodes: &PhysicalNodeArena<'env, 'txn, S, M>) -> usize;
 
-    fn children(&self) -> &[PhysicalNodeId<'env, 'txn, S, M>];
+    fn children(&self) -> &[PhysicalNodeId];
 
     fn as_source(
         &self,
@@ -300,7 +294,7 @@ macro_rules! delegate_physical_node_impl_of_dyn {
         impl<'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
             PhysicalNode<'env, 'txn, S, M> for &'a mut dyn $ty<'env,'txn, S, M>
         {
-            fn id(&self) -> PhysicalNodeId<'env, 'txn, S, M> {
+            fn id(&self) -> PhysicalNodeId {
                 (**self).id()
             }
 
@@ -308,7 +302,7 @@ macro_rules! delegate_physical_node_impl_of_dyn {
                 (**self).width(nodes)
             }
 
-            fn children(&self) -> &[PhysicalNodeId<'env, 'txn, S, M>] {
+            fn children(&self) -> &[PhysicalNodeId] {
                 (**self).children()
             }
 

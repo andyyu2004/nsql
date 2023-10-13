@@ -13,8 +13,8 @@ use crate::ReadWriteExecutionMode;
 
 #[derive(Debug)]
 pub(crate) struct PhysicalInsert<'env, 'txn, S: StorageEngine> {
-    id: PhysicalNodeId<'env, 'txn, S, ReadWriteExecutionMode>,
-    children: [PhysicalNodeId<'env, 'txn, S, ReadWriteExecutionMode>; 1],
+    id: PhysicalNodeId,
+    children: [PhysicalNodeId; 1],
     table_oid: Oid<Table>,
     storage: OnceLock<Mutex<Option<TableStorage<'env, 'txn, S, ReadWriteExecutionMode>>>>,
     table: OnceLock<Table>,
@@ -25,10 +25,10 @@ pub(crate) struct PhysicalInsert<'env, 'txn, S: StorageEngine> {
 impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalInsert<'env, 'txn, S> {
     pub fn plan(
         table_oid: Oid<Table>,
-        source: PhysicalNodeId<'env, 'txn, S, ReadWriteExecutionMode>,
+        source: PhysicalNodeId,
         returning: ExecutableTupleExpr<S>,
         arena: &mut PhysicalNodeArena<'env, 'txn, S, ReadWriteExecutionMode>,
-    ) -> PhysicalNodeId<'env, 'txn, S, ReadWriteExecutionMode> {
+    ) -> PhysicalNodeId {
         arena.alloc_with(|id| {
             Box::new(Self {
                 id,
@@ -48,7 +48,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalNode<'env, 'txn, S, ReadWriteEx
 {
     impl_physical_node_conversions!(ReadWriteExecutionMode; source, sink; not operator);
 
-    fn id(&self) -> PhysicalNodeId<'env, 'txn, S, ReadWriteExecutionMode> {
+    fn id(&self) -> PhysicalNodeId {
         self.id
     }
 
@@ -56,7 +56,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalNode<'env, 'txn, S, ReadWriteEx
         self.returning.width()
     }
 
-    fn children(&self) -> &[PhysicalNodeId<'env, 'txn, S, ReadWriteExecutionMode>] {
+    fn children(&self) -> &[PhysicalNodeId] {
         &self.children
     }
 }

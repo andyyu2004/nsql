@@ -1,3 +1,5 @@
+use std::marker::PhantomData;
+
 use itertools::Itertools;
 use nsql_catalog::{Column, ColumnIndex, Table};
 use nsql_storage::tuple::TupleIndex;
@@ -6,10 +8,11 @@ use nsql_storage_engine::FallibleIterator;
 use super::*;
 
 pub struct PhysicalTableScan<'env, 'txn, S, M> {
-    id: PhysicalNodeId<'env, 'txn, S, M>,
+    id: PhysicalNodeId,
     table: Table,
     columns: Box<[Column]>,
     projection: Option<Box<[ColumnIndex]>>,
+    _marker: PhantomData<dyn PhysicalNode<'env, 'txn, S, M>>,
 }
 
 impl<'env, 'txn, S, M> fmt::Debug for PhysicalTableScan<'env, 'txn, S, M> {
@@ -29,8 +32,10 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
         columns: impl Into<Box<[Column]>>,
         projection: Option<Box<[ColumnIndex]>>,
         arena: &mut PhysicalNodeArena<'env, 'txn, S, M>,
-    ) -> PhysicalNodeId<'env, 'txn, S, M> {
-        arena.alloc_with(|id| Box::new(Self { id, table, columns: columns.into(), projection }))
+    ) -> PhysicalNodeId {
+        arena.alloc_with(|id| {
+            Box::new(Self { id, table, columns: columns.into(), projection, _marker: PhantomData })
+        })
     }
 }
 
@@ -61,7 +66,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode
 {
     impl_physical_node_conversions!(M; source; not operator, sink);
 
-    fn id(&self) -> PhysicalNodeId<'env, 'txn, S, M> {
+    fn id(&self) -> PhysicalNodeId {
         self.id
     }
 
@@ -69,7 +74,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode
         self.projection.as_ref().map_or_else(|| self.columns.len(), |p| p.len())
     }
 
-    fn children(&self) -> &[PhysicalNodeId<'env, 'txn, S, M>] {
+    fn children(&self) -> &[PhysicalNodeId] {
         &[]
     }
 }

@@ -1,3 +1,5 @@
+use std::marker::PhantomData;
+
 use nsql_storage::value::Value;
 use nsql_storage_engine::fallible_iterator;
 
@@ -5,12 +7,13 @@ use super::*;
 use crate::config::ExplainOutput;
 
 pub struct PhysicalExplain<'env, 'txn, S, M> {
-    id: PhysicalNodeId<'env, 'txn, S, M>,
+    id: PhysicalNodeId,
     opts: ir::ExplainOptions,
-    child: PhysicalNodeId<'env, 'txn, S, M>,
-    logical_explain: String,
-    physical_explain: String,
-    pipeline_explain: String,
+    child: PhysicalNodeId,
+    logical_explain: Arc<str>,
+    physical_explain: Arc<str>,
+    pipeline_explain: Arc<str>,
+    _marker: PhantomData<dyn PhysicalNode<'env, 'txn, S, M>>,
 }
 
 impl<S, M> fmt::Debug for PhysicalExplain<'_, '_, S, M> {
@@ -25,12 +28,12 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     #[inline]
     pub(crate) fn plan(
         opts: ir::ExplainOptions,
-        child: PhysicalNodeId<'env, 'txn, S, M>,
-        logical_explain: impl Into<String>,
-        physical_explain: impl Into<String>,
-        pipeline_explain: impl Into<String>,
+        child: PhysicalNodeId,
+        logical_explain: impl Into<Arc<str>>,
+        physical_explain: impl Into<Arc<str>>,
+        pipeline_explain: impl Into<Arc<str>>,
         arena: &mut PhysicalNodeArena<'env, 'txn, S, M>,
-    ) -> PhysicalNodeId<'env, 'txn, S, M> {
+    ) -> PhysicalNodeId {
         arena.alloc_with(|id| {
             Box::new(Self {
                 id,
@@ -39,6 +42,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
                 logical_explain: logical_explain.into(),
                 physical_explain: physical_explain.into(),
                 pipeline_explain: pipeline_explain.into(),
+                _marker: PhantomData,
             })
         })
     }
@@ -49,7 +53,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode
 {
     impl_physical_node_conversions!(M; source, sink; not operator);
 
-    fn id(&self) -> PhysicalNodeId<'env, 'txn, S, M> {
+    fn id(&self) -> PhysicalNodeId {
         self.id
     }
 
@@ -57,7 +61,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode
         1
     }
 
-    fn children(&self) -> &[PhysicalNodeId<'env, 'txn, S, M>] {
+    fn children(&self) -> &[PhysicalNodeId] {
         if self.opts.analyze { std::slice::from_ref(&self.child) } else { &[] }
     }
 }
@@ -89,9 +93,9 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
             todo!("{:?}", ecx.profiler())
         }
 
-        let logical_explain = self.logical_explain.clone();
-        let physical_explain = self.physical_explain.clone();
-        let pipeline_explain = self.pipeline_explain.clone();
+        let logical_explain = self.logical_explain.to_string();
+        let physical_explain = self.physical_explain.to_string();
+        let pipeline_explain = self.pipeline_explain.to_string();
 
         let explain_output = scx.config().explain_output();
         let stringified = match explain_output {

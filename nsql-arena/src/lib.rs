@@ -41,12 +41,14 @@ pub struct Idx<T> {
 }
 
 impl<T> Idx<T> {
+    #[inline]
     pub fn cast<U>(self) -> Idx<U> {
         Idx { raw: self.raw, _ty: PhantomData }
     }
 }
 
 impl<T> Clone for Idx<T> {
+    #[inline]
     fn clone(&self) -> Self {
         *self
     }
@@ -54,13 +56,16 @@ impl<T> Clone for Idx<T> {
 impl<T> Copy for Idx<T> {}
 
 impl<T> PartialEq for Idx<T> {
+    #[inline]
     fn eq(&self, other: &Idx<T>) -> bool {
         self.raw == other.raw
     }
 }
+
 impl<T> Eq for Idx<T> {}
 
 impl<T> Hash for Idx<T> {
+    #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.raw.hash(state);
     }

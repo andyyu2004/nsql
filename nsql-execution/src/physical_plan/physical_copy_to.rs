@@ -1,5 +1,6 @@
 use std::fs::File;
 use std::io::{self};
+use std::marker::PhantomData;
 use std::sync::OnceLock;
 
 use nsql_storage_engine::fallible_iterator;
@@ -7,10 +8,13 @@ use nsql_storage_engine::fallible_iterator;
 use super::*;
 
 pub(crate) struct PhysicalCopyTo<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> {
-    id: PhysicalNodeId<'env, 'txn, S, M>,
-    children: PhysicalNodeId<'env, 'txn, S, M>,
-    output_writer: OnceLock<File>, // particularly convenient to store a file for now as you can write with an `&File`
+    id: PhysicalNodeId,
+    children: PhysicalNodeId,
+    output_writer: OnceLock<File>,
+    // particularly convenient to store a file for now as you can write with an `&File`
+    // now that we have mutable access we can hold a `Box<dyn Write>` or something
     dst: ir::CopyDestination,
+    _marker: PhantomData<dyn PhysicalNode<'env, 'txn, S, M>>,
 }
 
 impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> fmt::Debug
@@ -25,12 +29,18 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     PhysicalCopyTo<'env, 'txn, S, M>
 {
     pub fn plan(
-        source: PhysicalNodeId<'env, 'txn, S, M>,
+        source: PhysicalNodeId,
         dst: ir::CopyDestination,
         arena: &mut PhysicalNodeArena<'env, 'txn, S, M>,
-    ) -> PhysicalNodeId<'env, 'txn, S, M> {
+    ) -> PhysicalNodeId {
         arena.alloc_with(|id| {
-            Box::new(Self { id, dst, children: source, output_writer: Default::default() })
+            Box::new(Self {
+                id,
+                dst,
+                children: source,
+                output_writer: Default::default(),
+                _marker: PhantomData,
+            })
         })
     }
 }
@@ -40,7 +50,7 @@ impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode<'env,
 {
     impl_physical_node_conversions!(M; source, sink; not operator);
 
-    fn id(&self) -> PhysicalNodeId<'env, 'txn, S, M> {
+    fn id(&self) -> PhysicalNodeId {
         self.id
     }
 
@@ -48,7 +58,7 @@ impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode<'env,
         0
     }
 
-    fn children(&self) -> &[PhysicalNodeId<'env, 'txn, S, M>] {
+    fn children(&self) -> &[PhysicalNodeId] {
         std::slice::from_ref(&self.children)
     }
 }

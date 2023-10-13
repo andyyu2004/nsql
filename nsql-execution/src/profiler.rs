@@ -5,7 +5,7 @@ use dashmap::DashMap;
 use nsql_arena::Idx;
 use nsql_catalog::Catalog;
 use nsql_storage::tuple::Tuple;
-use nsql_storage_engine::{ExecutionMode, StorageEngine, Transaction};
+use nsql_storage_engine::{ExecutionMode, FallibleIterator, StorageEngine, Transaction};
 
 use crate::physical_plan::{explain, Explain};
 use crate::{
@@ -15,46 +15,49 @@ use crate::{
 
 #[derive(Debug, Default)]
 pub(crate) struct Profiler {
-    timings: DashMap<Idx<()>, OperatorInfo>,
+    timings: DashMap<PhysicalNodeId, NodeInfo>,
 }
 
 impl Profiler {
     #[inline]
-    pub fn start<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
-        &self,
-        node: &(impl PhysicalNode<'env, 'txn, S, M> + ?Sized),
-    ) -> ProfilerSpan<'_> {
-        ProfilerSpan { profiler: self, id: node.id().cast(), start: Instant::now() }
+    pub fn start(&self, id: PhysicalNodeId, count: bool) -> ProfilerGuard<'_> {
+        ProfilerGuard {
+            profiler: self,
+            id: id.cast(),
+            start: Instant::now(),
+            tuples: count as usize,
+        }
     }
 
-    fn record(&self, id: Idx<()>, elapsed: Duration) {
+    fn record(&self, guard: &ProfilerGuard<'_>) {
+        let elapsed = guard.start.elapsed();
         self.timings
-            .entry(id)
+            .entry(guard.id)
             .and_modify(|info| {
                 info.elapsed += elapsed;
-                info.tuples += 1;
+                info.tuples += guard.tuples;
             })
-            .or_insert_with(|| OperatorInfo { elapsed, tuples: 1 });
+            .or_insert_with(|| NodeInfo { elapsed, tuples: guard.tuples });
     }
 }
 
 #[derive(Debug)]
-struct OperatorInfo {
+struct NodeInfo {
     elapsed: Duration,
     tuples: usize,
 }
 
-pub(crate) struct ProfilerSpan<'p> {
-    profiler: &'p Profiler,
+pub(crate) struct ProfilerGuard<'p> {
     id: Idx<()>,
+    profiler: &'p Profiler,
     start: Instant,
+    tuples: usize,
 }
 
-impl<'p> Drop for ProfilerSpan<'p> {
+impl<'p> Drop for ProfilerGuard<'p> {
     #[inline]
     fn drop(&mut self) {
-        let elapsed = self.start.elapsed();
-        self.profiler.record(self.id, elapsed);
+        self.profiler.record(self);
     }
 }
 
@@ -109,7 +112,7 @@ impl<'p, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, N>
 where
     N: PhysicalNode<'env, 'txn, S, M>,
 {
-    fn id(&self) -> PhysicalNodeId<'env, 'txn, S, M> {
+    fn id(&self) -> PhysicalNodeId {
         self.node.id()
     }
 
@@ -117,7 +120,7 @@ where
         self.node.width(nodes)
     }
 
-    fn children(&self) -> &[PhysicalNodeId<'env, 'txn, S, M>] {
+    fn children(&self) -> &[PhysicalNodeId] {
         self.node.children()
     }
 
@@ -170,10 +173,28 @@ where
         &mut self,
         ecx: &'txn ExecutionContext<'_, 'env, S, M>,
     ) -> ExecutionResult<TupleStream<'_>> {
-        let _span = self.profiler.start(self);
-        let result = self.node.source(ecx)?;
-        // TODO need to wrap the iterator in the profiler too so we add to the time on each call the next
-        Ok(result)
+        let id = self.id();
+        let _guard = self.profiler.start(id, false);
+        let iter = self.node.source(ecx)?;
+        // Ok(iter)
+        Ok(Box::new(ProfiledIterator { id, iter, profiler: self.profiler }))
+    }
+}
+
+struct ProfiledIterator<'p, I> {
+    id: Idx<()>,
+    profiler: &'p Profiler,
+    iter: I,
+}
+
+impl<'p, I: FallibleIterator> FallibleIterator for ProfiledIterator<'p, I> {
+    type Item = I::Item;
+
+    type Error = I::Error;
+
+    fn next(&mut self) -> Result<Option<Self::Item>, Self::Error> {
+        let _guard = self.profiler.start(self.id, true);
+        self.iter.next()
     }
 }
 
@@ -187,7 +208,7 @@ where
         ecx: &'txn ExecutionContext<'_, 'env, S, M>,
         input: Tuple,
     ) -> ExecutionResult<OperatorState<Tuple>> {
-        let _span = self.profiler.start(self);
+        let _guard = self.profiler.start(self.id(), true);
         self.node.execute(ecx, input)
     }
 }
@@ -201,12 +222,12 @@ where
         ecx: &'txn ExecutionContext<'_, 'env, S, M>,
         tuple: Tuple,
     ) -> ExecutionResult<()> {
-        let _span = self.profiler.start(self);
+        let _guard = self.profiler.start(self.id(), false);
         self.node.sink(ecx, tuple)
     }
 
     fn finalize(&mut self, ecx: &'txn ExecutionContext<'_, 'env, S, M>) -> ExecutionResult<()> {
-        let _span = self.profiler.start(self);
+        let _guard = self.profiler.start(self.id(), false);
         self.node.finalize(ecx)
     }
 }
