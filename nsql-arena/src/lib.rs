@@ -1,10 +1,14 @@
 #![allow(unused)]
 //! Yet another index-based arena. (from rust-analyzer)
 
+mod map;
+
 use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::marker::PhantomData;
 use std::ops::{Index, IndexMut, Range, RangeInclusive};
+
+pub use self::map::*;
 
 /// The raw index of a value in an arena.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]

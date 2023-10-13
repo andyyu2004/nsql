@@ -1,8 +1,10 @@
 use std::marker::PhantomData;
 
+use nsql_arena::ArenaMap;
 use nsql_storage::value::Value;
 use nsql_storage_engine::fallible_iterator;
 
+use super::explain::ExplainTree;
 use super::*;
 use crate::config::ExplainOutput;
 
@@ -11,7 +13,7 @@ pub struct PhysicalExplain<'env, 'txn, S, M> {
     opts: ir::ExplainOptions,
     child: PhysicalNodeId,
     logical_explain: Arc<str>,
-    physical_explain: Arc<str>,
+    physical_explain: ExplainTree,
     pipeline_explain: Arc<str>,
     _marker: PhantomData<dyn PhysicalNode<'env, 'txn, S, M>>,
 }
@@ -30,7 +32,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
         opts: ir::ExplainOptions,
         child: PhysicalNodeId,
         logical_explain: impl Into<Arc<str>>,
-        physical_explain: impl Into<Arc<str>>,
+        physical_explain: ExplainTree,
         pipeline_explain: impl Into<Arc<str>>,
         arena: &mut PhysicalNodeArena<'env, 'txn, S, M>,
     ) -> PhysicalNodeId {
@@ -40,7 +42,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
                 opts,
                 child,
                 logical_explain: logical_explain.into(),
-                physical_explain: physical_explain.into(),
+                physical_explain,
                 pipeline_explain: pipeline_explain.into(),
                 _marker: PhantomData,
             })
@@ -90,7 +92,17 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
         let scx = ecx.scx();
 
         if self.opts.analyze {
-            todo!("{:?}", ecx.profiler())
+            let metrics = ecx.profiler().metrics();
+            let mut time_annotations = ArenaMap::with_capacity(metrics.len());
+            let mut tuple_annotations = ArenaMap::with_capacity(metrics.len());
+            for (id, metric) in metrics {
+                time_annotations
+                    .insert(id, ("time".to_string(), format!("{:.2?}", metric.elapsed)));
+                tuple_annotations.insert(id, ("tuples".to_string(), metric.tuples.to_string()));
+            }
+
+            self.physical_explain.annotate(tuple_annotations);
+            // self.physical_explain.annotate(time_annotations);
         }
 
         let logical_explain = self.logical_explain.to_string();

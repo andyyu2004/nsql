@@ -12,8 +12,8 @@ fn test_explain() -> nsql::Result<()> {
         "EXPLAIN ANALYZE SELECT id, i + 1 FROM integers WHERE i <> 2",
         expect![[r#"
             projection (integers.id, #15(integers.i, 1))
-              filter #6(integers.i, 2)
-                scan integers (id, i)
+              filter #6(integers.i, 2) tuples=4
+                scan integers (id, i) tuples=5
         "#]],
     )?;
 

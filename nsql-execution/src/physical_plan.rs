@@ -160,7 +160,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
 
                 let root = f(self, logical_plan)?;
                 let mut physical_plan = PhysicalPlan { nodes: mem::take(&mut self.arena), root };
-                let physical_explain = physical_plan.display(self.catalog, tx).to_string();
+                let physical_explain = physical_plan.explain_tree(self.catalog, tx);
                 let sink = OutputSink::plan(physical_plan.arena_mut());
                 let pipeline = crate::build_pipelines(sink, physical_plan);
                 let pipeline_explain = pipeline.display(self.catalog, &tx).to_string();

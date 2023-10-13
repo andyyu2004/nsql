@@ -15,7 +15,7 @@ use crate::{
 
 #[derive(Debug, Default)]
 pub(crate) struct Profiler {
-    timings: DashMap<PhysicalNodeId, NodeInfo>,
+    metrics: DashMap<PhysicalNodeId, NodeMetrics>,
 }
 
 impl Profiler {
@@ -31,20 +31,24 @@ impl Profiler {
 
     fn record(&self, guard: &ProfilerGuard<'_>) {
         let elapsed = guard.start.elapsed();
-        self.timings
+        self.metrics
             .entry(guard.id)
             .and_modify(|info| {
                 info.elapsed += elapsed;
                 info.tuples += guard.tuples;
             })
-            .or_insert_with(|| NodeInfo { elapsed, tuples: guard.tuples });
+            .or_insert_with(|| NodeMetrics { elapsed, tuples: guard.tuples });
+    }
+
+    pub fn metrics(&self) -> DashMap<PhysicalNodeId, NodeMetrics> {
+        self.metrics.clone()
     }
 }
 
-#[derive(Debug)]
-struct NodeInfo {
-    elapsed: Duration,
-    tuples: usize,
+#[derive(Debug, Clone)]
+pub struct NodeMetrics {
+    pub elapsed: Duration,
+    pub tuples: usize,
 }
 
 pub(crate) struct ProfilerGuard<'p> {
