@@ -21,14 +21,19 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Executor<'en
     fn execute_metapipeline(
         &mut self,
         ecx: &'txn ExecutionContext<'_, 'env, S, M>,
-        root: Idx<MetaPipeline<'env, 'txn, S, M>>,
+        meta_pipeline: Idx<MetaPipeline<'env, 'txn, S, M>>,
     ) -> ExecutionResult<()> {
-        let children = self.pipelines[root].children.clone();
+        self.nodes[self.pipelines[meta_pipeline].sink]
+            .as_sink_mut()
+            .expect("expected sink")
+            .initialize(ecx)?;
+
+        let children = self.pipelines[meta_pipeline].children.clone();
         for child in children {
             self.execute_metapipeline(ecx, child)?;
         }
 
-        let pipelines = self.pipelines[root].pipelines.clone();
+        let pipelines = self.pipelines[meta_pipeline].pipelines.clone();
         for pipeline in pipelines {
             self.execute_pipeline(ecx, pipeline)?;
         }

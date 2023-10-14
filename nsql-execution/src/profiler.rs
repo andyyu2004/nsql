@@ -1,3 +1,4 @@
+use std::cell::Cell;
 use std::fmt;
 use std::time::{Duration, Instant};
 
@@ -13,24 +14,34 @@ use crate::{
     PhysicalNodeId, PhysicalOperator, PhysicalSink, PhysicalSource, TupleStream,
 };
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub(crate) struct Profiler {
+    timing: Cell<bool>,
     metrics: DashMap<PhysicalNodeId, NodeMetrics>,
+}
+
+impl Default for Profiler {
+    fn default() -> Self {
+        Self { timing: Cell::new(true), metrics: Default::default() }
+    }
 }
 
 impl Profiler {
     #[inline]
+    pub fn set_timing(&self, enabled: bool) {
+        self.timing.set(enabled);
+    }
+
+    #[inline]
     pub fn start(&self, id: PhysicalNodeId, count: bool) -> ProfilerGuard<'_> {
-        ProfilerGuard {
-            profiler: self,
-            id: id.cast(),
-            start: Instant::now(),
-            tuples: count as usize,
-        }
+        let timing = self.timing.get();
+        let start = timing.then(Instant::now);
+        ProfilerGuard { profiler: self, id: id.cast(), start, tuples: count as usize }
     }
 
     fn record(&self, guard: &ProfilerGuard<'_>) {
-        let elapsed = guard.start.elapsed();
+        let elapsed = guard.start.map_or(Duration::ZERO, |start| start.elapsed());
+
         self.metrics
             .entry(guard.id)
             .and_modify(|info| {
@@ -54,7 +65,7 @@ pub struct NodeMetrics {
 pub(crate) struct ProfilerGuard<'p> {
     id: Idx<()>,
     profiler: &'p Profiler,
-    start: Instant,
+    start: Option<Instant>,
     tuples: usize,
 }
 

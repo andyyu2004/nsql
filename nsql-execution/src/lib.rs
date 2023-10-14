@@ -414,12 +414,19 @@ impl<'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
 trait PhysicalSink<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>:
     PhysicalSource<'env, 'txn, S, M>
 {
+    /// Called before any input is sent to the sink. This is called on the sink of metapipeline
+    /// before execution is started.
+    fn initialize(&mut self, _ecx: &'txn ExecutionContext<'_, 'env, S, M>) -> ExecutionResult<()> {
+        Ok(())
+    }
+
     fn sink(
         &mut self,
         ecx: &'txn ExecutionContext<'_, 'env, S, M>,
         tuple: Tuple,
     ) -> ExecutionResult<()>;
 
+    /// Called when all input has been sent to the sink
     fn finalize(&mut self, _ecx: &'txn ExecutionContext<'_, 'env, S, M>) -> ExecutionResult<()> {
         Ok(())
     }

@@ -41,8 +41,8 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
                 id,
                 opts,
                 child,
-                logical_explain: logical_explain.into(),
                 physical_explain,
+                logical_explain: logical_explain.into(),
                 pipeline_explain: pipeline_explain.into(),
                 _marker: PhantomData,
             })
@@ -71,6 +71,11 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSink<'env, 'txn, S, M>
     for PhysicalExplain<'env, 'txn, S, M>
 {
+    fn initialize(&mut self, ecx: &'txn ExecutionContext<'_, 'env, S, M>) -> ExecutionResult<()> {
+        ecx.profiler().set_timing(self.opts.timing);
+        Ok(())
+    }
+
     fn sink(
         &mut self,
         _ecx: &'txn ExecutionContext<'_, 'env, S, M>,
@@ -93,13 +98,18 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
 
         if self.opts.analyze {
             let metrics = ecx.profiler().metrics();
-            let mut time_annotations = ArenaMap::with_capacity(metrics.len());
+            let mut time_annotations =
+                ArenaMap::with_capacity(if self.opts.timing { metrics.len() } else { 0 });
             let mut tuple_annotations = ArenaMap::with_capacity(metrics.len());
             for (id, metric) in metrics {
-                // FIXME we need to avoid calculating this if we don't need it as it's expensive
                 if self.opts.timing {
                     time_annotations
                         .insert(id, ("time".to_string(), format!("{:.2?}", metric.elapsed)));
+                } else {
+                    debug_assert!(
+                        metric.elapsed.is_zero(),
+                        "shouldn't be calculating timings when not enabled"
+                    );
                 }
                 tuple_annotations.insert(id, ("tuples".to_string(), metric.tuples.to_string()));
             }

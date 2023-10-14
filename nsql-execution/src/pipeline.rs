@@ -31,12 +31,14 @@ impl<'env, 'txn, S, M> RootPipeline<'env, 'txn, S, M> {
 pub(crate) struct MetaPipeline<'env, 'txn, S, M> {
     pub(crate) pipelines: Vec<Idx<Pipeline<'env, 'txn, S, M>>>,
     pub(crate) children: Vec<Idx<MetaPipeline<'env, 'txn, S, M>>>,
+    pub(crate) sink: PhysicalNodeId,
 }
 
 #[derive(Debug)]
 pub(crate) struct MetaPipelineBuilder<'env, 'txn, S, M> {
     pipelines: Vec<Idx<PipelineBuilder<'env, 'txn, S, M>>>,
     children: Vec<Idx<MetaPipelineBuilder<'env, 'txn, S, M>>>,
+    sink: PhysicalNodeId,
 }
 
 #[derive(Debug)]
@@ -143,13 +145,14 @@ impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
         arena.meta_pipelines.alloc(Self {
             pipelines: vec![arena.pipelines.alloc(PipelineBuilder::new(sink))],
             children: Default::default(),
+            sink: sink.id(),
         })
     }
 
     pub fn finish(self) -> MetaPipeline<'env, 'txn, S, M> {
         let pipelines = self.pipelines.iter().map(|idx| idx.cast()).collect();
         let children = self.children.iter().map(|idx| idx.cast()).collect();
-        MetaPipeline { pipelines, children }
+        MetaPipeline { pipelines, children, sink: self.sink }
     }
 }
 
