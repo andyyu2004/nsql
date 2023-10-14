@@ -82,7 +82,6 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSink
         _tuple: Tuple,
     ) -> ExecutionResult<()> {
         // drop any tuples as we don't really care
-        // we could capture metrics here if we wanted about how many output rows etc
         Ok(())
     }
 }
@@ -100,7 +99,9 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
             let metrics = ecx.profiler().metrics();
             let mut time_annotations =
                 ArenaMap::with_capacity(if self.opts.timing { metrics.len() } else { 0 });
-            let mut tuple_annotations = ArenaMap::with_capacity(metrics.len());
+            let mut in_tuple_annotations = ArenaMap::with_capacity(metrics.len());
+            let mut out_tuple_annotations = ArenaMap::with_capacity(metrics.len());
+
             for (id, metric) in metrics {
                 if self.opts.timing {
                     time_annotations
@@ -111,10 +112,22 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
                         "shouldn't be calculating timings when not enabled"
                     );
                 }
-                tuple_annotations.insert(id, ("tuples".to_string(), metric.tuples.to_string()));
+
+                assert!(
+                    in_tuple_annotations
+                        .insert(id, ("in".to_string(), metric.tuples_in.to_string()))
+                        .is_none()
+                );
+
+                assert!(
+                    out_tuple_annotations
+                        .insert(id, ("out".to_string(), metric.tuples_out.to_string()))
+                        .is_none()
+                );
             }
 
-            self.physical_explain.annotate(tuple_annotations);
+            self.physical_explain.annotate(in_tuple_annotations);
+            self.physical_explain.annotate(out_tuple_annotations);
             self.physical_explain.annotate(time_annotations);
         }
 

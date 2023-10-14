@@ -26,6 +26,14 @@ impl Default for Profiler {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+enum NodeType {
+    Misc,
+    Source,
+    Operator,
+    Sink,
+}
+
 impl Profiler {
     #[inline]
     pub fn set_timing(&self, enabled: bool) {
@@ -33,10 +41,12 @@ impl Profiler {
     }
 
     #[inline]
-    pub fn start(&self, id: PhysicalNodeId, count: bool) -> ProfilerGuard<'_> {
+    fn start(&self, id: PhysicalNodeId, node_type: NodeType) -> ProfilerGuard<'_> {
         let timing = self.timing.get();
         let start = timing.then(Instant::now);
-        ProfilerGuard { profiler: self, id: id.cast(), start, tuples: count as usize }
+        let tuples_in = matches!(node_type, NodeType::Sink | NodeType::Operator) as usize;
+        let tuples_out = matches!(node_type, NodeType::Operator | NodeType::Source) as usize;
+        ProfilerGuard { profiler: self, id: id.cast(), start, tuples_in, tuples_out }
     }
 
     fn record(&self, guard: &ProfilerGuard<'_>) {
@@ -46,9 +56,14 @@ impl Profiler {
             .entry(guard.id)
             .and_modify(|info| {
                 info.elapsed += elapsed;
-                info.tuples += guard.tuples;
+                info.tuples_in += guard.tuples_in;
+                info.tuples_out += guard.tuples_out;
             })
-            .or_insert_with(|| NodeMetrics { elapsed, tuples: guard.tuples });
+            .or_insert_with(|| NodeMetrics {
+                elapsed,
+                tuples_in: guard.tuples_in,
+                tuples_out: guard.tuples_out,
+            });
     }
 
     pub fn metrics(&self) -> DashMap<PhysicalNodeId, NodeMetrics> {
@@ -59,14 +74,18 @@ impl Profiler {
 #[derive(Debug, Clone)]
 pub struct NodeMetrics {
     pub elapsed: Duration,
-    pub tuples: usize,
+    /// The number of tuples that entered this node (i.e. operator or sink)
+    pub tuples_in: usize,
+    /// The number of tuples that this node emitted (i.e. operator or source)
+    pub tuples_out: usize,
 }
 
 pub(crate) struct ProfilerGuard<'p> {
     id: Idx<()>,
     profiler: &'p Profiler,
     start: Option<Instant>,
-    tuples: usize,
+    tuples_in: usize,
+    tuples_out: usize,
 }
 
 impl<'p> Drop for ProfilerGuard<'p> {
@@ -189,9 +208,8 @@ where
         ecx: &'txn ExecutionContext<'_, 'env, S, M>,
     ) -> ExecutionResult<TupleStream<'_>> {
         let id = self.id();
-        let _guard = self.profiler.start(id, false);
+        let _guard = self.profiler.start(id, NodeType::Misc);
         let iter = self.node.source(ecx)?;
-        // Ok(iter)
         Ok(Box::new(ProfiledIterator { id, iter, profiler: self.profiler }))
     }
 }
@@ -208,7 +226,7 @@ impl<'p, I: FallibleIterator> FallibleIterator for ProfiledIterator<'p, I> {
     type Error = I::Error;
 
     fn next(&mut self) -> Result<Option<Self::Item>, Self::Error> {
-        let _guard = self.profiler.start(self.id, true);
+        let _guard = self.profiler.start(self.id, NodeType::Source);
         self.iter.next()
     }
 }
@@ -223,7 +241,7 @@ where
         ecx: &'txn ExecutionContext<'_, 'env, S, M>,
         input: Tuple,
     ) -> ExecutionResult<OperatorState<Tuple>> {
-        let _guard = self.profiler.start(self.id(), true);
+        let _guard = self.profiler.start(self.id(), NodeType::Operator);
         self.node.execute(ecx, input)
     }
 }
@@ -237,12 +255,12 @@ where
         ecx: &'txn ExecutionContext<'_, 'env, S, M>,
         tuple: Tuple,
     ) -> ExecutionResult<()> {
-        let _guard = self.profiler.start(self.id(), false);
+        let _guard = self.profiler.start(self.id(), NodeType::Sink);
         self.node.sink(ecx, tuple)
     }
 
     fn finalize(&mut self, ecx: &'txn ExecutionContext<'_, 'env, S, M>) -> ExecutionResult<()> {
-        let _guard = self.profiler.start(self.id(), false);
+        let _guard = self.profiler.start(self.id(), NodeType::Misc);
         self.node.finalize(ecx)
     }
 }
