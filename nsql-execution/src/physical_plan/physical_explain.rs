@@ -1,16 +1,21 @@
+use std::marker::PhantomData;
+
+use nsql_arena::ArenaMap;
 use nsql_storage::value::Value;
 use nsql_storage_engine::fallible_iterator;
 
+use super::explain::ExplainTree;
 use super::*;
 use crate::config::ExplainOutput;
 
 pub struct PhysicalExplain<'env, 'txn, S, M> {
-    id: PhysicalNodeId<'env, 'txn, S, M>,
+    id: PhysicalNodeId,
     opts: ir::ExplainOptions,
-    child: PhysicalNodeId<'env, 'txn, S, M>,
-    logical_explain: String,
-    physical_explain: String,
-    pipeline_explain: String,
+    child: PhysicalNodeId,
+    logical_explain: Arc<str>,
+    physical_explain: ExplainTree,
+    pipeline_explain: Arc<str>,
+    _marker: PhantomData<dyn PhysicalNode<'env, 'txn, S, M>>,
 }
 
 impl<S, M> fmt::Debug for PhysicalExplain<'_, '_, S, M> {
@@ -25,20 +30,21 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     #[inline]
     pub(crate) fn plan(
         opts: ir::ExplainOptions,
-        child: PhysicalNodeId<'env, 'txn, S, M>,
-        logical_explain: impl Into<String>,
-        physical_explain: impl Into<String>,
-        pipeline_explain: impl Into<String>,
+        child: PhysicalNodeId,
+        logical_explain: impl Into<Arc<str>>,
+        physical_explain: ExplainTree,
+        pipeline_explain: impl Into<Arc<str>>,
         arena: &mut PhysicalNodeArena<'env, 'txn, S, M>,
-    ) -> PhysicalNodeId<'env, 'txn, S, M> {
+    ) -> PhysicalNodeId {
         arena.alloc_with(|id| {
             Box::new(Self {
                 id,
                 opts,
                 child,
                 logical_explain: logical_explain.into(),
-                physical_explain: physical_explain.into(),
+                physical_explain,
                 pipeline_explain: pipeline_explain.into(),
+                _marker: PhantomData,
             })
         })
     }
@@ -49,7 +55,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode
 {
     impl_physical_node_conversions!(M; source, sink; not operator);
 
-    fn id(&self) -> PhysicalNodeId<'env, 'txn, S, M> {
+    fn id(&self) -> PhysicalNodeId {
         self.id
     }
 
@@ -57,7 +63,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode
         1
     }
 
-    fn children(&self) -> &[PhysicalNodeId<'env, 'txn, S, M>] {
+    fn children(&self) -> &[PhysicalNodeId] {
         if self.opts.analyze { std::slice::from_ref(&self.child) } else { &[] }
     }
 }
@@ -85,9 +91,23 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
     ) -> ExecutionResult<TupleStream<'_>> {
         let scx = ecx.scx();
 
-        let logical_explain = self.logical_explain.clone();
-        let physical_explain = self.physical_explain.clone();
-        let pipeline_explain = self.pipeline_explain.clone();
+        if self.opts.analyze {
+            let metrics = ecx.profiler().metrics();
+            let mut time_annotations = ArenaMap::with_capacity(metrics.len());
+            let mut tuple_annotations = ArenaMap::with_capacity(metrics.len());
+            for (id, metric) in metrics {
+                time_annotations
+                    .insert(id, ("time".to_string(), format!("{:.2?}", metric.elapsed)));
+                tuple_annotations.insert(id, ("tuples".to_string(), metric.tuples.to_string()));
+            }
+
+            self.physical_explain.annotate(tuple_annotations);
+            // self.physical_explain.annotate(time_annotations);
+        }
+
+        let logical_explain = self.logical_explain.to_string();
+        let physical_explain = self.physical_explain.to_string();
+        let pipeline_explain = self.pipeline_explain.to_string();
 
         let explain_output = scx.config().explain_output();
         let stringified = match explain_output {
@@ -96,8 +116,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
             ExplainOutput::Logical => logical_explain,
             ExplainOutput::All => {
                 format!(
-                    "Logical:\n{}\n\nPhysical:\n{}\n\nPipeline:\n{}",
-                    logical_explain, physical_explain, pipeline_explain
+                    "Logical:\n{logical_explain}\n\nPhysical:\n{physical_explain}\n\nPipeline:\n{pipeline_explain}",
                 )
             }
         };

@@ -1,21 +1,24 @@
+use std::marker::PhantomData;
+
 use super::*;
 
 #[derive(Debug)]
 pub struct PhysicalFilter<'env, 'txn, S, M> {
-    id: PhysicalNodeId<'env, 'txn, S, M>,
-    child: PhysicalNodeId<'env, 'txn, S, M>,
+    id: PhysicalNodeId,
+    child: PhysicalNodeId,
     predicate: ExecutableExpr<S>,
+    _marker: PhantomData<dyn PhysicalNode<'env, 'txn, S, M>>,
 }
 
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     PhysicalFilter<'env, 'txn, S, M>
 {
     pub(crate) fn plan(
-        source: PhysicalNodeId<'env, 'txn, S, M>,
+        source: PhysicalNodeId,
         predicate: ExecutableExpr<S>,
         arena: &mut PhysicalNodeArena<'env, 'txn, S, M>,
-    ) -> PhysicalNodeId<'env, 'txn, S, M> {
-        arena.alloc_with(|id| Box::new(Self { id, child: source, predicate }))
+    ) -> PhysicalNodeId {
+        arena.alloc_with(|id| Box::new(Self { id, child: source, predicate, _marker: PhantomData }))
     }
 }
 
@@ -49,7 +52,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode
 {
     impl_physical_node_conversions!(M; operator; not source, sink);
 
-    fn id(&self) -> PhysicalNodeId<'env, 'txn, S, M> {
+    fn id(&self) -> PhysicalNodeId {
         self.id
     }
 
@@ -58,7 +61,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode
     }
 
     #[inline]
-    fn children(&self) -> &[PhysicalNodeId<'env, 'txn, S, M>] {
+    fn children(&self) -> &[PhysicalNodeId] {
         std::slice::from_ref(&self.child)
     }
 }

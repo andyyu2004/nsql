@@ -1,3 +1,4 @@
+use std::marker::PhantomData;
 use std::mem;
 
 use nsql_catalog::AggregateFunctionInstance;
@@ -7,10 +8,11 @@ use super::*;
 
 #[derive(Debug)]
 pub struct PhysicalUngroupedAggregate<'env, 'txn, S, M> {
-    id: PhysicalNodeId<'env, 'txn, S, M>,
+    id: PhysicalNodeId,
     functions: Box<[(ir::Function, Option<ExecutableExpr<S>>)]>,
     aggregate_functions: Vec<Box<dyn AggregateFunctionInstance>>,
-    children: [PhysicalNodeId<'env, 'txn, S, M>; 1],
+    children: [PhysicalNodeId; 1],
+    _marker: PhantomData<dyn PhysicalNode<'env, 'txn, S, M>>,
 }
 
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
@@ -18,9 +20,9 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
 {
     pub(crate) fn plan(
         functions: Box<[(ir::Function, Option<ExecutableExpr<S>>)]>,
-        source: PhysicalNodeId<'env, 'txn, S, M>,
+        source: PhysicalNodeId,
         arena: &mut PhysicalNodeArena<'env, 'txn, S, M>,
-    ) -> PhysicalNodeId<'env, 'txn, S, M> {
+    ) -> PhysicalNodeId {
         arena.alloc_with(|id| {
             Box::new(Self {
                 id,
@@ -30,6 +32,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
                     .collect(),
                 functions,
                 children: [source],
+                _marker: PhantomData,
             })
         })
     }
@@ -70,7 +73,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSink
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode<'env, 'txn, S, M>
     for PhysicalUngroupedAggregate<'env, 'txn, S, M>
 {
-    fn id(&self) -> PhysicalNodeId<'env, 'txn, S, M> {
+    fn id(&self) -> PhysicalNodeId {
         self.id
     }
 
@@ -78,7 +81,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode
         self.functions.len()
     }
 
-    fn children(&self) -> &[PhysicalNodeId<'env, 'txn, S, M>] {
+    fn children(&self) -> &[PhysicalNodeId] {
         &self.children
     }
 

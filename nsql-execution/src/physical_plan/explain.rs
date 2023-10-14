@@ -1,6 +1,6 @@
 use std::fmt;
 
-use nsql_arena::Idx;
+use nsql_arena::{ArenaMap, Idx};
 use nsql_catalog::Catalog;
 use nsql_storage_engine::{StorageEngine, Transaction};
 
@@ -25,7 +25,7 @@ pub trait Explain<'env, S: StorageEngine> {
         catalog: Catalog<'env, S>,
         tx: &'a dyn Transaction<'env, S>,
     ) -> Display<'a, 'env, S> {
-        Display { catalog, tx, explain: self.as_dyn(), marker: std::marker::PhantomData }
+        Display { catalog, tx, explain: self.as_dyn() }
     }
 }
 
@@ -33,7 +33,6 @@ pub struct Display<'a, 'env, S: StorageEngine> {
     catalog: Catalog<'env, S>,
     tx: &'a dyn Transaction<'env, S>,
     explain: &'a dyn Explain<'env, S>,
-    marker: std::marker::PhantomData<&'env ()>,
 }
 
 impl<'a, 'env, S: StorageEngine> fmt::Display for Display<'a, 'env, S> {
@@ -140,6 +139,91 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Explain<'env
     }
 }
 
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalPlan<'env, 'txn, S, M> {
+    pub fn explain_tree(
+        &self,
+        catalog: Catalog<'env, S>,
+        tx: &dyn Transaction<'env, S>,
+    ) -> ExplainTree {
+        let mut nodes = ArenaMap::default();
+        let root = self.explain_node(&mut nodes, catalog, tx, self.root, 0);
+        ExplainTree { root, nodes }
+    }
+
+    fn explain_node(
+        &self,
+        nodes: &mut ArenaMap<PhysicalNodeId, ExplainNode>,
+        catalog: Catalog<'env, S>,
+        tx: &dyn Transaction<'env, S>,
+        id: PhysicalNodeId,
+        depth: usize,
+    ) -> PhysicalNodeId {
+        let node = &self.nodes[id];
+        let children = node
+            .children()
+            .iter()
+            .map(|&child| self.explain_node(nodes, catalog, tx, child, 1 + depth))
+            .collect();
+
+        let prev = nodes.insert(
+            id,
+            ExplainNode {
+                depth,
+                children,
+                fmt: node.display(catalog, tx).to_string(),
+                annotations: Default::default(),
+            },
+        );
+        assert!(prev.is_none());
+        id
+    }
+}
+
+/// A materialized tree of `ExplainNode` which can be formatted as an explain (analyze) plan.
+/// This is useful as it contains no references and can be augmented with additional information post construction.
+pub struct ExplainTree {
+    root: PhysicalNodeId,
+    nodes: ArenaMap<PhysicalNodeId, ExplainNode>,
+}
+
+impl ExplainTree {
+    pub fn annotate(&mut self, fmt: ArenaMap<PhysicalNodeId, (String, String)>) {
+        for (id, kv) in fmt {
+            if let Some(node) = self.nodes.get_mut(id) {
+                node.annotations.push(kv);
+            }
+        }
+    }
+
+    fn fmt_node(&self, id: PhysicalNodeId, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let node = &self.nodes[id];
+        write!(f, "{:indent$}{}", "", node.fmt, indent = node.depth * 2)?;
+        for (k, v) in &node.annotations {
+            write!(f, " {}={}", k, v)?;
+        }
+
+        writeln!(f)?;
+
+        for &child in &node.children[..] {
+            self.fmt_node(child, f)?;
+        }
+        Ok(())
+    }
+}
+
+impl fmt::Display for ExplainTree {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.fmt_node(self.root, f)
+    }
+}
+
+struct ExplainNode {
+    fmt: String,
+    depth: usize,
+    annotations: Vec<(String, String)>,
+    children: Box<[PhysicalNodeId]>,
+}
+
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Explain<'env, S>
     for PhysicalPlan<'env, 'txn, S, M>
 {
@@ -160,17 +244,14 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Explain<'env
 
 pub struct PhysicalNodeExplainer<'a, 'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> {
     nodes: &'a PhysicalNodeArena<'env, 'txn, S, M>,
-    node: PhysicalNodeId<'env, 'txn, S, M>,
+    node: PhysicalNodeId,
     indent: usize,
 }
 
 impl<'a, 'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     PhysicalNodeExplainer<'a, 'env, 'txn, S, M>
 {
-    fn explain_child(
-        &self,
-        node: PhysicalNodeId<'env, 'txn, S, M>,
-    ) -> PhysicalNodeExplainer<'a, 'env, 'txn, S, M> {
+    fn explain_child(&self, node: PhysicalNodeId) -> PhysicalNodeExplainer<'a, 'env, 'txn, S, M> {
         PhysicalNodeExplainer { nodes: self.nodes, node, indent: self.indent + 2 }
     }
 }

@@ -3,6 +3,7 @@ use ir::Value;
 use nsql::Nsql;
 use nsql_storage::tuple::TupleIndex;
 
+#[track_caller]
 pub fn check_explain<'a>(
     setup: impl IntoIterator<Item = &'a str>,
     query: &str,

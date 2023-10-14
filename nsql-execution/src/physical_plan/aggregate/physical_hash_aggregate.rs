@@ -1,3 +1,4 @@
+use std::marker::PhantomData;
 use std::mem;
 
 use nsql_catalog::AggregateFunctionInstance;
@@ -8,11 +9,12 @@ use super::*;
 
 #[derive(Debug)]
 pub struct PhysicalHashAggregate<'env, 'txn, S, M> {
-    id: PhysicalNodeId<'env, 'txn, S, M>,
+    id: PhysicalNodeId,
     aggregates: Box<[(ir::Function, Option<ExecutableExpr<S>>)]>,
-    children: [PhysicalNodeId<'env, 'txn, S, M>; 1],
+    children: [PhysicalNodeId; 1],
     group_expr: ExecutableTupleExpr<S>,
     output_groups: FxHashMap<Tuple, Vec<Box<dyn AggregateFunctionInstance>>>,
+    _marker: PhantomData<dyn PhysicalNode<'env, 'txn, S, M>>,
 }
 
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
@@ -20,10 +22,10 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
 {
     pub(crate) fn plan(
         aggregates: Box<[(ir::Function, Option<ExecutableExpr<S>>)]>,
-        source: PhysicalNodeId<'env, 'txn, S, M>,
+        source: PhysicalNodeId,
         group_expr: ExecutableTupleExpr<S>,
         arena: &mut PhysicalNodeArena<'env, 'txn, S, M>,
-    ) -> PhysicalNodeId<'env, 'txn, S, M> {
+    ) -> PhysicalNodeId {
         arena.alloc_with(|id| {
             Box::new(Self {
                 id,
@@ -31,6 +33,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
                 group_expr,
                 children: [source],
                 output_groups: Default::default(),
+                _marker: PhantomData,
             })
         })
     }
@@ -80,7 +83,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSink
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode<'env, 'txn, S, M>
     for PhysicalHashAggregate<'env, 'txn, S, M>
 {
-    fn id(&self) -> PhysicalNodeId<'env, 'txn, S, M> {
+    fn id(&self) -> PhysicalNodeId {
         self.id
     }
 
@@ -88,7 +91,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode
         self.aggregates.len() + self.group_expr.width()
     }
 
-    fn children(&self) -> &[PhysicalNodeId<'env, 'txn, S, M>] {
+    fn children(&self) -> &[PhysicalNodeId] {
         &self.children
     }
 

@@ -1,5 +1,8 @@
+use std::marker::PhantomData;
+
 use super::*;
 use crate::pipeline::RootPipeline;
+use crate::profiler::PhysicalNodeProfileExt;
 
 pub(crate) struct Executor<'env, 'txn, S, M> {
     nodes: PhysicalNodeArena<'env, 'txn, S, M>,
@@ -42,7 +45,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Executor<'en
         // Safety: caller must ensure the indexes are unique
         unsafe fn get_mut_refs_unchecked<'a, 'env, 'txn, S, M>(
             data: &'a mut PhysicalNodeArena<'env, 'txn, S, M>,
-            indices: impl IntoIterator<Item = PhysicalNodeId<'env, 'txn, S, M>>,
+            indices: impl IntoIterator<Item = PhysicalNodeId>,
         ) -> Vec<&'a mut dyn PhysicalNode<'env, 'txn, S, M>> {
             let mut refs = vec![];
 
@@ -54,17 +57,18 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Executor<'en
             refs
         }
 
+        let profiler = ecx.profiler();
         let pipeline: &Pipeline<'env, 'txn, S, M> = &self.pipelines[pipeline];
         let node_ids = pipeline.nodes();
         // Safety: a pipeline should never have duplicate nodes
         let mut nodes_mut = unsafe { get_mut_refs_unchecked(&mut self.nodes, node_ids) };
         let [source, operators @ .., sink] = &mut nodes_mut[..] else { panic!() };
-        let source = source.as_source_mut().expect("expected source");
+        let mut source = (*source).as_source_mut().expect("expected source").profiled(profiler);
         let mut operators = operators
             .iter_mut()
-            .map(|op| op.as_operator_mut().expect("expected operator"))
+            .map(|op| op.as_operator_mut().expect("expected operator").profiled(profiler))
             .collect::<Box<_>>();
-        let sink = sink.as_sink_mut().expect("expected sink");
+        let mut sink = sink.as_sink_mut().expect("expected sink").profiled(profiler);
 
         let mut stream = source.source(ecx)?;
 
@@ -159,22 +163,23 @@ pub fn execute<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
 // We should be able to pull from the executor
 #[derive(Debug)]
 pub(crate) struct OutputSink<'env, 'txn, S, M> {
-    id: PhysicalNodeId<'env, 'txn, S, M>,
+    id: PhysicalNodeId,
     tuples: Vec<Tuple>,
+    _marker: PhantomData<dyn PhysicalNode<'env, 'txn, S, M>>,
 }
 
 impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> OutputSink<'env, 'txn, S, M> {
-    pub(crate) fn plan(
-        arena: &mut PhysicalNodeArena<'env, 'txn, S, M>,
-    ) -> PhysicalNodeId<'env, 'txn, S, M> {
-        arena.alloc_with(|id| Box::new(Self { id, tuples: Default::default() }))
+    pub(crate) fn plan(arena: &mut PhysicalNodeArena<'env, 'txn, S, M>) -> PhysicalNodeId {
+        arena.alloc_with(|id| {
+            Box::new(Self { id, tuples: Default::default(), _marker: PhantomData })
+        })
     }
 }
 
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode<'env, 'txn, S, M>
     for OutputSink<'env, 'txn, S, M>
 {
-    fn id(&self) -> PhysicalNodeId<'env, 'txn, S, M> {
+    fn id(&self) -> PhysicalNodeId {
         self.id
     }
 
@@ -186,7 +191,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode
     }
 
     #[inline]
-    fn children(&self) -> &[PhysicalNodeId<'env, 'txn, S, M>] {
+    fn children(&self) -> &[PhysicalNodeId] {
         &[]
     }
 

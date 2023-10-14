@@ -1,8 +1,10 @@
+use std::marker::PhantomData;
+
 pub(crate) use nsql_arena::{Arena, Idx};
 use nsql_storage_engine::StorageEngine;
 
 use crate::{
-    ExecutionMode, PhysicalNodeArena, PhysicalNodeId, PhysicalOperator, PhysicalSink,
+    ExecutionMode, PhysicalNode, PhysicalNodeArena, PhysicalNodeId, PhysicalOperator, PhysicalSink,
     PhysicalSource,
 };
 
@@ -175,7 +177,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
         &mut self,
         nodes: &PhysicalNodeArena<'env, 'txn, S, M>,
         meta_pipeline: Idx<MetaPipelineBuilder<'env, 'txn, S, M>>,
-        node: PhysicalNodeId<'env, 'txn, S, M>,
+        node: PhysicalNodeId,
     ) {
         assert_eq!(self[meta_pipeline].pipelines.len(), 1);
         assert!(self[meta_pipeline].children.is_empty());
@@ -184,17 +186,16 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
 }
 
 pub struct Pipeline<'env, 'txn, S, M> {
-    pub(crate) source: PhysicalNodeId<'env, 'txn, S, M>,
+    pub(crate) source: PhysicalNodeId,
     /// The operators in the pipeline, ordered from source to sink.
-    pub(crate) operators: Box<[PhysicalNodeId<'env, 'txn, S, M>]>,
-    pub(crate) sink: PhysicalNodeId<'env, 'txn, S, M>,
+    pub(crate) operators: Box<[PhysicalNodeId]>,
+    pub(crate) sink: PhysicalNodeId,
+    _marker: PhantomData<dyn PhysicalNode<'env, 'txn, S, M>>,
 }
 
 impl<'env, 'txn, S, M> Pipeline<'env, 'txn, S, M> {
     /// Returns an iterator over all nodes in the pipeline starting from the source and ending at the sink.
-    pub(crate) fn nodes(
-        &self,
-    ) -> impl DoubleEndedIterator<Item = PhysicalNodeId<'env, 'txn, S, M>> + '_ {
+    pub(crate) fn nodes(&self) -> impl DoubleEndedIterator<Item = PhysicalNodeId> + '_ {
         std::iter::once(self.source as _)
             .chain(self.operators.iter().copied())
             .chain(Some(self.sink))
@@ -203,16 +204,17 @@ impl<'env, 'txn, S, M> Pipeline<'env, 'txn, S, M> {
 
 #[derive(Debug)]
 pub(crate) struct PipelineBuilder<'env, 'txn, S, M> {
-    source: Option<PhysicalNodeId<'env, 'txn, S, M>>,
-    operators: Vec<PhysicalNodeId<'env, 'txn, S, M>>,
-    sink: PhysicalNodeId<'env, 'txn, S, M>,
+    source: Option<PhysicalNodeId>,
+    operators: Vec<PhysicalNodeId>,
+    sink: PhysicalNodeId,
+    _marker: PhantomData<dyn PhysicalNode<'env, 'txn, S, M>>,
 }
 
 impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PipelineBuilder<'env, 'txn, S, M> {
     // NOTE: we require these methods to require the trait object even though we only need the id for type safety.
     // The id doesn't tell us which of the 3 traits are implemented.
     pub(crate) fn new(sink: &dyn PhysicalSink<'env, 'txn, S, M>) -> Self {
-        Self { source: None, operators: vec![], sink: sink.id() }
+        Self { source: None, operators: vec![], sink: sink.id(), _marker: PhantomData }
     }
 
     #[track_caller]
@@ -233,6 +235,7 @@ impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PipelineBuilder<'e
             source: self.source.expect("did not provide source of pipeline to pipeline builder"),
             operators: self.operators.into_boxed_slice(),
             sink: self.sink,
+            _marker: PhantomData,
         }
     }
 }

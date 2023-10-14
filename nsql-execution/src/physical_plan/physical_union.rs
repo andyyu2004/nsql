@@ -1,3 +1,4 @@
+use std::marker::PhantomData;
 use std::mem;
 
 use nsql_arena::Idx;
@@ -8,21 +9,27 @@ use crate::pipeline::{MetaPipelineBuilder, PipelineBuilder, PipelineBuilderArena
 
 #[derive(Debug)]
 pub(crate) struct PhysicalUnion<'env, 'txn, S, M> {
-    id: PhysicalNodeId<'env, 'txn, S, M>,
-    children: [PhysicalNodeId<'env, 'txn, S, M>; 2],
+    id: PhysicalNodeId,
+    children: [PhysicalNodeId; 2],
     buffer: Vec<Tuple>,
+    _marker: PhantomData<dyn PhysicalNode<'env, 'txn, S, M>>,
 }
 
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     PhysicalUnion<'env, 'txn, S, M>
 {
     pub fn plan(
-        lhs: PhysicalNodeId<'env, 'txn, S, M>,
-        rhs: PhysicalNodeId<'env, 'txn, S, M>,
+        lhs: PhysicalNodeId,
+        rhs: PhysicalNodeId,
         arena: &mut PhysicalNodeArena<'env, 'txn, S, M>,
-    ) -> PhysicalNodeId<'env, 'txn, S, M> {
+    ) -> PhysicalNodeId {
         arena.alloc_with(|id| {
-            Box::new(Self { id, children: [lhs, rhs], buffer: Default::default() })
+            Box::new(Self {
+                id,
+                children: [lhs, rhs],
+                buffer: Default::default(),
+                _marker: PhantomData,
+            })
         })
     }
 }
@@ -32,7 +39,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode
 {
     impl_physical_node_conversions!(M; source, sink; not operator);
 
-    fn id(&self) -> PhysicalNodeId<'env, 'txn, S, M> {
+    fn id(&self) -> PhysicalNodeId {
         self.id
     }
 
@@ -44,7 +51,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode
         nodes[self.children[0]].width(nodes)
     }
 
-    fn children(&self) -> &[PhysicalNodeId<'env, 'txn, S, M>] {
+    fn children(&self) -> &[PhysicalNodeId] {
         &self.children
     }
 

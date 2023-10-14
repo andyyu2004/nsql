@@ -1,3 +1,5 @@
+use std::marker::PhantomData;
+
 use nsql_catalog::Table;
 use nsql_core::Oid;
 use nsql_storage_engine::fallible_iterator;
@@ -7,12 +9,13 @@ use crate::ReadWriteExecutionMode;
 
 #[derive(Debug)]
 pub(crate) struct PhysicalUpdate<'env, 'txn, S> {
-    id: PhysicalNodeId<'env, 'txn, S, ReadWriteExecutionMode>,
-    children: [PhysicalNodeId<'env, 'txn, S, ReadWriteExecutionMode>; 1],
+    id: PhysicalNodeId,
+    children: [PhysicalNodeId; 1],
     table: Oid<Table>,
     tuples: Vec<Tuple>,
     returning: ExecutableTupleExpr<S>,
     returning_tuples: Vec<Tuple>,
+    _marker: PhantomData<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode>>,
 }
 
 impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalUpdate<'env, 'txn, S> {
@@ -20,10 +23,10 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalUpdate<'env, 'txn, S> {
         table: Oid<Table>,
         // This is the source of the updates.
         // The schema should be that of the table being updated + the `tid` in the rightmost column
-        source: PhysicalNodeId<'env, 'txn, S, ReadWriteExecutionMode>,
+        source: PhysicalNodeId,
         returning: ExecutableTupleExpr<S>,
         arena: &mut PhysicalNodeArena<'env, 'txn, S, ReadWriteExecutionMode>,
-    ) -> PhysicalNodeId<'env, 'txn, S, ReadWriteExecutionMode> {
+    ) -> PhysicalNodeId {
         arena.alloc_with(|id| {
             Box::new(Self {
                 id,
@@ -32,6 +35,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalUpdate<'env, 'txn, S> {
                 tuples: Default::default(),
                 children: [source],
                 returning_tuples: Default::default(),
+                _marker: PhantomData,
             })
         })
     }
@@ -42,7 +46,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalNode<'env, 'txn, S, ReadWriteEx
 {
     impl_physical_node_conversions!(ReadWriteExecutionMode; source, sink; not operator);
 
-    fn id(&self) -> PhysicalNodeId<'env, 'txn, S, ReadWriteExecutionMode> {
+    fn id(&self) -> PhysicalNodeId {
         self.id
     }
 
@@ -51,7 +55,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalNode<'env, 'txn, S, ReadWriteEx
     }
 
     #[inline]
-    fn children(&self) -> &[PhysicalNodeId<'env, 'txn, S, ReadWriteExecutionMode>] {
+    fn children(&self) -> &[PhysicalNodeId] {
         &self.children
     }
 }

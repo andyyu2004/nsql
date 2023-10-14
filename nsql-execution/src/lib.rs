@@ -6,6 +6,7 @@ pub mod config;
 mod executor;
 mod physical_plan;
 mod pipeline;
+mod profiler;
 
 use std::fmt;
 use std::ops::{Index, IndexMut};
@@ -26,6 +27,7 @@ use nsql_storage_engine::{
 use nsql_util::atomic::AtomicEnum;
 pub use physical_plan::PhysicalPlanner;
 use pipeline::RootPipeline;
+use profiler::Profiler;
 
 use self::config::SessionConfig;
 pub use self::executor::execute;
@@ -38,7 +40,7 @@ use self::pipeline::{
 pub type ExecutionResult<T, E = Error> = std::result::Result<T, E>;
 
 fn build_pipelines<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
-    sink: PhysicalNodeId<'env, 'txn, S, M>,
+    sink: PhysicalNodeId,
     plan: PhysicalPlan<'env, 'txn, S, M>,
 ) -> RootPipeline<'env, 'txn, S, M> {
     let (mut builder, root_meta_pipeline) =
@@ -49,7 +51,7 @@ fn build_pipelines<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>
 }
 
 struct PhysicalNodeArena<'env, 'txn, S, M> {
-    nodes: Arena<Box<dyn PhysicalNode<'env, 'txn, S, M>>>,
+    nodes: Arena<Box<dyn PhysicalNode<'env, 'txn, S, M> + 'txn>>,
 }
 
 impl<'env, 'txn, S, M> Default for PhysicalNodeArena<'env, 'txn, S, M> {
@@ -58,43 +60,34 @@ impl<'env, 'txn, S, M> Default for PhysicalNodeArena<'env, 'txn, S, M> {
     }
 }
 
-// impl<'env, 'txn, S, M> Clone for PhysicalNodeArena<'env, 'txn, S, M> {
-//     fn clone(&self) -> Self {
-//         todo!()
-//         // Self { nodes: self.nodes.clone() }
-//     }
-// }
-
-impl<'env, 'txn, S, M> Index<PhysicalNodeId<'env, 'txn, S, M>>
-    for PhysicalNodeArena<'env, 'txn, S, M>
-{
-    type Output = Box<dyn PhysicalNode<'env, 'txn, S, M>>;
+impl<'env, 'txn, S, M> Index<PhysicalNodeId> for PhysicalNodeArena<'env, 'txn, S, M> {
+    type Output = Box<dyn PhysicalNode<'env, 'txn, S, M> + 'txn>;
 
     #[inline]
-    fn index(&self, index: PhysicalNodeId<'env, 'txn, S, M>) -> &Self::Output {
-        &self.nodes[index]
+    fn index(&self, index: PhysicalNodeId) -> &Self::Output {
+        &self.nodes[index.cast()]
     }
 }
 
-impl<'env, 'txn, S, M> IndexMut<PhysicalNodeId<'env, 'txn, S, M>>
-    for PhysicalNodeArena<'env, 'txn, S, M>
-{
+impl<'env, 'txn, S, M> IndexMut<PhysicalNodeId> for PhysicalNodeArena<'env, 'txn, S, M> {
     #[inline]
-    fn index_mut(&mut self, index: PhysicalNodeId<'env, 'txn, S, M>) -> &mut Self::Output {
-        &mut self.nodes[index]
+    fn index_mut(&mut self, index: PhysicalNodeId) -> &mut Self::Output {
+        &mut self.nodes[index.cast()]
     }
 }
 
-impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNodeArena<'env, 'txn, S, M> {
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
+    PhysicalNodeArena<'env, 'txn, S, M>
+{
     pub fn alloc_with(
         &mut self,
-        mk: impl FnOnce(PhysicalNodeId<'env, 'txn, S, M>) -> Box<dyn PhysicalNode<'env, 'txn, S, M>>,
-    ) -> PhysicalNodeId<'env, 'txn, S, M> {
-        self.nodes.alloc(mk(self.nodes.next_idx()))
+        mk: impl FnOnce(PhysicalNodeId) -> Box<dyn PhysicalNode<'env, 'txn, S, M> + 'txn>,
+    ) -> PhysicalNodeId {
+        self.nodes.alloc(mk(self.nodes.next_idx().cast())).cast()
     }
 }
 
-type PhysicalNodeId<'env, 'txn, S, M> = Idx<Box<dyn PhysicalNode<'env, 'txn, S, M>>>;
+type PhysicalNodeId = Idx<()>;
 
 macro_rules! impl_physical_node_conversions {
     ($m_type:ty; $($trait:ident),* $(; not $($not_trait:ident),*)?) => {
@@ -190,14 +183,14 @@ use impl_physical_node_conversions;
 // keep this trait crate-private
 #[allow(clippy::type_complexity)]
 trait PhysicalNode<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>:
-    Explain<'env, S> + fmt::Debug + 'txn
+    Explain<'env, S> + fmt::Debug
 {
-    fn id(&self) -> PhysicalNodeId<'env, 'txn, S, M>;
+    fn id(&self) -> PhysicalNodeId;
 
     /// The width of the tuples produced by this node
     fn width(&self, nodes: &PhysicalNodeArena<'env, 'txn, S, M>) -> usize;
 
-    fn children(&self) -> &[PhysicalNodeId<'env, 'txn, S, M>];
+    fn children(&self) -> &[PhysicalNodeId];
 
     fn as_source(
         &self,
@@ -278,6 +271,89 @@ trait PhysicalNode<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>
     }
 }
 
+// generate boilerplate impls of `Explain` and `PhysicalNode` for `&'a mut Trait<'env, 'txn, S, M>`
+macro_rules! delegate_physical_node_impl_of_dyn {
+    ($ty:ident) => {
+        impl<'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Explain<'env, S>
+            for &'a mut dyn $ty<'env, 'txn, S, M>
+        {
+            fn as_dyn(&self) -> &dyn Explain<'env, S> {
+                self
+            }
+
+            fn explain(
+                &self,
+                catalog: Catalog<'env, S>,
+                tx: &dyn Transaction<'env, S>,
+                f: &mut fmt::Formatter<'_>,
+            ) -> explain::Result {
+                (**self).explain(catalog, tx, f)
+            }
+        }
+
+        impl<'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
+            PhysicalNode<'env, 'txn, S, M> for &'a mut dyn $ty<'env,'txn, S, M>
+        {
+            fn id(&self) -> PhysicalNodeId {
+                (**self).id()
+            }
+
+            fn width(&self, nodes: &PhysicalNodeArena<'env, 'txn, S, M>) -> usize {
+                (**self).width(nodes)
+            }
+
+            fn children(&self) -> &[PhysicalNodeId] {
+                (**self).children()
+            }
+
+            fn as_source(
+                &self,
+            ) -> Result<&dyn PhysicalSource<'env, 'txn, S, M>, &dyn PhysicalNode<'env, 'txn, S, M>> {
+                (**self).as_source()
+            }
+
+            fn as_source_mut(
+                &mut self,
+            ) -> Result<&mut dyn PhysicalSource<'env, 'txn, S, M>, &mut dyn PhysicalNode<'env, 'txn, S, M>>
+            {
+                (**self).as_source_mut()
+            }
+
+            fn as_sink(
+                &self,
+            ) -> Result<&dyn PhysicalSink<'env, 'txn, S, M>, &dyn PhysicalNode<'env, 'txn, S, M>> {
+                (**self).as_sink()
+            }
+
+            fn as_sink_mut(
+                &mut self,
+            ) -> Result<&mut dyn PhysicalSink<'env, 'txn, S, M>, &mut dyn PhysicalNode<'env, 'txn, S, M>>
+            {
+                (**self).as_sink_mut()
+            }
+
+            fn as_operator(
+                &self,
+            ) -> Result<&dyn PhysicalOperator<'env, 'txn, S, M>, &dyn PhysicalNode<'env, 'txn, S, M>> {
+                (**self).as_operator()
+            }
+
+            fn as_operator_mut(
+                &mut self,
+            ) -> Result<&mut dyn PhysicalOperator<'env, 'txn, S, M>, &mut dyn PhysicalNode<'env, 'txn, S, M>>
+            {
+                (**self).as_operator_mut()
+            }
+        }
+
+    }
+}
+
+delegate_physical_node_impl_of_dyn!(PhysicalNode);
+delegate_physical_node_impl_of_dyn!(PhysicalSource);
+delegate_physical_node_impl_of_dyn!(PhysicalOperator);
+delegate_physical_node_impl_of_dyn!(PhysicalSink);
+
 #[derive(Debug)]
 enum OperatorState<T> {
     /// The operator potentially has more output for the same input
@@ -300,6 +376,18 @@ trait PhysicalOperator<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env
     ) -> ExecutionResult<OperatorState<T>>;
 }
 
+impl<'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
+    PhysicalOperator<'env, 'txn, S, M> for &'a mut dyn PhysicalOperator<'env, 'txn, S, M>
+{
+    fn execute(
+        &mut self,
+        ecx: &'txn ExecutionContext<'_, 'env, S, M>,
+        input: Tuple,
+    ) -> ExecutionResult<OperatorState<Tuple>> {
+        (**self).execute(ecx, input)
+    }
+}
+
 type TupleStream<'a> = Box<dyn FallibleIterator<Item = Tuple, Error = anyhow::Error> + 'a>;
 
 trait PhysicalSource<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T = Tuple>:
@@ -310,6 +398,17 @@ trait PhysicalSource<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, 
         &mut self,
         ecx: &'txn ExecutionContext<'_, 'env, S, M>,
     ) -> ExecutionResult<TupleStream<'_>>;
+}
+
+impl<'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
+    PhysicalSource<'env, 'txn, S, M> for &'a mut dyn PhysicalSource<'env, 'txn, S, M>
+{
+    fn source(
+        &mut self,
+        ecx: &'txn ExecutionContext<'_, 'env, S, M>,
+    ) -> ExecutionResult<TupleStream<'_>> {
+        (**self).source(ecx)
+    }
 }
 
 trait PhysicalSink<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>:
@@ -323,6 +422,33 @@ trait PhysicalSink<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>
 
     fn finalize(&mut self, _ecx: &'txn ExecutionContext<'_, 'env, S, M>) -> ExecutionResult<()> {
         Ok(())
+    }
+}
+
+impl<'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
+    PhysicalSource<'env, 'txn, S, M> for &'a mut dyn PhysicalSink<'env, 'txn, S, M>
+{
+    fn source(
+        &mut self,
+        ecx: &'txn ExecutionContext<'_, 'env, S, M>,
+    ) -> ExecutionResult<TupleStream<'_>> {
+        (**self).source(ecx)
+    }
+}
+
+impl<'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
+    PhysicalSink<'env, 'txn, S, M> for &'a mut dyn PhysicalSink<'env, 'txn, S, M>
+{
+    fn sink(
+        &mut self,
+        ecx: &'txn ExecutionContext<'_, 'env, S, M>,
+        tuple: Tuple,
+    ) -> ExecutionResult<()> {
+        (**self).sink(ecx, tuple)
+    }
+
+    fn finalize(&mut self, ecx: &'txn ExecutionContext<'_, 'env, S, M>) -> ExecutionResult<()> {
+        (**self).finalize(ecx)
     }
 }
 
@@ -392,6 +518,7 @@ pub struct ExecutionContext<'a, 'env, S: StorageEngine, M: ExecutionMode<'env, S
     tcx: TransactionContext<'env, S, M>,
     scx: &'a (dyn SessionContext + 'a),
     materialized_ctes: DashMap<Name, Arc<[Tuple]>>,
+    profiler: Profiler,
 }
 
 impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> ExecutionContext<'_, 'env, S, M> {
@@ -409,7 +536,18 @@ impl<'a, 'env, S: StorageEngine, M: ExecutionMode<'env, S>> ExecutionContext<'a,
         tcx: TransactionContext<'env, S, M>,
         scx: &'a (dyn SessionContext + 'a),
     ) -> Self {
-        Self { catalog, tcx, scx, materialized_ctes: Default::default() }
+        Self {
+            catalog,
+            tcx,
+            scx,
+            materialized_ctes: Default::default(),
+            profiler: Default::default(),
+        }
+    }
+
+    #[inline]
+    pub(crate) fn profiler(&self) -> &Profiler {
+        &self.profiler
     }
 
     #[inline]

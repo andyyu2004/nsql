@@ -1,10 +1,14 @@
 #![allow(unused)]
 //! Yet another index-based arena. (from rust-analyzer)
 
+mod map;
+
 use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::marker::PhantomData;
 use std::ops::{Index, IndexMut, Range, RangeInclusive};
+
+pub use self::map::*;
 
 /// The raw index of a value in an arena.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -41,12 +45,14 @@ pub struct Idx<T> {
 }
 
 impl<T> Idx<T> {
+    #[inline]
     pub fn cast<U>(self) -> Idx<U> {
         Idx { raw: self.raw, _ty: PhantomData }
     }
 }
 
 impl<T> Clone for Idx<T> {
+    #[inline]
     fn clone(&self) -> Self {
         *self
     }
@@ -54,13 +60,16 @@ impl<T> Clone for Idx<T> {
 impl<T> Copy for Idx<T> {}
 
 impl<T> PartialEq for Idx<T> {
+    #[inline]
     fn eq(&self, other: &Idx<T>) -> bool {
         self.raw == other.raw
     }
 }
+
 impl<T> Eq for Idx<T> {}
 
 impl<T> Hash for Idx<T> {
+    #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.raw.hash(state);
     }
