@@ -49,6 +49,10 @@ impl Profiler {
         ProfilerGuard { profiler: self, id: id.cast(), start, tuples_in, tuples_out }
     }
 
+    fn init(&self, id: PhysicalNodeId) {
+        self.metrics.entry(id).or_default();
+    }
+
     fn record(&self, guard: &ProfilerGuard<'_>) {
         let elapsed = guard.start.map_or(Duration::ZERO, |start| start.elapsed());
 
@@ -71,7 +75,7 @@ impl Profiler {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Default, Clone)]
 pub struct NodeMetrics {
     pub elapsed: Duration,
     /// The number of tuples that entered this node (i.e. operator or sink)
@@ -105,6 +109,8 @@ where
     N: PhysicalNode<'env, 'txn, S, M>,
 {
     fn profiled(self, profiler: &Profiler) -> ProfiledPhysicalNode<'_, Self> {
+        // ensure the node has an entry in the metrics map even if it never runs
+        profiler.init(self.id());
         ProfiledPhysicalNode { profiler, node: self }
     }
 }

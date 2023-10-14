@@ -5,7 +5,7 @@ use super::*;
 #[derive(Debug)]
 pub struct PhysicalProjection<'env, 'txn, S, M> {
     id: PhysicalNodeId,
-    children: PhysicalNodeId,
+    child: PhysicalNodeId,
     projection: ExecutableTupleExpr<S>,
     _marker: PhantomData<dyn PhysicalNode<'env, 'txn, S, M>>,
 }
@@ -18,9 +18,8 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
         projection: ExecutableTupleExpr<S>,
         arena: &mut PhysicalNodeArena<'env, 'txn, S, M>,
     ) -> PhysicalNodeId {
-        arena.alloc_with(|id| {
-            Box::new(Self { id, children: source, projection, _marker: PhantomData })
-        })
+        arena
+            .alloc_with(|id| Box::new(Self { id, child: source, projection, _marker: PhantomData }))
     }
 }
 
@@ -55,7 +54,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode
     }
 
     fn children(&self) -> &[PhysicalNodeId] {
-        std::slice::from_ref(&self.children)
+        std::slice::from_ref(&self.child)
     }
 }
 
