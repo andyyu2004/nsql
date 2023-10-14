@@ -4,4 +4,4 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-sqlparser = { version = "0.36.0", features = ["visitor"] }
+sqlparser = { git = "https://github.com/andyyu2004/sqlparser-rs", features = ["visitor"] }

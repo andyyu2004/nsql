@@ -195,7 +195,11 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                 on_cluster,
                 order_by,
                 strict,
+                comment,
+                auto_increment_offset,
             } => {
+                not_implemented_if!(comment.is_some());
+                not_implemented_if!(auto_increment_offset.is_some());
                 not_implemented_if!(*strict);
                 not_implemented_if!(*or_replace);
                 not_implemented_if!(*temporary);
@@ -241,7 +245,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                 let (_scope, query) = self.bind_query(tx, scope, query)?;
                 ir::Plan::Query(query)
             }
-            ast::Statement::StartTransaction { modes } => {
+            ast::Statement::StartTransaction { modes, begin: _ } => {
                 let mut mode = ir::TransactionMode::ReadWrite;
                 match modes[..] {
                     [] => (),
@@ -270,11 +274,20 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                 not_implemented_if!(filter.is_some());
                 ir::Plan::Show(ir::ObjectType::Table)
             }
-            ast::Statement::Drop { object_type, if_exists, names, cascade, restrict, purge } => {
+            ast::Statement::Drop {
+                object_type,
+                if_exists,
+                names,
+                cascade,
+                restrict,
+                purge,
+                temporary,
+            } => {
                 not_implemented_if!(*if_exists);
                 not_implemented_if!(*cascade);
                 not_implemented_if!(*restrict);
                 not_implemented_if!(*purge);
+                not_implemented_if!(*temporary);
 
                 let names = names
                     .iter()
@@ -299,9 +312,18 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
 
                 ir::Plan::Drop(refs)
             }
-            ast::Statement::Explain { describe_alias: _, analyze, verbose, statement, format } => {
+            ast::Statement::Explain {
+                describe_alias: _,
+                analyze,
+                verbose,
+                statement,
+                format,
+                timing,
+            } => {
                 not_implemented_if!(format.is_some());
                 not_implemented_if!(*verbose);
+                not_implemented_if!(!*timing);
+
                 let opts = ir::ExplainOptions { analyze: *analyze, verbose: *verbose };
                 ir::Plan::Explain(opts, self.bind_with(tx, statement)?)
             }
@@ -341,6 +363,8 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                                 alias: None,
                                 args: None,
                                 with_hints: vec![],
+                                partitions: vec![],
+                                version: None,
                             },
                         )?;
 
@@ -678,10 +702,11 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
         scope: &Scope,
         query: &ast::Query,
     ) -> Result<(Scope, Box<ir::QueryPlan>)> {
-        let ast::Query { with, body, order_by, limit, offset, fetch, locks } = query;
+        let ast::Query { with, body, order_by, limit, offset, fetch, locks, limit_by } = query;
         not_implemented_if!(offset.is_some());
         not_implemented_if!(fetch.is_some());
         not_implemented_if!(!locks.is_empty());
+        not_implemented_if!(!limit_by.is_empty());
 
         let mut ctes = Vec::with_capacity(with.as_ref().map_or(0, |with| with.cte_tables.len()));
         if let Some(with) = with {
@@ -851,10 +876,13 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
         not_implemented_if!(from.is_some());
 
         let (scope, table) = match &table.relation {
-            ast::TableFactor::Table { name, alias, args, with_hints } => {
+            ast::TableFactor::Table { name, alias, args, with_hints, version, partitions } => {
                 not_implemented_if!(alias.is_some());
                 not_implemented_if!(args.is_some());
                 not_implemented_if!(!with_hints.is_empty());
+                not_implemented_if!(version.is_some());
+                not_implemented_if!(!partitions.is_empty());
+
                 self.bind_base_table(tx, scope, name, alias.as_ref())?
             }
             _ => not_implemented!("update with non-table relation"),
@@ -1229,10 +1257,13 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
             source = source.filter(predicate);
         }
 
-        let group_by = group_by
-            .iter()
-            .map(|expr| self.bind_expr(tx, &scope, expr))
-            .collect::<Result<Box<_>>>()?;
+        let group_by = match group_by {
+            ast::GroupByExpr::All => not_implemented!("group by all"),
+            ast::GroupByExpr::Expressions(group_by) => group_by
+                .iter()
+                .map(|expr| self.bind_expr(tx, &scope, expr))
+                .collect::<Result<Box<_>>>()?,
+        };
 
         let (scope, mut plan) = SelectBinder::new(self, group_by).bind(
             tx,
@@ -1321,9 +1352,11 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
         table: &ast::TableFactor,
     ) -> Result<(Scope, Box<ir::QueryPlan>)> {
         let (scope, table_expr) = match table {
-            ast::TableFactor::Table { name, alias, args, with_hints } => {
+            ast::TableFactor::Table { name, alias, args, with_hints, version, partitions } => {
                 not_implemented_if!(args.is_some());
                 not_implemented_if!(!with_hints.is_empty());
+                not_implemented_if!(version.is_some());
+                not_implemented_if!(!partitions.is_empty());
 
                 let path = self.lower_path(&name.0)?;
                 let (scope, table) = self.bind_table(tx, scope, &path, alias.as_ref())?;
@@ -1363,8 +1396,9 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
 
                 (scope, ir::QueryPlan::unnest(expr))
             }
-            ast::TableFactor::NestedJoin { .. } => todo!(),
-            ast::TableFactor::Pivot { .. } => todo!(),
+            ast::TableFactor::NestedJoin { .. } => not_implemented!("nested join"),
+            ast::TableFactor::Pivot { .. } => not_implemented!("pivot"),
+            ast::TableFactor::Unpivot { .. } => not_implemented!("unpivot"),
         };
 
         Ok((scope, table_expr))
