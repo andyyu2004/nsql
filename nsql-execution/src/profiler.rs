@@ -232,8 +232,14 @@ impl<'p, I: FallibleIterator> FallibleIterator for ProfiledIterator<'p, I> {
     type Error = I::Error;
 
     fn next(&mut self) -> Result<Option<Self::Item>, Self::Error> {
-        let _guard = self.profiler.start(self.id, NodeType::Source);
-        self.iter.next()
+        let mut guard = self.profiler.start(self.id, NodeType::Source);
+        match self.iter.next()? {
+            Some(tuple) => Ok(Some(tuple)),
+            None => {
+                guard.tuples_out = 0;
+                Ok(None)
+            }
+        }
     }
 }
 
