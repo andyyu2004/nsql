@@ -96,13 +96,16 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
             let mut time_annotations = ArenaMap::with_capacity(metrics.len());
             let mut tuple_annotations = ArenaMap::with_capacity(metrics.len());
             for (id, metric) in metrics {
-                time_annotations
-                    .insert(id, ("time".to_string(), format!("{:.2?}", metric.elapsed)));
+                // FIXME we need to avoid calculating this if we don't need it as it's expensive
+                if self.opts.timing {
+                    time_annotations
+                        .insert(id, ("time".to_string(), format!("{:.2?}", metric.elapsed)));
+                }
                 tuple_annotations.insert(id, ("tuples".to_string(), metric.tuples.to_string()));
             }
 
             self.physical_explain.annotate(tuple_annotations);
-            // self.physical_explain.annotate(time_annotations);
+            self.physical_explain.annotate(time_annotations);
         }
 
         let logical_explain = self.logical_explain.to_string();

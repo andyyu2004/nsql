@@ -321,10 +321,9 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                 timing,
             } => {
                 not_implemented_if!(format.is_some());
-                not_implemented_if!(*verbose);
-                not_implemented_if!(!*timing);
 
-                let opts = ir::ExplainOptions { analyze: *analyze, verbose: *verbose };
+                let opts =
+                    ir::ExplainOptions { analyze: *analyze, verbose: *verbose, timing: *timing };
                 ir::Plan::Explain(opts, self.bind_with(tx, statement)?)
             }
             ast::Statement::SetVariable { local, hivevar, variable, value } => {

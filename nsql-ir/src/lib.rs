@@ -215,6 +215,7 @@ pub enum Plan<Q = Box<QueryPlan>> {
 pub struct ExplainOptions {
     pub analyze: bool,
     pub verbose: bool,
+    pub timing: bool,
 }
 
 impl Default for Plan {
