@@ -12,6 +12,6 @@ argh = "0.1.10"
 dirs = "5.0.1"
 nsql = { path = "../nsql" }
 nu-ansi-term = "0.49.0"
-reedline = "0.22.0"
+reedline = "0.24.0"
 tracing-subscriber = { version = "0.3.17", features = ["env-filter"] }
 tracing-tree = "0.2.4"
