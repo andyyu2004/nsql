@@ -134,7 +134,7 @@ impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalOperator<'
                     self.found_match_for_lhs_tuple.swap(false, atomic::Ordering::Relaxed);
                 // emit the lhs_tuple padded with nulls if no match was found
                 if !found_match && self.join_kind.is_left() {
-                    tracing::debug!(
+                    tracing::trace!(
                         "no match found, emitting tuple padded with nulls for left join"
                     );
                     return match self.join_kind {
@@ -145,7 +145,7 @@ impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalOperator<'
                     };
                 }
 
-                tracing::debug!("completed loop, continuing with next lhs tuple");
+                tracing::trace!("completed loop, continuing with next lhs tuple");
                 return Ok(OperatorState::Continue);
             }
         };
@@ -159,10 +159,10 @@ impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalOperator<'
             .cast::<Option<bool>>()?
             .unwrap_or(false);
 
-        tracing::debug!(%joint_tuple, %keep, "evaluated join predicate");
+        tracing::trace!(%joint_tuple, %keep, "evaluated join predicate");
 
         if keep {
-            tracing::debug!(output = %joint_tuple, "found match, emitting tuple");
+            tracing::trace!(output = %joint_tuple, "found match, emitting tuple");
 
             if matches!(self.join_kind, ir::JoinKind::Single) {
                 // If this is a single join, we only want to emit one matching tuple.

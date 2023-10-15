@@ -79,6 +79,28 @@ WHERE EXISTS(SELECT 1 FROM integers AS x WHERE x.i<i1.i)
 1 1.0 1
 2 1.0 0
 
+# correlated subquery with uncorrelated subquery
+query II
+SELECT 
+(SELECT 1), 
+(SELECT count(*) FROM integers WHERE i1.i < i) 
+FROM integers i1
+----
+1 2
+1 1
+1 0
+1 0
+
+# regression test where less than 4 rows would be returned
+query II
+SELECT (SELECT 1), (SELECT 2) FROM integers
+----
+1 2
+1 2
+1 2
+1 2
+
+
 statement ok
 CREATE TABLE employee (
     id int PRIMARY KEY,

@@ -80,7 +80,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Explain<'env
         _tx: &dyn Transaction<'_, S>,
         f: &mut fmt::Formatter<'_>,
     ) -> explain::Result {
-        write!(f, "scan values")?;
+        write!(f, "scan values ({} tuples)", self.values.len())?;
         Ok(())
     }
 }

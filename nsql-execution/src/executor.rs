@@ -88,6 +88,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Executor<'en
                 for (idx, op) in operators.iter_mut().enumerate().skip(operator_idx) {
                     let span = tracing::debug_span!(
                         "operator",
+                        id= %op.id().into_raw(),
                         "{:#}",
                         op.display(ecx.catalog(), &ecx.tx())
                     );
@@ -100,11 +101,11 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Executor<'en
                             incomplete_operator_indexes.push((idx, input_tuple));
                             match tuple {
                                 Some(tuple) => {
-                                    tracing::debug!(%tuple, "operator state again");
+                                    tracing::trace!(%tuple, "operator state again");
                                     tuple
                                 }
                                 None => {
-                                    tracing::debug!(
+                                    tracing::trace!(
                                         "operator state again with no tuple, continuing"
                                     );
                                     continue 'operator_loop;
@@ -127,9 +128,13 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Executor<'en
                     };
                 }
 
-                let _entered =
-                    tracing::debug_span!("sink", "{:#}", sink.display(ecx.catalog(), &ecx.tx()))
-                        .entered();
+                let _entered = tracing::debug_span!(
+                    "sink",
+                    id = %sink.id().into_raw(),
+                    "{:#}",
+                    sink.display(ecx.catalog(), &ecx.tx())
+                )
+                .entered();
 
                 tracing::debug!(%tuple, "sinking tuple");
                 sink.sink(ecx, tuple)?;
