@@ -28,5 +28,16 @@ fn test_explain() -> nsql::Result<()> {
         "#]],
     )?;
 
+    // ensure `OperatorState::Again` isn't counted multiple times as separate inputs
+    check_explain(
+        [],
+        "EXPLAIN ANALYZE TIMING OFF SELECT * FROM (VALUES (1), (2)) CROSS JOIN (VALUES (3), (4))",
+        expect![[r#"
+            cross join in=4 out=4
+              scan values in=0 out=2
+              scan values in=0 out=2
+        "#]],
+    )?;
+
     Ok(())
 }

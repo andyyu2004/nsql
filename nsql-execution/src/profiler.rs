@@ -248,13 +248,17 @@ where
     ) -> ExecutionResult<OperatorState<Tuple>> {
         let mut guard = self.profiler.start(self.id(), NodeType::Operator);
         match self.node.execute(ecx, input)? {
-            OperatorState::Again(t) => match t {
-                Some(t) => Ok(OperatorState::Again(Some(t))),
-                None => {
-                    guard.tuples_out = 0;
-                    Ok(OperatorState::Again(None))
+            OperatorState::Again(t) => {
+                // don't count the input tuple if it's going to come again
+                guard.tuples_in = 0;
+                match t {
+                    Some(t) => Ok(OperatorState::Again(Some(t))),
+                    None => {
+                        guard.tuples_out = 0;
+                        Ok(OperatorState::Again(None))
+                    }
                 }
-            },
+            }
             OperatorState::Yield(t) => Ok(OperatorState::Yield(t)),
             OperatorState::Continue => {
                 guard.tuples_out = 0;
