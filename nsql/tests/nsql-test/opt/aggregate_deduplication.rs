@@ -12,7 +12,7 @@ fn test_aggregates_are_deduplicated() -> nsql::Result<()> {
               order by (.agg.sum(a))
                 projection (agg.sum(a), agg.sum(a), agg.sum(a), agg.sum(a))
                   ungrouped aggregate (sum(t.a))
-                    scan values
+                    scan 3 values
         "#]],
     )?;
 
@@ -24,7 +24,7 @@ fn test_aggregates_are_deduplicated() -> nsql::Result<()> {
               order by (.agg.sum(a))
                 projection (agg.sum(a), agg.sum(a), agg.sum(a), agg.sum(a))
                   hash aggregate (sum(t.a)) by t.a
-                    scan values
+                    scan 3 values
         "#]],
     )
 }

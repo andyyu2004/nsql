@@ -47,15 +47,15 @@ fn test_explain() -> nsql::Result<()> {
         expect![[r#"
             metapipeline #0
               pipeline #0
-                output
-                update t
+                 node #4 output
+                 node #3 update t
 
                   metapipeline #1
                     pipeline #1
-                      update t
-                      projection (t.id, true)
-                      filter t.b
-                      scan t (id, b)
+                       node #3 update t
+                       node #2 projection (t.id, true)
+                       node #1 filter t.b
+                       node #0 scan t (id, b)
         "#]],
     )?;
 

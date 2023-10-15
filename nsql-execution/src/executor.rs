@@ -118,7 +118,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Executor<'en
                         }
                         OperatorState::Continue => {
                             tracing::debug!("operator state continue");
-                            break 'operator_loop;
+                            continue 'operator_loop;
                         }
                         // Once an operator completes, the entire pipeline is finished
                         OperatorState::Done => {

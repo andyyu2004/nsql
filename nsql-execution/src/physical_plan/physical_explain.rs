@@ -162,8 +162,9 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Explain<'env
         &self,
         _catalog: Catalog<'_, S>,
         _tx: &dyn Transaction<'_, S>,
-        _f: &mut fmt::Formatter<'_>,
+        f: &mut fmt::Formatter<'_>,
     ) -> explain::Result {
-        unreachable!("cannot explain an explain node")
+        write!(f, "explain")?;
+        Ok(())
     }
 }

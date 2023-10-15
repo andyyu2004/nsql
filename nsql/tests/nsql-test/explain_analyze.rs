@@ -34,8 +34,8 @@ fn test_explain() -> nsql::Result<()> {
         "EXPLAIN ANALYZE TIMING OFF SELECT * FROM (VALUES (1), (2)) CROSS JOIN (VALUES (3), (4))",
         expect![[r#"
             cross join in=4 out=4
-              scan values in=0 out=2
-              scan values in=0 out=2
+              scan 2 values in=0 out=2
+              scan 2 values in=0 out=2
         "#]],
     )?;
 
