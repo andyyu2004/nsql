@@ -12,7 +12,7 @@ fn test_explain() -> nsql::Result<()> {
         "EXPLAIN ANALYZE TIMING OFF SELECT id, i + 1 FROM integers WHERE i <> 2",
         expect![[r#"
             projection (integers.id, #15(integers.i, 1)) in=2 out=2
-              filter #6(integers.i, 2) in=4 out=4
+              filter #6(integers.i, 2) in=4 out=2
                 scan integers (id, i) in=0 out=4
         "#]],
     )?;
@@ -23,7 +23,7 @@ fn test_explain() -> nsql::Result<()> {
         "EXPLAIN ANALYZE TIMING OFF SELECT 1 WHERE 1 = 2",
         expect![[r#"
             projection (1) in=0 out=0
-              filter #5(1, 2) in=1 out=1
+              filter #5(1, 2) in=1 out=0
                 dummy scan in=0 out=1
         "#]],
     )?;

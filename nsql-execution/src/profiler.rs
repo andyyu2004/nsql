@@ -253,8 +253,25 @@ where
         ecx: &'txn ExecutionContext<'_, 'env, S, M>,
         input: Tuple,
     ) -> ExecutionResult<OperatorState<Tuple>> {
-        let _guard = self.profiler.start(self.id(), NodeType::Operator);
-        self.node.execute(ecx, input)
+        let mut guard = self.profiler.start(self.id(), NodeType::Operator);
+        match self.node.execute(ecx, input)? {
+            OperatorState::Again(t) => match t {
+                Some(t) => Ok(OperatorState::Again(Some(t))),
+                None => {
+                    guard.tuples_out = 0;
+                    Ok(OperatorState::Again(None))
+                }
+            },
+            OperatorState::Yield(t) => Ok(OperatorState::Yield(t)),
+            OperatorState::Continue => {
+                guard.tuples_out = 0;
+                Ok(OperatorState::Continue)
+            }
+            OperatorState::Done => {
+                guard.tuples_out = 0;
+                Ok(OperatorState::Done)
+            }
+        }
     }
 }
 impl<'p, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, N>
