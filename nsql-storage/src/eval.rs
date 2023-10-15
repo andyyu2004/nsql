@@ -173,10 +173,17 @@ impl<F> fmt::Display for Expr<F> {
 }
 
 impl<F> Expr<F> {
+    #[inline]
     pub fn null() -> Self {
         Self { pretty: "NULL".into(), ops: Box::new([ExprOp::Push(Value::Null), ExprOp::Return]) }
     }
 
+    #[inline]
+    pub fn is_literal(&self, value: impl Into<Value>) -> bool {
+        matches!(self.ops.as_ref(), [ExprOp::Push(v), ExprOp::Return] if v == &value.into())
+    }
+
+    #[inline]
     pub fn literal(value: impl Into<Value>) -> Self {
         let value = value.into();
         Self {

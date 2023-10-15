@@ -231,7 +231,11 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Explain<'env
         _tx: &dyn Transaction<'_, S>,
         f: &mut fmt::Formatter<'_>,
     ) -> explain::Result {
-        write!(f, "nested loop join ({}) ON ({})", self.join_kind, self.join_predicate)?;
+        if matches!(self.join_kind, ir::JoinKind::Inner) && self.join_predicate.is_literal(true) {
+            write!(f, "cross join")?;
+        } else {
+            write!(f, "nested loop join ({}) ON ({})", self.join_kind, self.join_predicate)?;
+        }
         Ok(())
     }
 }
