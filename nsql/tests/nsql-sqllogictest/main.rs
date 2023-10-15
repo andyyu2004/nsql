@@ -15,7 +15,7 @@ fn nsql_sqllogictest(path: &Path) -> nsql::Result<(), Box<dyn Error>> {
         let filter =
             EnvFilter::try_from_env("NSQL_LOG").unwrap_or_else(|_| EnvFilter::new("nsql=INFO"));
         let _ = tracing_subscriber::fmt::fmt().with_env_filter(filter).try_init();
-        let db_path = nsql_test::tempfile::NamedTempFile::new()?.into_temp_path();
+        let db_path = tempfile::NamedTempFile::new()?.into_temp_path();
         tracing::info!(
             "Running test {} with {} on {}",
             path.display(),

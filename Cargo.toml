@@ -15,7 +15,6 @@ members = [
     "nsql-shell",
     "nsql-storage",
     "nsql-storage-engine",
-    "nsql-test",
     "nsql-util",
     "nsql-lmdb",
     "nsql-redb",

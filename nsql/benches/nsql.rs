@@ -49,8 +49,7 @@ fn run<const N: usize>(
         group.bench_with_input(BenchmarkId::new(name, size), &size, |b, &size| {
             b.iter_batched(
                 || {
-                    let db_path =
-                        nsql_test::tempfile::NamedTempFile::new().unwrap().into_temp_path();
+                    let db_path = tempfile::NamedTempFile::new().unwrap().into_temp_path();
                     let nsql = Nsql::<LmdbStorageEngine>::create(db_path).unwrap();
                     let (conn, state) = nsql.connect();
 

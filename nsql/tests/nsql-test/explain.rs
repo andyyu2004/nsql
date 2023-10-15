@@ -9,7 +9,7 @@ pub fn check_explain<'a>(
     query: &str,
     expect: Expect,
 ) -> nsql::Result<()> {
-    let db_path = nsql_test::tempfile::NamedTempFile::new()?.into_temp_path();
+    let db_path = tempfile::NamedTempFile::new()?.into_temp_path();
     let nsql = Nsql::<nsql_redb::RedbStorageEngine>::create(db_path)?;
     let (conn, state) = nsql.connect();
 

@@ -1249,10 +1249,10 @@ dependencies = [
  "nsql-redb",
  "nsql-storage",
  "nsql-storage-engine",
- "nsql-test",
  "nsql-util",
  "sqllogictest",
  "tabled",
+ "tempfile",
  "thiserror",
  "tracing",
  "tracing-subscriber",
@@ -1421,7 +1421,6 @@ dependencies = [
  "nsql-core",
  "nsql-rkyv",
  "nsql-storage-engine",
- "nsql-test",
  "nsql-util",
  "parking_lot",
  "proptest",
@@ -1436,13 +1435,6 @@ name = "nsql-storage-engine"
 version = "0.1.0"
 dependencies = [
  "fallible-iterator",
-]
-
-[[package]]
-name = "nsql-test"
-version = "0.1.0"
-dependencies = [
- "tempfile",
 ]
 
 [[package]]

@@ -24,7 +24,6 @@ tracing-tree = "0.2.4"
 tabled = { version = "0.14.0", default-features = false, features = ["std"] }
 
 [dev-dependencies]
-nsql-test = { path = "../nsql-test" }
 datatest-stable = { git = "https://github.com/andyyu2004/datatest-stable", branch = "main" }
 tracing-subscriber = { version = "0.3.16", features = ["env-filter"] }
 expect-test = "1.4.1"
@@ -33,6 +32,7 @@ criterion = "0.5.1"
 criterion-macro = "0.4"
 sqllogictest = { git = "https://github.com/andyyu2004/sqllogictest-rs", branch = "main" }
 async-trait = "0.1"
+tempfile = "3.8.0"
 
 [[test]]
 name = "nsql-sqllogictest"

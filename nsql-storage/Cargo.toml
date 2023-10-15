@@ -25,6 +25,5 @@ fix-hidden-lifetime-bug = "0.2.5"
 atomic-take = "1.1.0"
 
 [dev-dependencies]
-nsql-test = { path = "../nsql-test" }
 proptest = "1.1.0"
 test-strategy = "0.3.0"
