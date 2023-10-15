@@ -56,18 +56,11 @@ impl Profiler {
     fn record(&self, guard: &ProfilerGuard<'_>) {
         let elapsed = guard.start.map_or(Duration::ZERO, |start| start.elapsed());
 
-        self.metrics
-            .entry(guard.id)
-            .and_modify(|info| {
-                info.elapsed += elapsed;
-                info.tuples_in += guard.tuples_in;
-                info.tuples_out += guard.tuples_out;
-            })
-            .or_insert_with(|| NodeMetrics {
-                elapsed,
-                tuples_in: guard.tuples_in,
-                tuples_out: guard.tuples_out,
-            });
+        let mut info =
+            self.metrics.get_mut(&guard.id).expect("attempting to record uninitialized node");
+        info.elapsed += elapsed;
+        info.tuples_in += guard.tuples_in;
+        info.tuples_out += guard.tuples_out;
     }
 
     pub fn metrics(&self) -> DashMap<PhysicalNodeId, NodeMetrics> {
@@ -279,6 +272,11 @@ impl<'p, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, N>
 where
     N: PhysicalSink<'env, 'txn, S, M>,
 {
+    fn initialize(&mut self, ecx: &'txn ExecutionContext<'_, 'env, S, M>) -> ExecutionResult<()> {
+        let _guard = self.profiler.start(self.id(), NodeType::Misc);
+        self.node.initialize(ecx)
+    }
+
     fn sink(
         &mut self,
         ecx: &'txn ExecutionContext<'_, 'env, S, M>,
