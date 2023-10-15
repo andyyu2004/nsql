@@ -1970,6 +1970,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                 let (_scope, plan) = self.bind_subquery(tx, scope, subquery)?;
                 (LogicalType::Bool, ir::ExprKind::Subquery(ir::SubqueryKind::Exists, plan))
             }
+            ast::Expr::InList { expr, list, negated } => todo!(),
             ast::Expr::Case { operand, conditions, results, else_result } => {
                 assert_eq!(conditions.len(), results.len());
                 assert!(!conditions.is_empty());
