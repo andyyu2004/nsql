@@ -1,17 +1,17 @@
 statement error invalid value for explain output, must be one of `physical`, `pipeline`, `logical`, or `all`
-SET LOCAL explain_output = 'bad';
+SET explain_output = 'bad';
 
 statement error value for `explain_output` must be of type text
-SET LOCAL explain_output = 42;
+SET explain_output = 42;
 
 statement ok
-SET LOCAL explain_output = 'all';
+SET explain_output = 'all';
 
 statement ok
-SET LOCAL explain_output = 'logical';
+SET explain_output = 'logical';
 
 statement ok
-SET LOCAL explain_output = 'physical';
+SET explain_output = 'physical';
 
 statement ok
-SET LOCAL explain_output = 'pipeline';
+SET explain_output = 'pipeline';

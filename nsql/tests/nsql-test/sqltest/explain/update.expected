@@ -1,0 +1,5 @@
+ update t                  
+   projection (t.id, true) 
+     filter t.b            
+       scan t (id, b)      
+                           

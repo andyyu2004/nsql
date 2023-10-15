@@ -1,0 +1,6 @@
+ projection (.agg.sum(a), .agg.sum(a), .agg.sum(a))              
+   order by (.agg.sum(a))                                        
+     projection (agg.sum(a), agg.sum(a), agg.sum(a), agg.sum(a)) 
+       hash aggregate (sum(t.a)) by t.a                          
+         scan 3 values                                           
+                                                                 

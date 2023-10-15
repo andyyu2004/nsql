@@ -1,0 +1,4 @@
+ projection (1) in=0 out=0    
+   filter #5(1, 2) in=1 out=0 
+     dummy scan in=0 out=1    
+                              

@@ -1,0 +1,4 @@
+ cross join in=4 out=4      
+   scan 2 values in=0 out=2 
+   scan 2 values in=0 out=2 
+                            

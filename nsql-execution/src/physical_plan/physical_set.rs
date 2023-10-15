@@ -1,5 +1,6 @@
 use std::marker::PhantomData;
 
+use anyhow::bail;
 use ir::Value;
 use nsql_core::Name;
 use nsql_storage_engine::fallible_iterator;
@@ -35,11 +36,10 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
     ) -> ExecutionResult<TupleStream<'_>> {
         let scx = ecx.scx();
         match self.scope {
-            // TODO we should store global configuration in the catalog
             ir::VariableScope::Global => {
-                anyhow::bail!("global variables are not supported yet (use `SET LOCAL x = y`)")
+                scx.config().set(self.name.as_str(), self.value.clone())?
             }
-            ir::VariableScope::Local => scx.config().set(self.name.as_str(), self.value.clone())?,
+            ir::VariableScope::Local => bail!("transaction local variables not supported yet"),
         }
         Ok(Box::new(fallible_iterator::once(Tuple::empty())))
     }
