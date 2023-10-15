@@ -37,6 +37,8 @@ fn nsql_sqllogictest(path: &Path) -> nsql::Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+// This test isn't actually run as part of the test suite (due to custom harness),
+// but it's useful for debugging the scratch file.
 #[test]
 fn test_scratch_sqllogictest() -> nsql::Result<(), Box<dyn Error>> {
     let stmts = std::fs::read_to_string(format!(
@@ -46,6 +48,7 @@ fn test_scratch_sqllogictest() -> nsql::Result<(), Box<dyn Error>> {
     ))?;
 
     nsql_sqllogictest::<LmdbStorageEngine>(&stmts)?;
+    Ok(())
 }
 
 datatest_stable::harness!(
