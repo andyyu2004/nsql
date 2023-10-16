@@ -254,6 +254,11 @@ impl Value {
         matches!(self, Value::Null)
     }
 
+    #[inline]
+    pub fn is_not_null(&self) -> bool {
+        !self.is_null()
+    }
+
     /// Sanity check routine to ensure we haven't messed up the types to badly.
     /// We should never be comparing `INT` with `TEXT` directly for example.
     #[inline]

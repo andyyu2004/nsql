@@ -274,7 +274,7 @@ fn array_position<'env, S: StorageEngine>(
     };
 
     let target = args[1].take();
-    match array.iter().position(|v| v == &target) {
+    match array.iter().position(|v| v.is_not_null() && v == &target) {
         // one-indexed
         Some(index) => Ok(Value::Int64(index as i64 + 1)),
         None => Ok(Value::Null),
