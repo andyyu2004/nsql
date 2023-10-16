@@ -13,7 +13,7 @@ pub(super) struct BootstrapNamespace {
 pub(super) fn bootstrap_data() -> Box<[BootstrapNamespace]> {
     vec![
         BootstrapNamespace { oid: Namespace::CATALOG, name: "nsql_catalog" },
-        BootstrapNamespace { oid: Namespace::MAIN, name: MAIN_SCHEMA },
+        BootstrapNamespace { oid: Namespace::MAIN, name: MAIN_SCHEMA_PATH },
     ]
     .into()
 }

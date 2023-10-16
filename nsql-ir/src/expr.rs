@@ -43,6 +43,12 @@ impl Expr {
         Self { ty: LogicalType::Expr, kind: ExprKind::Quote(Box::new(expr)) }
     }
 
+    #[inline]
+    pub fn array(element_ty: LogicalType, exprs: impl Into<Box<[Expr]>>) -> Self {
+        Self { ty: LogicalType::Array(Box::new(element_ty)), kind: ExprKind::Array(exprs.into()) }
+    }
+
+    #[inline]
     pub fn lit(ty: LogicalType, value: impl Into<Value>) -> Self {
         Self { ty, kind: ExprKind::Literal(value.into()) }
     }

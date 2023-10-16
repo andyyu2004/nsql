@@ -223,7 +223,7 @@ impl<'env, S: StorageEngine> Catalog<'env, S> {
     }
 }
 
-pub const MAIN_SCHEMA: &str = "main";
+pub const MAIN_SCHEMA_PATH: &str = "main";
 
 impl<'env, S: StorageEngine> Catalog<'env, S> {
     pub fn new(storage: &'env S) -> Self {

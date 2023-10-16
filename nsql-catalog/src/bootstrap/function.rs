@@ -89,6 +89,7 @@ impl Function {
         AND_BOOL,
         ARRAY_ELEMENT,
         ARRAY_POSITION,
+        ARRAY_CONTAINS,
         RANGE2,
         FIRST,
         AVG_INT,
@@ -160,7 +161,8 @@ impl Function {
             scalar!(ABS_FLOAT abs   : (Float64) -> Float64),
             scalar!(ABS_DEC   abs   : (Decimal) -> Decimal),
             scalar!(RANGE2    range : (Int64, Int64) -> array(Int64)),
-            scalar!(ARRAY_ELEMENT array_element : (array(Any), Int64) -> Any),
+            scalar!(ARRAY_ELEMENT  array_element  : (array(Any), Int64) -> Any),
+            scalar!(ARRAY_CONTAINS array_contains : (array(Any), Any) -> Bool),
             scalar!(ARRAY_POSITION array_position : (array(Any), Any) -> Int64),
             scalar!(BETWEEN_ANY between : (Any, Any, Any) -> Bool),
             // aggregates

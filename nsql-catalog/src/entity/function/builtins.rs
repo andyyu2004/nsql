@@ -163,50 +163,11 @@ pub(crate) fn get_scalar_function<S: StorageEngine>(oid: Oid<Function>) -> Optio
         _ if oid == Function::NEXTVAL_OID => nextval_oid,
         _ if oid == Function::MK_NEXTVAL_EXPR => mk_nextval_expr,
         // misc
-        _ if oid == Function::RANGE2 => |_, _, mut args| {
-            assert_eq!(args.len(), 2);
-            let start: Option<i64> = args[0].take().cast().unwrap();
-            let end: Option<i64> = args[1].take().cast().unwrap();
-            match (start, end) {
-                (Some(start), Some(end)) => Ok(Value::Array((start..end).map(Value::Int64).collect())),
-                _ => Ok(Value::Null),
-            }
-        },
-        _ if oid == Function::ARRAY_ELEMENT => |_, _, mut args| {
-            assert_eq!(args.len(), 2);
-            let array = match args[0].take() {
-                Value::Array(xs) => xs,
-                _ => panic!("expected array"),
-            };
-
-            // one-indexed
-            let index: Option<i64> = args[1].take().cast().unwrap();
-            match index {
-                None => Ok(Value::Null),
-                Some(index) => {
-                    if index <= 0 || index as usize > array.len() {
-                        return Ok(Value::Null);
-                    }
-
-                    Ok(array[index as usize - 1].clone())
-                }
-            }
-        },
-        _ if oid == Function::ARRAY_POSITION => |_, _, mut args| {
-            assert_eq!(args.len(), 2);
-            let array = match args[0].take() {
-                Value::Array(xs) => xs,
-                Value::Null => return Ok(Value::Null),
-                _ => panic!("expected array"),
-            };
-
-            // one-indexed
-            let target = args[1].take();
-            match array.iter().position(|v| v == &target) {
-                Some(index) => Ok(Value::Int64(index as i64 + 1)),
-                None => Ok(Value::Null),
-            }
-        },
+        _ if oid == Function::RANGE2 => range2,
+        _ if oid == Function::ARRAY_ELEMENT => array_element,
+        _ if oid == Function::ARRAY_POSITION => array_position,
+        _ if oid == Function::ARRAY_CONTAINS => array_contains,
+        
         _ => return None,
     })
 }
@@ -255,6 +216,106 @@ pub(crate) fn get_aggregate_function(
         _ if oid == Function::MIN_ANY => Box::<Min>::default(),
         _ if oid == Function::MAX_ANY => Box::<Max>::default(),
         _ => return None,
+    })
+}
+
+#[allow(clippy::boxed_local)]
+fn range2<'env, S: StorageEngine>(
+    _catalog: Catalog<'env, S>,
+    _tx: &dyn Transaction<'env, S>,
+    mut args: Box<[Value]>,
+) -> Result<Value> {
+    assert_eq!(args.len(), 2);
+    let start: Option<i64> = args[0].take().cast().unwrap();
+    let end: Option<i64> = args[1].take().cast().unwrap();
+    match (start, end) {
+        (Some(start), Some(end)) => Ok(Value::Array((start..end).map(Value::Int64).collect())),
+        _ => Ok(Value::Null),
+    }
+}
+
+#[allow(clippy::boxed_local)]
+fn array_element<'env, S: StorageEngine>(
+    _catalog: Catalog<'env, S>,
+    _tx: &dyn Transaction<'env, S>,
+    mut args: Box<[Value]>,
+) -> Result<Value> {
+    assert_eq!(args.len(), 2);
+    let array = match args[0].take() {
+        Value::Array(xs) => xs,
+        _ => panic!("expected array"),
+    };
+
+    // one-indexed
+    let index: Option<i64> = args[1].take().cast().unwrap();
+    match index {
+        None => Ok(Value::Null),
+        Some(index) => {
+            if index <= 0 || index as usize > array.len() {
+                return Ok(Value::Null);
+            }
+
+            Ok(array[index as usize - 1].clone())
+        }
+    }
+}
+
+#[allow(clippy::boxed_local)]
+fn array_position<'env, S: StorageEngine>(
+    _catalog: Catalog<'env, S>,
+    _tx: &dyn Transaction<'env, S>,
+    mut args: Box<[Value]>,
+) -> Result<Value> {
+    assert_eq!(args.len(), 2);
+    let array = match args[0].take() {
+        Value::Array(xs) => xs,
+        Value::Null => return Ok(Value::Null),
+        _ => panic!("expected array"),
+    };
+
+    let target = args[1].take();
+    match array.iter().position(|v| v == &target) {
+        // one-indexed
+        Some(index) => Ok(Value::Int64(index as i64 + 1)),
+        None => Ok(Value::Null),
+    }
+}
+
+#[allow(clippy::boxed_local)]
+fn array_contains<'env, S: StorageEngine>(
+    _catalog: Catalog<'env, S>,
+    _tx: &dyn Transaction<'env, S>,
+    mut args: Box<[Value]>,
+) -> Result<Value> {
+    assert_eq!(args.len(), 2);
+    let array = match args[0].take() {
+        Value::Array(xs) => xs,
+        Value::Null => return Ok(Value::Null),
+        _ => panic!("expected array"),
+    };
+
+    let target = match args[1].take() {
+        Value::Null => return Ok(Value::Null),
+        target => target,
+    };
+
+    let mut has_null = false;
+    let contains = array.iter().any(|v| match v {
+        Value::Null => {
+            has_null = true;
+            false
+        }
+        v => v == &target,
+    });
+
+    // this `null` behaviour works for `IN`, we may actually want a different behaviour for `array_contains`.
+    // This is how it in duckdb for example
+    // select 2 in (1, null) => null
+    // select array_contains([1, null], 2) => false
+    Ok(match (contains, has_null) {
+        (true, _) => Value::Bool(true),
+        (_, true) => Value::Null,
+        _ => Value::Bool(false),
     })
 }
 

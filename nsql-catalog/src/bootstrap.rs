@@ -17,7 +17,7 @@ use self::table::BootstrapTable;
 pub(crate) use self::table::{BootstrapColumn, BootstrapSequence};
 use crate::{
     Column, ColumnIdentity, ColumnIndex, Function, Index, IndexKind, Namespace, Oid, Operator,
-    OperatorKind, Sequence, SystemTableView, Table, MAIN_SCHEMA,
+    OperatorKind, Sequence, SystemTableView, Table, MAIN_SCHEMA_PATH,
 };
 
 // The order matters as it will determine which id is assigned to each element

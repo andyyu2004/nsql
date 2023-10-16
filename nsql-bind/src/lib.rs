@@ -18,7 +18,7 @@ use ir::{Decimal, Path, QPath, TupleIndex};
 use itertools::Itertools;
 use nsql_catalog::{
     Catalog, ColumnIdentity, ColumnIndex, Function, FunctionKind, Namespace, Operator,
-    OperatorKind, SystemEntity, SystemTableView, Table, MAIN_SCHEMA,
+    OperatorKind, SystemEntity, SystemTableView, Table, MAIN_SCHEMA_PATH,
 };
 use nsql_core::{not_implemented, not_implemented_if, LogicalType, Name, Oid, Schema};
 use nsql_parse::ast;
@@ -631,7 +631,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
             },
             Path::Unqualified(name) => self.bind_namespace(
                 tx,
-                &Path::qualified(Path::Unqualified(MAIN_SCHEMA.into()), name.clone()),
+                &Path::qualified(Path::Unqualified(MAIN_SCHEMA_PATH.into()), name.clone()),
             ),
         }
     }
@@ -644,7 +644,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
         match path {
             Path::Unqualified(name) => self.get_namespaced_entity_view::<T>(
                 tx,
-                &Path::qualified(Path::Unqualified(MAIN_SCHEMA.into()), name.clone()),
+                &Path::qualified(Path::Unqualified(MAIN_SCHEMA_PATH.into()), name.clone()),
             ),
             Path::Qualified(QPath { prefix, name }) => match prefix.as_ref() {
                 Path::Qualified(QPath { .. }) => not_implemented!("qualified schemas"),
@@ -1574,9 +1574,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                 .ensure_exprs_have_compat_types(&args)
                 .map_err(|(expected, actual)| {
                     anyhow!(
-                        "`coalesce` arguments must have compatible types: expected type {}, got {}",
-                        expected,
-                        actual
+                        "`coalesce` arguments must have compatible types: expected type {expected}, got {actual}",
                     )
                 })?
                 // if all arguments are `NULL` then default to the `NULL` type
@@ -1891,8 +1889,11 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                 let low = f(low)?;
                 let high = f(high)?;
                 let args = [expr.ty(), low.ty(), high.ty()];
-                let function =
-                    self.resolve_function(tx, &Path::qualified(MAIN_SCHEMA, "between"), &args)?;
+                let function = self.resolve_function(
+                    tx,
+                    &Path::qualified(MAIN_SCHEMA_PATH, "between"),
+                    &args,
+                )?;
                 (
                     function.return_type(),
                     ir::ExprKind::FunctionCall { function, args: [expr, low, high].into() },
@@ -1906,7 +1907,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                 // We search for a cast function `(from, target) -> target` with the second parameter being a dummy argument.
                 let args = [expr.ty(), target];
                 let function =
-                    self.resolve_function(tx, &Path::qualified(MAIN_SCHEMA, "cast"), &args)?;
+                    self.resolve_function(tx, &Path::qualified(MAIN_SCHEMA_PATH, "cast"), &args)?;
                 let [_, target] = args;
                 (
                     function.return_type(),
@@ -1970,7 +1971,48 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                 let (_scope, plan) = self.bind_subquery(tx, scope, subquery)?;
                 (LogicalType::Bool, ir::ExprKind::Subquery(ir::SubqueryKind::Exists, plan))
             }
-            ast::Expr::InList { expr, list, negated } => todo!(),
+            ast::Expr::InList { expr, list, negated } => {
+                if *negated {
+                    return self.walk_expr(
+                        tx,
+                        scope,
+                        &ast::Expr::UnaryOp {
+                            op: ast::UnaryOperator::Not,
+                            expr: Box::new(ast::Expr::InList {
+                                expr: expr.clone(),
+                                list: list.clone(),
+                                negated: false,
+                            }),
+                        },
+                        f,
+                    );
+                }
+
+                let exprs = list.iter().map(&mut f).collect::<Result<Box<_>, _>>()?;
+                let ty = self.ensure_exprs_have_compat_types(&exprs).map_err(|(expected, actual)| {
+                    anyhow!(
+                        "all expressions in IN must have compatible types: expected `{expected}`, got `{actual}`",
+                    )
+                })?.unwrap_or(LogicalType::Null);
+
+                let expr = f(expr)?;
+
+                // IN is currently implemented in terms of `array_contains`.
+                // i.e. `x IN (xs...)` is desugared to `array_contains([xs...], x)`.
+                let array = ir::Expr::array(ty.clone(), exprs);
+
+                let function = self.resolve_function(
+                    tx,
+                    &Path::qualified(MAIN_SCHEMA_PATH, "array_contains"),
+                    &[array.ty(), expr.ty()],
+                )?;
+
+                debug_assert_eq!(function.return_type(), LogicalType::Bool);
+                (
+                    function.return_type(),
+                    ir::ExprKind::FunctionCall { function, args: [array, expr].into() },
+                )
+            }
             ast::Expr::Case { operand, conditions, results, else_result } => {
                 assert_eq!(conditions.len(), results.len());
                 assert!(!conditions.is_empty());
