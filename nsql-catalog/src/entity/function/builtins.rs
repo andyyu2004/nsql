@@ -167,7 +167,7 @@ pub(crate) fn get_scalar_function<S: StorageEngine>(oid: Oid<Function>) -> Optio
         _ if oid == Function::ARRAY_ELEMENT => array_element,
         _ if oid == Function::ARRAY_POSITION => array_position,
         _ if oid == Function::ARRAY_CONTAINS => array_contains,
-        
+
         _ => return None,
     })
 }
@@ -299,24 +299,7 @@ fn array_contains<'env, S: StorageEngine>(
         target => target,
     };
 
-    let mut has_null = false;
-    let contains = array.iter().any(|v| match v {
-        Value::Null => {
-            has_null = true;
-            false
-        }
-        v => v == &target,
-    });
-
-    // this `null` behaviour works for `IN`, we may actually want a different behaviour for `array_contains`.
-    // This is how it in duckdb for example
-    // select 2 in (1, null) => null
-    // select array_contains([1, null], 2) => false
-    Ok(match (contains, has_null) {
-        (true, _) => Value::Bool(true),
-        (_, true) => Value::Null,
-        _ => Value::Bool(false),
-    })
+    Ok(array.iter().any(|v| v.is_not_null() && v == &target).into())
 }
 
 #[allow(clippy::boxed_local)]

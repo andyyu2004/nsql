@@ -1,0 +1,46 @@
+query B
+SELECT array_contains([1], 1)
+----
+true
+
+query B
+SELECT array_contains([1], NULL)
+----
+NULL
+
+query B
+SELECT array_contains([NULL], NULL)
+----
+NULL
+
+query B
+SELECT array_contains([1, 2, 3], 1)
+----
+true
+
+query B
+SELECT array_contains([1, NULL, 3], 1)
+----
+true
+
+query B
+SELECT array_contains([2], 1)
+----
+false
+
+query B
+SELECT array_contains([NULL, 2, 3], 1)
+----
+false
+
+query B
+SELECT NOT array_contains([1, 2, 3], 1)
+----
+false
+
+# query B
+# SELECT NOT array_contains([1, NULL, 3], 1)
+# ----
+# false
+
+# query B
