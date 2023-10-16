@@ -1972,46 +1972,46 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                 (LogicalType::Bool, ir::ExprKind::Subquery(ir::SubqueryKind::Exists, plan))
             }
             ast::Expr::InList { expr, list, negated } => {
-                if *negated {
-                    return self.walk_expr(
-                        tx,
-                        scope,
-                        &ast::Expr::UnaryOp {
-                            op: ast::UnaryOperator::Not,
-                            expr: Box::new(ast::Expr::InList {
-                                expr: expr.clone(),
-                                list: list.clone(),
-                                negated: false,
-                            }),
+                assert!(!list.is_empty(), "this should be syntactically invalid");
+                // x IN (x1..xn) is desugared into `x = x1 OR .. OR x = xn`. This maintains the desired NULL behaviour.
+                // x NOT IN (x1..xn) => `x <> x1 AND .. AND x <> xn`
+
+                let op =
+                    if *negated { ast::BinaryOperator::NotEq } else { ast::BinaryOperator::Eq };
+
+                let desugared = list.iter().skip(1).cloned().fold(
+                    ast::Expr::BinaryOp {
+                        left: expr.clone(),
+                        op,
+                        right: Box::new(list[0].clone()),
+                    },
+                    |acc, x| ast::Expr::BinaryOp {
+                        left: Box::new(acc),
+                        op: if *negated {
+                            ast::BinaryOperator::And
+                        } else {
+                            ast::BinaryOperator::Or
                         },
-                        f,
-                    );
-                }
+                        right: Box::new(ast::Expr::BinaryOp {
+                            left: expr.clone(),
+                            op: if *negated {
+                                ast::BinaryOperator::NotEq
+                            } else {
+                                ast::BinaryOperator::Eq
+                            },
+                            right: Box::new(x),
+                        }),
+                    },
+                );
 
-                let exprs = list.iter().map(&mut f).collect::<Result<Box<_>, _>>()?;
-                let ty = self.ensure_exprs_have_compat_types(&exprs).map_err(|(expected, actual)| {
-                    anyhow!(
-                        "all expressions in IN must have compatible types: expected `{expected}`, got `{actual}`",
-                    )
-                })?.unwrap_or(LogicalType::Null);
+                let expr = self.walk_expr(tx, scope, &desugared, f)?;
+                assert_eq!(
+                    expr.ty,
+                    LogicalType::Bool,
+                    "expected desugared IN expr to evaluate to bool ({expr})"
+                );
 
-                let expr = f(expr)?;
-
-                // IN is currently implemented in terms of `array_contains`.
-                // i.e. `x IN (xs...)` is desugared to `array_contains([xs...], x)`.
-                let array = ir::Expr::array(ty.clone(), exprs);
-
-                let function = self.resolve_function(
-                    tx,
-                    &Path::qualified(MAIN_SCHEMA_PATH, "array_contains"),
-                    &[array.ty(), expr.ty()],
-                )?;
-
-                debug_assert_eq!(function.return_type(), LogicalType::Bool);
-                (
-                    function.return_type(),
-                    ir::ExprKind::FunctionCall { function, args: [array, expr].into() },
-                )
+                return Ok(expr);
             }
             ast::Expr::Case { operand, conditions, results, else_result } => {
                 assert_eq!(conditions.len(), results.len());
