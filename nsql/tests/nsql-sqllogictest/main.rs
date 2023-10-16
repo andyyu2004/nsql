@@ -112,16 +112,6 @@ impl<S: StorageEngine> AsyncDB for TestConnection<S> {
 
     #[tracing::instrument(skip(self))]
     async fn run(&mut self, sql: &str) -> Result<DBOutput<Self::ColumnType>, Self::Error> {
-        // let (conn, state) = self
-        //     .connections
-        //     .entry(connection_name.map(Into::into))
-        //     // Safety: We don't close the storage engine until the end of the test, so this
-        //     // lifetime extension is ok.
-        //     .or_insert_with(|| {
-        //         let (conn, state) = self.db.connect();
-        //         (conn, unsafe { std::mem::transmute(state) })
-        //     });
-
         // transmute the lifetime back to whatever we need, not sure about safety on this one but it's a test so we'll find out
         let output = self.conn.query(unsafe { std::mem::transmute(&self.scx) }, sql)?;
         Ok(DBOutput::Rows {

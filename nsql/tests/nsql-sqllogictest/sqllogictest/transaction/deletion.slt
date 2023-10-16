@@ -1,19 +1,31 @@
-# statement ok
-# BEGIN
-# 
+statement ok
+BEGIN
+
+statement ok
+CREATE TABLE t (i int PRIMARY KEY)
+
+query T
+SHOW TABLES
+----
+t
+
+statement ok
+DROP TABLE t
+
+# we can see our own deletion from within the transaction
+query T
+SHOW TABLES
+----
+
+statement ok
+COMMIT
+
+query T
+SHOW TABLES
+----
+
+# we can reuse the name FIXME
 # statement ok
 # CREATE TABLE t (i int PRIMARY KEY)
-# 
-# query T
-# SHOW TABLES
-# ----
-# t
-# 
-# statement ok
-# DROP TABLE t
-# 
-# # we can see our own deletion from within the transaction
-# query T
-# SHOW TABLES
-# ----
+
 

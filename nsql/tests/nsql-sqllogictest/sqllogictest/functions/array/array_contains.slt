@@ -38,9 +38,8 @@ SELECT NOT array_contains([1, 2, 3], 1)
 ----
 false
 
-# query B
-# SELECT NOT array_contains([1, NULL, 3], 1)
-# ----
-# false
+query B
+SELECT NOT array_contains([1, NULL, 3], 1)
+----
+false
 
-# query B

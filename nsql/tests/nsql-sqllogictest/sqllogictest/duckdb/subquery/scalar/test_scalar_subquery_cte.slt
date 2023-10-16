@@ -67,10 +67,10 @@ INSERT INTO test VALUES (12, 21)
 statement ok
 INSERT INTO test VALUES (13, 22)
 
-# query I
-# SELECT (WITH cte AS (SELECT a * 42 FROM test LIMIT 1) SELECT * FROM cte)
-# ----
-# 462
+query I
+SELECT (WITH cte AS (SELECT a * 42 FROM test LIMIT 1) SELECT * FROM cte)
+----
+462
 
 # operations on subquery
 query I
@@ -101,7 +101,7 @@ SELECT CASE WHEN c>(WITH cte AS (SELECT sum(c)/count(*) FROM t1) SELECT * FROM c
 1000
 214
 
-# TODO correlated subqueries
+# TODO correlated subqueries in cte
 # query IR
 # SELECT a, (WITH cte AS (SELECT SUM(b) FROM test tsub WHERE test.a=tsub.a) SELECT * FROM cte) FROM test
 # ----

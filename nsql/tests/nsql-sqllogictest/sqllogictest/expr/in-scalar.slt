@@ -41,13 +41,13 @@ SELECT 1 NOT IN (1, 2, 3)
 ----
 false
 
-# query B
-# SELECT 1 NOT IN (1, NULL, 3)
-# ----
-# false
+query B
+SELECT 1 NOT IN (1, NULL, 3)
+----
+false
 
-# query B
-# SELECT 1 NOT IN (NULL, 2, 3)
-# ----
-# NULL
+query B
+SELECT 1 NOT IN (NULL, 2, 3)
+----
+NULL
 
