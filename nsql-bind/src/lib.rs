@@ -711,9 +711,9 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
         if let Some(with) = with {
             not_implemented_if!(with.recursive);
             for cte in &with.cte_tables {
-                let kind = CteKind::Materialized;
-                let plan = self.bind_cte(tx, kind, scope, cte)?;
-                ctes.push(plan);
+                if let Some(cte) = self.bind_cte(tx, scope, cte)? {
+                    ctes.push(cte);
+                }
             }
         }
 
@@ -2128,17 +2128,21 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
         }
     }
 
+    /// bind a cte, returning `Some(cte)` if the cte is materialized, and none otherwise
     fn bind_cte(
         &self,
         tx: &dyn Transaction<'env, S>,
-        kind: CteKind,
         scope: &Scope,
         cte: &ast::Cte,
-    ) -> Result<ir::Cte> {
+    ) -> Result<Option<ir::Cte>> {
+        let ast::Cte { alias, query, from, materialized } = cte;
+        let materialized = materialized.unwrap_or(true);
+        let kind = if materialized { CteKind::Materialized } else { CteKind::Inline };
+
         // not sure what the `from` is even about for a cte
-        not_implemented_if!(cte.from.is_some());
-        let alias = self.lower_table_alias(&cte.alias);
-        let (cte_scope, cte_plan) = self.bind_query(tx, scope, &cte.query)?;
+        not_implemented_if!(from.is_some());
+        let alias = self.lower_table_alias(alias);
+        let (cte_scope, cte_plan) = self.bind_query(tx, scope, query)?;
         let cte = ir::Cte { name: Name::clone(&alias.table_name), plan: cte_plan.clone() };
 
         let name = Name::clone(&alias.table_name);
@@ -2152,7 +2156,11 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                 entry.insert((kind, scope, cte_plan));
             }
         }
-        Ok(cte)
+
+        match kind {
+            CteKind::Inline => Ok(None),
+            CteKind::Materialized => Ok(Some(cte)),
+        }
     }
 }
 
