@@ -1975,6 +1975,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                 assert!(!list.is_empty(), "this should be syntactically invalid");
                 // x IN (x1..xn) is desugared into `x = x1 OR .. OR x = xn`. This maintains the desired NULL behaviour.
                 // x NOT IN (x1..xn) => `x <> x1 AND .. AND x <> xn`
+                // https://www.postgresql.org/docs/current/functions-comparisons.html#FUNCTIONS-COMPARISONS-NOT-IN
 
                 let op =
                     if *negated { ast::BinaryOperator::NotEq } else { ast::BinaryOperator::Eq };
