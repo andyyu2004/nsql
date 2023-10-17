@@ -63,6 +63,7 @@ impl Flattener {
         debug_assert!(subquery_plan.is_correlated());
         let correlated_plan = Box::new(mem::take(plan));
         let correlated_columns = subquery_plan.correlated_columns();
+        dbg!(&correlated_columns);
         // mapping from the old correlated column index to the new correlated column index (post-projection)
         let mut correlated_map = FxHashMap::default();
         let correlated_projection = correlated_columns

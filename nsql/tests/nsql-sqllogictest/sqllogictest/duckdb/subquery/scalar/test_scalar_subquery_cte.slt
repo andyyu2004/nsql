@@ -129,13 +129,14 @@ SELECT a, (WITH cte AS NOT MATERIALIZED (SELECT CASE WHEN test.a=11 THEN b ELSE 
 # 11	22
 # 12	NULL
 # 13	NULL
- 
+
+# FIXME something goes slightly wrong in the binder here
 # query II
-# SELECT * from test where a=(WITH cte AS (SELECT a FROM test t WHERE t.b=test.b) SELECT min(a) FROM cte)
+# SELECT * from test where a=(WITH cte AS NOT MATERIALIZED (SELECT a FROM test t WHERE t.b=test.b) SELECT min(a) FROM cte)
 # ----
 # 11	22
 # 12	21
-# 
+
 # exists / in / any subqueries
 # query II
 # SELECT * FROM test WHERE EXISTS (WITH cte AS (SELECT * FROM test ts WHERE ts.a = test.a AND b>21) SELECT a FROM cte)

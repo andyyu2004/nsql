@@ -20,6 +20,12 @@ fn nsql_sqltest(path: &Path) -> nsql::Result<(), Box<dyn Error>> {
     let _ = tracing_subscriber::fmt::fmt().with_env_filter(filter).try_init();
     let sql = std::fs::read_to_string(path)?;
     let output = run_sql::<LmdbStorageEngine>(&sql)?;
+
+    // skip snapshotting the scratch file
+    if path.components().all(|c| c.as_os_str() != "scratch") {
+        return Ok(());
+    }
+
     let expected_path = path.with_extension("expected");
     File::options().create(true).write(true).truncate(false).open(&expected_path)?;
     expect_test::expect_file![expected_path].assert_eq(&output.to_string());
@@ -41,7 +47,7 @@ fn test_scratch_sql() -> nsql::Result<(), Box<dyn Error>> {
     let stmts = std::fs::read_to_string(format!(
         "{}/{}",
         env!("CARGO_MANIFEST_DIR"),
-        "tests/nsql-test/scratch.sql"
+        "tests/nsql-test/sqltest/scratch.sql"
     ))?;
 
     fn nsql_debug_scratch<S: StorageEngine>(sql: &str) -> nsql::Result<(), Box<dyn Error>> {

@@ -5,10 +5,17 @@ SELECT * FROM t
 ----
 common table expression with name `t` specified more than once
 
+statement ok
+CREATE TABLE t (x INTEGER PRIMARY KEY)
+
+statement ok
+INSERT INTO t VALUES (1), (2), (3)
+
+# cte table takes precedence
 query I
-WITH t AS (SELECT 1 AS x) SELECT x, x FROM t
+SELECT (WITH t AS (SELECT 1 AS x) SELECT x FROM t)
 ----
-1 1
+1
 
 query I
 WITH t AS (SELECT 1 AS x),
