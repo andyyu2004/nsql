@@ -1,6 +1,8 @@
 #![feature(custom_test_frameworks)]
 #![test_runner(criterion::runner)]
 
+use std::iter;
+
 use criterion::{BenchmarkId, Criterion, Throughput};
 use criterion_macro::criterion;
 use nsql::{LmdbStorageEngine, Nsql};
@@ -31,6 +33,21 @@ pub fn bench_nested_loop_cross_join(c: &mut Criterion) {
             ]
         },
         |_| "SELECT * FROM t JOIN t".to_string(),
+    );
+}
+
+/// Benchmark the overhead of binding and planning a trivial query
+#[criterion]
+pub fn bench_trivial_query_overhead(c: &mut Criterion) {
+    run(
+        c,
+        "trivial query overhead",
+        [100, 1000, 5000, 10000],
+        Throughput::Elements,
+        |_size| {
+            vec!["CREATE TABLE t (id int PRIMARY KEY)".into(), "INSERT INTO t VALUES (1)".into()]
+        },
+        |size| iter::once("SELECT * FROM t;".repeat(size)).collect(),
     );
 }
 
