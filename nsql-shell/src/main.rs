@@ -1,5 +1,6 @@
 use std::borrow::Cow;
-use std::path::PathBuf;
+use std::io::Read;
+use std::path::{Path, PathBuf};
 
 use argh::FromArgs;
 use nsql::{LmdbStorageEngine, Nsql};
@@ -18,6 +19,10 @@ struct Args {
     /// execute command and quit
     #[argh(option, short = 'c')]
     cmd: Option<String>,
+
+    /// execute commands from file and quit (use - for stdin)
+    #[argh(option, short = 'f')]
+    file: Option<PathBuf>,
 
     /// path to log file
     #[argh(option)]
@@ -73,16 +78,29 @@ fn main() -> nsql::Result<()> {
     let nsql = Nsql::<LmdbStorageEngine>::open(&args.path)?;
     let (conn, state) = nsql.connect();
 
-    if let Some(cmd) = args.cmd {
-        match conn.query(&state, &cmd) {
-            Ok(output) => {
-                if !args.silent {
-                    println!("{output}")
-                }
-            }
-            Err(e) => println!("{e}"),
+    if let Some(cmd) = &args.cmd {
+        let output = conn.query(&state, cmd)?;
+        if !args.silent {
+            println!("{output}")
         }
+    }
 
+    if let Some(file) = &args.file {
+        let sql = if file.as_path() == Path::new("-") {
+            let mut buffer = String::new();
+            std::io::stdin().read_to_string(&mut buffer)?;
+            buffer
+        } else {
+            std::fs::read_to_string(file)?
+        };
+
+        let output = conn.query(&state, &sql)?;
+        if !args.silent {
+            println!("{output}")
+        }
+    }
+
+    if args.file.is_some() || args.cmd.is_some() {
         return Ok(());
     }
 
