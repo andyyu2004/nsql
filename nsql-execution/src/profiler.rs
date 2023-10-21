@@ -1,9 +1,8 @@
-use std::cell::Cell;
+use std::cell::{Cell, Ref, RefCell};
 use std::fmt;
 use std::time::{Duration, Instant};
 
-use dashmap::DashMap;
-use nsql_arena::Idx;
+use nsql_arena::{ArenaMap, Idx};
 use nsql_catalog::Catalog;
 use nsql_storage::tuple::Tuple;
 use nsql_storage_engine::{ExecutionMode, FallibleIterator, StorageEngine, Transaction};
@@ -17,7 +16,7 @@ use crate::{
 #[derive(Debug)]
 pub(crate) struct Profiler {
     timing: Cell<bool>,
-    metrics: DashMap<PhysicalNodeId, NodeMetrics>,
+    metrics: RefCell<ArenaMap<PhysicalNodeId, NodeMetrics>>,
 }
 
 impl Default for Profiler {
@@ -50,21 +49,20 @@ impl Profiler {
     }
 
     fn init(&self, id: PhysicalNodeId) {
-        self.metrics.entry(id).or_default();
+        self.metrics.borrow_mut().entry(id).or_default();
     }
 
     fn record(&self, guard: &ProfilerGuard<'_>) {
         let elapsed = guard.start.map_or(Duration::ZERO, |start| start.elapsed());
-
-        let mut info =
-            self.metrics.get_mut(&guard.id).expect("attempting to record uninitialized node");
+        let mut metrics = self.metrics.borrow_mut();
+        let info = metrics.get_mut(guard.id).expect("attempting to record uninitialized node");
         info.elapsed += elapsed;
         info.tuples_in += guard.tuples_in;
         info.tuples_out += guard.tuples_out;
     }
 
-    pub fn metrics(&self) -> DashMap<PhysicalNodeId, NodeMetrics> {
-        self.metrics.clone()
+    pub fn metrics(&self) -> Ref<'_, ArenaMap<PhysicalNodeId, NodeMetrics>> {
+        self.metrics.borrow()
     }
 }
 

@@ -112,6 +112,10 @@ impl<T, V> ArenaMap<Idx<T>, V> {
     fn from_idx(idx: usize) -> Idx<T> {
         Idx::from_raw((idx as u32).into())
     }
+
+    pub fn max_idx(&self) -> usize {
+        self.v.len()
+    }
 }
 
 impl<T, V> std::ops::Index<Idx<V>> for ArenaMap<Idx<V>, T> {

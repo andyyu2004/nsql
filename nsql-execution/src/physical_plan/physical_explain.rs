@@ -98,11 +98,11 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
         if self.opts.analyze {
             let metrics = ecx.profiler().metrics();
             let mut time_annotations =
-                ArenaMap::with_capacity(if self.opts.timing { metrics.len() } else { 0 });
-            let mut in_tuple_annotations = ArenaMap::with_capacity(metrics.len());
-            let mut out_tuple_annotations = ArenaMap::with_capacity(metrics.len());
+                ArenaMap::with_capacity(if self.opts.timing { metrics.max_idx() } else { 0 });
+            let mut in_tuple_annotations = ArenaMap::with_capacity(metrics.max_idx());
+            let mut out_tuple_annotations = ArenaMap::with_capacity(metrics.max_idx());
 
-            for (id, metric) in metrics {
+            for (id, metric) in metrics.iter() {
                 if self.opts.timing {
                     time_annotations
                         .insert(id, ("time".to_string(), format!("{:.2?}", metric.elapsed)));
