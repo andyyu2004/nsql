@@ -1,7 +1,7 @@
 use std::{fmt, mem};
 
 use nsql_core::UntypedOid;
-use nsql_storage::eval::Expr;
+use nsql_storage::eval::{Expr, FunctionArgs};
 
 use super::*;
 use crate::{ColumnIdentity, SystemEntityPrivate};
@@ -11,7 +11,7 @@ mod builtins;
 pub type ScalarFunction<S> = for<'env, 'txn> fn(
     Catalog<'env, S>,
     &'txn dyn Transaction<'env, S>,
-    Box<[Value]>,
+    FunctionArgs,
 ) -> Result<Value>;
 
 pub trait AggregateFunctionInstance: fmt::Debug {
@@ -74,7 +74,7 @@ impl<S: StorageEngine> nsql_storage::eval::ScalarFunction<S> for Function {
         &self,
         storage: &'env S,
         tx: &dyn Transaction<'env, S>,
-        args: Box<[Value]>,
+        args: FunctionArgs,
     ) -> Result<Value> {
         self.get_scalar_function()(Catalog::new(storage), tx, args)
     }

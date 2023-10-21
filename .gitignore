@@ -2,4 +2,5 @@ target
 flamegraph.svg
 perf.data
 perf.data.old
+profile.json
 target

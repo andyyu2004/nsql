@@ -176,7 +176,7 @@ pub(crate) fn get_scalar_function<S: StorageEngine>(oid: Oid<Function>) -> Optio
 fn between<'env, S: StorageEngine>(
     _catalog: Catalog<'env, S>,
     _tx: &dyn Transaction<'env, S>,
-    mut args: Box<[Value]>,
+    mut args: FunctionArgs,
 ) -> Result<Value> {
     assert_eq!(args.len(), 3);
     let target = args[0].take();
@@ -223,7 +223,7 @@ pub(crate) fn get_aggregate_function(
 fn range2<'env, S: StorageEngine>(
     _catalog: Catalog<'env, S>,
     _tx: &dyn Transaction<'env, S>,
-    mut args: Box<[Value]>,
+    mut args: FunctionArgs,
 ) -> Result<Value> {
     assert_eq!(args.len(), 2);
     let start: Option<i64> = args[0].take().cast().unwrap();
@@ -238,7 +238,7 @@ fn range2<'env, S: StorageEngine>(
 fn array_element<'env, S: StorageEngine>(
     _catalog: Catalog<'env, S>,
     _tx: &dyn Transaction<'env, S>,
-    mut args: Box<[Value]>,
+    mut args: FunctionArgs,
 ) -> Result<Value> {
     assert_eq!(args.len(), 2);
     let array = match args[0].take() {
@@ -264,7 +264,7 @@ fn array_element<'env, S: StorageEngine>(
 fn array_position<'env, S: StorageEngine>(
     _catalog: Catalog<'env, S>,
     _tx: &dyn Transaction<'env, S>,
-    mut args: Box<[Value]>,
+    mut args: FunctionArgs,
 ) -> Result<Value> {
     assert_eq!(args.len(), 2);
     let array = match args[0].take() {
@@ -285,7 +285,7 @@ fn array_position<'env, S: StorageEngine>(
 fn array_contains<'env, S: StorageEngine>(
     _catalog: Catalog<'env, S>,
     _tx: &dyn Transaction<'env, S>,
-    mut args: Box<[Value]>,
+    mut args: FunctionArgs,
 ) -> Result<Value> {
     assert_eq!(args.len(), 2);
     let array = match args[0].take() {
@@ -306,7 +306,7 @@ fn array_contains<'env, S: StorageEngine>(
 fn nextval<'env, S: StorageEngine>(
     catalog: Catalog<'env, S>,
     tx: &dyn Transaction<'env, S>,
-    mut args: Box<[Value]>,
+    mut args: FunctionArgs,
 ) -> Result<Value> {
     assert_eq!(args.len(), 1);
     let tx = tx.try_as_write().expect("nextval should be passed a write transaction");
@@ -336,7 +336,7 @@ fn nextval<'env, S: StorageEngine>(
 fn nextval_oid<'env, S: StorageEngine>(
     catalog: Catalog<'env, S>,
     tx: &dyn Transaction<'env, S>,
-    args: Box<[Value]>,
+    args: FunctionArgs,
 ) -> Result<Value> {
     let next = nextval(catalog, tx, args)?;
     Ok(Value::Oid(next.cast().unwrap()))
@@ -348,7 +348,7 @@ fn nextval_oid<'env, S: StorageEngine>(
 fn mk_nextval_expr<'env, S: StorageEngine>(
     _catalog: Catalog<'env, S>,
     _tx: &dyn Transaction<'env, S>,
-    mut args: Box<[Value]>,
+    mut args: FunctionArgs,
 ) -> Result<Value> {
     let oid: UntypedOid = args[0].take().cast().unwrap();
     Ok(Value::Expr(Expr::call(Function::NEXTVAL.untyped(), [oid.into()])))

@@ -19,12 +19,16 @@ pub trait FunctionCatalog<'env, S, F = Box<dyn ScalarFunction<S>>> {
     fn get_function(&self, tx: &dyn Transaction<'env, S>, oid: UntypedOid) -> Result<F>;
 }
 
+// Note: smallvec seems to always be slower than this for sqlite/select3.sql
+// This alias is useful for testing different types
+pub type FunctionArgs = Box<[Value]>;
+
 pub trait ScalarFunction<S: StorageEngine>: fmt::Debug + Send + Sync + 'static {
     fn invoke<'env>(
         &self,
         storage: &'env S,
         tx: &dyn Transaction<'env, S>,
-        args: Box<[Value]>,
+        args: FunctionArgs,
     ) -> Result<Value>;
 
     /// The number f arguments this function takes.
@@ -283,7 +287,7 @@ impl<S: StorageEngine> ExprOp<Box<dyn ScalarFunction<S>>> {
                 Value::Array(array)
             }
             ExprOp::Call { function } => {
-                let args = stack.drain(stack.len() - function.arity()..).collect::<Box<[Value]>>();
+                let args = stack.drain(stack.len() - function.arity()..).collect::<FunctionArgs>();
                 function.invoke(storage, tx, args)?
             }
             ExprOp::IfNeJmp(offset) => {
