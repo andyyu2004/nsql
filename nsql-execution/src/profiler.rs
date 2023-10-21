@@ -15,13 +15,20 @@ use crate::{
 
 #[derive(Debug)]
 pub(crate) struct Profiler {
-    timing: Cell<bool>,
+    mode: Cell<ProfileMode>,
     metrics: RefCell<ArenaMap<PhysicalNodeId, NodeMetrics>>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum ProfileMode {
+    Disabled,
+    Enabled,
+    Timing,
 }
 
 impl Default for Profiler {
     fn default() -> Self {
-        Self { timing: Cell::new(false), metrics: Default::default() }
+        Self { mode: Cell::new(ProfileMode::Disabled), metrics: Default::default() }
     }
 }
 
@@ -35,13 +42,17 @@ enum NodeType {
 
 impl Profiler {
     #[inline]
-    pub fn set_timing(&self, enabled: bool) {
-        self.timing.set(enabled);
+    pub fn set_mode(&self, mode: ProfileMode) {
+        self.mode.set(mode);
+    }
+
+    pub fn is_enabled(&self) -> bool {
+        self.mode.get() > ProfileMode::Disabled
     }
 
     #[inline]
     fn start(&self, id: PhysicalNodeId, node_type: NodeType) -> ProfilerGuard<'_> {
-        let timing = self.timing.get();
+        let timing = matches!(self.mode.get(), ProfileMode::Timing);
         let start = timing.then(Instant::now);
         let tuples_in = matches!(node_type, NodeType::Sink | NodeType::Operator) as usize;
         let tuples_out = matches!(node_type, NodeType::Operator | NodeType::Source) as usize;
@@ -49,10 +60,18 @@ impl Profiler {
     }
 
     fn init(&self, id: PhysicalNodeId) {
+        if !self.is_enabled() {
+            return;
+        }
+
         self.metrics.borrow_mut().entry(id).or_default();
     }
 
     fn record(&self, guard: &ProfilerGuard<'_>) {
+        if !self.is_enabled() {
+            return;
+        }
+
         let elapsed = guard.start.map_or(Duration::ZERO, |start| start.elapsed());
         let mut metrics = self.metrics.borrow_mut();
         let info = metrics.get_mut(guard.id).expect("attempting to record uninitialized node");

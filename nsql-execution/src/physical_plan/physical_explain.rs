@@ -7,6 +7,7 @@ use nsql_storage_engine::fallible_iterator;
 use super::explain::ExplainTree;
 use super::*;
 use crate::config::ExplainOutput;
+use crate::profiler::ProfileMode;
 
 pub struct PhysicalExplain<'env, 'txn, S, M> {
     id: PhysicalNodeId,
@@ -72,7 +73,11 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSink
     for PhysicalExplain<'env, 'txn, S, M>
 {
     fn initialize(&mut self, ecx: &'txn ExecutionContext<'_, 'env, S, M>) -> ExecutionResult<()> {
-        ecx.profiler().set_timing(self.opts.timing);
+        if self.opts.timing {
+            ecx.profiler().set_mode(ProfileMode::Timing);
+        } else {
+            ecx.profiler().set_mode(ProfileMode::Enabled);
+        }
         Ok(())
     }
 
