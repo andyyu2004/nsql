@@ -1,4 +1,4 @@
-use std::sync::{Arc, OnceLock};
+use std::sync::OnceLock;
 
 use atomic_take::AtomicTake;
 use nsql_storage_engine::{ExecutionMode, ReadWriteExecutionMode, StorageEngine};
@@ -11,7 +11,7 @@ use crate::{TableStorage, TableStorageInfo};
 pub(crate) struct IndexStorage<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> {
     storage: TableStorage<'env, 'txn, S, M>,
     index_expr: AtomicTake<TupleExpr>,
-    prepared_expr: OnceLock<TupleExpr<Arc<dyn ScalarFunction<S>>>>,
+    prepared_expr: OnceLock<TupleExpr<Box<dyn ScalarFunction<S>>>>,
 }
 
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> IndexStorage<'env, 'txn, S, M> {

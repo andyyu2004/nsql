@@ -1,7 +1,6 @@
 //! A serializable stack-based bytecode for evaluating expressions.
 
 use std::str::FromStr;
-use std::sync::Arc;
 use std::{fmt, mem};
 
 use anyhow::Result;
@@ -14,7 +13,7 @@ use rkyv::{Archive, Deserialize, Serialize};
 use crate::tuple::{Tuple, TupleIndex};
 use crate::value::{CastError, FromValue, Value};
 
-pub trait FunctionCatalog<'env, S, F = Arc<dyn ScalarFunction<S>>> {
+pub trait FunctionCatalog<'env, S, F = Box<dyn ScalarFunction<S>>> {
     fn storage(&self) -> &'env S;
 
     fn get_function(&self, tx: &dyn Transaction<'env, S>, oid: UntypedOid) -> Result<F>;
@@ -39,7 +38,7 @@ pub struct TupleExpr<F = UntypedOid> {
     exprs: Box<[Expr<F>]>,
 }
 
-pub type ExecutableTupleExpr<S> = TupleExpr<Arc<dyn ScalarFunction<S>>>;
+pub type ExecutableTupleExpr<S> = TupleExpr<Box<dyn ScalarFunction<S>>>;
 
 impl<F> fmt::Display for TupleExpr<F> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -130,7 +129,7 @@ impl From<TupleExpr> for Value {
 
 pub type ExecutableExpr<S> = Expr<ExecutableFunction<S>>;
 
-pub type ExecutableFunction<S> = Arc<dyn ScalarFunction<S>>;
+pub type ExecutableFunction<S> = Box<dyn ScalarFunction<S>>;
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Archive, Serialize, Deserialize)]
 pub struct Expr<F = UntypedOid> {
@@ -244,11 +243,11 @@ impl<S: StorageEngine> ExecutableExpr<S> {
     }
 }
 
-pub type ExecutableExprOp<S> = ExprOp<Arc<dyn ScalarFunction<S>>>;
+pub type ExecutableExprOp<S> = ExprOp<Box<dyn ScalarFunction<S>>>;
 
 /// `Expr` is generic over the representation of functions.
 /// For storage in the catalog, we need to be able to serialize the function and `F = UntypedOid` (morally `Oid<Function>`).
-/// For execution, we want to be able to invoke the function (without looking into the catalog as that's slow) and so `F = Arc<dyn ScalarFunction<S>>`.
+/// For execution, we want to be able to invoke the function (without looking into the catalog as that's slow) and so `F = Box<dyn ScalarFunction<S>>`.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Archive, Serialize, Deserialize)]
 #[omit_bounds]
 #[archive(bound(serialize = "__S: rkyv::ser::ScratchSpace + rkyv::ser::Serializer"))]
@@ -267,7 +266,7 @@ pub enum ExprOp<F = UntypedOid> {
 
 static_assert_eq!(mem::size_of::<ExprOp>(), 40);
 
-impl<S: StorageEngine> ExprOp<Arc<dyn ScalarFunction<S>>> {
+impl<S: StorageEngine> ExprOp<Box<dyn ScalarFunction<S>>> {
     fn execute<'env>(
         &self,
         storage: &'env S,

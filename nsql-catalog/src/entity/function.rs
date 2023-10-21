@@ -1,4 +1,3 @@
-use std::sync::Arc;
 use std::{fmt, mem};
 
 use nsql_core::UntypedOid;
@@ -63,9 +62,9 @@ impl<'env, S: StorageEngine> nsql_storage::eval::FunctionCatalog<'env, S> for Ca
         &self,
         tx: &dyn Transaction<'env, S>,
         oid: UntypedOid,
-    ) -> Result<Arc<dyn nsql_storage::eval::ScalarFunction<S>>> {
+    ) -> Result<Box<dyn nsql_storage::eval::ScalarFunction<S>>> {
         let f = self.get::<Function>(tx, oid.cast())?;
-        Ok(Arc::new(f))
+        Ok(Box::new(f))
     }
 }
 

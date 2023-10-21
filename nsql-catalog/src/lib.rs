@@ -226,10 +226,12 @@ impl<'env, S: StorageEngine> Catalog<'env, S> {
 pub const MAIN_SCHEMA_PATH: &str = "main";
 
 impl<'env, S: StorageEngine> Catalog<'env, S> {
+    #[inline]
     pub fn new(storage: &'env S) -> Self {
         Self { storage }
     }
 
+    #[inline]
     /// Create a blank catalog with the default schema
     pub fn create(storage: &'env S, tx: &S::WriteTransaction<'env>) -> Result<Self> {
         bootstrap::bootstrap(storage, tx)?;
