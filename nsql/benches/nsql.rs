@@ -30,7 +30,7 @@ pub fn bench_nested_loop_cross_join(c: &mut Criterion) {
                 format!("INSERT INTO t SELECT * FROM UNNEST(range(1, {size}))"),
             ]
         },
-        |_| format!("SELECT * FROM t JOIN t"),
+        |_| "SELECT * FROM t JOIN t".to_string(),
     );
 }
 

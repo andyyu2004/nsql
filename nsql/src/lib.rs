@@ -1,12 +1,15 @@
 #![deny(rust_2018_idioms)]
+#![feature(thread_id_value)]
 
 use core::fmt;
 use std::panic::AssertUnwindSafe;
 use std::path::Path;
 use std::sync::Arc;
+use std::{env, process};
 
 pub use anyhow::{anyhow, Error};
 use arc_swap::ArcSwapOption;
+use measureme::{EventId, Profiler, StringId};
 use mimalloc::MiMalloc;
 use nsql_bind::Binder;
 use nsql_catalog::Catalog;
@@ -79,7 +82,7 @@ impl<S: StorageEngine> Nsql<S> {
         Catalog::create(&storage, &tx)?;
         tx.commit()?;
 
-        Ok(Self::new(Shared { storage: Storage::new(storage) }))
+        Self::try_new(storage)
     }
 
     /// Open an existing database at the given path, creating one if it does not exist.
@@ -89,7 +92,7 @@ impl<S: StorageEngine> Nsql<S> {
             return Self::create(path);
         }
 
-        Ok(Self::new(Shared { storage: Storage::new(S::open(path)?) }))
+        Self::try_new(S::open(path)?)
     }
 
     // FIXME can't find a way to get lifetimes to checkout without separating the connection and state.
@@ -100,13 +103,52 @@ impl<S: StorageEngine> Nsql<S> {
     }
 
     #[inline]
-    fn new(inner: Shared<S>) -> Self {
-        Self { shared: Arc::new(inner) }
+    fn try_new(storage: S) -> Result<Self> {
+        let pid: u32 = process::id();
+        let filename = format!("nsql-{pid:07}.profile");
+        let path = env::temp_dir().join(filename);
+        let profiler = Profiler::new(path).map_err(|err| anyhow!(err))?;
+        Ok(Self { shared: Arc::new(Shared::new(Storage::new(storage), profiler)) })
     }
 }
 
 struct Shared<S> {
     storage: Storage<S>,
+    profiler: NsqlProfiler,
+}
+
+struct NsqlProfiler {
+    profiler: Profiler,
+    generic_event_kind: StringId,
+    bind_event_id: EventId,
+    optimize_event_id: EventId,
+    physical_plan_event_id: EventId,
+    execute_event_id: EventId,
+    thread_id: u32,
+}
+
+impl NsqlProfiler {
+    fn new(profiler: Profiler) -> Self {
+        Self {
+            bind_event_id: EventId::from_label(profiler.alloc_string("bind")),
+            optimize_event_id: EventId::from_label(profiler.alloc_string("optimize")),
+            physical_plan_event_id: EventId::from_label(profiler.alloc_string("physical_plan")),
+            execute_event_id: EventId::from_label(profiler.alloc_string("execute")),
+            generic_event_kind: profiler.alloc_string("generic"),
+            // everything is currently single-threaded and always will be except for execution stuff
+            thread_id: std::thread::current().id().as_u64().get() as u32,
+            profiler,
+        }
+    }
+
+    fn profile<R>(&self, event_id: EventId, f: impl FnOnce() -> Result<R>) -> Result<R> {
+        let _guard = self.profiler.start_recording_interval_event(
+            self.generic_event_kind,
+            event_id,
+            self.thread_id,
+        );
+        f()
+    }
 }
 
 pub struct Connection<S: StorageEngine> {
@@ -151,6 +193,10 @@ impl<S: StorageEngine> Connection<S> {
 }
 
 impl<S: StorageEngine> Shared<S> {
+    fn new(storage: Storage<S>, profiler: Profiler) -> Self {
+        Self { storage, profiler: NsqlProfiler::new(profiler) }
+    }
+
     fn query<'env>(
         &'env self,
         ctx: &SessionContext<'env, S>,
@@ -183,40 +229,43 @@ impl<S: StorageEngine> Shared<S> {
         let catalog = Catalog::new(storage);
 
         let binder = Binder::new(catalog);
-        let (auto_commit, tx, plan) = match tx {
-            Some(tx) => {
-                tracing::debug!("reusing existing transaction");
-                let plan = binder.bind_with(&tx, stmt)?;
-                (false, tx, plan)
-            }
-            None => {
-                let plan = binder.bind(stmt)?;
-                let tx = match plan.required_transaction_mode() {
-                    ir::TransactionMode::ReadOnly => {
-                        tracing::debug!("beginning fresh read transaction");
-                        ReadOrWriteTransaction::Read(storage.begin()?)
-                    }
-                    ir::TransactionMode::ReadWrite => {
-                        tracing::debug!("beginning fresh write transaction");
-                        ReadOrWriteTransaction::Write(storage.begin_write()?)
-                    }
-                };
-                (true, tx, plan)
-            }
-        };
-
+        let (auto_commit, tx, plan) =
+            self.profiler.profile(self.profiler.bind_event_id, || match tx {
+                Some(tx) => {
+                    tracing::debug!("reusing existing transaction");
+                    let plan = binder.bind_with(&tx, stmt)?;
+                    Ok((false, tx, plan))
+                }
+                None => {
+                    let plan = binder.bind(stmt)?;
+                    let tx = match plan.required_transaction_mode() {
+                        ir::TransactionMode::ReadOnly => {
+                            tracing::debug!("beginning fresh read transaction");
+                            ReadOrWriteTransaction::Read(storage.begin()?)
+                        }
+                        ir::TransactionMode::ReadWrite => {
+                            tracing::debug!("beginning fresh write transaction");
+                            ReadOrWriteTransaction::Write(storage.begin_write()?)
+                        }
+                    };
+                    Ok((true, tx, plan))
+                }
+            })?;
         let schema = Schema::new(plan.schema());
-        let plan = optimize(plan);
+        let plan = self.profiler.profile(self.profiler.optimize_event_id, || Ok(optimize(plan)))?;
 
         let (tx, tuples) = match tx {
             ReadOrWriteTransaction::Read(tx) => {
                 tracing::debug!("executing readonly query");
                 let planner = PhysicalPlanner::new(catalog);
-                let physical_plan = planner.plan(&tx, plan)?;
+                let physical_plan = self
+                    .profiler
+                    .profile(self.profiler.physical_plan_event_id, || planner.plan(&tx, plan))?;
                 let ecx =
                     ExecutionContext::new(catalog, TransactionContext::new(tx, auto_commit), ctx);
-                let tuples =
-                    nsql_execution::execute::<S, ReadonlyExecutionMode>(&ecx, physical_plan)?;
+                let tuples = self.profiler.profile(self.profiler.execute_event_id, || {
+                    nsql_execution::execute::<S, ReadonlyExecutionMode>(&ecx, physical_plan)
+                })?;
                 let (auto_commit, state, tx) = ecx.take_txn();
                 if auto_commit || !matches!(state, TransactionState::Active) {
                     tracing::debug!("ending readonly transaction");
@@ -228,10 +277,17 @@ impl<S: StorageEngine> Shared<S> {
             ReadOrWriteTransaction::Write(tx) => {
                 tracing::debug!("executing write query");
                 let planner = PhysicalPlanner::new(catalog);
-                let physical_plan = planner.plan_write(&tx, plan)?;
+                let physical_plan =
+                    self.profiler.profile(self.profiler.physical_plan_event_id, || {
+                        planner.plan_write(&tx, plan)
+                    })?;
                 let ecx =
                     ExecutionContext::new(catalog, TransactionContext::new(tx, auto_commit), ctx);
-                let tuples = match nsql_execution::execute(&ecx, physical_plan) {
+                let tuples = self.profiler.profile(self.profiler.execute_event_id, || {
+                    nsql_execution::execute(&ecx, physical_plan)
+                });
+
+                let tuples = match tuples {
                     Ok(tuples) => tuples,
                     Err(err) => {
                         tracing::debug!(error = %err, "aborting write transaction due to error during execution");

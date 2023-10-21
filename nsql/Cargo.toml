@@ -22,6 +22,7 @@ nsql-util = { path = "../nsql-util" }
 mimalloc = { version = "*", default-features = false }
 tracing-tree = "0.2.4"
 tabled = { version = "0.14.0", default-features = false, features = ["std"] }
+measureme = "10.1.1"
 
 [dev-dependencies]
 datatest-stable = { git = "https://github.com/andyyu2004/datatest-stable", branch = "main" }
