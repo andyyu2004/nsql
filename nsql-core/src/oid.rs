@@ -47,6 +47,7 @@ impl<T> Oid<T> {
 pub type UntypedOid = Oid<()>;
 
 impl<T: ?Sized> fmt::Debug for Oid<T> {
+    #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "Oid<{}>({})", std::any::type_name::<T>(), self.oid)
     }
@@ -59,6 +60,7 @@ impl<T: ?Sized> fmt::Debug for ArchivedOid<T> {
 }
 
 impl<T: ?Sized> fmt::Display for Oid<T> {
+    #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "#{}", self.oid)
     }

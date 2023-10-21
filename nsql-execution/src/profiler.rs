@@ -22,7 +22,7 @@ pub(crate) struct Profiler {
 
 impl Default for Profiler {
     fn default() -> Self {
-        Self { timing: Cell::new(true), metrics: Default::default() }
+        Self { timing: Cell::new(false), metrics: Default::default() }
     }
 }
 
