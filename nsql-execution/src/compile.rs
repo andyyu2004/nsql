@@ -3,7 +3,7 @@ use std::mem;
 use anyhow::Result;
 use nsql_core::UntypedOid;
 use nsql_storage::eval::{Expr, ExprOp, FunctionCatalog, TupleExpr};
-use nsql_storage_engine::{StorageEngine, Transaction};
+use nsql_storage_engine::{ExecutionMode, StorageEngine, Transaction};
 
 #[derive(Debug)]
 pub(crate) struct Compiler<F> {
@@ -17,9 +17,9 @@ impl<F> Default for Compiler<F> {
 }
 
 impl<F> Compiler<F> {
-    pub fn compile_many<'env, S: StorageEngine>(
+    pub fn compile_many<'env, S: StorageEngine, M: ExecutionMode<'env, S>>(
         &mut self,
-        catalog: &dyn FunctionCatalog<'env, S, F>,
+        catalog: &dyn FunctionCatalog<'env, S, M, F>,
         tx: &dyn Transaction<'env, S>,
         q: &opt::Query,
         exprs: impl IntoIterator<Item = opt::Expr<'_>>,
@@ -31,9 +31,9 @@ impl<F> Compiler<F> {
             .map(TupleExpr::new)
     }
 
-    pub fn compile<'env, S: StorageEngine>(
+    pub fn compile<'env, S: StorageEngine, M: ExecutionMode<'env, S>>(
         &mut self,
-        catalog: &dyn FunctionCatalog<'env, S, F>,
+        catalog: &dyn FunctionCatalog<'env, S, M, F>,
         tx: &dyn Transaction<'env, S>,
         q: &opt::Query,
         expr: opt::Expr<'_>,
@@ -43,9 +43,9 @@ impl<F> Compiler<F> {
         Ok(Expr::new(expr.display(q), mem::take(&mut self.ops)))
     }
 
-    fn build<'env, S: StorageEngine>(
+    fn build<'env, S: StorageEngine, M: ExecutionMode<'env, S>>(
         &mut self,
-        catalog: &dyn FunctionCatalog<'env, S, F>,
+        catalog: &dyn FunctionCatalog<'env, S, M, F>,
         tx: &dyn Transaction<'env, S>,
         q: &opt::Query,
         expr: &opt::Expr<'_>,
@@ -160,7 +160,7 @@ impl<F> Compiler<F> {
                 // When we compile a quoted expression we want it to be in the `storable` state not the `executable` state.
                 struct NoopCatalog<'env, S>(&'env S);
 
-                impl<'env, S> FunctionCatalog<'env, S, UntypedOid> for NoopCatalog<'env, S> {
+                impl<'env, S, M> FunctionCatalog<'env, S, M, UntypedOid> for NoopCatalog<'env, S> {
                     fn storage(&self) -> &'env S {
                         self.0
                     }
@@ -175,8 +175,12 @@ impl<F> Compiler<F> {
                 }
 
                 let mut compiler = Compiler::<UntypedOid>::default();
-                let expr =
-                    compiler.compile(&NoopCatalog(catalog.storage()), tx, q, expr.expr(q))?;
+                let expr = compiler.compile::<S, M>(
+                    &NoopCatalog(catalog.storage()),
+                    tx,
+                    q,
+                    expr.expr(q),
+                )?;
                 // compile the `opt::Expr` into `eval::Expr` and use the expression as a value
                 self.emit(ExprOp::Push(ir::Value::Expr(expr)));
             }

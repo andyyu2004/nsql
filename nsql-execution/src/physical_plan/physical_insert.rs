@@ -18,7 +18,7 @@ pub(crate) struct PhysicalInsert<'env, 'txn, S: StorageEngine> {
     table_oid: Oid<Table>,
     storage: OnceLock<Mutex<Option<TableStorage<'env, 'txn, S, ReadWriteExecutionMode>>>>,
     table: OnceLock<Table>,
-    returning: ExecutableTupleExpr<S>,
+    returning: ExecutableTupleExpr<'env, S, ReadWriteExecutionMode>,
     returning_tuples: Vec<Tuple>,
 }
 
@@ -26,7 +26,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalInsert<'env, 'txn, S> {
     pub fn plan(
         table_oid: Oid<Table>,
         source: PhysicalNodeId,
-        returning: ExecutableTupleExpr<S>,
+        returning: ExecutableTupleExpr<'env, S, ReadWriteExecutionMode>,
         arena: &mut PhysicalNodeArena<'env, 'txn, S, ReadWriteExecutionMode>,
     ) -> PhysicalNodeId {
         arena.alloc_with(|id| {
@@ -89,7 +89,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSink<'env, 'txn, S, ReadWriteEx
         })?;
 
         if !self.returning.is_empty() {
-            self.returning_tuples.push(self.returning.execute(catalog.storage(), &tx, &tuple)?);
+            self.returning_tuples.push(self.returning.execute(catalog.storage(), tx, &tuple)?);
         }
 
         // hack, if this is the insert of a `CREATE TABLE` we need to create the table storage

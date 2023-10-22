@@ -11,7 +11,7 @@ use crate::{TableStorage, TableStorageInfo};
 pub(crate) struct IndexStorage<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> {
     storage: TableStorage<'env, 'txn, S, M>,
     index_expr: AtomicTake<TupleExpr>,
-    prepared_expr: OnceLock<TupleExpr<Box<dyn ScalarFunction<S>>>>,
+    prepared_expr: OnceLock<TupleExpr<Box<dyn ScalarFunction<'env, S, M>>>>,
 }
 
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> IndexStorage<'env, 'txn, S, M> {
@@ -33,7 +33,7 @@ impl<'env, 'txn, S: StorageEngine> IndexStorage<'env, 'txn, S, ReadWriteExecutio
     #[inline]
     pub fn insert(
         &mut self,
-        catalog: &dyn FunctionCatalog<'env, S>,
+        catalog: &dyn FunctionCatalog<'env, S, ReadWriteExecutionMode>,
         tx: &S::WriteTransaction<'env>,
         tuple: &Tuple,
     ) -> Result<(), anyhow::Error> {

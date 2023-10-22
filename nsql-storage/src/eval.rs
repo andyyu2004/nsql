@@ -6,14 +6,14 @@ use std::{fmt, mem};
 use anyhow::Result;
 use itertools::Itertools;
 use nsql_core::{LogicalType, UntypedOid};
-use nsql_storage_engine::{StorageEngine, Transaction};
+use nsql_storage_engine::{ExecutionMode, StorageEngine, Transaction};
 use nsql_util::static_assert_eq;
 use rkyv::{Archive, Deserialize, Serialize};
 
 use crate::tuple::{Tuple, TupleIndex};
 use crate::value::{CastError, FromValue, Value};
 
-pub trait FunctionCatalog<'env, S, F = Box<dyn ScalarFunction<S>>> {
+pub trait FunctionCatalog<'env, S, M, F = Box<dyn ScalarFunction<'env, S, M>>> {
     fn storage(&self) -> &'env S;
 
     fn get_function(&self, tx: &dyn Transaction<'env, S>, oid: UntypedOid) -> Result<F>;
@@ -23,11 +23,13 @@ pub trait FunctionCatalog<'env, S, F = Box<dyn ScalarFunction<S>>> {
 // This alias is useful for testing different types
 pub type FunctionArgs = Box<[Value]>;
 
-pub trait ScalarFunction<S: StorageEngine>: fmt::Debug + Send + Sync + 'static {
-    fn invoke<'env>(
+pub trait ScalarFunction<'env, S: StorageEngine, M: ExecutionMode<'env, S>>:
+    fmt::Debug + Send + Sync
+{
+    fn invoke(
         &self,
         storage: &'env S,
-        tx: &dyn Transaction<'env, S>,
+        tx: M::TransactionRef<'_>,
         args: FunctionArgs,
     ) -> Result<Value>;
 
@@ -42,7 +44,7 @@ pub struct TupleExpr<F = UntypedOid> {
     exprs: Box<[Expr<F>]>,
 }
 
-pub type ExecutableTupleExpr<S> = TupleExpr<Box<dyn ScalarFunction<S>>>;
+pub type ExecutableTupleExpr<'env, S, M> = TupleExpr<Box<dyn ScalarFunction<'env, S, M>>>;
 
 impl<F> fmt::Display for TupleExpr<F> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -71,11 +73,11 @@ impl<F> TupleExpr<F> {
 impl TupleExpr {
     /// Prepare this tuple expression for evaluation.
     // This resolves any function oids and replaces them with the actual function.
-    pub fn prepare<'env, S>(
+    pub fn prepare<'env, S: StorageEngine, M: ExecutionMode<'env, S>>(
         self,
-        catalog: &dyn FunctionCatalog<'env, S>,
+        catalog: &dyn FunctionCatalog<'env, S, M>,
         tx: &dyn Transaction<'env, S>,
-    ) -> Result<ExecutableTupleExpr<S>> {
+    ) -> Result<ExecutableTupleExpr<'env, S, M>> {
         self.map(|oid| catalog.get_function(tx, oid))
     }
 }
@@ -83,21 +85,21 @@ impl TupleExpr {
 impl Expr {
     /// Prepare this expression for evaluation.
     // This resolves any function oids and replaces them with what the catalog returns
-    pub fn resolve<'env, S, F>(
+    pub fn resolve<'env, S, M, F>(
         self,
-        catalog: &dyn FunctionCatalog<'env, S, F>,
+        catalog: &dyn FunctionCatalog<'env, S, M, F>,
         tx: &dyn Transaction<'env, S>,
     ) -> Result<Expr<F>> {
         self.map(|oid| catalog.get_function(tx, oid))
     }
 }
 
-impl<S: StorageEngine> ExecutableTupleExpr<S> {
+impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> ExecutableTupleExpr<'env, S, M> {
     #[inline]
-    pub fn execute<'env>(
+    pub fn execute(
         &self,
         storage: &'env S,
-        tx: &dyn Transaction<'env, S>,
+        tx: M::TransactionRef<'_>,
         tuple: &Tuple,
     ) -> Result<Tuple> {
         self.exprs.iter().map(|expr| expr.execute(storage, tx, tuple)).collect()
@@ -131,9 +133,9 @@ impl From<TupleExpr> for Value {
     }
 }
 
-pub type ExecutableExpr<S> = Expr<ExecutableFunction<S>>;
+pub type ExecutableExpr<'env, S, M> = Expr<ExecutableFunction<'env, S, M>>;
 
-pub type ExecutableFunction<S> = Box<dyn ScalarFunction<S>>;
+pub type ExecutableFunction<'env, S, M> = Box<dyn ScalarFunction<'env, S, M>>;
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Archive, Serialize, Deserialize)]
 pub struct Expr<F = UntypedOid> {
@@ -219,11 +221,11 @@ impl<F> Expr<F> {
     }
 }
 
-impl<S: StorageEngine> ExecutableExpr<S> {
-    pub fn execute<'env>(
+impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> ExecutableExpr<'env, S, M> {
+    pub fn execute(
         &self,
         storage: &'env S,
-        tx: &dyn Transaction<'env, S>,
+        tx: M::TransactionRef<'_>,
         tuple: &Tuple,
     ) -> Result<Value> {
         let mut ip = 0;
@@ -247,7 +249,7 @@ impl<S: StorageEngine> ExecutableExpr<S> {
     }
 }
 
-pub type ExecutableExprOp<S> = ExprOp<Box<dyn ScalarFunction<S>>>;
+pub type ExecutableExprOp<'env, S, M> = ExprOp<Box<dyn ScalarFunction<'env, S, M>>>;
 
 /// `Expr` is generic over the representation of functions.
 /// For storage in the catalog, we need to be able to serialize the function and `F = UntypedOid` (morally `Oid<Function>`).
@@ -270,11 +272,13 @@ pub enum ExprOp<F = UntypedOid> {
 
 static_assert_eq!(mem::size_of::<ExprOp>(), 40);
 
-impl<S: StorageEngine> ExprOp<Box<dyn ScalarFunction<S>>> {
-    fn execute<'env>(
+impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>>
+    ExprOp<Box<dyn ScalarFunction<'env, S, M>>>
+{
+    fn execute(
         &self,
         storage: &'env S,
-        tx: &dyn Transaction<'env, S>,
+        tx: M::TransactionRef<'_>,
         stack: &mut Vec<Value>,
         ip: &mut usize,
         tuple: &Tuple,

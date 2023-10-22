@@ -67,7 +67,7 @@ use crate::{
 pub struct PhysicalPlanner<'env, 'txn, S, M> {
     arena: PhysicalNodeArena<'env, 'txn, S, M>,
     catalog: Catalog<'env, S>,
-    compiler: Compiler<ExecutableFunction<S>>,
+    compiler: Compiler<ExecutableFunction<'env, S, M>>,
     ctes: HashMap<Name, PhysicalNodeId>,
 }
 
@@ -321,12 +321,13 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
         Ok(plan)
     }
 
+    #[allow(clippy::type_complexity)]
     fn compile_order_exprs(
         &mut self,
         tx: &dyn Transaction<'env, S>,
         q: &opt::Query,
         exprs: impl Iterator<Item = ir::OrderExpr<opt::Expr<'_>>>,
-    ) -> Result<Box<[ir::OrderExpr<ExecutableExpr<S>>]>> {
+    ) -> Result<Box<[ir::OrderExpr<ExecutableExpr<'env, S, M>>]>> {
         exprs.map(|expr| self.compile_order_expr(tx, q, expr)).collect()
     }
 
@@ -335,7 +336,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
         tx: &dyn Transaction<'env, S>,
         q: &opt::Query,
         expr: ir::OrderExpr<opt::Expr<'_>>,
-    ) -> Result<ir::OrderExpr<ExecutableExpr<S>>> {
+    ) -> Result<ir::OrderExpr<ExecutableExpr<'env, S, M>>> {
         Ok(ir::OrderExpr { expr: self.compile_expr(tx, q, expr.expr)?, asc: expr.asc })
     }
 
@@ -344,7 +345,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
         tx: &dyn Transaction<'env, S>,
         q: &opt::Query,
         exprs: impl Iterator<Item = opt::Expr<'_>>,
-    ) -> Result<ExecutableTupleExpr<S>> {
+    ) -> Result<ExecutableTupleExpr<'env, S, M>> {
         self.compiler.compile_many(&self.catalog, tx, q, exprs)
     }
 
@@ -353,7 +354,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
         tx: &dyn Transaction<'env, S>,
         q: &opt::Query,
         expr: opt::Expr<'_>,
-    ) -> Result<ExecutableExpr<S>> {
+    ) -> Result<ExecutableExpr<'env, S, M>> {
         self.compiler.compile(&self.catalog, tx, q, expr)
     }
 
@@ -363,7 +364,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
         tx: &dyn Transaction<'env, S>,
         q: &opt::Query,
         functions: impl IntoIterator<Item = opt::CallExpr<'_>>,
-    ) -> Result<Box<[(ir::Function, Option<ExecutableExpr<S>>)]>> {
+    ) -> Result<Box<[(ir::Function, Option<ExecutableExpr<'env, S, M>>)]>> {
         functions
             .into_iter()
             .map(|call| {

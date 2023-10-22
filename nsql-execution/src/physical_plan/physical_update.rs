@@ -13,7 +13,7 @@ pub(crate) struct PhysicalUpdate<'env, 'txn, S> {
     children: [PhysicalNodeId; 1],
     table: Oid<Table>,
     tuples: Vec<Tuple>,
-    returning: ExecutableTupleExpr<S>,
+    returning: ExecutableTupleExpr<'env, S, ReadWriteExecutionMode>,
     returning_tuples: Vec<Tuple>,
     _marker: PhantomData<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode>>,
 }
@@ -24,7 +24,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalUpdate<'env, 'txn, S> {
         // This is the source of the updates.
         // The schema should be that of the table being updated + the `tid` in the rightmost column
         source: PhysicalNodeId,
-        returning: ExecutableTupleExpr<S>,
+        returning: ExecutableTupleExpr<'env, S, ReadWriteExecutionMode>,
         arena: &mut PhysicalNodeArena<'env, 'txn, S, ReadWriteExecutionMode>,
     ) -> PhysicalNodeId {
         arena.alloc_with(|id| {

@@ -10,7 +10,7 @@ use super::*;
 pub struct PhysicalOrder<'env, 'txn, S, M> {
     id: PhysicalNodeId,
     child: PhysicalNodeId,
-    ordering: Box<[ir::OrderExpr<ExecutableExpr<S>>]>,
+    ordering: Box<[ir::OrderExpr<ExecutableExpr<'env, S, M>>]>,
     tuples: Vec<Tuple>,
     _marker: PhantomData<dyn PhysicalNode<'env, 'txn, S, M>>,
 }
@@ -20,7 +20,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
 {
     pub(crate) fn plan(
         source: PhysicalNodeId,
-        ordering: Box<[ir::OrderExpr<ExecutableExpr<S>>]>,
+        ordering: Box<[ir::OrderExpr<ExecutableExpr<'env, S, M>>]>,
         arena: &mut PhysicalNodeArena<'env, 'txn, S, M>,
     ) -> PhysicalNodeId {
         arena.alloc_with(|id| {
@@ -71,14 +71,10 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSink
         tuples.sort_unstable_by(|a, b| {
             for order in ordering.iter() {
                 // todo need a way to propogate error
-                let a = order
-                    .expr
-                    .execute(storage, &tx, a)
-                    .expect("failed to execute order expression");
-                let b = order
-                    .expr
-                    .execute(storage, &tx, b)
-                    .expect("failed to execute order expression");
+                let a =
+                    order.expr.execute(storage, tx, a).expect("failed to execute order expression");
+                let b =
+                    order.expr.execute(storage, tx, b).expect("failed to execute order expression");
                 let cmp = a.partial_cmp(&b).unwrap();
                 if cmp != cmp::Ordering::Equal {
                     return if order.asc { cmp } else { cmp.reverse() };

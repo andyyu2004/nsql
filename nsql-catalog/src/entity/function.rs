@@ -2,15 +2,16 @@ use std::{fmt, mem};
 
 use nsql_core::UntypedOid;
 use nsql_storage::eval::{Expr, FunctionArgs};
+use nsql_storage_engine::ExecutionMode;
 
 use super::*;
 use crate::{ColumnIdentity, SystemEntityPrivate};
 
 mod builtins;
 
-pub type ScalarFunction<S> = for<'env, 'txn> fn(
+pub type ScalarFunction<'env, S, M> = fn(
     Catalog<'env, S>,
-    &'txn dyn Transaction<'env, S>,
+    <M as ExecutionMode<'env, S>>::TransactionRef<'_>,
     FunctionArgs,
 ) -> Result<Value>;
 
@@ -51,7 +52,9 @@ impl From<FunctionKind> for Value {
     }
 }
 
-impl<'env, S: StorageEngine> nsql_storage::eval::FunctionCatalog<'env, S> for Catalog<'env, S> {
+impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>>
+    nsql_storage::eval::FunctionCatalog<'env, S, M> for Catalog<'env, S>
+{
     #[inline]
     fn storage(&self) -> &'env S {
         self.storage
@@ -62,21 +65,23 @@ impl<'env, S: StorageEngine> nsql_storage::eval::FunctionCatalog<'env, S> for Ca
         &self,
         tx: &dyn Transaction<'env, S>,
         oid: UntypedOid,
-    ) -> Result<Box<dyn nsql_storage::eval::ScalarFunction<S>>> {
+    ) -> Result<Box<dyn nsql_storage::eval::ScalarFunction<'env, S, M>>> {
         let f = self.get::<Function>(tx, oid.cast())?;
         Ok(Box::new(f))
     }
 }
 
-impl<S: StorageEngine> nsql_storage::eval::ScalarFunction<S> for Function {
+impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>>
+    nsql_storage::eval::ScalarFunction<'env, S, M> for Function
+{
     #[inline]
-    fn invoke<'env>(
+    fn invoke(
         &self,
         storage: &'env S,
-        tx: &dyn Transaction<'env, S>,
+        tx: M::TransactionRef<'_>,
         args: FunctionArgs,
     ) -> Result<Value> {
-        self.get_scalar_function()(Catalog::new(storage), tx, args)
+        self.get_scalar_function::<S, M>()(Catalog::new(storage), tx, args)
     }
 
     #[inline]
@@ -107,9 +112,11 @@ impl Function {
     }
 
     #[inline]
-    pub fn get_scalar_function<S: StorageEngine>(&self) -> ScalarFunction<S> {
+    pub fn get_scalar_function<'env, S: StorageEngine, M: ExecutionMode<'env, S>>(
+        &self,
+    ) -> ScalarFunction<'env, S, M> {
         assert!(matches!(self.kind, FunctionKind::Scalar));
-        if let Some(f) = builtins::get_scalar_function(self.oid) {
+        if let Some(f) = builtins::get_scalar_function::<'env, S, M>(self.oid) {
             return f;
         }
 

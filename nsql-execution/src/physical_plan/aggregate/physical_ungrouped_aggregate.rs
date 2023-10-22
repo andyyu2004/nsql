@@ -6,10 +6,12 @@ use nsql_storage_engine::fallible_iterator;
 
 use super::*;
 
+type AggregateFunctionAndArgs<'env, S, M> = (ir::Function, Option<ExecutableExpr<'env, S, M>>);
+
 #[derive(Debug)]
 pub struct PhysicalUngroupedAggregate<'env, 'txn, S, M> {
     id: PhysicalNodeId,
-    functions: Box<[(ir::Function, Option<ExecutableExpr<S>>)]>,
+    functions: Box<[AggregateFunctionAndArgs<'env, S, M>]>,
     aggregate_functions: Vec<Box<dyn AggregateFunctionInstance>>,
     children: [PhysicalNodeId; 1],
     _marker: PhantomData<dyn PhysicalNode<'env, 'txn, S, M>>,
@@ -19,7 +21,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     PhysicalUngroupedAggregate<'env, 'txn, S, M>
 {
     pub(crate) fn plan(
-        functions: Box<[(ir::Function, Option<ExecutableExpr<S>>)]>,
+        functions: Box<[AggregateFunctionAndArgs<'env, S, M>]>,
         source: PhysicalNodeId,
         arena: &mut PhysicalNodeArena<'env, 'txn, S, M>,
     ) -> PhysicalNodeId {
@@ -62,7 +64,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSink
         let tx = ecx.tx();
         for (state, (_f, expr)) in self.aggregate_functions[..].iter_mut().zip(&self.functions[..])
         {
-            let v = expr.as_ref().map(|expr| expr.execute(storage, &tx, &tuple)).transpose()?;
+            let v = expr.as_ref().map(|expr| expr.execute(storage, tx, &tuple)).transpose()?;
             state.update(v);
         }
 

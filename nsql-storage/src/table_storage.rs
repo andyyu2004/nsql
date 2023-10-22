@@ -67,7 +67,7 @@ impl<'env, 'txn, S: StorageEngine> TableStorage<'env, 'txn, S, ReadWriteExecutio
     #[inline]
     pub fn insert(
         &mut self,
-        catalog: &dyn FunctionCatalog<'env, S>,
+        catalog: &dyn FunctionCatalog<'env, S, ReadWriteExecutionMode>,
         tx: &S::WriteTransaction<'env>,
         tuple: &Tuple,
     ) -> Result<Result<(), PrimaryKeyConflict>, anyhow::Error> {

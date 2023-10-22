@@ -5,7 +5,7 @@ use nsql_storage::value::{Decimal, Value};
 use nsql_storage_engine::ReadWriteExecutionMode;
 
 use super::*;
-use crate::{Sequence, SequenceData};
+use crate::SequenceData;
 
 macro_rules! cast_to {
     ($to:ty) => {
@@ -113,69 +113,70 @@ macro_rules! prefix_op {
     };
 }
 
-#[rustfmt::skip]
-pub(crate) fn get_scalar_function<S: StorageEngine>(oid: Oid<Function>) -> Option<ScalarFunction<S>> {
+pub(crate) fn get_scalar_function<'env, S: StorageEngine, M: ExecutionMode<'env, S>>(
+    oid: Oid<Function>,
+) -> Option<ScalarFunction<'env, S, M>> {
     Some(match oid {
-        _ if oid == Function::NEG_INT     => prefix_op!(- : i64),
-        _ if oid == Function::NEG_FLOAT   => prefix_op!(- : f64),
-        _ if oid == Function::NEG_DEC     => prefix_op!(- : Decimal),
-        _ if oid == Function::NOT_BOOL    => prefix_op!(! : bool),
-        _ if oid == Function::ADD_INT     => infix_op!(+ : i64),
-        _ if oid == Function::ADD_FLOAT   => infix_op!(+ : f64),
-        _ if oid == Function::ADD_DEC     => infix_op!(+ : Decimal),
-        _ if oid == Function::SUB_INT     => infix_op!(- : i64),
-        _ if oid == Function::SUB_FLOAT   => infix_op!(- : f64),
-        _ if oid == Function::SUB_DEC     => infix_op!(- : Decimal),
-        _ if oid == Function::MUL_INT     => infix_op!(* : i64),
-        _ if oid == Function::MUL_FLOAT   => infix_op!(* : f64),
-        _ if oid == Function::MUL_DEC     => infix_op!(* : Decimal),
-        _ if oid == Function::DIV_INT     => infix_op!(/ : i64),
-        _ if oid == Function::DIV_FLOAT   => infix_op!(/ : f64),
-        _ if oid == Function::DIV_DEC     => infix_op!(/ : Decimal),
-        _ if oid == Function::BETWEEN_ANY => between,
-        _ if oid == Function::EQ_ANY      => comparison!(== : Value),
-        _ if oid == Function::NEQ_ANY     => comparison!(!= : Value),
-        _ if oid == Function::LT_ANY      => comparison!(<  : Value),
-        _ if oid == Function::LTE_ANY     => comparison!(<= : Value),
-        _ if oid == Function::GTE_ANY     => comparison!(>= : Value),
-        _ if oid == Function::GT_ANY      => comparison!(>  : Value),
-        _ if oid == Function::OR_BOOL     => arbitary_binary_op!(bool, |a, b| match (a, b) {
+        _ if oid == Function::NEG_INT => prefix_op!(- : i64),
+        _ if oid == Function::NEG_FLOAT => prefix_op!(- : f64),
+        _ if oid == Function::NEG_DEC => prefix_op!(- : Decimal),
+        _ if oid == Function::NOT_BOOL => prefix_op!(! : bool),
+        _ if oid == Function::ADD_INT => infix_op!(+ : i64),
+        _ if oid == Function::ADD_FLOAT => infix_op!(+ : f64),
+        _ if oid == Function::ADD_DEC => infix_op!(+ : Decimal),
+        _ if oid == Function::SUB_INT => infix_op!(- : i64),
+        _ if oid == Function::SUB_FLOAT => infix_op!(- : f64),
+        _ if oid == Function::SUB_DEC => infix_op!(- : Decimal),
+        _ if oid == Function::MUL_INT => infix_op!(* : i64),
+        _ if oid == Function::MUL_FLOAT => infix_op!(* : f64),
+        _ if oid == Function::MUL_DEC => infix_op!(* : Decimal),
+        _ if oid == Function::DIV_INT => infix_op!(/ : i64),
+        _ if oid == Function::DIV_FLOAT => infix_op!(/ : f64),
+        _ if oid == Function::DIV_DEC => infix_op!(/ : Decimal),
+        _ if oid == Function::BETWEEN_ANY => between::<S, M>,
+        _ if oid == Function::EQ_ANY => comparison!(== : Value),
+        _ if oid == Function::NEQ_ANY => comparison!(!= : Value),
+        _ if oid == Function::LT_ANY => comparison!(<  : Value),
+        _ if oid == Function::LTE_ANY => comparison!(<= : Value),
+        _ if oid == Function::GTE_ANY => comparison!(>= : Value),
+        _ if oid == Function::GT_ANY => comparison!(>  : Value),
+        _ if oid == Function::OR_BOOL => arbitary_binary_op!(bool, |a, b| match (a, b) {
             (Some(a), Some(b)) => Value::Bool(a || b),
             (Some(true), _) | (_, Some(true)) => Value::Bool(true),
             _ => Value::Null,
         }),
-        _ if oid == Function::AND_BOOL    => arbitary_binary_op!(bool, |a, b| match (a, b) {
+        _ if oid == Function::AND_BOOL => arbitary_binary_op!(bool, |a, b| match (a, b) {
             (Some(a), Some(b)) => Value::Bool(a && b),
             (Some(false), _) | (_, Some(false)) => Value::Bool(false),
             _ => Value::Null,
         }),
         _ if oid == Function::IS_DISTINCT_FROM_ANY => comparison_include_null!(!= : Value),
         _ if oid == Function::IS_NOT_DISTINCT_FROM_ANY => comparison_include_null!(== : Value),
-        _ if oid == Function::ABS_INT   => method!(abs: i64),
+        _ if oid == Function::ABS_INT => method!(abs: i64),
         _ if oid == Function::ABS_FLOAT => method!(abs: f64),
-        _ if oid == Function::ABS_DEC   => method!(abs: Decimal),
+        _ if oid == Function::ABS_DEC => method!(abs: Decimal),
         // casts
-        _ if oid == Function::CAST_SELF         => cast_to!(Value),
-        _ if oid == Function::CAST_INT_TO_DEC   => cast_to!(Decimal),
+        _ if oid == Function::CAST_SELF => cast_to!(Value),
+        _ if oid == Function::CAST_INT_TO_DEC => cast_to!(Decimal),
         _ if oid == Function::CAST_INT_TO_FLOAT => cast_to!(f64),
-        _ if oid == Function::CAST_INT_TO_OID   => cast_to!(UntypedOid),
-        _ if oid == Function::NEXTVAL => nextval,
-        _ if oid == Function::NEXTVAL_OID => nextval_oid,
-        _ if oid == Function::MK_NEXTVAL_EXPR => mk_nextval_expr,
+        _ if oid == Function::CAST_INT_TO_OID => cast_to!(UntypedOid),
+        _ if oid == Function::NEXTVAL => nextval::<S, M>,
+        _ if oid == Function::NEXTVAL_OID => nextval_oid::<S, M>,
+        _ if oid == Function::MK_NEXTVAL_EXPR => mk_nextval_expr::<S, M>,
         // misc
-        _ if oid == Function::RANGE2 => range2,
-        _ if oid == Function::ARRAY_ELEMENT => array_element,
-        _ if oid == Function::ARRAY_POSITION => array_position,
-        _ if oid == Function::ARRAY_CONTAINS => array_contains,
+        _ if oid == Function::RANGE2 => range2::<S, M>,
+        _ if oid == Function::ARRAY_ELEMENT => array_element::<S, M>,
+        _ if oid == Function::ARRAY_POSITION => array_position::<S, M>,
+        _ if oid == Function::ARRAY_CONTAINS => array_contains::<S, M>,
 
         _ => return None,
     })
 }
 
 #[allow(clippy::boxed_local)]
-fn between<'env, S: StorageEngine>(
+fn between<'env, S: StorageEngine, M: ExecutionMode<'env, S>>(
     _catalog: Catalog<'env, S>,
-    _tx: &dyn Transaction<'env, S>,
+    _tx: M::TransactionRef<'_>,
     mut args: FunctionArgs,
 ) -> Result<Value> {
     assert_eq!(args.len(), 3);
@@ -220,9 +221,9 @@ pub(crate) fn get_aggregate_function(
 }
 
 #[allow(clippy::boxed_local)]
-fn range2<'env, S: StorageEngine>(
+fn range2<'env, S: StorageEngine, M: ExecutionMode<'env, S>>(
     _catalog: Catalog<'env, S>,
-    _tx: &dyn Transaction<'env, S>,
+    _tx: M::TransactionRef<'_>,
     mut args: FunctionArgs,
 ) -> Result<Value> {
     assert_eq!(args.len(), 2);
@@ -235,9 +236,9 @@ fn range2<'env, S: StorageEngine>(
 }
 
 #[allow(clippy::boxed_local)]
-fn array_element<'env, S: StorageEngine>(
+fn array_element<'env, S: StorageEngine, M: ExecutionMode<'env, S>>(
     _catalog: Catalog<'env, S>,
-    _tx: &dyn Transaction<'env, S>,
+    _tx: M::TransactionRef<'_>,
     mut args: FunctionArgs,
 ) -> Result<Value> {
     assert_eq!(args.len(), 2);
@@ -261,9 +262,9 @@ fn array_element<'env, S: StorageEngine>(
 }
 
 #[allow(clippy::boxed_local)]
-fn array_position<'env, S: StorageEngine>(
+fn array_position<'env, S: StorageEngine, M: ExecutionMode<'env, S>>(
     _catalog: Catalog<'env, S>,
-    _tx: &dyn Transaction<'env, S>,
+    _tx: M::TransactionRef<'_>,
     mut args: FunctionArgs,
 ) -> Result<Value> {
     assert_eq!(args.len(), 2);
@@ -282,9 +283,9 @@ fn array_position<'env, S: StorageEngine>(
 }
 
 #[allow(clippy::boxed_local)]
-fn array_contains<'env, S: StorageEngine>(
+fn array_contains<'env, S: StorageEngine, M: ExecutionMode<'env, S>>(
     _catalog: Catalog<'env, S>,
-    _tx: &dyn Transaction<'env, S>,
+    _tx: M::TransactionRef<'_>,
     mut args: FunctionArgs,
 ) -> Result<Value> {
     assert_eq!(args.len(), 2);
@@ -303,15 +304,15 @@ fn array_contains<'env, S: StorageEngine>(
 }
 
 #[allow(clippy::boxed_local)]
-fn nextval<'env, S: StorageEngine>(
+fn nextval<'env, S: StorageEngine, M: ExecutionMode<'env, S>>(
     catalog: Catalog<'env, S>,
-    tx: &dyn Transaction<'env, S>,
+    tx: M::TransactionRef<'_>,
     mut args: FunctionArgs,
 ) -> Result<Value> {
     assert_eq!(args.len(), 1);
     let tx = tx.try_as_write().expect("nextval should be passed a write transaction");
     let oid: Oid<Table> = args[0].take().cast().unwrap();
-    let sequence = catalog.system_table::<Sequence>(tx)?.get(oid)?;
+    let sequence = catalog.sequences(tx)?.get(oid)?;
     let seq_table = catalog.system_table_write::<Table>(tx)?.get(oid)?;
     let mut storage = seq_table.storage::<S, ReadWriteExecutionMode>(catalog, tx)?;
 
@@ -333,21 +334,21 @@ fn nextval<'env, S: StorageEngine>(
     Ok(Value::Int64(current))
 }
 
-fn nextval_oid<'env, S: StorageEngine>(
+fn nextval_oid<'env, S: StorageEngine, M: ExecutionMode<'env, S>>(
     catalog: Catalog<'env, S>,
-    tx: &dyn Transaction<'env, S>,
+    tx: M::TransactionRef<'_>,
     args: FunctionArgs,
 ) -> Result<Value> {
-    let next = nextval(catalog, tx, args)?;
+    let next = nextval::<S, M>(catalog, tx, args)?;
     Ok(Value::Oid(next.cast().unwrap()))
 }
 
 /// A function that returns an expression that evaluates to the next value of the given sequence.
 /// This is used to create the `default_expr` value for a column with a generated identity.
 #[allow(clippy::boxed_local)]
-fn mk_nextval_expr<'env, S: StorageEngine>(
+fn mk_nextval_expr<'env, S: StorageEngine, M: ExecutionMode<'env, S>>(
     _catalog: Catalog<'env, S>,
-    _tx: &dyn Transaction<'env, S>,
+    _tx: M::TransactionRef<'_>,
     mut args: FunctionArgs,
 ) -> Result<Value> {
     let oid: UntypedOid = args[0].take().cast().unwrap();

@@ -7,12 +7,14 @@ use rustc_hash::FxHashMap;
 
 use super::*;
 
+type AggregateFunctionAndArgs<'env, S, M> = (ir::Function, Option<ExecutableExpr<'env, S, M>>);
+
 #[derive(Debug)]
 pub struct PhysicalHashAggregate<'env, 'txn, S, M> {
     id: PhysicalNodeId,
-    aggregates: Box<[(ir::Function, Option<ExecutableExpr<S>>)]>,
+    aggregates: Box<[AggregateFunctionAndArgs<'env, S, M>]>,
     children: [PhysicalNodeId; 1],
-    group_expr: ExecutableTupleExpr<S>,
+    group_expr: ExecutableTupleExpr<'env, S, M>,
     output_groups: FxHashMap<Tuple, Vec<Box<dyn AggregateFunctionInstance>>>,
     _marker: PhantomData<dyn PhysicalNode<'env, 'txn, S, M>>,
 }
@@ -21,9 +23,9 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     PhysicalHashAggregate<'env, 'txn, S, M>
 {
     pub(crate) fn plan(
-        aggregates: Box<[(ir::Function, Option<ExecutableExpr<S>>)]>,
+        aggregates: Box<[AggregateFunctionAndArgs<'env, S, M>]>,
         source: PhysicalNodeId,
-        group_expr: ExecutableTupleExpr<S>,
+        group_expr: ExecutableTupleExpr<'env, S, M>,
         arena: &mut PhysicalNodeArena<'env, 'txn, S, M>,
     ) -> PhysicalNodeId {
         arena.alloc_with(|id| {
@@ -66,13 +68,13 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSink
     ) -> ExecutionResult<()> {
         let storage = ecx.storage();
         let tx = ecx.tx();
-        let group = self.group_expr.execute(storage, &tx, &tuple)?;
+        let group = self.group_expr.execute(storage, tx, &tuple)?;
         let functions = self.output_groups.entry(group).or_insert_with(|| {
             self.aggregates.iter().map(|(f, _expr)| f.get_aggregate_instance()).collect()
         });
 
         for (state, (_f, expr)) in functions[..].iter_mut().zip(&self.aggregates[..]) {
-            let value = expr.as_ref().map(|expr| expr.execute(storage, &tx, &tuple)).transpose()?;
+            let value = expr.as_ref().map(|expr| expr.execute(storage, tx, &tuple)).transpose()?;
             state.update(value);
         }
 

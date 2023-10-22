@@ -13,7 +13,7 @@ pub(crate) struct PhysicalNestedLoopJoin<'env, 'txn, S, M> {
     id: PhysicalNodeId,
     children: [PhysicalNodeId; 2],
     join_kind: ir::JoinKind,
-    join_predicate: ExecutableExpr<S>,
+    join_predicate: ExecutableExpr<'env, S, M>,
     // mutex is only used during build phase
     rhs_tuples_build: Vec<Tuple>,
     // tuples are moved into this vector during finalization (to avoid unnecessary locks)
@@ -29,7 +29,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
 {
     pub fn plan(
         join_kind: ir::JoinKind,
-        join_predicate: ExecutableExpr<S>,
+        join_predicate: ExecutableExpr<'env, S, M>,
         lhs_node: PhysicalNodeId,
         rhs_node: PhysicalNodeId,
         arena: &mut PhysicalNodeArena<'env, 'txn, S, M>,
@@ -155,7 +155,7 @@ impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalOperator<'
 
         let keep = self
             .join_predicate
-            .execute(storage, &tx, &joint_tuple)?
+            .execute(storage, tx, &joint_tuple)?
             .cast::<Option<bool>>()?
             .unwrap_or(false);
 

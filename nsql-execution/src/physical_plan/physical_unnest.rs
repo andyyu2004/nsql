@@ -9,13 +9,13 @@ use crate::TupleStream;
 #[derive(Debug)]
 pub struct PhysicalUnnest<'env, 'txn, S, M> {
     id: PhysicalNodeId,
-    expr: ExecutableExpr<S>,
+    expr: ExecutableExpr<'env, S, M>,
     _marker: PhantomData<dyn PhysicalNode<'env, 'txn, S, M>>,
 }
 
 impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalUnnest<'env, 'txn, S, M> {
     pub(crate) fn plan(
-        expr: ExecutableExpr<S>,
+        expr: ExecutableExpr<'env, S, M>,
         arena: &mut PhysicalNodeArena<'env, 'txn, S, M>,
     ) -> PhysicalNodeId {
         arena.alloc_with(|id| Box::new(Self { id, expr, _marker: PhantomData }))
@@ -31,7 +31,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
     ) -> ExecutionResult<TupleStream<'_>> {
         let storage = ecx.storage();
         let tx = ecx.tx();
-        let values = match self.expr.execute(storage, &tx, &Tuple::empty())? {
+        let values = match self.expr.execute(storage, tx, &Tuple::empty())? {
             Value::Array(values) => values,
             Value::Null => Box::new([]),
             _ => panic!("unnest expression should evaluate to an array"),

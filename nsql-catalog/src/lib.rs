@@ -189,6 +189,14 @@ impl<'env, S: StorageEngine> Catalog<'env, S> {
     }
 
     #[inline]
+    pub fn sequences<'txn>(
+        self,
+        tx: &'txn dyn Transaction<'env, S>,
+    ) -> Result<SystemTableView<'env, 'txn, S, ReadonlyExecutionMode, Sequence>> {
+        self.system_table(tx)
+    }
+
+    #[inline]
     pub fn system_table<'txn, T: SystemEntity>(
         self,
         tx: &'txn dyn Transaction<'env, S>,

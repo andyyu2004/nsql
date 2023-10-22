@@ -38,7 +38,7 @@ use mk_consts;
 
 struct BootstrapFunctionCatalog;
 
-impl<'env, S, F> FunctionCatalog<'env, S, F> for BootstrapFunctionCatalog {
+impl<'env, S, M, F> FunctionCatalog<'env, S, M, F> for BootstrapFunctionCatalog {
     fn storage(&self) -> &'env S {
         panic!("cannot get storage during bootstrap")
     }

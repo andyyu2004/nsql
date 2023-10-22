@@ -6,7 +6,7 @@ use super::*;
 pub struct PhysicalFilter<'env, 'txn, S, M> {
     id: PhysicalNodeId,
     child: PhysicalNodeId,
-    predicate: ExecutableExpr<S>,
+    predicate: ExecutableExpr<'env, S, M>,
     _marker: PhantomData<dyn PhysicalNode<'env, 'txn, S, M>>,
 }
 
@@ -15,7 +15,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
 {
     pub(crate) fn plan(
         source: PhysicalNodeId,
-        predicate: ExecutableExpr<S>,
+        predicate: ExecutableExpr<'env, S, M>,
         arena: &mut PhysicalNodeArena<'env, 'txn, S, M>,
     ) -> PhysicalNodeId {
         arena.alloc_with(|id| Box::new(Self { id, child: source, predicate, _marker: PhantomData }))
@@ -33,7 +33,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     ) -> ExecutionResult<OperatorState<Tuple>> {
         let storage = ecx.storage();
         let tx = ecx.tx();
-        let value = self.predicate.execute(storage, &tx, &input)?;
+        let value = self.predicate.execute(storage, tx, &input)?;
         let keep = value
             .cast::<Option<bool>>()
             .expect("this should have failed during planning")
