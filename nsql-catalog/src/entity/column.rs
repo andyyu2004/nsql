@@ -2,6 +2,7 @@ use std::fmt;
 
 use nsql_storage::eval::Expr;
 
+use super::table::ColumnStorageInfo;
 use super::*;
 use crate::SystemEntityPrivate;
 

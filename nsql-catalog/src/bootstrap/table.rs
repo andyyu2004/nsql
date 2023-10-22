@@ -1,6 +1,5 @@
-use nsql_storage::ColumnStorageInfo;
-
 use super::*;
+use crate::entity::table::ColumnStorageInfo;
 use crate::SystemEntityPrivate;
 
 impl Table {

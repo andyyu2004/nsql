@@ -6,7 +6,10 @@ edition = "2021"
 [dependencies]
 anyhow = "1.0.70"
 fix-hidden-lifetime-bug = "0.2.5"
+atomic-take = "1.1.0"
 indexmap = "2"
+next-gen = "0.1.1"
+nsql-rkyv = { path = "../nsql-rkyv" }
 nsql-core = { path = "../nsql-core" }
 nsql-derive = { version = "0.1.0", path = "../nsql-derive" }
 nsql-storage = { path = "../nsql-storage" }

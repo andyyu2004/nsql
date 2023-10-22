@@ -3,15 +3,11 @@
 #![feature(once_cell_try)]
 
 pub mod eval;
-mod index;
-mod table_storage;
 pub mod tuple;
 pub mod value;
 
 use anyhow::Error;
-pub use index::IndexStorageInfo;
-use nsql_storage_engine::{StorageEngine, Transaction};
-pub use table_storage::{ColumnStorageInfo, PrimaryKeyConflict, TableStorage, TableStorageInfo};
+use nsql_storage_engine::StorageEngine;
 
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 
@@ -29,14 +25,6 @@ impl<S: StorageEngine> Storage<S> {
     #[inline]
     pub fn begin_write(&self) -> Result<S::WriteTransaction<'_>, S::Error> {
         self.storage.begin_write()
-    }
-
-    pub fn load(&self, _tx: &dyn Transaction<'_, S>) -> Result<()> {
-        todo!()
-        // let reader = self.pager.meta_page_reader();
-        // let checkpointer = Checkpointer::new(self.pager.as_ref());
-        // let checkpoint = checkpointer.load_checkpoint(tx, reader).await?;
-        // Ok(checkpoint)
     }
 
     pub fn checkpoint(&self) -> Result<()> {

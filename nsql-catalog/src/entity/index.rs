@@ -1,6 +1,6 @@
 use nsql_storage::eval::{Expr, TupleExpr};
-use nsql_storage::IndexStorageInfo;
 
+use super::table::IndexStorageInfo;
 use super::*;
 use crate::{ColumnIdentity, Namespace, SystemEntityPrivate};
 

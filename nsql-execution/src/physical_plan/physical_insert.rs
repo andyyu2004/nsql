@@ -1,10 +1,9 @@
 use std::mem;
 use std::sync::OnceLock;
 
-use nsql_catalog::Table;
+use nsql_catalog::{PrimaryKeyConflict, Table, TableStorage};
 use nsql_core::Oid;
 use nsql_storage::tuple::FromTuple;
-use nsql_storage::{PrimaryKeyConflict, TableStorage};
 use nsql_storage_engine::fallible_iterator;
 use parking_lot::Mutex;
 

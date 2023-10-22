@@ -1,9 +1,8 @@
 use anyhow::Result;
 use nsql_core::LogicalType;
 use nsql_derive::{FromTuple, IntoTuple};
-use nsql_storage::tuple::{FromTuple, FromTupleError, IntoTuple, Tuple};
+use nsql_storage::tuple::{FromTuple, IntoTuple, Tuple};
 use nsql_storage::value::{CastError, FromValue, Value};
-use nsql_storage::ColumnStorageInfo;
 use nsql_storage_engine::{StorageEngine, Transaction};
 
 use crate::{

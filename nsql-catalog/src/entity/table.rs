@@ -1,11 +1,18 @@
+mod storage;
+
 use anyhow::Result;
+use nsql_core::LogicalType;
+use nsql_derive::{FromTuple, IntoTuple};
 use nsql_storage::eval::Expr;
-use nsql_storage::{IndexStorageInfo, TableStorage, TableStorageInfo};
+use nsql_storage::value::Value;
 use nsql_storage_engine::{
     ExecutionMode, FallibleIterator, ReadWriteExecutionMode, StorageEngine, Transaction,
 };
 
-use super::*;
+pub use self::storage::{
+    ColumnStorageInfo, IndexStorageInfo, PrimaryKeyConflict, TableStorage, TableStorageInfo,
+};
+use crate::bootstrap::{BootstrapColumn, BootstrapSequence};
 use crate::{
     Catalog, Column, ColumnIdentity, Function, Index, Name, Namespace, Oid, SystemEntity,
     SystemEntityPrivate,

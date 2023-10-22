@@ -1,5 +1,5 @@
 #![deny(rust_2018_idioms)]
-#![feature(never_type)]
+#![feature(never_type, once_cell_try)]
 
 mod bootstrap;
 mod entity;
@@ -12,7 +12,6 @@ pub use anyhow::Error;
 use nsql_core::{Name, Oid};
 use nsql_storage::tuple::{FromTuple, IntoTuple};
 use nsql_storage::value::Value;
-use nsql_storage::TableStorageInfo;
 use nsql_storage_engine::{
     ReadWriteExecutionMode, ReadonlyExecutionMode, StorageEngine, Transaction,
 };
@@ -26,7 +25,7 @@ pub use self::entity::index::{Index, IndexKind};
 pub use self::entity::namespace::Namespace;
 pub use self::entity::operator::{Operator, OperatorKind};
 pub use self::entity::sequence::{Sequence, SequenceData};
-pub use self::entity::table::Table;
+pub use self::entity::table::{PrimaryKeyConflict, Table, TableStorage};
 use self::private::SystemEntityPrivate;
 pub use self::system_table::SystemTableView;
 
@@ -34,6 +33,7 @@ pub type Result<T, E = Error> = std::result::Result<T, E>;
 
 mod private {
     use super::*;
+    use crate::entity::table::TableStorageInfo;
     pub trait SystemEntityPrivate {
         fn table() -> Oid<Table>;
 

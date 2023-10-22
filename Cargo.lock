@@ -1309,10 +1309,13 @@ name = "nsql-catalog"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "atomic-take",
  "fix-hidden-lifetime-bug",
  "indexmap 2.0.2",
+ "next-gen",
  "nsql-core",
  "nsql-derive",
+ "nsql-rkyv",
  "nsql-storage",
  "nsql-storage-engine",
  "nsql-util",

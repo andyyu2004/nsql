@@ -18,12 +18,12 @@ pub fn derive_from_tuple(input: TokenStream) -> TokenStream {
     let field_name = fields.iter().map(|field| &field.ident);
 
     quote! {
-        impl FromTuple for #ident {
+        impl ::nsql_storage::tuple::FromTuple for #ident {
             #[inline]
-            fn from_values(mut values: impl Iterator<Item = Value>) -> Result<Self, FromTupleError> {
+            fn from_values(mut values: impl Iterator<Item = ::nsql_storage::value::Value>) -> Result<Self, ::nsql_storage::tuple::FromTupleError> {
                 Ok(Self {
                     #(
-                        #field_name: values.next().ok_or(FromTupleError::NotEnoughValues)?.cast()?,
+                        #field_name: values.next().ok_or(::nsql_storage::tuple::FromTupleError::NotEnoughValues)?.cast()?,
                     )*
                 })
             }
@@ -48,10 +48,10 @@ pub fn derive_into_tuple(input: TokenStream) -> TokenStream {
     let field_name = fields.iter().map(|field| &field.ident);
 
     quote! {
-        impl IntoTuple for #ident {
+        impl ::nsql_storage::tuple::IntoTuple for #ident {
             #[inline]
-            fn into_tuple(self) -> Tuple {
-                Tuple::from([
+            fn into_tuple(self) -> ::nsql_storage::tuple::Tuple {
+                ::nsql_storage::tuple::Tuple::from([
                     #(
                         self.#field_name.into(),
                     )*

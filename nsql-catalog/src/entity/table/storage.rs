@@ -1,20 +1,19 @@
 use std::fmt;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
-use ::next_gen::prelude::*;
+use atomic_take::AtomicTake;
 use fix_hidden_lifetime_bug::fix_hidden_lifetime_bug;
 use next_gen::generator_fn::GeneratorFn;
+use next_gen::prelude::*;
 use nsql_core::{LogicalType, Name, Oid};
+use nsql_storage::eval::{FunctionCatalog, TupleExpr};
+use nsql_storage::tuple::{IntoTuple, Tuple, TupleIndex};
+use nsql_storage::value::Value;
 use nsql_storage_engine::{
     fallible_iterator, ExecutionMode, FallibleIterator, KeyExists, ReadTree,
     ReadWriteExecutionMode, StorageEngine, WriteTree,
 };
 use rkyv::AlignedVec;
-
-use crate::eval::FunctionCatalog;
-use crate::index::{IndexStorage, IndexStorageInfo};
-use crate::tuple::{IntoTuple, Tuple, TupleIndex};
-use crate::value::Value;
 
 #[allow(explicit_outlives_requirements)]
 pub struct TableStorage<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> {
@@ -304,5 +303,56 @@ pub struct ColumnStorageInfo {
 impl ColumnStorageInfo {
     pub fn new(name: impl Into<Name>, logical_type: LogicalType, is_primary_key: bool) -> Self {
         Self { name: name.into(), logical_type, is_primary_key }
+    }
+}
+
+pub(crate) struct IndexStorage<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> {
+    storage: TableStorage<'env, 'txn, S, M>,
+    index_expr: AtomicTake<TupleExpr>,
+    prepared_expr: OnceLock<TupleExpr<Box<dyn nsql_storage::eval::ScalarFunction<'env, S, M>>>>,
+}
+
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> IndexStorage<'env, 'txn, S, M> {
+    pub fn open(
+        storage: &S,
+        tx: M::TransactionRef<'txn>,
+        info: IndexStorageInfo,
+    ) -> Result<Self, S::Error> {
+        let storage = TableStorage::open(storage, tx, info.table, vec![])?;
+        Ok(Self {
+            storage,
+            index_expr: AtomicTake::new(info.index_expr),
+            prepared_expr: OnceLock::new(),
+        })
+    }
+}
+
+impl<'env, 'txn, S: StorageEngine> IndexStorage<'env, 'txn, S, ReadWriteExecutionMode> {
+    #[inline]
+    pub fn insert(
+        &mut self,
+        catalog: &dyn FunctionCatalog<'env, S, ReadWriteExecutionMode>,
+        tx: &S::WriteTransaction<'env>,
+        tuple: &Tuple,
+    ) -> Result<(), anyhow::Error> {
+        let expr = self
+            .prepared_expr
+            .get_or_try_init(|| self.index_expr.take().unwrap().prepare(catalog, tx))?;
+
+        let tuple = expr.execute(catalog.storage(), tx, tuple)?;
+        self.storage
+            .insert(catalog, tx, &tuple)?
+            .map_err(|PrimaryKeyConflict { key }| anyhow::anyhow!("unique index conflict: {key}"))
+    }
+}
+
+pub struct IndexStorageInfo {
+    table: TableStorageInfo,
+    index_expr: TupleExpr,
+}
+
+impl IndexStorageInfo {
+    pub fn new(table: TableStorageInfo, index_expr: TupleExpr) -> Self {
+        Self { table, index_expr }
     }
 }

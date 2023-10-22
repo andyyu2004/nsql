@@ -6,11 +6,11 @@ use fix_hidden_lifetime_bug::fix_hidden_lifetime_bug;
 use nsql_core::Oid;
 use nsql_storage::eval::FunctionCatalog;
 use nsql_storage::tuple::{FromTuple, IntoTuple};
-use nsql_storage::{PrimaryKeyConflict, TableStorage};
 use nsql_storage_engine::{
     ExecutionMode, FallibleIterator, ReadWriteExecutionMode, StorageEngine, Transaction,
 };
 
+use crate::entity::table::{PrimaryKeyConflict, TableStorage};
 use crate::{Catalog, Result, SystemEntity, Table};
 
 #[repr(transparent)]
