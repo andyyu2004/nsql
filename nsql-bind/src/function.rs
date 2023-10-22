@@ -1,18 +1,19 @@
 use nsql_catalog::{Function, Operator};
 use nsql_core::ty::{TypeFold, TypeFolder, Zip, ZipError, ZipResult, Zipper};
 use nsql_core::LogicalType;
-use nsql_storage_engine::{FallibleIterator, StorageEngine, Transaction};
+use nsql_storage_engine::{ExecutionMode, FallibleIterator, StorageEngine};
 
 use crate::{Binder, Error, Result};
 
-impl<'env, S: StorageEngine> Binder<'env, S> {
+impl<'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
+    Binder<'a, 'env, 'txn, S, M>
+{
     pub(crate) fn resolve_candidate_operators(
         &self,
-        tx: &dyn Transaction<'env, S>,
         mut candidates: impl FallibleIterator<Item = Operator, Error = Error>,
         arg_types: &[LogicalType],
     ) -> Result<Option<ir::MonoOperator>> {
-        let functions_table = self.catalog.functions(tx)?;
+        let functions_table = self.catalog.functions(self.tx)?;
         candidates.find_map(|op| {
             let f = functions_table.get(op.function())?;
             Ok(try {

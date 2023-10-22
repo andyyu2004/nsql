@@ -10,14 +10,15 @@ use nsql_core::LogicalType;
 use nsql_storage::expr::{Expr, ExprOp, TupleExpr};
 use nsql_storage::tuple::TupleIndex;
 use nsql_storage::Result;
-use nsql_storage_engine::{ReadWriteExecutionMode, StorageEngine, Transaction};
+use nsql_storage_engine::{ReadWriteExecutionMode, StorageEngine};
 
 use self::namespace::BootstrapNamespace;
 use self::table::BootstrapTable;
 pub(crate) use self::table::{BootstrapColumn, BootstrapSequence};
 use crate::{
     Column, ColumnIdentity, ColumnIndex, Function, FunctionCatalog, Index, IndexKind, Namespace,
-    Oid, Operator, OperatorKind, Sequence, SystemTableView, Table, MAIN_SCHEMA_PATH,
+    Oid, Operator, OperatorKind, Sequence, SystemTableView, Table, TransactionContext,
+    MAIN_SCHEMA_PATH,
 };
 
 // The order matters as it will determine which id is assigned to each element
@@ -43,14 +44,21 @@ impl<'env, S, M, F> FunctionCatalog<'env, S, M, F> for BootstrapFunctionCatalog 
         panic!("cannot get storage during bootstrap")
     }
 
-    fn get_function(&self, _tx: &dyn Transaction<'env, S>, _oid: Oid<Function>) -> Result<F> {
+    fn get_function<'txn>(
+        &self,
+        _tx: &dyn TransactionContext<'env, 'txn, S, M>,
+        _oid: Oid<Function>,
+    ) -> Result<F>
+    where
+        'env: 'txn,
+    {
         bail!("cannot get function during bootstrap")
     }
 }
 
-pub(crate) fn bootstrap<'env, S: StorageEngine>(
+pub(crate) fn bootstrap<'env: 'txn, 'txn, S: StorageEngine>(
     storage: &'env S,
-    tx: &S::WriteTransaction<'env>,
+    tx: &dyn TransactionContext<'env, 'txn, S, ReadWriteExecutionMode>,
 ) -> Result<()> {
     tracing::debug!("bootstrapping namespaces");
 
@@ -77,7 +85,7 @@ pub(crate) fn bootstrap<'env, S: StorageEngine>(
     tables.try_for_each(|table| {
         if table.oid != Table::TABLE {
             // can't do this as this table is currently open
-            table.create_storage_for_bootstrap(storage, tx)?;
+            table.create_storage_for_bootstrap::<S>(storage, tx.transaction())?;
         }
         table_table.insert(catalog, tx, table)
     })?;

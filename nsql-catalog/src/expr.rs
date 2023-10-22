@@ -1,29 +1,57 @@
+use std::fmt;
+
 use anyhow::Result;
-use nsql_storage::expr::{
-    ExecutableExpr, ExecutableExprOp, ExecutableTupleExpr, Expr, ExprOp, FunctionArgs, TupleExpr,
-};
+use nsql_storage::expr::{Expr, ExprOp, TupleExpr};
 use nsql_storage::tuple::Tuple;
 use nsql_storage::value::Value;
-use nsql_storage_engine::{ExecutionMode, StorageEngine, Transaction};
+use nsql_storage_engine::{ExecutionMode, StorageEngine};
 
-use crate::FunctionCatalog;
+use crate::{FunctionCatalog, TransactionContext};
+
+// Note: smallvec seems to always be slower than this for sqlite/select3.sql
+// This alias is useful for testing different types
+pub type FunctionArgs = Box<[Value]>;
+
+pub type ExecutableTupleExpr<'env, S, M> = TupleExpr<ExecutableFunction<'env, S, M>>;
+
+pub type ExecutableExpr<'env, S, M> = Expr<ExecutableFunction<'env, S, M>>;
+
+pub type ExecutableFunction<'env, S, M> = Box<dyn ScalarFunction<'env, S, M>>;
+
+pub type ExecutableExprOp<'env, S, M> = ExprOp<ExecutableFunction<'env, S, M>>;
+
+pub trait ScalarFunction<'env, S: StorageEngine, M: ExecutionMode<'env, S>>:
+    fmt::Debug + Send + Sync
+{
+    fn invoke<'txn>(
+        &self,
+        storage: &'env S,
+        tx: &dyn TransactionContext<'env, 'txn, S, M>,
+        args: FunctionArgs,
+    ) -> Result<Value>
+    where
+        'env: 'txn;
+
+    /// The number f arguments this function takes.
+    fn arity(&self) -> usize;
+}
 
 pub trait TupleExprResolveExt {
     /// Prepare this tuple expression for evaluation.
     // This resolves any function oids and replaces them with the actual function.
-    fn resolve<'env, S: StorageEngine, M: ExecutionMode<'env, S>, F>(
+    fn resolve<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, F>(
         self,
         catalog: &dyn FunctionCatalog<'env, S, M, F>,
-        tx: &dyn Transaction<'env, S>,
+        tx: &dyn TransactionContext<'env, 'txn, S, M>,
     ) -> Result<TupleExpr<F>>;
 }
 
 impl TupleExprResolveExt for TupleExpr {
     #[inline]
-    fn resolve<'env, S: StorageEngine, M: ExecutionMode<'env, S>, F>(
+    fn resolve<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, F>(
         self,
         catalog: &dyn FunctionCatalog<'env, S, M, F>,
-        tx: &dyn Transaction<'env, S>,
+        tx: &dyn TransactionContext<'env, 'txn, S, M>,
     ) -> Result<TupleExpr<F>> {
         self.map(|oid| catalog.get_function(tx, oid.cast()))
     }
@@ -32,20 +60,25 @@ impl TupleExprResolveExt for TupleExpr {
 pub trait ExprResolveExt {
     /// Prepare this expression for evaluation.
     // This resolves any function oids and replaces them with what the catalog returns
-    fn resolve<'env, S: StorageEngine, M: ExecutionMode<'env, S>, F>(
+    fn resolve<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, F>(
         self,
         catalog: &dyn FunctionCatalog<'env, S, M, F>,
-        tx: &dyn Transaction<'env, S>,
-    ) -> Result<Expr<F>>;
+        tx: &dyn TransactionContext<'env, 'txn, S, M>,
+    ) -> Result<Expr<F>>
+    where
+        'env: 'txn;
 }
 
 impl ExprResolveExt for Expr {
     #[inline]
-    fn resolve<'env, S: StorageEngine, M: ExecutionMode<'env, S>, F>(
+    fn resolve<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, F>(
         self,
         catalog: &dyn FunctionCatalog<'env, S, M, F>,
-        tx: &dyn Transaction<'env, S>,
-    ) -> Result<Expr<F>> {
+        tx: &dyn TransactionContext<'env, 'txn, S, M>,
+    ) -> Result<Expr<F>>
+    where
+        'env: 'txn,
+    {
         self.map(|oid| catalog.get_function(tx, oid.cast()))
     }
 }
@@ -53,20 +86,24 @@ impl ExprResolveExt for Expr {
 pub trait ExprEvalExt<'env, S: StorageEngine, M: ExecutionMode<'env, S>> {
     type Output;
 
-    fn eval(
+    fn eval<'txn>(
         &self,
         storage: &'env S,
-        tx: M::TransactionRef<'_>,
+        tx: &dyn TransactionContext<'env, 'txn, S, M>,
         tuple: &Tuple,
-    ) -> Result<Self::Output>;
+    ) -> Result<Self::Output>
+    where
+        'env: 'txn;
 
-    fn eval_with(
+    fn eval_with<'txn>(
         &self,
         evaluator: &mut Evaluator,
         storage: &'env S,
-        tx: M::TransactionRef<'_>,
+        tx: &dyn TransactionContext<'env, 'txn, S, M>,
         tuple: &Tuple,
-    ) -> Result<Self::Output>;
+    ) -> Result<Self::Output>
+    where
+        'env: 'txn;
 }
 
 impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> ExprEvalExt<'env, S, M>
@@ -75,19 +112,30 @@ impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> ExprEvalExt<'env, S, M>
     type Output = Tuple;
 
     #[inline]
-    fn eval(&self, storage: &'env S, tx: M::TransactionRef<'_>, tuple: &Tuple) -> Result<Tuple> {
+    fn eval<'txn>(
+        &self,
+        storage: &'env S,
+        tx: &dyn TransactionContext<'env, 'txn, S, M>,
+        tuple: &Tuple,
+    ) -> Result<Tuple>
+    where
+        'env: 'txn,
+    {
         let mut evaluator = Evaluator::default();
         self.eval_with(&mut evaluator, storage, tx, tuple)
     }
 
     #[inline]
-    fn eval_with(
+    fn eval_with<'txn>(
         &self,
         evaluator: &mut Evaluator,
         storage: &'env S,
-        tx: M::TransactionRef<'_>,
+        tx: &dyn TransactionContext<'env, 'txn, S, M>,
         tuple: &Tuple,
-    ) -> Result<Tuple> {
+    ) -> Result<Tuple>
+    where
+        'env: 'txn,
+    {
         self.exprs().iter().map(|expr| expr.eval_with(evaluator, storage, tx, tuple)).collect()
     }
 }
@@ -98,19 +146,30 @@ impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> ExprEvalExt<'env, S, M>
     type Output = Value;
 
     #[inline]
-    fn eval(&self, storage: &'env S, tx: M::TransactionRef<'_>, tuple: &Tuple) -> Result<Value> {
+    fn eval<'txn>(
+        &self,
+        storage: &'env S,
+        tx: &dyn TransactionContext<'env, 'txn, S, M>,
+        tuple: &Tuple,
+    ) -> Result<Value>
+    where
+        'env: 'txn,
+    {
         let mut evaluator = Evaluator::default();
         self.eval_with(&mut evaluator, storage, tx, tuple)
     }
 
     #[inline]
-    fn eval_with(
+    fn eval_with<'txn>(
         &self,
         evaluator: &mut Evaluator,
         storage: &'env S,
-        tx: M::TransactionRef<'_>,
+        tx: &dyn TransactionContext<'env, 'txn, S, M>,
         tuple: &Tuple,
-    ) -> Result<Value> {
+    ) -> Result<Value>
+    where
+        'env: 'txn,
+    {
         evaluator.eval_expr(storage, tx, tuple, self)
     }
 }
@@ -122,10 +181,10 @@ pub struct Evaluator {
 }
 
 impl Evaluator {
-    pub fn eval_expr<'env, S: StorageEngine, M: ExecutionMode<'env, S>>(
+    pub fn eval_expr<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
         &mut self,
         storage: &'env S,
-        tx: M::TransactionRef<'_>,
+        tx: &dyn TransactionContext<'env, 'txn, S, M>,
         tuple: &Tuple,
         expr: &ExecutableExpr<'env, S, M>,
     ) -> Result<Value> {
@@ -149,10 +208,10 @@ impl Evaluator {
         Ok(self.stack.pop().unwrap())
     }
 
-    fn execute_op<'env, S: StorageEngine, M: ExecutionMode<'env, S>>(
+    fn execute_op<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
         &mut self,
         storage: &'env S,
-        tx: M::TransactionRef<'_>,
+        tx: &dyn TransactionContext<'env, 'txn, S, M>,
         tuple: &Tuple,
         op: &ExecutableExprOp<'env, S, M>,
     ) -> Result<()> {

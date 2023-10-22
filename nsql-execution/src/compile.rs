@@ -2,9 +2,9 @@ use std::mem;
 
 use anyhow::Result;
 use nsql_catalog::expr::ExprResolveExt;
-use nsql_catalog::{Function, FunctionCatalog};
-use nsql_core::{Oid, UntypedOid};
-use nsql_storage::expr::{Expr, ExprOp, TupleExpr};
+use nsql_catalog::{Function, FunctionCatalog, TransactionContext};
+use nsql_core::{Oid, UntypedOid, UntypedOid};
+use nsql_storage::expr::{Expr, Expr, ExprOp, ExprOp, FunctionCatalog, TupleExpr, TupleExpr};
 use nsql_storage_engine::{ExecutionMode, StorageEngine, Transaction};
 
 #[derive(Debug)]
@@ -22,7 +22,7 @@ impl<F> Compiler<F> {
     pub fn compile_many<'env, S: StorageEngine, M: ExecutionMode<'env, S>>(
         &mut self,
         catalog: &dyn FunctionCatalog<'env, S, M, F>,
-        tx: &dyn Transaction<'env, S>,
+        tx: &dyn TransactionContext<'env, '_, S, M>,
         q: &opt::Query,
         exprs: impl IntoIterator<Item = opt::Expr<'_>>,
     ) -> Result<TupleExpr<F>> {
@@ -36,7 +36,7 @@ impl<F> Compiler<F> {
     pub fn compile<'env, S: StorageEngine, M: ExecutionMode<'env, S>>(
         &mut self,
         catalog: &dyn FunctionCatalog<'env, S, M, F>,
-        tx: &dyn Transaction<'env, S>,
+        tx: &dyn TransactionContext<'env, '_, S, M>,
         q: &opt::Query,
         expr: opt::Expr<'_>,
     ) -> Result<Expr<F>> {
@@ -48,7 +48,7 @@ impl<F> Compiler<F> {
     fn build<'env, S: StorageEngine, M: ExecutionMode<'env, S>>(
         &mut self,
         catalog: &dyn FunctionCatalog<'env, S, M, F>,
-        tx: &dyn Transaction<'env, S>,
+        tx: &dyn TransactionContext<'env, '_, S, M>,
         q: &opt::Query,
         expr: &opt::Expr<'_>,
     ) -> Result<()> {

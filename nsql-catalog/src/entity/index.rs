@@ -2,7 +2,7 @@ use nsql_storage::expr::{Expr, TupleExpr};
 
 use super::table::IndexStorageInfo;
 use super::*;
-use crate::{ColumnIdentity, Namespace, SystemEntityPrivate};
+use crate::{ColumnIdentity, Namespace, SystemEntityPrivate, TransactionContext};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, FromTuple)]
 pub struct Index {
@@ -16,12 +16,12 @@ pub struct Index {
 
 impl Index {
     #[inline]
-    pub fn storage_info<'env, S: StorageEngine>(
+    pub fn storage_info<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
         &self,
         catalog: Catalog<'env, S>,
-        tx: &dyn Transaction<'env, S>,
+        tx: &dyn TransactionContext<'env, 'txn, S, M>,
     ) -> Result<IndexStorageInfo> {
-        let table = catalog.get::<Table>(tx, self.table)?.table_storage_info(catalog, tx)?;
+        let table = catalog.get::<M, Table>(tx, self.table)?.table_storage_info(catalog, tx)?;
         Ok(IndexStorageInfo::new(table, self.index_expr.clone()))
     }
 
@@ -82,21 +82,27 @@ impl SystemEntity for Index {
     }
 
     #[inline]
-    fn name<'env, S: StorageEngine>(
+    fn name<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
         &self,
         catalog: Catalog<'env, S>,
-        tx: &dyn Transaction<'env, S>,
+        tx: &dyn TransactionContext<'env, 'txn, S, M>,
     ) -> Result<Name> {
-        Ok(catalog.get::<Table>(tx, self.table)?.name())
+        Ok(catalog.get::<M, Table>(tx, self.table)?.name())
     }
 
     #[inline]
-    fn parent_oid<'env, S: StorageEngine>(
+    fn parent_oid<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
         &self,
         catalog: Catalog<'env, S>,
-        tx: &dyn Transaction<'env, S>,
+        tx: &dyn TransactionContext<'env, 'txn, S, M>,
     ) -> Result<Option<Oid<Self::Parent>>> {
-        catalog.get::<Table>(tx, self.table)?.parent_oid(catalog, tx)
+        catalog.get::<M, Table>(tx, self.table)?.parent_oid(catalog, tx)
+    }
+
+    fn extract_cache<'a, 'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
+        caches: &'a TransactionLocalCatalogCaches<'env, 'txn, S, M>,
+    ) -> &'a OnceLock<SystemTableView<'env, 'txn, S, M, Self>> {
+        &caches.indexes
     }
 }
 

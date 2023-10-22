@@ -27,10 +27,10 @@ use std::sync::Arc;
 use std::{fmt, mem};
 
 use anyhow::Result;
-use nsql_catalog::expr::ExprEvalExt;
-use nsql_catalog::Catalog;
+use nsql_catalog::expr::{ExecutableExpr, ExecutableFunction, ExecutableTupleExpr, ExprEvalExt};
+use nsql_catalog::{Catalog, TransactionContext};
 use nsql_core::Name;
-use nsql_storage::expr::{self, ExecutableExpr, ExecutableFunction, ExecutableTupleExpr};
+use nsql_storage::expr;
 use nsql_storage_engine::{StorageEngine, Transaction};
 
 use self::aggregate::{PhysicalHashAggregate, PhysicalUngroupedAggregate};
@@ -118,7 +118,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     #[inline]
     pub fn plan(
         mut self,
-        tx: &dyn Transaction<'env, S>,
+        tx: &dyn TransactionContext<'env, '_, S, M>,
         plan: Box<ir::Plan<opt::Query>>,
     ) -> Result<PhysicalPlan<'env, 'txn, S, M>> {
         self.do_plan(tx, plan).map(|root| PhysicalPlan { nodes: self.arena, root })
@@ -127,7 +127,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     #[inline]
     fn do_plan(
         &mut self,
-        tx: &dyn Transaction<'env, S>,
+        tx: &dyn TransactionContext<'env, '_, S, M>,
         plan: Box<ir::Plan<opt::Query>>,
     ) -> Result<PhysicalNodeId> {
         self.fold_plan(
@@ -140,7 +140,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
 
     fn fold_plan(
         &mut self,
-        tx: &dyn Transaction<'env, S>,
+        tx: &dyn TransactionContext<'env, '_, S, M>,
         plan: Box<ir::Plan<opt::Query>>,
         mut f: impl FnMut(&mut Self, Box<ir::Plan<opt::Query>>) -> Result<PhysicalNodeId>,
         plan_query: impl FnOnce(&mut Self, &opt::Query) -> Result<PhysicalNodeId>,
@@ -189,7 +189,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
 
     fn plan_root_query(
         &mut self,
-        tx: &dyn Transaction<'env, S>,
+        tx: &dyn TransactionContext<'env, '_, S, M>,
         q: &opt::Query,
     ) -> Result<PhysicalNodeId> {
         self.plan_node(tx, q, q.root())
@@ -197,7 +197,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
 
     fn plan_node(
         &mut self,
-        tx: &dyn Transaction<'env, S>,
+        tx: &dyn TransactionContext<'env, '_, S, M>,
         q: &opt::Query,
         plan: opt::Plan<'_>,
     ) -> Result<PhysicalNodeId> {
@@ -206,7 +206,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
 
     fn fold_query_plan(
         &mut self,
-        tx: &dyn Transaction<'env, S>,
+        tx: &dyn TransactionContext<'env, '_, S, M>,
         q: &opt::Query,
         plan: opt::Plan<'_>,
         mut f: impl FnMut(&mut Self, opt::Plan<'_>) -> Result<PhysicalNodeId>,
@@ -325,7 +325,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     #[allow(clippy::type_complexity)]
     fn compile_order_exprs(
         &mut self,
-        tx: &dyn Transaction<'env, S>,
+        tx: &dyn TransactionContext<'env, '_, S, M>,
         q: &opt::Query,
         exprs: impl Iterator<Item = ir::OrderExpr<opt::Expr<'_>>>,
     ) -> Result<Box<[ir::OrderExpr<ExecutableExpr<'env, S, M>>]>> {
@@ -334,7 +334,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
 
     fn compile_order_expr(
         &mut self,
-        tx: &dyn Transaction<'env, S>,
+        tx: &dyn TransactionContext<'env, '_, S, M>,
         q: &opt::Query,
         expr: ir::OrderExpr<opt::Expr<'_>>,
     ) -> Result<ir::OrderExpr<ExecutableExpr<'env, S, M>>> {
@@ -343,7 +343,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
 
     fn compile_exprs(
         &mut self,
-        tx: &dyn Transaction<'env, S>,
+        tx: &dyn TransactionContext<'env, '_, S, M>,
         q: &opt::Query,
         exprs: impl Iterator<Item = opt::Expr<'_>>,
     ) -> Result<ExecutableTupleExpr<'env, S, M>> {
@@ -352,7 +352,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
 
     fn compile_expr(
         &mut self,
-        tx: &dyn Transaction<'env, S>,
+        tx: &dyn TransactionContext<'env, '_, S, M>,
         q: &opt::Query,
         expr: opt::Expr<'_>,
     ) -> Result<ExecutableExpr<'env, S, M>> {
@@ -362,7 +362,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     #[allow(clippy::type_complexity)]
     fn compile_aggregate_functions(
         &mut self,
-        tx: &dyn Transaction<'env, S>,
+        tx: &dyn TransactionContext<'env, '_, S, M>,
         q: &opt::Query,
         functions: impl IntoIterator<Item = opt::CallExpr<'_>>,
     ) -> Result<Box<[(ir::Function, Option<ExecutableExpr<'env, S, M>>)]>> {
@@ -391,7 +391,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
 impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalPlanner<'env, 'txn, S, ReadWriteExecutionMode> {
     pub fn plan_write(
         mut self,
-        tx: &dyn Transaction<'env, S>,
+        tx: &dyn TransactionContext<'env, '_, S, ReadWriteExecutionMode>,
         plan: Box<ir::Plan<opt::Query>>,
     ) -> Result<PhysicalPlan<'env, 'txn, S, ReadWriteExecutionMode>> {
         self.do_plan_write(tx, plan).map(|root| PhysicalPlan { nodes: self.arena, root })
@@ -399,7 +399,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalPlanner<'env, 'txn, S, ReadWrit
 
     fn do_plan_write(
         &mut self,
-        tx: &dyn Transaction<'env, S>,
+        tx: &dyn TransactionContext<'env, '_, S, ReadWriteExecutionMode>,
         plan: Box<ir::Plan<opt::Query>>,
     ) -> Result<PhysicalNodeId> {
         match *plan {
@@ -415,7 +415,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalPlanner<'env, 'txn, S, ReadWrit
 
     fn plan_root_write_query(
         &mut self,
-        tx: &dyn Transaction<'env, S>,
+        tx: &dyn TransactionContext<'env, '_, S, ReadWriteExecutionMode>,
         q: &opt::Query,
     ) -> Result<PhysicalNodeId> {
         self.plan_write_query(tx, q, q.root())
@@ -423,7 +423,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalPlanner<'env, 'txn, S, ReadWrit
 
     fn plan_write_query(
         &mut self,
-        tx: &dyn Transaction<'env, S>,
+        tx: &dyn TransactionContext<'env, '_, S, ReadWriteExecutionMode>,
         q: &opt::Query,
         plan: opt::Plan<'_>,
     ) -> Result<PhysicalNodeId> {

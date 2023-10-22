@@ -228,7 +228,7 @@ impl<S: StorageEngine> Shared<S> {
             self.profiler.profile(self.profiler.bind_event_id, || match tx {
                 Some(tx) => {
                     tracing::debug!("reusing existing transaction");
-                    let plan = binder.bind_with(&tx, stmt)?;
+                    let plan = binder.bind(&tx, stmt)?;
                     Ok((false, tx, plan))
                 }
                 None => {
@@ -256,17 +256,20 @@ impl<S: StorageEngine> Shared<S> {
                 let physical_plan = self
                     .profiler
                     .profile(self.profiler.physical_plan_event_id, || planner.plan(&tx, plan))?;
-                let ecx =
-                    ExecutionContext::new(catalog, TransactionContext::new(tx, auto_commit), ctx);
+                let ecx = ExecutionContext::new(
+                    catalog,
+                    TransactionContext::new(&tx as _, auto_commit),
+                    ctx,
+                );
                 let tuples = self.profiler.profile(self.profiler.execute_event_id, || {
                     nsql_execution::execute::<S, ReadonlyExecutionMode>(&ecx, physical_plan)
                 })?;
-                let (auto_commit, state, tx) = ecx.take_txn();
+                let (auto_commit, state) = ecx.get_state();
                 if auto_commit || !matches!(state, TransactionState::Active) {
                     tracing::debug!("ending readonly transaction");
                     (None, tuples)
                 } else {
-                    (Some(ReadOrWriteTransaction::<S>::Read(tx)), tuples)
+                    (Some(ReadOrWriteTransaction::<S>::Read(tx as _)), tuples)
                 }
             }
             ReadOrWriteTransaction::Write(tx) => {
@@ -276,8 +279,11 @@ impl<S: StorageEngine> Shared<S> {
                     self.profiler.profile(self.profiler.physical_plan_event_id, || {
                         planner.plan_write(&tx, plan)
                     })?;
-                let ecx =
-                    ExecutionContext::new(catalog, TransactionContext::new(tx, auto_commit), ctx);
+                let ecx = ExecutionContext::new(
+                    catalog,
+                    TransactionContext::new(&tx as _, auto_commit),
+                    ctx,
+                );
                 let tuples = self.profiler.profile(self.profiler.execute_event_id, || {
                     nsql_execution::execute(&ecx, physical_plan)
                 });
@@ -286,13 +292,13 @@ impl<S: StorageEngine> Shared<S> {
                     Ok(tuples) => tuples,
                     Err(err) => {
                         tracing::debug!(error = %err, "aborting write transaction due to error during execution");
-                        let (_, _, tx) = ecx.take_txn();
+                        let (_, _) = ecx.get_state();
                         tx.abort()?;
                         return Err(err);
                     }
                 };
 
-                let (auto_commit, tx_state, tx) = ecx.take_txn();
+                let (auto_commit, tx_state) = ecx.get_state();
                 match tx_state {
                     TransactionState::Active if auto_commit => {
                         tracing::debug!("auto-committing write transaction");

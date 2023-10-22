@@ -31,7 +31,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     #[tracing::instrument(level = "debug", skip(self, _ecx, tuple))]
     fn execute(
         &mut self,
-        _ecx: &'txn ExecutionContext<'_, 'env, S, M>,
+        _ecx: &ExecutionContext<'_, 'env, 'txn, S, M>,
         tuple: Tuple,
     ) -> ExecutionResult<OperatorState<Tuple>> {
         // FIXME can avoid unnecessary tuple clones using `DashMap` raw-api

@@ -45,10 +45,9 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
 {
     fn source(
         &mut self,
-        ecx: &'txn ExecutionContext<'_, 'env, S, M>,
+        ecx: &ExecutionContext<'_, 'env, 'txn, S, M>,
     ) -> ExecutionResult<TupleStream<'_>> {
-        let tx: M::TransactionRef<'txn> = ecx.tx();
-        let tx: &'txn dyn Transaction<'env, S> = tx.dyn_ref();
+        let tx = ecx.tx();
         let catalog = ecx.catalog();
 
         let iter = match self.object_type {

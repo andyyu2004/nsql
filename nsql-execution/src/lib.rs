@@ -17,12 +17,11 @@ pub use anyhow::Error;
 use dashmap::DashMap;
 use executor::OutputSink;
 use nsql_arena::{Arena, Idx};
-use nsql_catalog::Catalog;
+use nsql_catalog::{Catalog, TransactionLocalCatalogCaches};
 use nsql_core::Name;
 use nsql_storage::tuple::Tuple;
 use nsql_storage_engine::{
     ExecutionMode, FallibleIterator, ReadWriteExecutionMode, StorageEngine, Transaction,
-    TransactionConversionHack,
 };
 use nsql_util::atomic::AtomicEnum;
 pub use physical_plan::PhysicalPlanner;
@@ -284,7 +283,7 @@ macro_rules! delegate_physical_node_impl_of_dyn {
             fn explain(
                 &self,
                 catalog: Catalog<'env, S>,
-                tx: &dyn Transaction<'env, S>,
+                tx: &dyn nsql_catalog::TransactionContext<'env, '_, S, M>,
                 f: &mut fmt::Formatter<'_>,
             ) -> explain::Result {
                 (**self).explain(catalog, tx, f)
@@ -371,7 +370,7 @@ trait PhysicalOperator<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env
 {
     fn execute(
         &mut self,
-        ecx: &'txn ExecutionContext<'_, 'env, S, M>,
+        ecx: &ExecutionContext<'_, 'env, 'txn, S, M>,
         input: T,
     ) -> ExecutionResult<OperatorState<T>>;
 }
@@ -381,7 +380,7 @@ impl<'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
 {
     fn execute(
         &mut self,
-        ecx: &'txn ExecutionContext<'_, 'env, S, M>,
+        ecx: &ExecutionContext<'_, 'env, 'txn, S, M>,
         input: Tuple,
     ) -> ExecutionResult<OperatorState<Tuple>> {
         (**self).execute(ecx, input)
@@ -396,7 +395,7 @@ trait PhysicalSource<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, 
     /// Return the next chunk from the source. An empty chunk indicates that the source is exhausted.
     fn source(
         &mut self,
-        ecx: &'txn ExecutionContext<'_, 'env, S, M>,
+        ecx: &ExecutionContext<'_, 'env, 'txn, S, M>,
     ) -> ExecutionResult<TupleStream<'_>>;
 }
 
@@ -405,7 +404,7 @@ impl<'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
 {
     fn source(
         &mut self,
-        ecx: &'txn ExecutionContext<'_, 'env, S, M>,
+        ecx: &ExecutionContext<'_, 'env, 'txn, S, M>,
     ) -> ExecutionResult<TupleStream<'_>> {
         (**self).source(ecx)
     }
@@ -416,18 +415,18 @@ trait PhysicalSink<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>
 {
     /// Called before any input is sent to the sink. This is called on the sink of metapipeline
     /// before execution is started.
-    fn initialize(&mut self, _ecx: &'txn ExecutionContext<'_, 'env, S, M>) -> ExecutionResult<()> {
+    fn initialize(&mut self, _ecx: &ExecutionContext<'_, 'env, 'txn, S, M>) -> ExecutionResult<()> {
         Ok(())
     }
 
     fn sink(
         &mut self,
-        ecx: &'txn ExecutionContext<'_, 'env, S, M>,
+        ecx: &ExecutionContext<'_, 'env, 'txn, S, M>,
         tuple: Tuple,
     ) -> ExecutionResult<()>;
 
     /// Called when all input has been sent to the sink
-    fn finalize(&mut self, _ecx: &'txn ExecutionContext<'_, 'env, S, M>) -> ExecutionResult<()> {
+    fn finalize(&mut self, _ecx: &ExecutionContext<'_, 'env, 'txn, S, M>) -> ExecutionResult<()> {
         Ok(())
     }
 }
@@ -437,7 +436,7 @@ impl<'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
 {
     fn source(
         &mut self,
-        ecx: &'txn ExecutionContext<'_, 'env, S, M>,
+        ecx: &ExecutionContext<'_, 'env, 'txn, S, M>,
     ) -> ExecutionResult<TupleStream<'_>> {
         (**self).source(ecx)
     }
@@ -448,13 +447,13 @@ impl<'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
 {
     fn sink(
         &mut self,
-        ecx: &'txn ExecutionContext<'_, 'env, S, M>,
+        ecx: &ExecutionContext<'_, 'env, 'txn, S, M>,
         tuple: Tuple,
     ) -> ExecutionResult<()> {
         (**self).sink(ecx, tuple)
     }
 
-    fn finalize(&mut self, ecx: &'txn ExecutionContext<'_, 'env, S, M>) -> ExecutionResult<()> {
+    fn finalize(&mut self, ecx: &ExecutionContext<'_, 'env, 'txn, S, M>) -> ExecutionResult<()> {
         (**self).finalize(ecx)
     }
 }
@@ -463,10 +462,25 @@ pub trait SessionContext {
     fn config(&self) -> &SessionConfig;
 }
 
-pub struct TransactionContext<'env, S: StorageEngine, M: ExecutionMode<'env, S>> {
-    tx: M::Transaction,
+pub struct TransactionContext<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> {
+    tx: M::TransactionRef<'txn>,
     auto_commit: AtomicBool,
     state: AtomicEnum<TransactionState>,
+    catalog_caches: TransactionLocalCatalogCaches<'env, 'txn, S, M>,
+}
+
+impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
+    nsql_catalog::TransactionContext<'env, 'txn, S, M> for TransactionContext<'env, 'txn, S, M>
+{
+    #[inline]
+    fn transaction(&self) -> M::TransactionRef<'txn> {
+        self.tx
+    }
+
+    #[inline]
+    fn catalog_caches(&self) -> &TransactionLocalCatalogCaches<'env, 'txn, S, M> {
+        &self.catalog_caches
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -492,11 +506,18 @@ impl From<u8> for TransactionState {
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> TransactionContext<'env, S, M> {
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
+    TransactionContext<'env, 'txn, S, M>
+{
     #[inline]
-    pub fn new(tx: M::Transaction, auto_commit: bool) -> Self {
+    pub fn new(tx: M::TransactionRef<'txn>, auto_commit: bool) -> Self {
         let auto_commit = AtomicBool::new(auto_commit);
-        Self { tx, auto_commit, state: AtomicEnum::new(TransactionState::Active) }
+        Self {
+            tx,
+            auto_commit,
+            state: AtomicEnum::new(TransactionState::Active),
+            catalog_caches: Default::default(),
+        }
     }
 
     #[inline]
@@ -520,27 +541,31 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> TransactionC
     }
 }
 
-pub struct ExecutionContext<'a, 'env, S: StorageEngine, M: ExecutionMode<'env, S>> {
+pub struct ExecutionContext<'a, 'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> {
     catalog: Catalog<'env, S>,
-    tcx: TransactionContext<'env, S, M>,
+    tcx: TransactionContext<'env, 'txn, S, M>,
     scx: &'a (dyn SessionContext + 'a),
     materialized_ctes: DashMap<Name, Arc<[Tuple]>>,
     profiler: Profiler,
 }
 
-impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> ExecutionContext<'_, 'env, S, M> {
+impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
+    ExecutionContext<'_, 'env, 'txn, S, M>
+{
     #[inline]
-    pub fn take_txn(self) -> (bool, TransactionState, M::Transaction) {
-        let tx = self.tcx;
-        (tx.auto_commit.into_inner(), tx.state.into_inner(), tx.tx)
+    pub fn get_state(self) -> (bool, TransactionState) {
+        let tcx = &self.tcx;
+        (tcx.auto_commit.load(atomic::Ordering::Acquire), tcx.state.load(atomic::Ordering::Acquire))
     }
 }
 
-impl<'a, 'env, S: StorageEngine, M: ExecutionMode<'env, S>> ExecutionContext<'a, 'env, S, M> {
+impl<'a, 'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
+    ExecutionContext<'a, 'env, 'txn, S, M>
+{
     #[inline]
     pub fn new(
         catalog: Catalog<'env, S>,
-        tcx: TransactionContext<'env, S, M>,
+        tcx: TransactionContext<'env, 'txn, S, M>,
         scx: &'a (dyn SessionContext + 'a),
     ) -> Self {
         Self {
@@ -563,13 +588,13 @@ impl<'a, 'env, S: StorageEngine, M: ExecutionMode<'env, S>> ExecutionContext<'a,
     }
 
     #[inline]
-    pub fn tcx(&self) -> &TransactionContext<'env, S, M> {
+    pub fn tcx(&self) -> &TransactionContext<'env, 'txn, S, M> {
         &self.tcx
     }
 
     #[inline]
-    pub fn tx(&self) -> M::TransactionRef<'_> {
-        TransactionConversionHack::as_tx_ref(&self.tcx.tx)
+    pub fn tx(&self) -> M::TransactionRef<'txn> {
+        self.tcx.tx
     }
 
     #[inline]

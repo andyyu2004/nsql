@@ -16,7 +16,7 @@ pub trait Explain<'env, S: StorageEngine> {
     fn explain(
         &self,
         catalog: Catalog<'env, S>,
-        tx: &dyn Transaction<'env, S>,
+        tx: &dyn TransactionContext<'env, '_, S, M>,
         f: &mut fmt::Formatter<'_>,
     ) -> Result;
 
@@ -54,7 +54,7 @@ impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Explain<'env, S>
     fn explain(
         &self,
         catalog: Catalog<'env, S>,
-        tx: &dyn Transaction<'env, S>,
+        tx: &dyn TransactionContext<'env, '_, S, M>,
         f: &mut fmt::Formatter<'_>,
     ) -> Result {
         RootPipelineExplainer { root_pipeline: self }.explain(catalog, tx, f)
@@ -76,7 +76,7 @@ impl<'a, 'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     fn explain_meta_pipeline(
         &self,
         catalog: Catalog<'env, S>,
-        tx: &dyn Transaction<'env, S>,
+        tx: &dyn TransactionContext<'env, '_, S, M>,
         f: &mut fmt::Formatter<'_>,
         meta_pipeline: Idx<MetaPipeline<'env, 'txn, S, M>>,
     ) -> Result {
@@ -127,7 +127,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Explain<'env
     fn explain(
         &self,
         catalog: Catalog<'env, S>,
-        tx: &dyn Transaction<'env, S>,
+        tx: &dyn TransactionContext<'env, '_, S, M>,
         f: &mut fmt::Formatter<'_>,
     ) -> Result {
         MetaPipelineExplainer { root: self, indent: 0 }.explain_meta_pipeline(
@@ -143,7 +143,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalPlan
     pub fn explain_tree(
         &self,
         catalog: Catalog<'env, S>,
-        tx: &dyn Transaction<'env, S>,
+        tx: &dyn TransactionContext<'env, '_, S, M>,
     ) -> ExplainTree {
         let mut nodes = ArenaMap::default();
         let root = self.explain_node(&mut nodes, catalog, tx, self.root, 0);
@@ -154,7 +154,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalPlan
         &self,
         nodes: &mut ArenaMap<PhysicalNodeId, ExplainNode>,
         catalog: Catalog<'env, S>,
-        tx: &dyn Transaction<'env, S>,
+        tx: &dyn TransactionContext<'env, '_, S, M>,
         id: PhysicalNodeId,
         depth: usize,
     ) -> PhysicalNodeId {
@@ -234,7 +234,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Explain<'env
     fn explain(
         &self,
         catalog: Catalog<'env, S>,
-        tx: &dyn Transaction<'env, S>,
+        tx: &dyn TransactionContext<'env, '_, S, M>,
         f: &mut fmt::Formatter<'_>,
     ) -> Result {
         PhysicalNodeExplainer { nodes: &self.nodes, node: self.root(), indent: 0 }
@@ -266,7 +266,7 @@ impl<'a, 'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Explain<'env, 
     fn explain(
         &self,
         catalog: Catalog<'env, S>,
-        tx: &dyn Transaction<'env, S>,
+        tx: &dyn TransactionContext<'env, '_, S, M>,
         f: &mut fmt::Formatter<'_>,
     ) -> Result {
         write!(f, "{:indent$}", "", indent = self.indent)?;

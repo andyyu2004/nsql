@@ -6,30 +6,11 @@ use std::{fmt, mem};
 use anyhow::Result;
 use itertools::Itertools;
 use nsql_core::{LogicalType, UntypedOid};
-use nsql_storage_engine::{ExecutionMode, StorageEngine};
 use nsql_util::static_assert_eq;
 use rkyv::{Archive, Deserialize, Serialize};
 
 use crate::tuple::TupleIndex;
 use crate::value::{CastError, FromValue, Value};
-
-// Note: smallvec seems to always be slower than this for sqlite/select3.sql
-// This alias is useful for testing different types
-pub type FunctionArgs = Box<[Value]>;
-
-pub trait ScalarFunction<'env, S: StorageEngine, M: ExecutionMode<'env, S>>:
-    fmt::Debug + Send + Sync
-{
-    fn invoke(
-        &self,
-        storage: &'env S,
-        tx: M::TransactionRef<'_>,
-        args: FunctionArgs,
-    ) -> Result<Value>;
-
-    /// The number f arguments this function takes.
-    fn arity(&self) -> usize;
-}
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Archive, Serialize, Deserialize)]
 #[omit_bounds]
@@ -37,8 +18,6 @@ pub trait ScalarFunction<'env, S: StorageEngine, M: ExecutionMode<'env, S>>:
 pub struct TupleExpr<F = UntypedOid> {
     exprs: Box<[Expr<F>]>,
 }
-
-pub type ExecutableTupleExpr<'env, S, M> = TupleExpr<Box<dyn ScalarFunction<'env, S, M>>>;
 
 impl<F> fmt::Display for TupleExpr<F> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -95,10 +74,6 @@ impl From<TupleExpr> for Value {
         Value::TupleExpr(expr)
     }
 }
-
-pub type ExecutableExpr<'env, S, M> = Expr<ExecutableFunction<'env, S, M>>;
-
-pub type ExecutableFunction<'env, S, M> = Box<dyn ScalarFunction<'env, S, M>>;
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Archive, Serialize, Deserialize)]
 pub struct Expr<F = UntypedOid> {
@@ -183,8 +158,6 @@ impl<F> Expr<F> {
         self.ops.into_vec()
     }
 }
-
-pub type ExecutableExprOp<'env, S, M> = ExprOp<Box<dyn ScalarFunction<'env, S, M>>>;
 
 /// `Expr` is generic over the representation of functions.
 /// For storage in the catalog, we need to be able to serialize the function and `F = UntypedOid` (morally `Oid<Function>`).

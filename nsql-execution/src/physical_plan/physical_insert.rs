@@ -65,7 +65,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSink<'env, 'txn, S, ReadWriteEx
 {
     fn sink(
         &mut self,
-        ecx: &'txn ExecutionContext<'_, 'env, S, ReadWriteExecutionMode>,
+        ecx: &ExecutionContext<'_, 'env, 'txn, S, ReadWriteExecutionMode>,
         tuple: Tuple,
     ) -> ExecutionResult<()> {
         let catalog = ecx.catalog();
@@ -102,7 +102,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSink<'env, 'txn, S, ReadWriteEx
 
     fn finalize(
         &mut self,
-        _ecx: &'txn ExecutionContext<'_, 'env, S, ReadWriteExecutionMode>,
+        _ecx: &ExecutionContext<'_, 'env, 'txn, S, ReadWriteExecutionMode>,
     ) -> ExecutionResult<()> {
         // drop the storage on finalization as it is no longer needed by this node
         // this helps avoids redb errors when the same table is opened by multiple nodes
@@ -116,7 +116,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSource<'env, 'txn, S, ReadWrite
 {
     fn source(
         &mut self,
-        _ecx: &'txn ExecutionContext<'_, 'env, S, ReadWriteExecutionMode>,
+        _ecx: &ExecutionContext<'_, 'env, 'txn, S, ReadWriteExecutionMode>,
     ) -> ExecutionResult<TupleStream<'_>> {
         let returning = std::mem::take(&mut self.returning_tuples);
         Ok(Box::new(fallible_iterator::convert(returning.into_iter().map(Ok))))
@@ -131,7 +131,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> Explain<'env, S> for PhysicalInsert<'en
     fn explain(
         &self,
         catalog: Catalog<'env, S>,
-        tx: &dyn Transaction<'env, S>,
+        tx: &dyn TransactionContext<'env, '_, S, M>,
         f: &mut fmt::Formatter<'_>,
     ) -> explain::Result {
         write!(f, "insert into {}", catalog.table(tx, self.table_oid)?.name())?;

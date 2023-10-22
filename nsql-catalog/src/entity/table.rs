@@ -5,17 +5,16 @@ use nsql_core::LogicalType;
 use nsql_derive::{FromTuple, IntoTuple};
 use nsql_storage::expr::Expr;
 use nsql_storage::value::Value;
-use nsql_storage_engine::{
-    ExecutionMode, FallibleIterator, ReadWriteExecutionMode, StorageEngine, Transaction,
-};
+use nsql_storage_engine::{ExecutionMode, FallibleIterator, ReadWriteExecutionMode, StorageEngine};
 
 pub use self::storage::{
     ColumnStorageInfo, IndexStorageInfo, PrimaryKeyConflict, TableStorage, TableStorageInfo,
 };
+use super::*;
 use crate::bootstrap::{BootstrapColumn, BootstrapSequence};
 use crate::{
     Catalog, Column, ColumnIdentity, Function, Index, Name, Namespace, Oid, SystemEntity,
-    SystemEntityPrivate,
+    SystemEntityPrivate, TransactionContext,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, FromTuple, IntoTuple)]
@@ -35,20 +34,20 @@ impl Table {
     pub fn storage<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
         &self,
         catalog: Catalog<'env, S>,
-        tx: M::TransactionRef<'txn>,
+        tx: &dyn TransactionContext<'env, 'txn, S, M>,
     ) -> Result<TableStorage<'env, 'txn, S, M>> {
         Ok(TableStorage::open(
             catalog.storage,
             tx,
-            self.table_storage_info(catalog, &tx)?,
-            self.index_storage_infos(catalog, &tx)?,
+            self.table_storage_info(catalog, tx)?,
+            self.index_storage_infos(catalog, tx)?,
         )?)
     }
 
     pub fn get_or_create_storage<'env, 'txn, S: StorageEngine>(
         &self,
         catalog: Catalog<'env, S>,
-        tx: &'txn S::WriteTransaction<'env>,
+        tx: &dyn TransactionContext<'env, 'txn, S, ReadWriteExecutionMode>,
     ) -> Result<TableStorage<'env, 'txn, S, ReadWriteExecutionMode>> {
         let storage = catalog.storage();
         Ok(TableStorage::create(
@@ -59,10 +58,15 @@ impl Table {
         )?)
     }
 
-    pub(crate) fn table_storage_info<'env, S: StorageEngine>(
+    pub(crate) fn table_storage_info<
+        'env: 'txn,
+        'txn,
+        S: StorageEngine,
+        M: ExecutionMode<'env, S>,
+    >(
         &self,
         catalog: Catalog<'env, S>,
-        tx: &dyn Transaction<'env, S>,
+        tx: &dyn TransactionContext<'env, 'txn, S, M>,
     ) -> Result<TableStorageInfo> {
         Ok(TableStorageInfo::new(
             self.oid.untyped(),
@@ -70,10 +74,10 @@ impl Table {
         ))
     }
 
-    pub fn columns<'env, S: StorageEngine>(
+    pub fn columns<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
         &self,
         catalog: Catalog<'env, S>,
-        tx: &dyn Transaction<'env, S>,
+        tx: &dyn TransactionContext<'env, 'txn, S, M>,
     ) -> Result<Vec<Column>> {
         let mut columns = catalog
             .columns(tx)?
@@ -93,18 +97,18 @@ impl Table {
     }
 
     /// Returns all indexes on this table.
-    fn indexes<'env, S: StorageEngine>(
+    fn indexes<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
         &self,
         catalog: Catalog<'env, S>,
-        tx: &dyn Transaction<'env, S>,
+        tx: &dyn TransactionContext<'env, 'txn, S, M>,
     ) -> Result<Vec<Index>> {
         catalog.indexes(tx)?.scan()?.filter(|index| Ok(index.target == self.oid)).collect()
     }
 
-    fn index_storage_infos<'env, S: StorageEngine>(
+    fn index_storage_infos<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
         &self,
         catalog: Catalog<'env, S>,
-        tx: &dyn Transaction<'env, S>,
+        tx: &dyn TransactionContext<'env, 'txn, S, M>,
     ) -> Result<Vec<IndexStorageInfo>> {
         self.indexes(catalog, tx)?
             .into_iter()
@@ -126,7 +130,7 @@ impl Table {
         catalog: Catalog<'env, S>,
         tx: &S::WriteTransaction<'env>,
     ) -> Result<()> {
-        Ok(self.create_storage_for_bootstrap(catalog.storage, tx)?)
+        Ok(self.create_storage_for_bootstrap::<S>(catalog.storage, tx)?)
     }
 }
 
@@ -148,10 +152,10 @@ impl SystemEntity for Table {
     }
 
     #[inline]
-    fn name<'env, S: StorageEngine>(
+    fn name<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
         &self,
         _catalog: Catalog<'env, S>,
-        _tx: &dyn Transaction<'env, S>,
+        _tx: &dyn TransactionContext<'env, 'txn, S, M>,
     ) -> Result<Name> {
         Ok(Name::clone(&self.name))
     }
@@ -162,12 +166,18 @@ impl SystemEntity for Table {
     }
 
     #[inline]
-    fn parent_oid<'env, S: StorageEngine>(
+    fn parent_oid<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
         &self,
         _catalog: Catalog<'env, S>,
-        _tx: &dyn Transaction<'env, S>,
+        _tx: &dyn TransactionContext<'env, 'txn, S, M>,
     ) -> Result<Option<Oid<Self::Parent>>> {
         Ok(Some(self.namespace))
+    }
+
+    fn extract_cache<'a, 'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
+        caches: &'a TransactionLocalCatalogCaches<'env, 'txn, S, M>,
+    ) -> &'a OnceLock<SystemTableView<'env, 'txn, S, M, Self>> {
+        &caches.tables
     }
 }
 

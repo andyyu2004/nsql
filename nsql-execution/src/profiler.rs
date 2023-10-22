@@ -3,9 +3,9 @@ use std::fmt;
 use std::time::{Duration, Instant};
 
 use nsql_arena::{ArenaMap, Idx};
-use nsql_catalog::Catalog;
+use nsql_catalog::{Catalog, TransactionContext};
 use nsql_storage::tuple::Tuple;
-use nsql_storage_engine::{ExecutionMode, FallibleIterator, StorageEngine, Transaction};
+use nsql_storage_engine::{ExecutionMode, FallibleIterator, StorageEngine};
 
 use crate::physical_plan::{explain, Explain};
 use crate::{
@@ -150,7 +150,7 @@ where
     fn explain(
         &self,
         catalog: Catalog<'env, S>,
-        tx: &dyn Transaction<'env, S>,
+        tx: &dyn TransactionContext<'env, '_, S, M>,
         f: &mut fmt::Formatter<'_>,
     ) -> explain::Result {
         self.node.explain(catalog, tx, f)
@@ -221,7 +221,7 @@ where
 {
     fn source(
         &mut self,
-        ecx: &'txn ExecutionContext<'_, 'env, S, M>,
+        ecx: &ExecutionContext<'_, 'env, 'txn, S, M>,
     ) -> ExecutionResult<TupleStream<'_>> {
         let id = self.id();
         let _guard = self.profiler.start(id, NodeType::Misc);
@@ -260,7 +260,7 @@ where
 {
     fn execute(
         &mut self,
-        ecx: &'txn ExecutionContext<'_, 'env, S, M>,
+        ecx: &ExecutionContext<'_, 'env, 'txn, S, M>,
         input: Tuple,
     ) -> ExecutionResult<OperatorState<Tuple>> {
         let mut guard = self.profiler.start(self.id(), NodeType::Operator);
@@ -293,21 +293,21 @@ impl<'p, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, N>
 where
     N: PhysicalSink<'env, 'txn, S, M>,
 {
-    fn initialize(&mut self, ecx: &'txn ExecutionContext<'_, 'env, S, M>) -> ExecutionResult<()> {
+    fn initialize(&mut self, ecx: &ExecutionContext<'_, 'env, 'txn, S, M>) -> ExecutionResult<()> {
         let _guard = self.profiler.start(self.id(), NodeType::Misc);
         self.node.initialize(ecx)
     }
 
     fn sink(
         &mut self,
-        ecx: &'txn ExecutionContext<'_, 'env, S, M>,
+        ecx: &ExecutionContext<'_, 'env, 'txn, S, M>,
         tuple: Tuple,
     ) -> ExecutionResult<()> {
         let _guard = self.profiler.start(self.id(), NodeType::Sink);
         self.node.sink(ecx, tuple)
     }
 
-    fn finalize(&mut self, ecx: &'txn ExecutionContext<'_, 'env, S, M>) -> ExecutionResult<()> {
+    fn finalize(&mut self, ecx: &ExecutionContext<'_, 'env, 'txn, S, M>) -> ExecutionResult<()> {
         let _guard = self.profiler.start(self.id(), NodeType::Misc);
         self.node.finalize(ecx)
     }

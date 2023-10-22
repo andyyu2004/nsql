@@ -45,7 +45,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
     #[tracing::instrument(skip(self, ecx))]
     fn source(
         &mut self,
-        ecx: &'txn ExecutionContext<'_, 'env, S, M>,
+        ecx: &ExecutionContext<'_, 'env, 'txn, S, M>,
     ) -> ExecutionResult<TupleStream<'_>> {
         let tx = ecx.tx();
         let catalog = ecx.catalog();
@@ -89,7 +89,7 @@ impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> Explain<'env, S>
     fn explain(
         &self,
         catalog: Catalog<'env, S>,
-        tx: &dyn Transaction<'env, S>,
+        tx: &dyn TransactionContext<'env, '_, S, M>,
         f: &mut fmt::Formatter<'_>,
     ) -> explain::Result {
         // In this context, we know the projection indices correspond to the column indices of the source table

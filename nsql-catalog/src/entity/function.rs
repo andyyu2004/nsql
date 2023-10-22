@@ -1,17 +1,18 @@
 use std::{fmt, mem};
 
 use nsql_core::UntypedOid;
-use nsql_storage::expr::{Expr, FunctionArgs};
+use nsql_storage::expr::Expr;
 use nsql_storage_engine::ExecutionMode;
 
 use super::*;
-use crate::{ColumnIdentity, FunctionCatalog, SystemEntityPrivate};
+use crate::expr::{ExecutableFunction, FunctionArgs, ScalarFunction};
+use crate::{ColumnIdentity, FunctionCatalog, SystemEntityPrivate, TransactionContext};
 
 mod builtins;
 
 pub type ScalarFunctionPtr<'env, S, M> = for<'txn> fn(
     Catalog<'env, S>,
-    <M as ExecutionMode<'env, S>>::TransactionRef<'txn>,
+    &dyn TransactionContext<'env, 'txn, S, M>,
     FunctionArgs,
 ) -> Result<Value>;
 
@@ -61,26 +62,30 @@ impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> FunctionCatalog<'env, S,
     }
 
     #[inline]
-    fn get_function(
+    fn get_function<'txn>(
         &self,
-        tx: &dyn Transaction<'env, S>,
+        tx: &dyn TransactionContext<'env, 'txn, S, M>,
         oid: Oid<Function>,
-    ) -> Result<Box<dyn nsql_storage::expr::ScalarFunction<'env, S, M>>> {
-        let f = self.get::<Function>(tx, oid)?;
+    ) -> Result<ExecutableFunction<'env, S, M>>
+    where
+        'env: 'txn,
+    {
+        let f = self.get::<M, Function>(tx, oid)?;
         Ok(Box::new(f))
     }
 }
 
-impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>>
-    nsql_storage::expr::ScalarFunction<'env, S, M> for Function
-{
+impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> ScalarFunction<'env, S, M> for Function {
     #[inline]
-    fn invoke(
+    fn invoke<'txn>(
         &self,
         storage: &'env S,
-        tx: M::TransactionRef<'_>,
+        tx: &dyn TransactionContext<'env, 'txn, S, M>,
         args: FunctionArgs,
-    ) -> Result<Value> {
+    ) -> Result<Value>
+    where
+        'env: 'txn,
+    {
         self.get_scalar_function::<S, M>()(Catalog::new(storage), tx, args)
     }
 
@@ -160,10 +165,10 @@ impl SystemEntity for Function {
     }
 
     #[inline]
-    fn name<'env, S: StorageEngine>(
+    fn name<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
         &self,
         _catalog: Catalog<'env, S>,
-        _tx: &dyn Transaction<'env, S>,
+        _tx: &dyn TransactionContext<'env, 'txn, S, M>,
     ) -> Result<Name> {
         Ok(self.name())
     }
@@ -174,12 +179,18 @@ impl SystemEntity for Function {
     }
 
     #[inline]
-    fn parent_oid<'env, S: StorageEngine>(
+    fn parent_oid<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
         &self,
         _catalog: Catalog<'env, S>,
-        _tx: &dyn Transaction<'env, S>,
+        _tx: &dyn TransactionContext<'env, 'txn, S, M>,
     ) -> Result<Option<Oid<Self::Parent>>> {
         Ok(Some(self.namespace))
+    }
+
+    fn extract_cache<'a, 'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
+        caches: &'a TransactionLocalCatalogCaches<'env, 'txn, S, M>,
+    ) -> &'a OnceLock<SystemTableView<'env, 'txn, S, M, Self>> {
+        &caches.functions
     }
 }
 

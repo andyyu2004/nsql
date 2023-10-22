@@ -15,8 +15,8 @@ use nsql_storage_engine::{
 };
 use rkyv::AlignedVec;
 
-use crate::expr::{ExprEvalExt, TupleExprResolveExt};
-use crate::FunctionCatalog;
+use crate::expr::{ExprEvalExt, ScalarFunction, TupleExprResolveExt};
+use crate::{FunctionCatalog, TransactionContext};
 
 #[allow(explicit_outlives_requirements)]
 pub struct TableStorage<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> {
@@ -42,12 +42,12 @@ impl<'env, 'txn, S: StorageEngine> TableStorage<'env, 'txn, S, ReadWriteExecutio
     #[inline]
     pub fn create(
         storage: &S,
-        tx: &'txn S::WriteTransaction<'env>,
+        tx: &dyn TransactionContext<'env, 'txn, S, ReadWriteExecutionMode>,
         info: TableStorageInfo,
         indexes: Vec<IndexStorageInfo>,
     ) -> Result<Self, S::Error> {
         // create the tree
-        storage.open_write_tree(tx, &info.name)?;
+        storage.open_write_tree(tx.transaction(), &info.name)?;
         Self::open(storage, tx, info, indexes)
     }
 
@@ -70,7 +70,7 @@ impl<'env, 'txn, S: StorageEngine> TableStorage<'env, 'txn, S, ReadWriteExecutio
     pub fn insert(
         &mut self,
         catalog: &dyn FunctionCatalog<'env, S, ReadWriteExecutionMode>,
-        tx: &S::WriteTransaction<'env>,
+        tx: &dyn TransactionContext<'env, 'txn, S, ReadWriteExecutionMode>,
         tuple: &Tuple,
     ) -> Result<Result<(), PrimaryKeyConflict>, anyhow::Error> {
         for index in self.indexes.iter_mut() {
@@ -124,11 +124,11 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> TableStorage
     #[track_caller]
     pub fn open(
         storage: &S,
-        tx: M::TransactionRef<'txn>,
+        tx: &dyn TransactionContext<'env, 'txn, S, M>,
         info: TableStorageInfo,
         indexes: Vec<IndexStorageInfo>,
     ) -> Result<Self, S::Error> {
-        let tree = M::open_tree(storage, tx, &info.name)?;
+        let tree = M::open_tree(storage, tx.transaction(), &info.name)?;
         let indexes = indexes
             .into_iter()
             .map(|info| IndexStorage::open(storage, tx, info))
@@ -312,13 +312,13 @@ impl ColumnStorageInfo {
 pub(crate) struct IndexStorage<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> {
     storage: TableStorage<'env, 'txn, S, M>,
     index_expr: AtomicTake<TupleExpr>,
-    prepared_expr: OnceLock<TupleExpr<Box<dyn nsql_storage::expr::ScalarFunction<'env, S, M>>>>,
+    prepared_expr: OnceLock<TupleExpr<Box<dyn ScalarFunction<'env, S, M>>>>,
 }
 
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> IndexStorage<'env, 'txn, S, M> {
     pub fn open(
         storage: &S,
-        tx: M::TransactionRef<'txn>,
+        tx: &dyn TransactionContext<'env, 'txn, S, M>,
         info: IndexStorageInfo,
     ) -> Result<Self, S::Error> {
         let storage = TableStorage::open(storage, tx, info.table, vec![])?;
@@ -335,12 +335,12 @@ impl<'env, 'txn, S: StorageEngine> IndexStorage<'env, 'txn, S, ReadWriteExecutio
     pub fn insert(
         &mut self,
         catalog: &dyn FunctionCatalog<'env, S, ReadWriteExecutionMode>,
-        tx: &S::WriteTransaction<'env>,
+        tx: &dyn TransactionContext<'env, 'txn, S, ReadWriteExecutionMode>,
         tuple: &Tuple,
     ) -> Result<(), anyhow::Error> {
         let expr = self
             .prepared_expr
-            .get_or_try_init(|| self.index_expr.take().unwrap().resolve(catalog, tx as _))?;
+            .get_or_try_init(|| self.index_expr.take().unwrap().resolve(catalog, tx))?;
 
         let tuple = expr.eval(catalog.storage(), tx, tuple)?;
         self.storage
