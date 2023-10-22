@@ -1046,7 +1046,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
 
                                     let f = self
                                         .catalog
-                                        .system_table::<Function>(tx)?
+                                        .functions(tx)?
                                         .get(Function::MK_NEXTVAL_EXPR)?;
 
                                     let function = ir::MonoFunction::new(f, LogicalType::Expr);

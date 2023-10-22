@@ -196,6 +196,13 @@ impl<'env, S: StorageEngine> Catalog<'env, S> {
         self.system_table(tx)
     }
 
+    pub fn indexes<'txn>(
+        self,
+        tx: &'txn dyn Transaction<'env, S>,
+    ) -> Result<SystemTableView<'env, 'txn, S, ReadonlyExecutionMode, Index>> {
+        self.system_table(tx)
+    }
+
     #[inline]
     pub fn system_table<'txn, T: SystemEntity>(
         self,

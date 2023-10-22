@@ -91,11 +91,7 @@ impl Table {
         catalog: Catalog<'env, S>,
         tx: &dyn Transaction<'env, S>,
     ) -> Result<Vec<Index>> {
-        catalog
-            .system_table::<Index>(tx)?
-            .scan()?
-            .filter(|index| Ok(index.target == self.oid))
-            .collect()
+        catalog.indexes(tx)?.scan()?.filter(|index| Ok(index.target == self.oid)).collect()
     }
 
     fn index_storage_infos<'env, S: StorageEngine>(
