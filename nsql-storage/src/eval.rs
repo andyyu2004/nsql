@@ -70,30 +70,6 @@ impl<F> TupleExpr<F> {
     }
 }
 
-impl TupleExpr {
-    /// Prepare this tuple expression for evaluation.
-    // This resolves any function oids and replaces them with the actual function.
-    pub fn prepare<'env, S: StorageEngine, M: ExecutionMode<'env, S>>(
-        self,
-        catalog: &dyn FunctionCatalog<'env, S, M>,
-        tx: &dyn Transaction<'env, S>,
-    ) -> Result<ExecutableTupleExpr<'env, S, M>> {
-        self.map(|oid| catalog.get_function(tx, oid))
-    }
-}
-
-impl Expr {
-    /// Prepare this expression for evaluation.
-    // This resolves any function oids and replaces them with what the catalog returns
-    pub fn resolve<'env, S, M, F>(
-        self,
-        catalog: &dyn FunctionCatalog<'env, S, M, F>,
-        tx: &dyn Transaction<'env, S>,
-    ) -> Result<Expr<F>> {
-        self.map(|oid| catalog.get_function(tx, oid))
-    }
-}
-
 impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> ExecutableTupleExpr<'env, S, M> {
     #[inline]
     pub fn execute(

@@ -1,6 +1,7 @@
 use std::mem;
 
 use anyhow::Result;
+use nsql_catalog::expr::ExprResolveExt;
 use nsql_core::UntypedOid;
 use nsql_storage::eval::{Expr, ExprOp, FunctionCatalog, TupleExpr};
 use nsql_storage_engine::{ExecutionMode, StorageEngine, Transaction};

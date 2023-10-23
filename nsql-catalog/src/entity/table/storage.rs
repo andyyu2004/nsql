@@ -15,6 +15,8 @@ use nsql_storage_engine::{
 };
 use rkyv::AlignedVec;
 
+use crate::expr::TupleExprResolveExt;
+
 #[allow(explicit_outlives_requirements)]
 pub struct TableStorage<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> {
     tree: M::Tree<'txn>,
@@ -337,7 +339,7 @@ impl<'env, 'txn, S: StorageEngine> IndexStorage<'env, 'txn, S, ReadWriteExecutio
     ) -> Result<(), anyhow::Error> {
         let expr = self
             .prepared_expr
-            .get_or_try_init(|| self.index_expr.take().unwrap().prepare(catalog, tx))?;
+            .get_or_try_init(|| self.index_expr.take().unwrap().resolve(catalog, tx))?;
 
         let tuple = expr.execute(catalog.storage(), tx, tuple)?;
         self.storage
