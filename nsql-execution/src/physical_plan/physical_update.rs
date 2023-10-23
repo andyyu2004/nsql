@@ -87,7 +87,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSink<'env, 'txn, S, ReadWriteEx
             storage.update(tuple)?;
 
             if !self.returning.is_empty() {
-                self.returning_tuples.push(self.returning.execute(catalog.storage(), tx, tuple)?);
+                self.returning_tuples.push(self.returning.eval(catalog.storage(), tx, tuple)?);
             }
         }
 

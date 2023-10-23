@@ -72,9 +72,9 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSink
             for order in ordering.iter() {
                 // todo need a way to propogate error
                 let a =
-                    order.expr.execute(storage, tx, a).expect("failed to execute order expression");
+                    order.expr.eval(storage, tx, a).expect("failed to execute order expression");
                 let b =
-                    order.expr.execute(storage, tx, b).expect("failed to execute order expression");
+                    order.expr.eval(storage, tx, b).expect("failed to execute order expression");
                 let cmp = a.partial_cmp(&b).unwrap();
                 if cmp != cmp::Ordering::Equal {
                     return if order.asc { cmp } else { cmp.reverse() };

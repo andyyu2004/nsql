@@ -72,13 +72,13 @@ impl<F> TupleExpr<F> {
 
 impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> ExecutableTupleExpr<'env, S, M> {
     #[inline]
-    pub fn execute(
+    pub fn eval(
         &self,
         storage: &'env S,
         tx: M::TransactionRef<'_>,
         tuple: &Tuple,
     ) -> Result<Tuple> {
-        self.exprs.iter().map(|expr| expr.execute(storage, tx, tuple)).collect()
+        self.exprs.iter().map(|expr| expr.eval(storage, tx, tuple)).collect()
     }
 }
 
@@ -198,7 +198,9 @@ impl<F> Expr<F> {
 }
 
 impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> ExecutableExpr<'env, S, M> {
-    pub fn execute(
+    // FIXME should probably use an evaluator struct for efficiency as it would let us reuse the stack allocation
+    // rather than allocating a new one pre expression.
+    pub fn eval(
         &self,
         storage: &'env S,
         tx: M::TransactionRef<'_>,

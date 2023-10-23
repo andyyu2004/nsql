@@ -68,13 +68,13 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSink
     ) -> ExecutionResult<()> {
         let storage = ecx.storage();
         let tx = ecx.tx();
-        let group = self.group_expr.execute(storage, tx, &tuple)?;
+        let group = self.group_expr.eval(storage, tx, &tuple)?;
         let functions = self.output_groups.entry(group).or_insert_with(|| {
             self.aggregates.iter().map(|(f, _expr)| f.get_aggregate_instance()).collect()
         });
 
         for (state, (_f, expr)) in functions[..].iter_mut().zip(&self.aggregates[..]) {
-            let value = expr.as_ref().map(|expr| expr.execute(storage, tx, &tuple)).transpose()?;
+            let value = expr.as_ref().map(|expr| expr.eval(storage, tx, &tuple)).transpose()?;
             state.update(value);
         }
 

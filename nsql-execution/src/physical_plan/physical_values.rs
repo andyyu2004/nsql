@@ -38,7 +38,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
             }
 
             let exprs: &ExecutableTupleExpr<'env, S, M> = &self.values[index];
-            let tuple = exprs.execute(storage, tx, &Tuple::empty())?;
+            let tuple = exprs.eval(storage, tx, &Tuple::empty())?;
             index += 1;
 
             Ok(Some(tuple))

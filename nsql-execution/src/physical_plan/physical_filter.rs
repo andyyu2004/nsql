@@ -33,7 +33,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     ) -> ExecutionResult<OperatorState<Tuple>> {
         let storage = ecx.storage();
         let tx = ecx.tx();
-        let value = self.predicate.execute(storage, tx, &input)?;
+        let value = self.predicate.eval(storage, tx, &input)?;
         let keep = value
             .cast::<Option<bool>>()
             .expect("this should have failed during planning")
