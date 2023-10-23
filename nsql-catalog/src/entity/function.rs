@@ -5,13 +5,13 @@ use nsql_storage::expr::{Expr, FunctionArgs};
 use nsql_storage_engine::ExecutionMode;
 
 use super::*;
-use crate::{ColumnIdentity, SystemEntityPrivate};
+use crate::{ColumnIdentity, FunctionCatalog, SystemEntityPrivate};
 
 mod builtins;
 
-pub type ScalarFunction<'env, S, M> = fn(
+pub type ScalarFunctionPtr<'env, S, M> = for<'txn> fn(
     Catalog<'env, S>,
-    <M as ExecutionMode<'env, S>>::TransactionRef<'_>,
+    <M as ExecutionMode<'env, S>>::TransactionRef<'txn>,
     FunctionArgs,
 ) -> Result<Value>;
 
@@ -52,8 +52,8 @@ impl From<FunctionKind> for Value {
     }
 }
 
-impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>>
-    nsql_storage::expr::FunctionCatalog<'env, S, M> for Catalog<'env, S>
+impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> FunctionCatalog<'env, S, M>
+    for Catalog<'env, S>
 {
     #[inline]
     fn storage(&self) -> &'env S {
@@ -64,9 +64,9 @@ impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>>
     fn get_function(
         &self,
         tx: &dyn Transaction<'env, S>,
-        oid: UntypedOid,
+        oid: Oid<Function>,
     ) -> Result<Box<dyn nsql_storage::expr::ScalarFunction<'env, S, M>>> {
-        let f = self.get::<Function>(tx, oid.cast())?;
+        let f = self.get::<Function>(tx, oid)?;
         Ok(Box::new(f))
     }
 }
@@ -114,7 +114,7 @@ impl Function {
     #[inline]
     pub fn get_scalar_function<'env, S: StorageEngine, M: ExecutionMode<'env, S>>(
         &self,
-    ) -> ScalarFunction<'env, S, M> {
+    ) -> ScalarFunctionPtr<'env, S, M> {
         assert!(matches!(self.kind, FunctionKind::Scalar));
         if let Some(f) = builtins::get_scalar_function::<'env, S, M>(self.oid) {
             return f;

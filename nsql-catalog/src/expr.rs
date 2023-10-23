@@ -1,6 +1,8 @@
 use anyhow::Result;
-use nsql_storage::expr::{Expr, FunctionCatalog, TupleExpr};
+use nsql_storage::expr::{Expr, TupleExpr};
 use nsql_storage_engine::{ExecutionMode, StorageEngine, Transaction};
+
+use crate::FunctionCatalog;
 
 pub trait TupleExprResolveExt {
     /// Prepare this tuple expression for evaluation.
@@ -19,7 +21,7 @@ impl TupleExprResolveExt for TupleExpr {
         catalog: &dyn FunctionCatalog<'env, S, M, F>,
         tx: &dyn Transaction<'env, S>,
     ) -> Result<TupleExpr<F>> {
-        self.map(|oid| catalog.get_function(tx, oid))
+        self.map(|oid| catalog.get_function(tx, oid.cast()))
     }
 }
 
@@ -40,6 +42,6 @@ impl ExprResolveExt for Expr {
         catalog: &dyn FunctionCatalog<'env, S, M, F>,
         tx: &dyn Transaction<'env, S>,
     ) -> Result<Expr<F>> {
-        self.map(|oid| catalog.get_function(tx, oid))
+        self.map(|oid| catalog.get_function(tx, oid.cast()))
     }
 }

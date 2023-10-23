@@ -321,6 +321,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
         Ok(plan)
     }
 
+    #[allow(clippy::type_complexity)]
     fn compile_order_exprs(
         &mut self,
         tx: &dyn Transaction<'env, S>,

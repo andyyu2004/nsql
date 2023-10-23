@@ -20,7 +20,7 @@ use nsql_storage_engine::{
 use self::bootstrap::{BootstrapColumn, BootstrapSequence};
 pub use self::entity::column::{Column, ColumnIdentity, ColumnIndex};
 pub use self::entity::function::{
-    AggregateFunctionInstance, Function, FunctionKind, ScalarFunction,
+    AggregateFunctionInstance, Function, FunctionKind, ScalarFunctionPtr,
 };
 pub use self::entity::index::{Index, IndexKind};
 pub use self::entity::namespace::Namespace;
@@ -260,4 +260,10 @@ impl<'env, S: StorageEngine> Catalog<'env, S> {
     pub fn storage(&self) -> &'env S {
         self.storage
     }
+}
+
+pub trait FunctionCatalog<'env, S, M, F = Box<dyn nsql_storage::expr::ScalarFunction<'env, S, M>>> {
+    fn storage(&self) -> &'env S;
+
+    fn get_function(&self, tx: &dyn Transaction<'env, S>, oid: Oid<Function>) -> Result<F>;
 }

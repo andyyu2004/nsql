@@ -6,18 +6,12 @@ use std::{fmt, mem};
 use anyhow::Result;
 use itertools::Itertools;
 use nsql_core::{LogicalType, UntypedOid};
-use nsql_storage_engine::{ExecutionMode, StorageEngine, Transaction};
+use nsql_storage_engine::{ExecutionMode, StorageEngine};
 use nsql_util::static_assert_eq;
 use rkyv::{Archive, Deserialize, Serialize};
 
 use crate::tuple::{Tuple, TupleIndex};
 use crate::value::{CastError, FromValue, Value};
-
-pub trait FunctionCatalog<'env, S, M, F = Box<dyn ScalarFunction<'env, S, M>>> {
-    fn storage(&self) -> &'env S;
-
-    fn get_function(&self, tx: &dyn Transaction<'env, S>, oid: UntypedOid) -> Result<F>;
-}
 
 // Note: smallvec seems to always be slower than this for sqlite/select3.sql
 // This alias is useful for testing different types

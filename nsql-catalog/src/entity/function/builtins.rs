@@ -115,7 +115,7 @@ macro_rules! prefix_op {
 
 pub(crate) fn get_scalar_function<'env, S: StorageEngine, M: ExecutionMode<'env, S>>(
     oid: Oid<Function>,
-) -> Option<ScalarFunction<'env, S, M>> {
+) -> Option<ScalarFunctionPtr<'env, S, M>> {
     Some(match oid {
         _ if oid == Function::NEG_INT => prefix_op!(- : i64),
         _ if oid == Function::NEG_FLOAT => prefix_op!(- : f64),

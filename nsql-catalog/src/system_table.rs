@@ -4,14 +4,13 @@ use std::sync::Arc;
 use anyhow::anyhow;
 use fix_hidden_lifetime_bug::fix_hidden_lifetime_bug;
 use nsql_core::Oid;
-use nsql_storage::expr::FunctionCatalog;
 use nsql_storage::tuple::{FromTuple, IntoTuple};
 use nsql_storage_engine::{
     ExecutionMode, FallibleIterator, ReadWriteExecutionMode, StorageEngine, Transaction,
 };
 
 use crate::entity::table::{PrimaryKeyConflict, TableStorage};
-use crate::{Catalog, Result, SystemEntity, Table};
+use crate::{Catalog, FunctionCatalog, Result, SystemEntity, Table};
 
 #[repr(transparent)]
 pub struct SystemTableView<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T> {

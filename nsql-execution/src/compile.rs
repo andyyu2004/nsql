@@ -2,8 +2,9 @@ use std::mem;
 
 use anyhow::Result;
 use nsql_catalog::expr::ExprResolveExt;
-use nsql_core::UntypedOid;
-use nsql_storage::expr::{Expr, ExprOp, FunctionCatalog, TupleExpr};
+use nsql_catalog::{Function, FunctionCatalog};
+use nsql_core::{Oid, UntypedOid};
+use nsql_storage::expr::{Expr, ExprOp, TupleExpr};
 use nsql_storage_engine::{ExecutionMode, StorageEngine, Transaction};
 
 #[derive(Debug)]
@@ -77,7 +78,7 @@ impl<F> Compiler<F> {
                 self.emit(ExprOp::MkArray { len });
             }
             opt::Expr::Call(call) => {
-                let function = catalog.get_function(tx, call.function().untyped())?;
+                let function = catalog.get_function(tx, call.function())?;
                 let args = call.args(q);
                 for arg in args {
                     self.build(catalog, tx, q, &arg)?;
@@ -169,9 +170,9 @@ impl<F> Compiler<F> {
                     fn get_function(
                         &self,
                         _tx: &dyn Transaction<'_, S>,
-                        oid: UntypedOid,
+                        oid: Oid<Function>,
                     ) -> Result<UntypedOid> {
-                        Ok(oid)
+                        Ok(oid.untyped())
                     }
                 }
 

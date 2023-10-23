@@ -6,8 +6,8 @@ mod table;
 use std::collections::HashMap;
 
 use anyhow::bail;
-use nsql_core::{LogicalType, UntypedOid};
-use nsql_storage::expr::{Expr, ExprOp, FunctionCatalog, TupleExpr};
+use nsql_core::LogicalType;
+use nsql_storage::expr::{Expr, ExprOp, TupleExpr};
 use nsql_storage::tuple::TupleIndex;
 use nsql_storage::Result;
 use nsql_storage_engine::{ReadWriteExecutionMode, StorageEngine, Transaction};
@@ -16,8 +16,8 @@ use self::namespace::BootstrapNamespace;
 use self::table::BootstrapTable;
 pub(crate) use self::table::{BootstrapColumn, BootstrapSequence};
 use crate::{
-    Column, ColumnIdentity, ColumnIndex, Function, Index, IndexKind, Namespace, Oid, Operator,
-    OperatorKind, Sequence, SystemTableView, Table, MAIN_SCHEMA_PATH,
+    Column, ColumnIdentity, ColumnIndex, Function, FunctionCatalog, Index, IndexKind, Namespace,
+    Oid, Operator, OperatorKind, Sequence, SystemTableView, Table, MAIN_SCHEMA_PATH,
 };
 
 // The order matters as it will determine which id is assigned to each element
@@ -43,7 +43,7 @@ impl<'env, S, M, F> FunctionCatalog<'env, S, M, F> for BootstrapFunctionCatalog 
         panic!("cannot get storage during bootstrap")
     }
 
-    fn get_function(&self, _tx: &dyn Transaction<'env, S>, _oid: UntypedOid) -> Result<F> {
+    fn get_function(&self, _tx: &dyn Transaction<'env, S>, _oid: Oid<Function>) -> Result<F> {
         bail!("cannot get function during bootstrap")
     }
 }
