@@ -27,6 +27,7 @@ use std::sync::Arc;
 use std::{fmt, mem};
 
 use anyhow::Result;
+use nsql_catalog::expr::ExprEvalExt;
 use nsql_catalog::Catalog;
 use nsql_core::Name;
 use nsql_storage::expr::{self, ExecutableExpr, ExecutableFunction, ExecutableTupleExpr};

@@ -15,7 +15,7 @@ use nsql_storage_engine::{
 };
 use rkyv::AlignedVec;
 
-use crate::expr::TupleExprResolveExt;
+use crate::expr::{ExprEvalExt, TupleExprResolveExt};
 use crate::FunctionCatalog;
 
 #[allow(explicit_outlives_requirements)]

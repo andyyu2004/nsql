@@ -10,7 +10,7 @@ use nsql_storage_engine::{ExecutionMode, StorageEngine};
 use nsql_util::static_assert_eq;
 use rkyv::{Archive, Deserialize, Serialize};
 
-use crate::tuple::{Tuple, TupleIndex};
+use crate::tuple::TupleIndex;
 use crate::value::{CastError, FromValue, Value};
 
 // Note: smallvec seems to always be slower than this for sqlite/select3.sql
@@ -62,17 +62,10 @@ impl<F> TupleExpr<F> {
     pub fn width(&self) -> usize {
         self.exprs.len()
     }
-}
 
-impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> ExecutableTupleExpr<'env, S, M> {
     #[inline]
-    pub fn eval(
-        &self,
-        storage: &'env S,
-        tx: M::TransactionRef<'_>,
-        tuple: &Tuple,
-    ) -> Result<Tuple> {
-        self.exprs.iter().map(|expr| expr.eval(storage, tx, tuple)).collect()
+    pub fn exprs(&self) -> &[Expr<F>] {
+        self.exprs.as_ref()
     }
 }
 
@@ -191,36 +184,6 @@ impl<F> Expr<F> {
     }
 }
 
-impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> ExecutableExpr<'env, S, M> {
-    // FIXME should probably use an evaluator struct for efficiency as it would let us reuse the stack allocation
-    // rather than allocating a new one pre expression.
-    pub fn eval(
-        &self,
-        storage: &'env S,
-        tx: M::TransactionRef<'_>,
-        tuple: &Tuple,
-    ) -> Result<Value> {
-        let mut ip = 0;
-        let mut stack = vec![];
-        loop {
-            let op = &self.ops[ip];
-            if matches!(op, ExprOp::Return) {
-                break;
-            }
-            op.execute(storage, tx, &mut stack, &mut ip, tuple)?;
-        }
-
-        assert_eq!(
-            stack.len(),
-            1,
-            "stack should have exactly one value after execution, had {}",
-            stack.len()
-        );
-
-        Ok(stack.pop().unwrap())
-    }
-}
-
 pub type ExecutableExprOp<'env, S, M> = ExprOp<Box<dyn ScalarFunction<'env, S, M>>>;
 
 /// `Expr` is generic over the representation of functions.
@@ -244,60 +207,7 @@ pub enum ExprOp<F = UntypedOid> {
 
 static_assert_eq!(mem::size_of::<ExprOp>(), 40);
 
-impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>>
-    ExprOp<Box<dyn ScalarFunction<'env, S, M>>>
-{
-    fn execute(
-        &self,
-        storage: &'env S,
-        tx: M::TransactionRef<'_>,
-        stack: &mut Vec<Value>,
-        ip: &mut usize,
-        tuple: &Tuple,
-    ) -> Result<()> {
-        let value = match self {
-            ExprOp::Project { index } => tuple[*index].clone(),
-            ExprOp::Push(value) => value.clone(),
-            ExprOp::MkArray { len } => {
-                let array = stack.drain(stack.len() - *len..).collect::<Box<[Value]>>();
-                Value::Array(array)
-            }
-            ExprOp::Call { function } => {
-                let args = stack.drain(stack.len() - function.arity()..).collect::<FunctionArgs>();
-                function.invoke(storage, tx, args)?
-            }
-            ExprOp::IfNeJmp(offset) => {
-                let rhs = stack.pop().unwrap();
-                let lhs = stack.pop().unwrap();
-                // maybe we should just call the `NOT_EQUAL` function but that would be slower
-                *ip +=
-                    if lhs.is_null() || rhs.is_null() || lhs != rhs { *offset as usize } else { 1 };
-                return Ok(());
-            }
-            ExprOp::IfNullJmp(offset) => {
-                let value = stack.pop().unwrap();
-                *ip += if value.is_null() { *offset as usize } else { 1 };
-                return Ok(());
-            }
-            ExprOp::Jmp(offset) => {
-                *ip += *offset as usize;
-                return Ok(());
-            }
-            ExprOp::Dup => stack.last().unwrap().clone(),
-            ExprOp::Pop => {
-                stack.pop().unwrap();
-                *ip += 1;
-                return Ok(());
-            }
-            ExprOp::Return => return Ok(()),
-        };
-
-        stack.push(value);
-        *ip += 1;
-        Ok(())
-    }
-}
-
 mod fold;
+
 #[cfg(test)]
 mod tests;
