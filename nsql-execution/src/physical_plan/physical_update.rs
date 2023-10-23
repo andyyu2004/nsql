@@ -76,7 +76,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSink<'env, 'txn, S, ReadWriteEx
         &mut self,
         ecx: &ExecutionContext<'_, 'env, 'txn, S, ReadWriteExecutionMode>,
     ) -> ExecutionResult<()> {
-        let tx = ecx.tx();
+        let tx = ecx.tcx();
         let catalog = ecx.catalog();
         let table = catalog.table(tx, self.table)?;
         let mut storage = table.storage::<S, ReadWriteExecutionMode>(catalog, tx)?;
@@ -107,15 +107,17 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSource<'env, 'txn, S, ReadWrite
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine> Explain<'env, S> for PhysicalUpdate<'env, 'txn, S> {
-    fn as_dyn(&self) -> &dyn Explain<'env, S> {
+impl<'env: 'txn, 'txn, S: StorageEngine> Explain<'env, 'txn, S, ReadWriteExecutionMode>
+    for PhysicalUpdate<'env, 'txn, S>
+{
+    fn as_dyn(&self) -> &dyn Explain<'env, 'txn, S, ReadWriteExecutionMode> {
         self
     }
 
     fn explain(
         &self,
         catalog: Catalog<'env, S>,
-        tx: &dyn TransactionContext<'env, '_, S, M>,
+        tx: &dyn TransactionContext<'env, 'txn, S, ReadWriteExecutionMode>,
         f: &mut fmt::Formatter<'_>,
     ) -> explain::Result {
         write!(f, "update {}", catalog.table(tx, self.table)?.name())?;

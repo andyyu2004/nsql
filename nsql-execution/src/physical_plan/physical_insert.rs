@@ -69,7 +69,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSink<'env, 'txn, S, ReadWriteEx
         tuple: Tuple,
     ) -> ExecutionResult<()> {
         let catalog = ecx.catalog();
-        let tx = ecx.tx();
+        let tx = ecx.tcx();
 
         let table = self.table.get_or_try_init(|| catalog.get(tx, self.table_oid))?;
 
@@ -94,7 +94,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSink<'env, 'txn, S, ReadWriteEx
         // hack, if this is the insert of a `CREATE TABLE` we need to create the table storage
         if self.table_oid == Table::TABLE {
             let table = Table::from_tuple(tuple).expect("should be a compatible tuple");
-            table.create_storage::<S>(catalog, tx)?;
+            table.create_storage::<S>(catalog, tx.transaction())?;
         }
 
         Ok(())
@@ -123,15 +123,17 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSource<'env, 'txn, S, ReadWrite
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine> Explain<'env, S> for PhysicalInsert<'env, 'txn, S> {
-    fn as_dyn(&self) -> &dyn Explain<'env, S> {
+impl<'env: 'txn, 'txn, S: StorageEngine> Explain<'env, 'txn, S, ReadWriteExecutionMode>
+    for PhysicalInsert<'env, 'txn, S>
+{
+    fn as_dyn(&self) -> &dyn Explain<'env, 'txn, S, ReadWriteExecutionMode> {
         self
     }
 
     fn explain(
         &self,
         catalog: Catalog<'env, S>,
-        tx: &dyn TransactionContext<'env, '_, S, M>,
+        tx: &dyn TransactionContext<'env, 'txn, S, ReadWriteExecutionMode>,
         f: &mut fmt::Formatter<'_>,
     ) -> explain::Result {
         write!(f, "insert into {}", catalog.table(tx, self.table_oid)?.name())?;

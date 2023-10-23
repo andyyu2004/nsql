@@ -20,9 +20,7 @@ use nsql_arena::{Arena, Idx};
 use nsql_catalog::{Catalog, TransactionLocalCatalogCaches};
 use nsql_core::Name;
 use nsql_storage::tuple::Tuple;
-use nsql_storage_engine::{
-    ExecutionMode, FallibleIterator, ReadWriteExecutionMode, StorageEngine, Transaction,
-};
+use nsql_storage_engine::{ExecutionMode, FallibleIterator, ReadWriteExecutionMode, StorageEngine};
 use nsql_util::atomic::AtomicEnum;
 pub use physical_plan::PhysicalPlanner;
 use pipeline::RootPipeline;
@@ -182,7 +180,7 @@ use impl_physical_node_conversions;
 // keep this trait crate-private
 #[allow(clippy::type_complexity)]
 trait PhysicalNode<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>:
-    Explain<'env, S> + fmt::Debug
+    Explain<'env, 'txn, S, M> + fmt::Debug
 {
     fn id(&self) -> PhysicalNodeId;
 
@@ -273,17 +271,17 @@ trait PhysicalNode<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>
 // generate boilerplate impls of `Explain` and `PhysicalNode` for `&'a mut Trait<'env, 'txn, S, M>`
 macro_rules! delegate_physical_node_impl_of_dyn {
     ($ty:ident) => {
-        impl<'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Explain<'env, S>
+        impl<'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Explain<'env, 'txn, S, M>
             for &'a mut dyn $ty<'env, 'txn, S, M>
         {
-            fn as_dyn(&self) -> &dyn Explain<'env, S> {
+            fn as_dyn(&self) -> &dyn Explain<'env, 'txn, S, M> {
                 self
             }
 
             fn explain(
                 &self,
                 catalog: Catalog<'env, S>,
-                tx: &dyn nsql_catalog::TransactionContext<'env, '_, S, M>,
+                tx: &dyn nsql_catalog::TransactionContext<'env, 'txn, S, M>,
                 f: &mut fmt::Formatter<'_>,
             ) -> explain::Result {
                 (**self).explain(catalog, tx, f)
@@ -395,7 +393,7 @@ trait PhysicalSource<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, 
     /// Return the next chunk from the source. An empty chunk indicates that the source is exhausted.
     fn source(
         &mut self,
-        ecx: &ExecutionContext<'_, 'env, 'txn, S, M>,
+        ecx: &'txn ExecutionContext<'_, 'env, 'txn, S, M>,
     ) -> ExecutionResult<TupleStream<'_>>;
 }
 
@@ -404,7 +402,7 @@ impl<'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
 {
     fn source(
         &mut self,
-        ecx: &ExecutionContext<'_, 'env, 'txn, S, M>,
+        ecx: &'txn ExecutionContext<'_, 'env, 'txn, S, M>,
     ) -> ExecutionResult<TupleStream<'_>> {
         (**self).source(ecx)
     }
@@ -436,7 +434,7 @@ impl<'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
 {
     fn source(
         &mut self,
-        ecx: &ExecutionContext<'_, 'env, 'txn, S, M>,
+        ecx: &'txn ExecutionContext<'_, 'env, 'txn, S, M>,
     ) -> ExecutionResult<TupleStream<'_>> {
         (**self).source(ecx)
     }
@@ -463,7 +461,7 @@ pub trait SessionContext {
 }
 
 pub struct TransactionContext<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> {
-    tx: M::TransactionRef<'txn>,
+    tx: M::Transaction,
     auto_commit: AtomicBool,
     state: AtomicEnum<TransactionState>,
     catalog_caches: TransactionLocalCatalogCaches<'env, 'txn, S, M>,
@@ -473,8 +471,8 @@ impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     nsql_catalog::TransactionContext<'env, 'txn, S, M> for TransactionContext<'env, 'txn, S, M>
 {
     #[inline]
-    fn transaction(&self) -> M::TransactionRef<'txn> {
-        self.tx
+    fn transaction(&self) -> &M::Transaction {
+        &self.tx
     }
 
     #[inline]
@@ -590,11 +588,6 @@ impl<'a, 'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     #[inline]
     pub fn tcx(&self) -> &TransactionContext<'env, 'txn, S, M> {
         &self.tcx
-    }
-
-    #[inline]
-    pub fn tx(&self) -> M::TransactionRef<'txn> {
-        self.tcx.tx
     }
 
     #[inline]

@@ -15,9 +15,7 @@ use expr::ExecutableFunction;
 use nsql_core::{Name, Oid};
 use nsql_storage::tuple::{FromTuple, IntoTuple};
 use nsql_storage::value::Value;
-use nsql_storage_engine::{
-    ExecutionMode, ReadWriteExecutionMode, StorageEngine,
-};
+use nsql_storage_engine::{ExecutionMode, ReadWriteExecutionMode, StorageEngine};
 
 use self::bootstrap::{BootstrapColumn, BootstrapSequence};
 pub use self::entity::column::{Column, ColumnIdentity, ColumnIndex};
@@ -35,7 +33,7 @@ pub use self::system_table::SystemTableView;
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 
 pub trait TransactionContext<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> {
-    fn transaction(&self) -> M::TransactionRef<'txn>;
+    fn transaction(&self) -> M::TransactionRef<'_>;
 
     fn catalog_caches(&self) -> &TransactionLocalCatalogCaches<'env, 'txn, S, M>;
 }

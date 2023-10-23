@@ -79,7 +79,8 @@ impl<S: StorageEngine> Nsql<S> {
     pub fn create(path: impl AsRef<Path>) -> Result<Self> {
         let storage = S::create(path)?;
         let tx = storage.begin_write()?;
-        Catalog::create(&storage, &tx)?;
+        let tcx = TransactionContext::new(&tx, false);
+        Catalog::create(&storage, &tcx)?;
         tx.commit()?;
 
         Self::try_new(storage)
@@ -223,12 +224,11 @@ impl<S: StorageEngine> Shared<S> {
         let storage = self.storage.storage();
         let catalog = Catalog::new(storage);
 
-        let binder = Binder::new(catalog);
         let (auto_commit, tx, plan) =
             self.profiler.profile(self.profiler.bind_event_id, || match tx {
                 Some(tx) => {
                     tracing::debug!("reusing existing transaction");
-                    let plan = binder.bind(&tx, stmt)?;
+                    let plan = Binder::new(catalog, &tx).bind(stmt)?;
                     Ok((false, tx, plan))
                 }
                 None => {

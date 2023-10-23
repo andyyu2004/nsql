@@ -139,18 +139,19 @@ where
     }
 }
 
-impl<'p, 'env, S: StorageEngine, N> Explain<'env, S> for ProfiledPhysicalNode<'p, N>
+impl<'p, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, N> Explain<'env, 'txn, S, M>
+    for ProfiledPhysicalNode<'p, N>
 where
-    N: Explain<'env, S>,
+    N: Explain<'env, 'txn, S, M>,
 {
-    fn as_dyn(&self) -> &dyn Explain<'env, S> {
+    fn as_dyn(&self) -> &dyn Explain<'env, 'txn, S, M> {
         self
     }
 
     fn explain(
         &self,
         catalog: Catalog<'env, S>,
-        tx: &dyn TransactionContext<'env, '_, S, M>,
+        tx: &dyn TransactionContext<'env, 'txn, S, M>,
         f: &mut fmt::Formatter<'_>,
     ) -> explain::Result {
         self.node.explain(catalog, tx, f)
@@ -221,7 +222,7 @@ where
 {
     fn source(
         &mut self,
-        ecx: &ExecutionContext<'_, 'env, 'txn, S, M>,
+        ecx: &'txn ExecutionContext<'_, 'env, 'txn, S, M>,
     ) -> ExecutionResult<TupleStream<'_>> {
         let id = self.id();
         let _guard = self.profiler.start(id, NodeType::Misc);

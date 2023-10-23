@@ -3,9 +3,9 @@ use std::mem;
 use anyhow::Result;
 use nsql_catalog::expr::ExprResolveExt;
 use nsql_catalog::{Function, FunctionCatalog, TransactionContext};
-use nsql_core::{Oid, UntypedOid, UntypedOid};
-use nsql_storage::expr::{Expr, Expr, ExprOp, ExprOp, FunctionCatalog, TupleExpr, TupleExpr};
-use nsql_storage_engine::{ExecutionMode, StorageEngine, Transaction};
+use nsql_core::{Oid, UntypedOid};
+use nsql_storage::expr::{Expr, ExprOp, TupleExpr};
+use nsql_storage_engine::{ExecutionMode, StorageEngine};
 
 #[derive(Debug)]
 pub(crate) struct Compiler<F> {
@@ -19,10 +19,10 @@ impl<F> Default for Compiler<F> {
 }
 
 impl<F> Compiler<F> {
-    pub fn compile_many<'env, S: StorageEngine, M: ExecutionMode<'env, S>>(
+    pub fn compile_many<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
         &mut self,
         catalog: &dyn FunctionCatalog<'env, S, M, F>,
-        tx: &dyn TransactionContext<'env, '_, S, M>,
+        tx: &dyn TransactionContext<'env, 'txn, S, M>,
         q: &opt::Query,
         exprs: impl IntoIterator<Item = opt::Expr<'_>>,
     ) -> Result<TupleExpr<F>> {
@@ -33,10 +33,10 @@ impl<F> Compiler<F> {
             .map(TupleExpr::new)
     }
 
-    pub fn compile<'env, S: StorageEngine, M: ExecutionMode<'env, S>>(
+    pub fn compile<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
         &mut self,
         catalog: &dyn FunctionCatalog<'env, S, M, F>,
-        tx: &dyn TransactionContext<'env, '_, S, M>,
+        tx: &dyn TransactionContext<'env, 'txn, S, M>,
         q: &opt::Query,
         expr: opt::Expr<'_>,
     ) -> Result<Expr<F>> {
@@ -45,10 +45,10 @@ impl<F> Compiler<F> {
         Ok(Expr::new(expr.display(q), mem::take(&mut self.ops)))
     }
 
-    fn build<'env, S: StorageEngine, M: ExecutionMode<'env, S>>(
+    fn build<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
         &mut self,
         catalog: &dyn FunctionCatalog<'env, S, M, F>,
-        tx: &dyn TransactionContext<'env, '_, S, M>,
+        tx: &dyn TransactionContext<'env, 'txn, S, M>,
         q: &opt::Query,
         expr: &opt::Expr<'_>,
     ) -> Result<()> {
@@ -167,11 +167,14 @@ impl<F> Compiler<F> {
                         self.0
                     }
 
-                    fn get_function(
+                    fn get_function<'txn>(
                         &self,
-                        _tx: &dyn Transaction<'_, S>,
+                        _tx: &dyn TransactionContext<'env, 'txn, S, M>,
                         oid: Oid<Function>,
-                    ) -> Result<UntypedOid> {
+                    ) -> Result<UntypedOid>
+                    where
+                        'env: 'txn,
+                    {
                         Ok(oid.untyped())
                     }
                 }

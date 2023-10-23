@@ -32,7 +32,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
         input: Tuple,
     ) -> ExecutionResult<OperatorState<Tuple>> {
         let storage = ecx.storage();
-        let tx = ecx.tx();
+        let tx = ecx.tcx();
         let value = self.predicate.eval(storage, tx, &input)?;
         let keep = value
             .cast::<Option<bool>>()
@@ -66,17 +66,17 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Explain<'env, S>
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Explain<'env, 'txn, S, M>
     for PhysicalFilter<'env, 'txn, S, M>
 {
-    fn as_dyn(&self) -> &dyn Explain<'env, S> {
+    fn as_dyn(&self) -> &dyn Explain<'env, 'txn, S, M> {
         self
     }
 
     fn explain(
         &self,
         _catalog: Catalog<'_, S>,
-        _tx: &dyn Transaction<'_, S>,
+        _tx: &dyn TransactionContext<'env, 'txn, S, M>,
         f: &mut fmt::Formatter<'_>,
     ) -> explain::Result {
         write!(f, "filter ")?;

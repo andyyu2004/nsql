@@ -54,7 +54,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSource<'env, 'txn, S, ReadWrite
         tracing::debug!("executing physical drop");
 
         let catalog = ecx.catalog();
-        let tx = ecx.tx();
+        let tx = ecx.tcx();
         for &entity_ref in &self.refs {
             tracing::debug!(entity = ?entity_ref, "dropping");
             match entity_ref {
@@ -68,15 +68,17 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSource<'env, 'txn, S, ReadWrite
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine> Explain<'env, S> for PhysicalDrop<'env, 'txn, S> {
-    fn as_dyn(&self) -> &dyn Explain<'env, S> {
+impl<'env: 'txn, 'txn, S: StorageEngine> Explain<'env, 'txn, S, ReadWriteExecutionMode>
+    for PhysicalDrop<'env, 'txn, S>
+{
+    fn as_dyn(&self) -> &dyn Explain<'env, 'txn, S, ReadWriteExecutionMode> {
         self
     }
 
     fn explain(
         &self,
         catalog: Catalog<'env, S>,
-        tx: &dyn TransactionContext<'env, '_, S, M>,
+        tx: &dyn TransactionContext<'env, 'txn, S, ReadWriteExecutionMode>,
         f: &mut fmt::Formatter<'_>,
     ) -> explain::Result {
         write!(f, "drop ")?;
