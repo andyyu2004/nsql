@@ -95,11 +95,9 @@ impl<S: StorageEngine> Nsql<S> {
         Self::try_new(S::open(path)?)
     }
 
-    // FIXME can't find a way to get lifetimes to checkout without separating the connection and state.
-    // Ideally we'd have the connection hold the state.
     #[inline]
-    pub fn connect<'any>(&self) -> (Connection<S>, SessionContext<'any, S>) {
-        (Connection { db: self.clone() }, Default::default())
+    pub fn connect(&self) -> Connection<'_, S> {
+        Connection { db: self, ctx: Default::default() }
     }
 
     #[inline]
@@ -151,11 +149,12 @@ impl NsqlProfiler {
     }
 }
 
-pub struct Connection<S: StorageEngine> {
-    db: Nsql<S>,
+pub struct Connection<'env, S: StorageEngine> {
+    db: &'env Nsql<S>,
+    ctx: SessionContext<'env, S>,
 }
 
-pub struct SessionContext<'env, S: StorageEngine> {
+struct SessionContext<'env, S: StorageEngine> {
     current_tx: ArcSwapOption<ReadOrWriteTransaction<'env, S>>,
     config: SessionConfig,
 }
@@ -174,14 +173,10 @@ impl<'env, S: StorageEngine> nsql_execution::SessionContext for SessionContext<'
     }
 }
 
-impl<S: StorageEngine> Connection<S> {
-    pub fn query<'env>(
-        &'env self,
-        ctx: &SessionContext<'env, S>,
-        query: &str,
-    ) -> Result<MaterializedQueryOutput> {
+impl<'env, S: StorageEngine> Connection<'env, S> {
+    pub fn query(&self, query: &str) -> Result<MaterializedQueryOutput> {
         std::panic::catch_unwind(AssertUnwindSafe(|| {
-            let output = self.db.shared.query(ctx, query)?;
+            let output = self.db.shared.query(&self.ctx, query)?;
 
             Ok(output)
         }))

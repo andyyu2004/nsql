@@ -2,7 +2,7 @@ use std::error::Error;
 use std::path::Path;
 
 use ir::Value;
-use nsql::{Connection, Nsql, SessionContext};
+use nsql::{Connection, Nsql};
 use nsql_core::LogicalType;
 use nsql_lmdb::LmdbStorageEngine;
 use nsql_redb::RedbStorageEngine;
@@ -24,8 +24,8 @@ fn nsql_sqllogictest(path: &Path) -> nsql::Result<(), Box<dyn Error>> {
         );
         let db = Nsql::<S>::create(db_path)?;
         let mut tester = Runner::new(|| async {
-            let (conn, scx) = db.connect();
-            Ok(TestConnection { conn, scx })
+            let conn = db.connect();
+            Ok(TestConnection { conn })
         });
         tester.with_hash_threshold(70);
         tester.run_file(path)?;
@@ -95,9 +95,8 @@ impl ColumnType for TypeWrapper {
     }
 }
 
-pub struct TestConnection<S: StorageEngine> {
-    conn: Connection<S>,
-    scx: SessionContext<'static, S>,
+pub struct TestConnection<'env, S: StorageEngine> {
+    conn: Connection<'env, S>,
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -105,7 +104,7 @@ pub struct TestConnection<S: StorageEngine> {
 pub struct ErrorWrapper(#[from] anyhow::Error);
 
 #[async_trait::async_trait(?Send)]
-impl<S: StorageEngine> AsyncDB for TestConnection<S> {
+impl<'env, S: StorageEngine> AsyncDB for TestConnection<'env, S> {
     type Error = ErrorWrapper;
 
     type ColumnType = TypeWrapper;
@@ -113,7 +112,7 @@ impl<S: StorageEngine> AsyncDB for TestConnection<S> {
     #[tracing::instrument(skip(self))]
     async fn run(&mut self, sql: &str) -> Result<DBOutput<Self::ColumnType>, Self::Error> {
         // transmute the lifetime back to whatever we need, not sure about safety on this one but it's a test so we'll find out
-        let output = self.conn.query(unsafe { std::mem::transmute(&self.scx) }, sql)?;
+        let output = self.conn.query(sql)?;
         Ok(DBOutput::Rows {
             types: output.schema.into_iter().map(TypeWrapper).collect(),
             rows: output

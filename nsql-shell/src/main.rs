@@ -76,10 +76,10 @@ fn main() -> nsql::Result<()> {
     }
 
     let nsql = Nsql::<LmdbStorageEngine>::open(&args.path)?;
-    let (conn, state) = nsql.connect();
+    let conn = nsql.connect();
 
     if let Some(cmd) = &args.cmd {
-        let output = conn.query(&state, cmd)?;
+        let output = conn.query(cmd)?;
         if !args.silent {
             println!("{output}")
         }
@@ -94,7 +94,7 @@ fn main() -> nsql::Result<()> {
             std::fs::read_to_string(file)?
         };
 
-        let output = conn.query(&state, &sql)?;
+        let output = conn.query(&sql)?;
         if !args.silent {
             println!("{output}")
         }
@@ -123,7 +123,7 @@ fn main() -> nsql::Result<()> {
     loop {
         let sig = line_editor.read_line(&prompt)?;
         match sig {
-            Signal::Success(buffer) => match conn.query(&state, &buffer) {
+            Signal::Success(buffer) => match conn.query(&buffer) {
                 Ok(output) => println!("{output}"),
                 Err(e) => println!("{}", e),
             },

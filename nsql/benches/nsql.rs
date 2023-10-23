@@ -68,17 +68,19 @@ fn run<const N: usize>(
                 || {
                     let db_path = tempfile::NamedTempFile::new().unwrap().into_temp_path();
                     let nsql = Nsql::<LmdbStorageEngine>::create(db_path).unwrap();
-                    let (conn, state) = nsql.connect();
+                    let conn = nsql.connect();
 
                     for setup in setup(size) {
-                        conn.query(&state, &setup).unwrap();
+                        conn.query(&setup).unwrap();
                     }
+
+                    drop(conn);
 
                     (nsql, test_sql(size))
                 },
                 |(nsql, sql)| {
-                    let (conn, state) = nsql.connect();
-                    conn.query(&state, &sql).unwrap();
+                    let conn = nsql.connect();
+                    conn.query(&sql).unwrap();
                 },
                 criterion::BatchSize::SmallInput,
             );

@@ -10,8 +10,8 @@ use tracing_subscriber::EnvFilter;
 fn run_sql<S: StorageEngine>(sql: &str) -> nsql::Result<MaterializedQueryOutput> {
     let db_path = tempfile::NamedTempFile::new()?.into_temp_path();
     let db = Nsql::<S>::create(db_path).unwrap();
-    let (conn, state) = db.connect();
-    conn.query(&state, sql)
+    let conn = db.connect();
+    conn.query(sql)
 }
 
 fn nsql_sqltest(path: &Path) -> nsql::Result<(), Box<dyn Error>> {
