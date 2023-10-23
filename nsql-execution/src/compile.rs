@@ -3,7 +3,7 @@ use std::mem;
 use anyhow::Result;
 use nsql_catalog::expr::ExprResolveExt;
 use nsql_core::UntypedOid;
-use nsql_storage::eval::{Expr, ExprOp, FunctionCatalog, TupleExpr};
+use nsql_storage::expr::{Expr, ExprOp, FunctionCatalog, TupleExpr};
 use nsql_storage_engine::{ExecutionMode, StorageEngine, Transaction};
 
 #[derive(Debug)]
@@ -182,7 +182,7 @@ impl<F> Compiler<F> {
                     q,
                     expr.expr(q),
                 )?;
-                // compile the `opt::Expr` into `eval::Expr` and use the expression as a value
+                // compile the `opt::Expr` into `expr::Expr` and use the expression as a value
                 self.emit(ExprOp::Push(ir::Value::Expr(expr)));
             }
         }

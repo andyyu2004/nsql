@@ -1,5 +1,5 @@
 use anyhow::Result;
-use nsql_storage::eval::{Expr, FunctionCatalog, TupleExpr};
+use nsql_storage::expr::{Expr, FunctionCatalog, TupleExpr};
 use nsql_storage_engine::{ExecutionMode, StorageEngine, Transaction};
 
 pub trait TupleExprResolveExt {

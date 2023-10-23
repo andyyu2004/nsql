@@ -1,4 +1,4 @@
-use nsql_storage::eval::{Expr, TupleExpr};
+use nsql_storage::expr::{Expr, TupleExpr};
 
 use super::table::IndexStorageInfo;
 use super::*;

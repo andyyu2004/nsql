@@ -3,7 +3,7 @@ use std::fmt;
 use egg::Id;
 use itertools::Itertools;
 use nsql_core::{Name, Oid};
-use nsql_storage::eval;
+use nsql_storage::expr;
 
 use crate::node::{EGraph, Node};
 
@@ -517,7 +517,7 @@ pub enum Expr<'a> {
     Call(CallExpr<'a>),
     Case(CaseExpr<'a>),
     Quote(QuotedExpr),
-    Compiled(&'a eval::Expr),
+    Compiled(&'a expr::Expr),
 }
 
 impl<'q> Expr<'q> {

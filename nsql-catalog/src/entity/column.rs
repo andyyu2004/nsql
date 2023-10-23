@@ -1,6 +1,6 @@
 use std::fmt;
 
-use nsql_storage::eval::Expr;
+use nsql_storage::expr::Expr;
 
 use super::table::ColumnStorageInfo;
 use super::*;

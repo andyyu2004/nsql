@@ -22,7 +22,7 @@ use nsql_catalog::{
 };
 use nsql_core::{not_implemented, not_implemented_if, LogicalType, Name, Oid, Schema};
 use nsql_parse::ast;
-use nsql_storage::eval;
+use nsql_storage::expr;
 use nsql_storage_engine::{FallibleIterator, ReadonlyExecutionMode, StorageEngine, Transaction};
 
 use self::scope::{CteKind, Scope, TableBinding};
@@ -1006,7 +1006,7 @@ impl<'env, S: StorageEngine> Binder<'env, S> {
                             match column.identity {
                                 ColumnIdentity::None => column
                                     .default_expr
-                                    .map_or_else(|| literal(eval::Expr::null()), ir::Expr::quote),
+                                    .map_or_else(|| literal(expr::Expr::null()), ir::Expr::quote),
                                 ColumnIdentity::ByDefault | ColumnIdentity::Always => {
                                     ensure!(
                                         column.default_expr.is_none(),

@@ -1,7 +1,7 @@
 use egg::{define_language, Id};
 use ir::Value;
 use nsql_core::{Name, Oid};
-use nsql_storage::eval;
+use nsql_storage::expr;
 
 use crate::Query;
 
@@ -15,7 +15,7 @@ define_language! {
         Literal(Value),
         Cte(Name, [Id; 2]), // (cte-name (cte-plan child-plan))
         CteScan(Name),
-        CompiledExpr(eval::Expr),
+        CompiledExpr(expr::Expr),
         // We pass the plan id here so column refs with the same index don't get merged into the same eclass
         ColumnRef(ir::ColumnRef, Id),           // (column-ref <index> <plan>)
         "union" = Union([Id; 2]),               // (union <lhs> <rhs>)

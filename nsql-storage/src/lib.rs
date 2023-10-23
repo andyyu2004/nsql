@@ -2,7 +2,7 @@
 #![feature(trivial_bounds)]
 #![feature(once_cell_try)]
 
-pub mod eval;
+pub mod expr;
 pub mod tuple;
 pub mod value;
 

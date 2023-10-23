@@ -6,7 +6,7 @@ use fix_hidden_lifetime_bug::fix_hidden_lifetime_bug;
 use next_gen::generator_fn::GeneratorFn;
 use next_gen::prelude::*;
 use nsql_core::{LogicalType, Name, Oid};
-use nsql_storage::eval::{FunctionCatalog, TupleExpr};
+use nsql_storage::expr::{FunctionCatalog, TupleExpr};
 use nsql_storage::tuple::{IntoTuple, Tuple, TupleIndex};
 use nsql_storage::value::Value;
 use nsql_storage_engine::{
@@ -311,7 +311,7 @@ impl ColumnStorageInfo {
 pub(crate) struct IndexStorage<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> {
     storage: TableStorage<'env, 'txn, S, M>,
     index_expr: AtomicTake<TupleExpr>,
-    prepared_expr: OnceLock<TupleExpr<Box<dyn nsql_storage::eval::ScalarFunction<'env, S, M>>>>,
+    prepared_expr: OnceLock<TupleExpr<Box<dyn nsql_storage::expr::ScalarFunction<'env, S, M>>>>,
 }
 
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> IndexStorage<'env, 'txn, S, M> {

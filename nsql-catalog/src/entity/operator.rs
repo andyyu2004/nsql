@@ -1,7 +1,7 @@
 use core::fmt;
 use std::mem;
 
-use nsql_storage::eval::Expr;
+use nsql_storage::expr::Expr;
 
 use super::*;
 use crate::{ColumnIdentity, Function, SystemEntityPrivate};

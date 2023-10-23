@@ -1,7 +1,7 @@
 use std::{fmt, mem};
 
 use nsql_core::UntypedOid;
-use nsql_storage::eval::{Expr, FunctionArgs};
+use nsql_storage::expr::{Expr, FunctionArgs};
 use nsql_storage_engine::ExecutionMode;
 
 use super::*;
@@ -53,7 +53,7 @@ impl From<FunctionKind> for Value {
 }
 
 impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>>
-    nsql_storage::eval::FunctionCatalog<'env, S, M> for Catalog<'env, S>
+    nsql_storage::expr::FunctionCatalog<'env, S, M> for Catalog<'env, S>
 {
     #[inline]
     fn storage(&self) -> &'env S {
@@ -65,14 +65,14 @@ impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>>
         &self,
         tx: &dyn Transaction<'env, S>,
         oid: UntypedOid,
-    ) -> Result<Box<dyn nsql_storage::eval::ScalarFunction<'env, S, M>>> {
+    ) -> Result<Box<dyn nsql_storage::expr::ScalarFunction<'env, S, M>>> {
         let f = self.get::<Function>(tx, oid.cast())?;
         Ok(Box::new(f))
     }
 }
 
 impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>>
-    nsql_storage::eval::ScalarFunction<'env, S, M> for Function
+    nsql_storage::expr::ScalarFunction<'env, S, M> for Function
 {
     #[inline]
     fn invoke(

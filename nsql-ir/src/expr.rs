@@ -9,7 +9,7 @@ pub use const_eval::EvalNotConst;
 use itertools::Itertools;
 use nsql_catalog::{Function, Operator};
 use nsql_core::{LogicalType, Name};
-use nsql_storage::eval;
+use nsql_storage::expr;
 use nsql_storage::tuple::TupleIndex;
 use nsql_storage::value::Value;
 use nsql_util::static_assert_eq;
@@ -134,7 +134,7 @@ pub enum ExprKind {
         else_result: Option<Box<Expr>>,
     },
     Subquery(SubqueryKind, Box<QueryPlan>),
-    Compiled(eval::Expr),
+    Compiled(expr::Expr),
     /// An expression that evaluates to an expression.
     /// Similar to `Compiled` above but is yet to be compiled.
     Quote(Box<Expr>),

@@ -3,7 +3,7 @@ mod storage;
 use anyhow::Result;
 use nsql_core::LogicalType;
 use nsql_derive::{FromTuple, IntoTuple};
-use nsql_storage::eval::Expr;
+use nsql_storage::expr::Expr;
 use nsql_storage::value::Value;
 use nsql_storage_engine::{
     ExecutionMode, FallibleIterator, ReadWriteExecutionMode, StorageEngine, Transaction,

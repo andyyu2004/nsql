@@ -7,7 +7,7 @@ use std::collections::HashMap;
 
 use anyhow::bail;
 use nsql_core::{LogicalType, UntypedOid};
-use nsql_storage::eval::{Expr, ExprOp, FunctionCatalog, TupleExpr};
+use nsql_storage::expr::{Expr, ExprOp, FunctionCatalog, TupleExpr};
 use nsql_storage::tuple::TupleIndex;
 use nsql_storage::Result;
 use nsql_storage_engine::{ReadWriteExecutionMode, StorageEngine, Transaction};

@@ -4,7 +4,7 @@ use std::sync::Arc;
 use anyhow::anyhow;
 use fix_hidden_lifetime_bug::fix_hidden_lifetime_bug;
 use nsql_core::Oid;
-use nsql_storage::eval::FunctionCatalog;
+use nsql_storage::expr::FunctionCatalog;
 use nsql_storage::tuple::{FromTuple, IntoTuple};
 use nsql_storage_engine::{
     ExecutionMode, FallibleIterator, ReadWriteExecutionMode, StorageEngine, Transaction,

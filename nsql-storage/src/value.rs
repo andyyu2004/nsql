@@ -9,7 +9,7 @@ use nsql_util::static_assert_eq;
 use rust_decimal::prelude::ToPrimitive;
 pub use rust_decimal::Decimal;
 
-use crate::eval::{Expr, TupleExpr};
+use crate::expr::{Expr, TupleExpr};
 
 pub struct CastError {
     value: Value,

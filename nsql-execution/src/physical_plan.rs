@@ -29,7 +29,7 @@ use std::{fmt, mem};
 use anyhow::Result;
 use nsql_catalog::Catalog;
 use nsql_core::Name;
-use nsql_storage::eval::{self, ExecutableExpr, ExecutableFunction, ExecutableTupleExpr};
+use nsql_storage::expr::{self, ExecutableExpr, ExecutableFunction, ExecutableTupleExpr};
 use nsql_storage_engine::{StorageEngine, Transaction};
 
 use self::aggregate::{PhysicalHashAggregate, PhysicalUngroupedAggregate};
@@ -239,7 +239,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
                 // cross-join
                 ir::JoinKind::Inner => PhysicalNestedLoopJoin::plan(
                     ir::JoinKind::Inner,
-                    eval::Expr::literal(true),
+                    expr::Expr::literal(true),
                     f(self, join.lhs(q))?,
                     f(self, join.rhs(q))?,
                     &mut self.arena,
@@ -321,7 +321,6 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
         Ok(plan)
     }
 
-    #[allow(clippy::type_complexity)]
     fn compile_order_exprs(
         &mut self,
         tx: &dyn Transaction<'env, S>,
