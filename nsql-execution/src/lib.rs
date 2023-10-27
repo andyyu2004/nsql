@@ -461,7 +461,7 @@ pub trait SessionContext {
 }
 
 pub struct TransactionContext<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> {
-    tx: M::Transaction,
+    tx: M::TransactionRef<'txn>,
     auto_commit: AtomicBool,
     state: AtomicEnum<TransactionState>,
     catalog_caches: TransactionLocalCatalogCaches<'env, 'txn, S, M>,
@@ -471,8 +471,8 @@ impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     nsql_catalog::TransactionContext<'env, 'txn, S, M> for TransactionContext<'env, 'txn, S, M>
 {
     #[inline]
-    fn transaction(&self) -> &M::Transaction {
-        &self.tx
+    fn transaction(&self) -> M::TransactionRef<'txn> {
+        self.tx
     }
 
     #[inline]

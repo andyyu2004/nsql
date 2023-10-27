@@ -81,6 +81,7 @@ impl<S: StorageEngine> Nsql<S> {
         let tx = storage.begin_write()?;
         let tcx = TransactionContext::new(&tx, false);
         Catalog::create(&storage, &tcx)?;
+        drop(tcx);
         tx.commit()?;
 
         Self::try_new(storage)
@@ -224,103 +225,105 @@ impl<S: StorageEngine> Shared<S> {
         let storage = self.storage.storage();
         let catalog = Catalog::new(storage);
 
-        let (auto_commit, tx, plan) =
-            self.profiler.profile(self.profiler.bind_event_id, || match tx {
-                Some(tx) => {
-                    tracing::debug!("reusing existing transaction");
-                    let plan = Binder::new(catalog, &tx).bind(stmt)?;
-                    Ok((false, tx, plan))
-                }
-                None => {
-                    let plan = binder.bind(stmt)?;
-                    let tx = match plan.required_transaction_mode() {
-                        ir::TransactionMode::ReadOnly => {
-                            tracing::debug!("beginning fresh read transaction");
-                            ReadOrWriteTransaction::Read(storage.begin()?)
-                        }
-                        ir::TransactionMode::ReadWrite => {
-                            tracing::debug!("beginning fresh write transaction");
-                            ReadOrWriteTransaction::Write(storage.begin_write()?)
-                        }
-                    };
-                    Ok((true, tx, plan))
-                }
-            })?;
+        let (auto_commit, tx, plan): (bool, ReadOrWriteTransaction<'env, S>, Box<ir::Plan>) =
+            (false, todo!(), todo!());
+        // self.profiler.profile(self.profiler.bind_event_id, || match tx {
+        //     Some(tx) => {
+        //         tracing::debug!("reusing existing transaction");
+        //         let plan = Binder::new(catalog, &tx).bind(stmt)?;
+        //         Ok((false, tx, plan))
+        //     }
+        //     None => {
+        //         let plan = binder.bind(stmt)?;
+        //         let tx = match plan.required_transaction_mode() {
+        //             ir::TransactionMode::ReadOnly => {
+        //                 tracing::debug!("beginning fresh read transaction");
+        //                 ReadOrWriteTransaction::Read(storage.begin()?)
+        //             }
+        //             ir::TransactionMode::ReadWrite => {
+        //                 tracing::debug!("beginning fresh write transaction");
+        //                 ReadOrWriteTransaction::Write(storage.begin_write()?)
+        //             }
+        //         };
+        //         Ok((true, tx, plan))
+        //     }
+        // })?;
         let schema = Schema::new(plan.schema());
         let plan = self.profiler.profile(self.profiler.optimize_event_id, || Ok(optimize(plan)))?;
 
-        let (tx, tuples) = match tx {
-            ReadOrWriteTransaction::Read(tx) => {
-                tracing::debug!("executing readonly query");
-                let planner = PhysicalPlanner::new(catalog);
-                let physical_plan = self
-                    .profiler
-                    .profile(self.profiler.physical_plan_event_id, || planner.plan(&tx, plan))?;
-                let ecx = ExecutionContext::new(
-                    catalog,
-                    TransactionContext::new(&tx as _, auto_commit),
-                    ctx,
-                );
-                let tuples = self.profiler.profile(self.profiler.execute_event_id, || {
-                    nsql_execution::execute::<S, ReadonlyExecutionMode>(&ecx, physical_plan)
-                })?;
-                let (auto_commit, state) = ecx.get_state();
-                if auto_commit || !matches!(state, TransactionState::Active) {
-                    tracing::debug!("ending readonly transaction");
-                    (None, tuples)
-                } else {
-                    (Some(ReadOrWriteTransaction::<S>::Read(tx as _)), tuples)
-                }
-            }
-            ReadOrWriteTransaction::Write(tx) => {
-                tracing::debug!("executing write query");
-                let planner = PhysicalPlanner::new(catalog);
-                let physical_plan =
-                    self.profiler.profile(self.profiler.physical_plan_event_id, || {
-                        planner.plan_write(&tx, plan)
-                    })?;
-                let ecx = ExecutionContext::new(
-                    catalog,
-                    TransactionContext::new(&tx as _, auto_commit),
-                    ctx,
-                );
-                let tuples = self.profiler.profile(self.profiler.execute_event_id, || {
-                    nsql_execution::execute(&ecx, physical_plan)
-                });
+        let (tx, tuples): (Option<ReadOrWriteTransaction<'env, S>>, Vec<Tuple>) = (None, todo!());
+        // let (tx, tuples) = match tx {
+        //     ReadOrWriteTransaction::Read(tx) => {
+        //         tracing::debug!("executing readonly query");
+        //         let planner = PhysicalPlanner::new(catalog);
+        //         let physical_plan = self
+        //             .profiler
+        //             .profile(self.profiler.physical_plan_event_id, || planner.plan(&tx, plan))?;
+        //         let ecx = ExecutionContext::new(
+        //             catalog,
+        //             TransactionContext::new(&tx as _, auto_commit),
+        //             ctx,
+        //         );
+        //         let tuples = self.profiler.profile(self.profiler.execute_event_id, || {
+        //             nsql_execution::execute::<S, ReadonlyExecutionMode>(&ecx, physical_plan)
+        //         })?;
+        //         let (auto_commit, state) = ecx.get_state();
+        //         if auto_commit || !matches!(state, TransactionState::Active) {
+        //             tracing::debug!("ending readonly transaction");
+        //             (None, tuples)
+        //         } else {
+        //             (Some(ReadOrWriteTransaction::<S>::Read(tx as _)), tuples)
+        //         }
+        //     }
+        //     ReadOrWriteTransaction::Write(tx) => {
+        //         tracing::debug!("executing write query");
+        //         let planner = PhysicalPlanner::new(catalog);
+        //         let physical_plan =
+        //             self.profiler.profile(self.profiler.physical_plan_event_id, || {
+        //                 planner.plan_write(&tx, plan)
+        //             })?;
+        //         let ecx = ExecutionContext::new(
+        //             catalog,
+        //             TransactionContext::new(&tx as _, auto_commit),
+        //             ctx,
+        //         );
+        //         let tuples = self.profiler.profile(self.profiler.execute_event_id, || {
+        //             nsql_execution::execute(&ecx, physical_plan)
+        //         });
 
-                let tuples = match tuples {
-                    Ok(tuples) => tuples,
-                    Err(err) => {
-                        tracing::debug!(error = %err, "aborting write transaction due to error during execution");
-                        let (_, _) = ecx.get_state();
-                        tx.abort()?;
-                        return Err(err);
-                    }
-                };
+        //         let tuples = match tuples {
+        //             Ok(tuples) => tuples,
+        //             Err(err) => {
+        //                 tracing::debug!(error = %err, "aborting write transaction due to error during execution");
+        //                 let (_, _) = ecx.get_state();
+        //                 tx.abort()?;
+        //                 return Err(err);
+        //             }
+        //         };
 
-                let (auto_commit, tx_state) = ecx.get_state();
-                match tx_state {
-                    TransactionState::Active if auto_commit => {
-                        tracing::debug!("auto-committing write transaction");
-                        tx.commit()?;
-                    }
-                    TransactionState::Active => {
-                        ctx.current_tx.store(Some(Arc::new(ReadOrWriteTransaction::Write(tx))));
-                        return Ok(MaterializedQueryOutput { schema, tuples });
-                    }
-                    TransactionState::Committed => {
-                        tracing::debug!("committing write transaction");
-                        tx.commit()?
-                    }
-                    TransactionState::Aborted => {
-                        tracing::debug!("aborting write transaction");
-                        tx.abort()?
-                    }
-                }
+        //         let (auto_commit, tx_state) = ecx.get_state();
+        //         match tx_state {
+        //             TransactionState::Active if auto_commit => {
+        //                 tracing::debug!("auto-committing write transaction");
+        //                 tx.commit()?;
+        //             }
+        //             TransactionState::Active => {
+        //                 ctx.current_tx.store(Some(Arc::new(ReadOrWriteTransaction::Write(tx))));
+        //                 return Ok(MaterializedQueryOutput { schema, tuples });
+        //             }
+        //             TransactionState::Committed => {
+        //                 tracing::debug!("committing write transaction");
+        //                 tx.commit()?
+        //             }
+        //             TransactionState::Aborted => {
+        //                 tracing::debug!("aborting write transaction");
+        //                 tx.abort()?
+        //             }
+        //         }
 
-                (None, tuples)
-            }
-        };
+        //         (None, tuples)
+        //     }
+        // };
 
         // `tx` was not committed or aborted (including autocommits), so we need to put it back
         if let Some(tx) = tx {

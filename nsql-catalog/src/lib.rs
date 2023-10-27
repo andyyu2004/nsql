@@ -33,7 +33,7 @@ pub use self::system_table::SystemTableView;
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 
 pub trait TransactionContext<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> {
-    fn transaction(&self) -> M::TransactionRef<'_>;
+    fn transaction(&self) -> M::TransactionRef<'txn>;
 
     fn catalog_caches(&self) -> &TransactionLocalCatalogCaches<'env, 'txn, S, M>;
 }
