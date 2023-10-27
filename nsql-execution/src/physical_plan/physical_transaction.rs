@@ -52,7 +52,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
         match self.kind {
             ir::TransactionStmt::Begin(_) => {
                 if tx.auto_commit() {
-                    tx.unset_auto_commit();
+                    tx.no_auto_commit();
                 } else {
                     bail!("nested transactions are not supported")
                 }

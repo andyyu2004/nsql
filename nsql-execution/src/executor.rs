@@ -22,7 +22,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Executor<'en
 
     fn execute_metapipeline(
         &mut self,
-        ecx: &'txn ExecutionContext<'_, 'env, 'txn, S, M>,
+        ecx: &ExecutionContext<'_, 'env, 'txn, S, M>,
         meta_pipeline: Idx<MetaPipeline<'env, 'txn, S, M>>,
     ) -> ExecutionResult<()> {
         self.nodes[self.pipelines[meta_pipeline].sink]
@@ -46,7 +46,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Executor<'en
     #[tracing::instrument(skip(self, ecx), level = "info")]
     fn execute_pipeline(
         &mut self,
-        ecx: &'txn ExecutionContext<'_, 'env, 'txn, S, M>,
+        ecx: &ExecutionContext<'_, 'env, 'txn, S, M>,
         pipeline: Idx<Pipeline<'env, 'txn, S, M>>,
     ) -> ExecutionResult<()> {
         // Safety: caller must ensure the indexes are unique
@@ -150,7 +150,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Executor<'en
 }
 
 fn execute_root_pipeline<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
-    ecx: &'txn ExecutionContext<'_, 'env, 'txn, S, M>,
+    ecx: &ExecutionContext<'_, 'env, 'txn, S, M>,
     pipeline: RootPipeline<'env, 'txn, S, M>,
 ) -> ExecutionResult<RootPipeline<'env, 'txn, S, M>> {
     let root = pipeline.arena.root();
@@ -160,7 +160,7 @@ fn execute_root_pipeline<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>
 }
 
 pub fn execute<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
-    ecx: &'txn ExecutionContext<'_, 'env, 'txn, S, M>,
+    ecx: &ExecutionContext<'_, 'env, 'txn, S, M>,
     mut plan: PhysicalPlan<'env, 'txn, S, M>,
 ) -> ExecutionResult<Vec<Tuple>> {
     let sink = OutputSink::plan(plan.arena_mut());

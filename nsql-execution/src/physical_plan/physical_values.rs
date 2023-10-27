@@ -25,10 +25,10 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSource<'env, 'txn, S, M>
     for PhysicalValues<'env, 'txn, S, M>
 {
-    fn source(
-        &mut self,
-        ecx: &'txn ExecutionContext<'_, 'env, 'txn, S, M>,
-    ) -> ExecutionResult<TupleStream<'_>> {
+    fn source<'s>(
+        &'s mut self,
+        ecx: &'s ExecutionContext<'_, 'env, 'txn, S, M>,
+    ) -> ExecutionResult<TupleStream<'s>> {
         let storage = ecx.storage();
         let tx = ecx.tcx();
         let mut index = 0;

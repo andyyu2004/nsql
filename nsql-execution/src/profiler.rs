@@ -220,10 +220,10 @@ impl<'p, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, N>
 where
     N: PhysicalSource<'env, 'txn, S, M>,
 {
-    fn source(
-        &mut self,
-        ecx: &'txn ExecutionContext<'_, 'env, 'txn, S, M>,
-    ) -> ExecutionResult<TupleStream<'_>> {
+    fn source<'s>(
+        &'s mut self,
+        ecx: &'s ExecutionContext<'_, 'env, 'txn, S, M>,
+    ) -> ExecutionResult<TupleStream<'s>> {
         let id = self.id();
         let _guard = self.profiler.start(id, NodeType::Misc);
         let iter = self.node.source(ecx)?;

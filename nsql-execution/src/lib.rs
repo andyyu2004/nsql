@@ -17,7 +17,7 @@ pub use anyhow::Error;
 use dashmap::DashMap;
 use executor::OutputSink;
 use nsql_arena::{Arena, Idx};
-use nsql_catalog::{Catalog, TransactionLocalCatalogCaches};
+use nsql_catalog::Catalog;
 use nsql_core::Name;
 use nsql_storage::tuple::Tuple;
 use nsql_storage_engine::{ExecutionMode, FallibleIterator, ReadWriteExecutionMode, StorageEngine};
@@ -391,19 +391,19 @@ trait PhysicalSource<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, 
     PhysicalNode<'env, 'txn, S, M>
 {
     /// Return the next chunk from the source. An empty chunk indicates that the source is exhausted.
-    fn source(
-        &mut self,
-        ecx: &'txn ExecutionContext<'_, 'env, 'txn, S, M>,
-    ) -> ExecutionResult<TupleStream<'_>>;
+    fn source<'s>(
+        &'s mut self,
+        ecx: &'s ExecutionContext<'_, 'env, 'txn, S, M>,
+    ) -> ExecutionResult<TupleStream<'s>>;
 }
 
 impl<'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     PhysicalSource<'env, 'txn, S, M> for &'a mut dyn PhysicalSource<'env, 'txn, S, M>
 {
-    fn source(
-        &mut self,
-        ecx: &'txn ExecutionContext<'_, 'env, 'txn, S, M>,
-    ) -> ExecutionResult<TupleStream<'_>> {
+    fn source<'s>(
+        &'s mut self,
+        ecx: &'s ExecutionContext<'_, 'env, 'txn, S, M>,
+    ) -> ExecutionResult<TupleStream<'s>> {
         (**self).source(ecx)
     }
 }
@@ -432,10 +432,10 @@ trait PhysicalSink<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>
 impl<'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     PhysicalSource<'env, 'txn, S, M> for &'a mut dyn PhysicalSink<'env, 'txn, S, M>
 {
-    fn source(
-        &mut self,
-        ecx: &'txn ExecutionContext<'_, 'env, 'txn, S, M>,
-    ) -> ExecutionResult<TupleStream<'_>> {
+    fn source<'s>(
+        &'s mut self,
+        ecx: &'s ExecutionContext<'_, 'env, 'txn, S, M>,
+    ) -> ExecutionResult<TupleStream<'s>> {
         (**self).source(ecx)
     }
 }
@@ -460,24 +460,28 @@ pub trait SessionContext {
     fn config(&self) -> &SessionConfig;
 }
 
-pub struct TransactionContext<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> {
-    tx: M::TransactionRef<'txn>,
-    auto_commit: AtomicBool,
-    state: AtomicEnum<TransactionState>,
-    catalog_caches: TransactionLocalCatalogCaches<'env, 'txn, S, M>,
-}
-
-impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
-    nsql_catalog::TransactionContext<'env, 'txn, S, M> for TransactionContext<'env, 'txn, S, M>
+/// The caller must handle each state appropriately.
+pub trait TransactionContext<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>:
+    nsql_catalog::TransactionContext<'env, 'txn, S, M>
 {
-    #[inline]
-    fn transaction(&self) -> M::TransactionRef<'txn> {
-        self.tx
+    fn get_auto_commit(&self) -> &AtomicBool;
+
+    fn state(&self) -> &AtomicEnum<TransactionState>;
+
+    fn auto_commit(&self) -> bool {
+        self.get_auto_commit().load(atomic::Ordering::Acquire)
     }
 
-    #[inline]
-    fn catalog_caches(&self) -> &TransactionLocalCatalogCaches<'env, 'txn, S, M> {
-        &self.catalog_caches
+    fn commit(&self) {
+        self.state().store(TransactionState::Committed, atomic::Ordering::Release);
+    }
+
+    fn abort(&self) {
+        self.state().store(TransactionState::Aborted, atomic::Ordering::Release);
+    }
+
+    fn no_auto_commit(&self) {
+        self.get_auto_commit().store(false, atomic::Ordering::Release)
     }
 }
 
@@ -504,57 +508,12 @@ impl From<u8> for TransactionState {
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
-    TransactionContext<'env, 'txn, S, M>
-{
-    #[inline]
-    pub fn new(tx: M::TransactionRef<'txn>, auto_commit: bool) -> Self {
-        let auto_commit = AtomicBool::new(auto_commit);
-        Self {
-            tx,
-            auto_commit,
-            state: AtomicEnum::new(TransactionState::Active),
-            catalog_caches: Default::default(),
-        }
-    }
-
-    #[inline]
-    pub fn auto_commit(&self) -> bool {
-        self.auto_commit.load(atomic::Ordering::Acquire)
-    }
-
-    #[inline]
-    pub fn commit(&self) {
-        self.state.store(TransactionState::Committed, atomic::Ordering::Release);
-    }
-
-    #[inline]
-    pub fn abort(&self) {
-        self.state.store(TransactionState::Aborted, atomic::Ordering::Release);
-    }
-
-    #[inline]
-    pub fn unset_auto_commit(&self) {
-        self.auto_commit.store(false, atomic::Ordering::Release)
-    }
-}
-
 pub struct ExecutionContext<'a, 'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> {
     catalog: Catalog<'env, S>,
-    tcx: TransactionContext<'env, 'txn, S, M>,
+    tcx: &'a dyn TransactionContext<'env, 'txn, S, M>,
     scx: &'a (dyn SessionContext + 'a),
     materialized_ctes: DashMap<Name, Arc<[Tuple]>>,
     profiler: Profiler,
-}
-
-impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
-    ExecutionContext<'_, 'env, 'txn, S, M>
-{
-    #[inline]
-    pub fn get_state(self) -> (bool, TransactionState) {
-        let tcx = &self.tcx;
-        (tcx.auto_commit.load(atomic::Ordering::Acquire), tcx.state.load(atomic::Ordering::Acquire))
-    }
 }
 
 impl<'a, 'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
@@ -563,7 +522,7 @@ impl<'a, 'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     #[inline]
     pub fn new(
         catalog: Catalog<'env, S>,
-        tcx: TransactionContext<'env, 'txn, S, M>,
+        tcx: &'a dyn TransactionContext<'env, 'txn, S, M>,
         scx: &'a (dyn SessionContext + 'a),
     ) -> Self {
         Self {
@@ -581,13 +540,13 @@ impl<'a, 'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     }
 
     #[inline]
-    pub fn scx(&self) -> &(dyn SessionContext + '_) {
+    pub fn scx(&self) -> &'a (dyn SessionContext + 'a) {
         self.scx
     }
 
     #[inline]
-    pub fn tcx(&self) -> &TransactionContext<'env, 'txn, S, M> {
-        &self.tcx
+    pub fn tcx(&self) -> &'a dyn TransactionContext<'env, 'txn, S, M> {
+        self.tcx
     }
 
     #[inline]

@@ -4,6 +4,7 @@
 use core::fmt;
 use std::panic::AssertUnwindSafe;
 use std::path::Path;
+use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 use std::{env, process};
 
@@ -12,11 +13,11 @@ use arc_swap::ArcSwapOption;
 use measureme::{EventId, Profiler, StringId};
 use mimalloc::MiMalloc;
 use nsql_bind::Binder;
-use nsql_catalog::Catalog;
+use nsql_catalog::{Catalog, TransactionLocalCatalogCaches};
 pub use nsql_core::LogicalType;
 use nsql_core::Schema;
 use nsql_execution::config::SessionConfig;
-use nsql_execution::{ExecutionContext, PhysicalPlanner, TransactionContext, TransactionState};
+use nsql_execution::{ExecutionContext, PhysicalPlanner, TransactionState};
 pub use nsql_lmdb::LmdbStorageEngine;
 use nsql_opt::optimize;
 use nsql_parse::ast;
@@ -25,7 +26,10 @@ pub use nsql_redb::RedbStorageEngine;
 pub use nsql_storage::tuple::Tuple;
 use nsql_storage::Storage;
 pub use nsql_storage_engine::StorageEngine;
-use nsql_storage_engine::{ReadOrWriteTransaction, ReadonlyExecutionMode, WriteTransaction};
+use nsql_storage_engine::{
+    ExecutionMode, ReadWriteExecutionMode, ReadonlyExecutionMode, WriteTransaction,
+};
+use nsql_util::atomic::AtomicEnum;
 
 pub type Result<T, E = anyhow::Error> = std::result::Result<T, E>;
 
@@ -79,10 +83,10 @@ impl<S: StorageEngine> Nsql<S> {
     pub fn create(path: impl AsRef<Path>) -> Result<Self> {
         let storage = S::create(path)?;
         let tx = storage.begin_write()?;
-        let tcx = TransactionContext::new(&tx, false);
-        Catalog::create(&storage, &tcx)?;
+        let tcx = TransactionContext::make(tx);
+        tcx.with(|tcx| Catalog::create(&storage, &tcx))?;
+        tcx.commit();
         drop(tcx);
-        tx.commit()?;
 
         Self::try_new(storage)
     }
@@ -157,8 +161,61 @@ pub struct Connection<'env, S: StorageEngine> {
 }
 
 struct SessionContext<'env, S: StorageEngine> {
-    current_tx: ArcSwapOption<ReadOrWriteTransaction<'env, S>>,
+    current_tx: ArcSwapOption<ReadOrWriteTransactionContext<'env, S>>,
     config: SessionConfig,
+}
+
+enum ReadOrWriteTransactionContext<'env, S: StorageEngine> {
+    Read(TransactionContext<'env, S, ReadonlyExecutionMode>),
+    Write(TransactionContext<'env, S, ReadWriteExecutionMode>),
+}
+
+#[ouroboros::self_referencing]
+struct TransactionContext<'env, S: StorageEngine, M: ExecutionMode<'env, S>> {
+    tx: M::Transaction,
+    #[borrows(tx)]
+    #[not_covariant]
+    cache: TransactionLocalCatalogCaches<'env, 'this, S, M>,
+    auto_commit: AtomicBool,
+    state: AtomicEnum<TransactionState>,
+}
+
+impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> TransactionContext<'env, S, M> {
+    pub fn make(tx: M::Transaction) -> TransactionContext<'env, S, M> {
+        TransactionContextBuilder {
+            tx,
+            cache_builder: |_| Default::default(),
+            auto_commit: AtomicBool::new(true),
+            state: AtomicEnum::new(TransactionState::Active),
+        }
+        .build()
+    }
+}
+
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
+    nsql_catalog::TransactionContext<'env, 'txn, S, M>
+    for ouroboros_impl_transaction_context::BorrowedFields<'_, 'txn, 'env, S, M>
+{
+    fn transaction(&self) -> &'txn M::Transaction {
+        self.tx
+    }
+
+    fn catalog_caches(&self) -> &TransactionLocalCatalogCaches<'env, 'txn, S, M> {
+        self.cache
+    }
+}
+
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
+    nsql_execution::TransactionContext<'env, 'txn, S, M>
+    for ouroboros_impl_transaction_context::BorrowedFields<'_, 'txn, 'env, S, M>
+{
+    fn get_auto_commit(&self) -> &AtomicBool {
+        &self.auto_commit
+    }
+
+    fn state(&self) -> &AtomicEnum<TransactionState> {
+        &self.state
+    }
 }
 
 impl<S: StorageEngine> Default for SessionContext<'_, S> {
@@ -218,15 +275,59 @@ impl<S: StorageEngine> Shared<S> {
         ctx: &SessionContext<'env, S>,
         stmt: &ast::Statement,
     ) -> Result<MaterializedQueryOutput> {
-        let tx = ctx.current_tx.swap(None).map(|tx| {
-            Arc::into_inner(tx).expect("unexpected outstanding references to transaction")
+        let tcx = ctx.current_tx.swap(None).map(|tx| {
+            Arc::into_inner(tx).expect("unexpected outstanding references to transaction context")
         });
 
-        let storage = self.storage.storage();
-        let catalog = Catalog::new(storage);
+        let catalog = Catalog::new(self.storage.storage());
 
-        let (auto_commit, tx, plan): (bool, ReadOrWriteTransaction<'env, S>, Box<ir::Plan>) =
-            (false, todo!(), todo!());
+        let tcx = match tcx {
+            Some(tcx) => {
+                tracing::debug!("reusing existing transaction");
+                tcx
+            }
+            None => {
+                tracing::debug!("beginning fresh read transaction");
+                // FIXME detect whether we need a read or write transaction
+                ReadOrWriteTransactionContext::Read(TransactionContext::make(
+                    catalog.storage().begin()?,
+                ))
+            }
+        };
+
+        match tcx {
+            ReadOrWriteTransactionContext::Read(tcx) => self.execute_in(ctx, tcx, stmt),
+            ReadOrWriteTransactionContext::Write(tcx) => self.execute_in(ctx, tcx, stmt),
+        }
+
+        //     // FIXME just have a function generic over M that does the whole pipeline
+        //     let plan = self.profiler.profile(self.profiler.bind_event_id, || match &tcx {
+        //         ReadOrWriteTransactionContext::Read(tcx) => {
+        //             tcx.with(|tcx| Binder::new(catalog, &tcx).bind(stmt))
+        //         }
+        //         ReadOrWriteTransactionContext::Write(tcx) => {
+        //             tcx.with(|tcx| Binder::new(catalog, &tcx).bind(stmt))
+        //         }
+        //     })?;
+
+        //     todo!()
+        // }
+
+        // #[tracing::instrument(skip(self, ctx, stmt), fields(%stmt))]
+        // fn execute<'env>(
+        //     &'env self,
+        //     ctx: &SessionContext<'env, S>,
+        //     stmt: &ast::Statement,
+        // ) -> Result<MaterializedQueryOutput> {
+        //     let tx = ctx.current_tx.swap(None).map(|tx| {
+        //         Arc::into_inner(tx).expect("unexpected outstanding references to transaction")
+        //     });
+
+        //     let storage = self.storage.storage();
+        //     let catalog = Catalog::new(storage);
+
+        //     let (auto_commit, tx, plan): (bool, ReadOrWriteTransaction<'env, S>, Box<ir::Plan>) =
+        //         (false, todo!(), todo!());
         // self.profiler.profile(self.profiler.bind_event_id, || match tx {
         //     Some(tx) => {
         //         tracing::debug!("reusing existing transaction");
@@ -248,10 +349,10 @@ impl<S: StorageEngine> Shared<S> {
         //         Ok((true, tx, plan))
         //     }
         // })?;
-        let schema = Schema::new(plan.schema());
-        let plan = self.profiler.profile(self.profiler.optimize_event_id, || Ok(optimize(plan)))?;
+        // let schema = Schema::new(plan.schema());
+        // let plan = self.profiler.profile(self.profiler.optimize_event_id, || Ok(optimize(plan)))?;
 
-        let (tx, tuples): (Option<ReadOrWriteTransaction<'env, S>>, Vec<Tuple>) = (None, todo!());
+        // let (tx, tuples): (Option<ReadOrWriteTransaction<'env, S>>, Vec<Tuple>) = (None, todo!());
         // let (tx, tuples) = match tx {
         //     ReadOrWriteTransaction::Read(tx) => {
         //         tracing::debug!("executing readonly query");
@@ -326,11 +427,43 @@ impl<S: StorageEngine> Shared<S> {
         // };
 
         // `tx` was not committed or aborted (including autocommits), so we need to put it back
-        if let Some(tx) = tx {
-            // if the transaction is still active, it must be the case that it's not an auto-commit
-            ctx.current_tx.store(Some(Arc::new(tx)));
-        }
+        // if let Some(tx) = tx {
+        // if the transaction is still active, it must be the case that it's not an auto-commit
+        // ctx.current_tx.store(Some(Arc::new(tx)));
+        // }
 
-        Ok(MaterializedQueryOutput::new(schema, tuples))
+        // Ok(MaterializedQueryOutput::new(schema, tuples))
+    }
+
+    fn execute_in<'env, M: ExecutionMode<'env, S>>(
+        &'env self,
+        ctx: &SessionContext<'env, S>,
+        tcx: TransactionContext<'env, S, M>,
+        stmt: &ast::Statement,
+    ) -> Result<MaterializedQueryOutput> {
+        tcx.with(|tcx| {
+            let catalog = Catalog::new(self.storage.storage());
+
+            let plan = self
+                .profiler
+                .profile(self.profiler.bind_event_id, || Binder::new(catalog, &tcx).bind(stmt))?;
+
+            let _schema = Schema::new(plan.schema());
+            let plan =
+                self.profiler.profile(self.profiler.optimize_event_id, || Ok(optimize(plan)))?;
+
+            let physical_planner = PhysicalPlanner::new(catalog);
+            let physical_plan =
+                self.profiler.profile(self.profiler.physical_plan_event_id, || {
+                    physical_planner.plan(&tcx, plan)
+                })?;
+
+            let ecx = ExecutionContext::<S, M>::new(catalog, &tcx, ctx);
+            let tuples = self.profiler.profile(self.profiler.execute_event_id, || {
+                nsql_execution::execute(&ecx, physical_plan)
+            })?;
+
+            todo!()
+        })
     }
 }
