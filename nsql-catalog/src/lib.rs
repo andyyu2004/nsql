@@ -1,5 +1,5 @@
 #![deny(rust_2018_idioms)]
-#![feature(never_type, once_cell_try)]
+#![feature(never_type, once_cell_try, min_specialization)]
 
 mod bootstrap;
 mod entity;

@@ -114,67 +114,13 @@ macro_rules! prefix_op {
     };
 }
 
-pub(crate) fn get_scalar_function<'env, S: StorageEngine, M: ExecutionMode<'env, S>>(
+pub(crate) fn get_scalar_function<'env: 'txn, 'txn, S: StorageEngine, M>(
     oid: Oid<Function>,
-) -> Option<ScalarFunctionPtr<S, M>> {
-    Some(match oid {
-        _ if oid == Function::NEG_INT => prefix_op!(- : i64),
-        _ if oid == Function::NEG_FLOAT => prefix_op!(- : f64),
-        _ if oid == Function::NEG_DEC => prefix_op!(- : Decimal),
-        _ if oid == Function::NOT_BOOL => prefix_op!(! : bool),
-        _ if oid == Function::ADD_INT => infix_op!(+ : i64),
-        _ if oid == Function::ADD_FLOAT => infix_op!(+ : f64),
-        _ if oid == Function::ADD_DEC => infix_op!(+ : Decimal),
-        _ if oid == Function::SUB_INT => infix_op!(- : i64),
-        _ if oid == Function::SUB_FLOAT => infix_op!(- : f64),
-        _ if oid == Function::SUB_DEC => infix_op!(- : Decimal),
-        _ if oid == Function::MUL_INT => infix_op!(* : i64),
-        _ if oid == Function::MUL_FLOAT => infix_op!(* : f64),
-        _ if oid == Function::MUL_DEC => infix_op!(* : Decimal),
-        _ if oid == Function::DIV_INT => infix_op!(/ : i64),
-        _ if oid == Function::DIV_FLOAT => infix_op!(/ : f64),
-        _ if oid == Function::DIV_DEC => infix_op!(/ : Decimal),
-        _ if oid == Function::BETWEEN_ANY => mk_between::<S, M>(),
-        _ if oid == Function::EQ_ANY => comparison!(== : Value),
-        _ if oid == Function::NEQ_ANY => comparison!(!= : Value),
-        _ if oid == Function::LT_ANY => comparison!(<  : Value),
-        _ if oid == Function::LTE_ANY => comparison!(<= : Value),
-        _ if oid == Function::GTE_ANY => comparison!(>= : Value),
-        _ if oid == Function::GT_ANY => comparison!(>  : Value),
-        _ if oid == Function::OR_BOOL => arbitary_binary_op!(bool, |a, b| match (a, b) {
-            (Some(a), Some(b)) => Value::Bool(a || b),
-            (Some(true), _) | (_, Some(true)) => Value::Bool(true),
-            _ => Value::Null,
-        }),
-        _ if oid == Function::AND_BOOL => arbitary_binary_op!(bool, |a, b| match (a, b) {
-            (Some(a), Some(b)) => Value::Bool(a && b),
-            (Some(false), _) | (_, Some(false)) => Value::Bool(false),
-            _ => Value::Null,
-        }),
-        _ if oid == Function::IS_DISTINCT_FROM_ANY => comparison_include_null!(!= : Value),
-        _ if oid == Function::IS_NOT_DISTINCT_FROM_ANY => comparison_include_null!(== : Value),
-        _ if oid == Function::ABS_INT => method!(abs: i64),
-        _ if oid == Function::ABS_FLOAT => method!(abs: f64),
-        _ if oid == Function::ABS_DEC => method!(abs: Decimal),
-        // casts
-        _ if oid == Function::CAST_SELF => cast_to!(Value),
-        _ if oid == Function::CAST_INT_TO_DEC => cast_to!(Decimal),
-        _ if oid == Function::CAST_INT_TO_FLOAT => cast_to!(f64),
-        _ if oid == Function::CAST_INT_TO_OID => cast_to!(UntypedOid),
-        _ if oid == Function::NEXTVAL => todo!(),
-        _ if oid == Function::NEXTVAL_OID => todo!(),
-        _ if oid == Function::MK_NEXTVAL_EXPR => mk_nextval_expr::<S, M>(),
-        // misc
-        _ if oid == Function::RANGE2 => mk_range2::<S, M>(),
-        _ if oid == Function::ARRAY_ELEMENT => mk_array_element::<S, M>(),
-        _ if oid == Function::ARRAY_POSITION => mk_array_position::<S, M>(),
-        _ if oid == Function::ARRAY_CONTAINS => mk_array_contains::<S, M>(),
-
-        _ => return None,
-    })
+) -> Option<ScalarFunctionPtr<'env, 'txn, S, M>> {
+    <FunctionRegistryImpl as FunctionRegistry<M>>::get_scalar_function(oid)
 }
 
-fn mk_between<S, M>() -> ScalarFunctionPtr<S, M> {
+fn mk_between<'env, 'txn, S, M>() -> ScalarFunctionPtr<'env, 'txn, S, M> {
     |_catalog, _tx, mut args: FunctionArgs| {
         assert_eq!(args.len(), 3);
         let target = args[0].take();
@@ -218,7 +164,7 @@ pub(crate) fn get_aggregate_function(
     })
 }
 
-fn mk_range2<S, M>() -> ScalarFunctionPtr<S, M> {
+fn mk_range2<'env, 'txn, S, M>() -> ScalarFunctionPtr<'env, 'txn, S, M> {
     |_catalog, _tx, mut args: FunctionArgs| {
         assert_eq!(args.len(), 2);
         let start: Option<i64> = args[0].take().cast().unwrap();
@@ -230,7 +176,7 @@ fn mk_range2<S, M>() -> ScalarFunctionPtr<S, M> {
     }
 }
 
-fn mk_array_element<S, M>() -> ScalarFunctionPtr<S, M> {
+fn mk_array_element<'env, 'txn, S, M>() -> ScalarFunctionPtr<'env, 'txn, S, M> {
     |_catalog, _tx, mut args: FunctionArgs| {
         assert_eq!(args.len(), 2);
         let array = match args[0].take() {
@@ -253,7 +199,7 @@ fn mk_array_element<S, M>() -> ScalarFunctionPtr<S, M> {
     }
 }
 
-fn mk_array_position<S, M>() -> ScalarFunctionPtr<S, M> {
+fn mk_array_position<'env, 'txn, S, M>() -> ScalarFunctionPtr<'env, 'txn, S, M> {
     |_catalog, _tx, mut args: FunctionArgs| {
         assert_eq!(args.len(), 2);
         let array = match args[0].take() {
@@ -271,7 +217,7 @@ fn mk_array_position<S, M>() -> ScalarFunctionPtr<S, M> {
     }
 }
 
-fn mk_array_contains<S, M>() -> ScalarFunctionPtr<S, M> {
+fn mk_array_contains<'env, 'txn, S, M>() -> ScalarFunctionPtr<'env, 'txn, S, M> {
     |_catalog, _tx, mut args: FunctionArgs| {
         assert_eq!(args.len(), 2);
         let array = match args[0].take() {
@@ -327,9 +273,97 @@ fn nextval_oid<'env: 'txn, 'txn, S: StorageEngine>(
     Ok(Value::Oid(next.cast().unwrap()))
 }
 
-fn mk_nextval_expr<S, M>() -> ScalarFunctionPtr<S, M> {
+fn mk_nextval_expr<'env, 'txn, S, M>() -> ScalarFunctionPtr<'env, 'txn, S, M> {
     |_catalog, _tx, mut args: FunctionArgs| {
         let oid: UntypedOid = args[0].take().cast().unwrap();
         Ok(Value::Expr(Expr::call(Function::NEXTVAL.untyped(), [oid.into()])))
+    }
+}
+
+pub trait FunctionRegistry<M> {
+    fn get_scalar_function<'env: 'txn, 'txn, S: StorageEngine>(
+        oid: Oid<Function>,
+    ) -> Option<ScalarFunctionPtr<'env, 'txn, S, M>>;
+}
+
+struct FunctionRegistryImpl;
+
+fn get_shared_scalar_function<'env, 'txn, S, M>(
+    oid: Oid<Function>,
+) -> Option<ScalarFunctionPtr<'env, 'txn, S, M>> {
+    Some(match oid {
+        _ if oid == Function::NEG_INT => prefix_op!(- : i64),
+        _ if oid == Function::NEG_FLOAT => prefix_op!(- : f64),
+        _ if oid == Function::NEG_DEC => prefix_op!(- : Decimal),
+        _ if oid == Function::NOT_BOOL => prefix_op!(! : bool),
+        _ if oid == Function::ADD_INT => infix_op!(+ : i64),
+        _ if oid == Function::ADD_FLOAT => infix_op!(+ : f64),
+        _ if oid == Function::ADD_DEC => infix_op!(+ : Decimal),
+        _ if oid == Function::SUB_INT => infix_op!(- : i64),
+        _ if oid == Function::SUB_FLOAT => infix_op!(- : f64),
+        _ if oid == Function::SUB_DEC => infix_op!(- : Decimal),
+        _ if oid == Function::MUL_INT => infix_op!(* : i64),
+        _ if oid == Function::MUL_FLOAT => infix_op!(* : f64),
+        _ if oid == Function::MUL_DEC => infix_op!(* : Decimal),
+        _ if oid == Function::DIV_INT => infix_op!(/ : i64),
+        _ if oid == Function::DIV_FLOAT => infix_op!(/ : f64),
+        _ if oid == Function::DIV_DEC => infix_op!(/ : Decimal),
+        _ if oid == Function::BETWEEN_ANY => mk_between::<S, M>(),
+        _ if oid == Function::EQ_ANY => comparison!(== : Value),
+        _ if oid == Function::NEQ_ANY => comparison!(!= : Value),
+        _ if oid == Function::LT_ANY => comparison!(<  : Value),
+        _ if oid == Function::LTE_ANY => comparison!(<= : Value),
+        _ if oid == Function::GTE_ANY => comparison!(>= : Value),
+        _ if oid == Function::GT_ANY => comparison!(>  : Value),
+        _ if oid == Function::OR_BOOL => arbitary_binary_op!(bool, |a, b| match (a, b) {
+            (Some(a), Some(b)) => Value::Bool(a || b),
+            (Some(true), _) | (_, Some(true)) => Value::Bool(true),
+            _ => Value::Null,
+        }),
+        _ if oid == Function::AND_BOOL => arbitary_binary_op!(bool, |a, b| match (a, b) {
+            (Some(a), Some(b)) => Value::Bool(a && b),
+            (Some(false), _) | (_, Some(false)) => Value::Bool(false),
+            _ => Value::Null,
+        }),
+        _ if oid == Function::IS_DISTINCT_FROM_ANY => comparison_include_null!(!= : Value),
+        _ if oid == Function::IS_NOT_DISTINCT_FROM_ANY => comparison_include_null!(== : Value),
+        _ if oid == Function::ABS_INT => method!(abs: i64),
+        _ if oid == Function::ABS_FLOAT => method!(abs: f64),
+        _ if oid == Function::ABS_DEC => method!(abs: Decimal),
+        // casts
+        _ if oid == Function::CAST_SELF => cast_to!(Value),
+        _ if oid == Function::CAST_INT_TO_DEC => cast_to!(Decimal),
+        _ if oid == Function::CAST_INT_TO_FLOAT => cast_to!(f64),
+        _ if oid == Function::CAST_INT_TO_OID => cast_to!(UntypedOid),
+        _ if oid == Function::MK_NEXTVAL_EXPR => mk_nextval_expr::<S, M>(),
+        // misc
+        _ if oid == Function::RANGE2 => mk_range2::<S, M>(),
+        _ if oid == Function::ARRAY_ELEMENT => mk_array_element::<S, M>(),
+        _ if oid == Function::ARRAY_POSITION => mk_array_position::<S, M>(),
+        _ if oid == Function::ARRAY_CONTAINS => mk_array_contains::<S, M>(),
+
+        _ => return None,
+    })
+}
+
+impl<M> FunctionRegistry<M> for FunctionRegistryImpl {
+    default fn get_scalar_function<'env: 'txn, 'txn, S: StorageEngine>(
+        oid: Oid<Function>,
+    ) -> Option<ScalarFunctionPtr<'env, 'txn, S, M>> {
+        get_shared_scalar_function(oid)
+    }
+}
+
+impl FunctionRegistry<ReadWriteExecutionMode> for FunctionRegistryImpl {
+    fn get_scalar_function<'env: 'txn, 'txn, S: StorageEngine>(
+        oid: Oid<Function>,
+    ) -> Option<ScalarFunctionPtr<'env, 'txn, S, ReadWriteExecutionMode>> {
+        get_shared_scalar_function(oid).or_else(|| {
+            Some(match oid {
+                _ if oid == Function::NEXTVAL => nextval,
+                _ if oid == Function::NEXTVAL_OID => nextval_oid,
+                _ => return None,
+            })
+        })
     }
 }

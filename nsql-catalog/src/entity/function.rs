@@ -10,11 +10,8 @@ use crate::{ColumnIdentity, FunctionCatalog, SystemEntityPrivate, TransactionCon
 
 mod builtins;
 
-pub type ScalarFunctionPtr<S, M> = for<'env, 'txn> fn(
-    Catalog<'env, S>,
-    &dyn TransactionContext<'env, 'txn, S, M>,
-    FunctionArgs,
-) -> Result<Value>;
+pub type ScalarFunctionPtr<'env, 'txn, S, M> =
+    fn(Catalog<'env, S>, &dyn TransactionContext<'env, 'txn, S, M>, FunctionArgs) -> Result<Value>;
 
 pub trait AggregateFunctionInstance: fmt::Debug {
     fn update(&mut self, value: Option<Value>);
@@ -117,11 +114,11 @@ impl Function {
     }
 
     #[inline]
-    pub fn get_scalar_function<'env, S: StorageEngine, M: ExecutionMode<'env, S>>(
+    pub fn get_scalar_function<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
         &self,
-    ) -> ScalarFunctionPtr<S, M> {
+    ) -> ScalarFunctionPtr<'env, 'txn, S, M> {
         assert!(matches!(self.kind, FunctionKind::Scalar));
-        if let Some(f) = builtins::get_scalar_function::<'env, S, M>(self.oid) {
+        if let Some(f) = builtins::get_scalar_function::<S, M>(self.oid) {
             return f;
         }
 
