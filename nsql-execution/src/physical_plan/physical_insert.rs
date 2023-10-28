@@ -1,11 +1,9 @@
-use std::mem;
 use std::sync::OnceLock;
 
 use nsql_catalog::{PrimaryKeyConflict, Table, TableStorage};
 use nsql_core::Oid;
 use nsql_storage::tuple::FromTuple;
 use nsql_storage_engine::fallible_iterator;
-use parking_lot::Mutex;
 
 use super::*;
 use crate::ReadWriteExecutionMode;
@@ -15,8 +13,7 @@ pub(crate) struct PhysicalInsert<'env, 'txn, S: StorageEngine> {
     id: PhysicalNodeId,
     children: [PhysicalNodeId; 1],
     table_oid: Oid<Table>,
-    // FIXME remove the mutex
-    storage: OnceLock<Mutex<Option<TableStorage<'env, 'txn, S, ReadWriteExecutionMode>>>>,
+    storage: Option<TableStorage<'env, 'txn, S, ReadWriteExecutionMode>>,
     table: OnceLock<Table>,
     returning: ExecutableTupleExpr<'env, S, ReadWriteExecutionMode>,
     returning_tuples: Vec<Tuple>,
@@ -74,13 +71,15 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSink<'env, 'txn, S, ReadWriteEx
 
         let table = self.table.get_or_try_init(|| catalog.get(tx, self.table_oid))?;
 
-        let storage = self.storage.get_or_try_init(|| {
-            table.storage::<S, ReadWriteExecutionMode>(catalog, tx).map(Some).map(Mutex::new)
-        })?;
+        let storage = match &mut self.storage {
+            Some(storage) => storage,
+            None => {
+                let storage = table.get_or_create_storage(catalog, tx)?;
+                self.storage = Some(storage);
+                self.storage.as_mut().unwrap()
+            }
+        };
 
-        let mut storage = storage.lock();
-        let storage: &mut TableStorage<'env, 'txn, _, _> =
-            storage.as_mut().expect("shouldn't be taken until finalize");
         storage.insert(&catalog, tx, &tuple)?.map_err(|PrimaryKeyConflict { key }| {
             anyhow::anyhow!(
                 "duplicate key `{key}` violates unique constraint in table `{}`",
@@ -107,7 +106,8 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSink<'env, 'txn, S, ReadWriteEx
     ) -> ExecutionResult<()> {
         // drop the storage on finalization as it is no longer needed by this node
         // this helps avoids redb errors when the same table is opened by multiple nodes
-        mem::take(&mut *self.storage.get().unwrap().lock());
+        self.storage.take();
+
         Ok(())
     }
 }
