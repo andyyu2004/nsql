@@ -176,7 +176,9 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
                     &mut self.arena,
                 )
             }
-            ir::Plan::Drop(..) => unreachable!("write plans should go through plan_write_node"),
+            ir::Plan::Drop(..) => {
+                unreachable!("write plans should go through plan_write_node, got drop node")
+            }
             ir::Plan::Copy(cp) => match cp {
                 ir::Copy::To(ir::CopyTo { src, dst }) => {
                     PhysicalCopyTo::plan(plan_query(self, &src)?, dst, &mut self.arena)

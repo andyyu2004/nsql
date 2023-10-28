@@ -69,7 +69,7 @@ impl Table {
         tx: &dyn TransactionContext<'env, 'txn, S, M>,
     ) -> Result<TableStorageInfo> {
         Ok(TableStorageInfo::new(
-            self.oid.untyped(),
+            self.oid,
             self.columns(catalog, tx)?.iter().map(|c| c.into()).collect(),
         ))
     }
@@ -116,21 +116,13 @@ impl Table {
             .collect()
     }
 
-    pub(crate) fn create_storage_for_bootstrap<'env, S: StorageEngine>(
+    pub fn create_storage<'env, S: StorageEngine>(
         &self,
         storage: &'env S,
         tx: &S::WriteTransaction<'env>,
-    ) -> Result<(), S::Error> {
-        storage.open_write_tree(tx, &TableStorageInfo::derive_name(self.oid.untyped()))?;
-        Ok(())
-    }
-
-    pub fn create_storage<'env, S: StorageEngine>(
-        &self,
-        catalog: Catalog<'env, S>,
-        tx: &S::WriteTransaction<'env>,
     ) -> Result<()> {
-        Ok(self.create_storage_for_bootstrap::<S>(catalog.storage, tx)?)
+        storage.open_write_tree(tx, &self.oid.to_string())?;
+        Ok(())
     }
 }
 

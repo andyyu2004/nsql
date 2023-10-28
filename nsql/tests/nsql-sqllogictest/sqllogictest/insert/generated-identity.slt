@@ -24,7 +24,7 @@ INSERT INTO t(y) VALUES (42)
 statement ok
 INSERT INTO t(y) VALUES (43)
 
-query II
+query II rowsort
 SELECT * FROM t
 ----
 1 42

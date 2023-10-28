@@ -43,10 +43,10 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
     for PhysicalTableScan<'env, 'txn, S, M>
 {
     #[tracing::instrument(skip(self, ecx))]
-    fn source(
-        &mut self,
-        ecx: &ExecutionContext<'_, 'env, 'txn, S, M>,
-    ) -> ExecutionResult<TupleStream<'_>> {
+    fn source<'s>(
+        &'s mut self,
+        ecx: &'s ExecutionContext<'_, 'env, 'txn, S, M>,
+    ) -> ExecutionResult<TupleStream<'s>> {
         let tx = ecx.tcx();
         let catalog = ecx.catalog();
         let storage = Arc::new(self.table.storage::<S, M>(catalog, tx)?);

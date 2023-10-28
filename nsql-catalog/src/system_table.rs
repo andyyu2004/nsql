@@ -29,6 +29,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: SystemEnt
         Ok(Self { storage: table.storage(catalog, tx)?, phantom: PhantomData })
     }
 
+    #[track_caller]
     pub(crate) fn new_bootstrap(
         storage: &'env S,
         tx: &dyn TransactionContext<'env, 'txn, S, M>,

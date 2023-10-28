@@ -94,7 +94,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSink<'env, 'txn, S, ReadWriteEx
         // hack, if this is the insert of a `CREATE TABLE` we need to create the table storage
         if self.table_oid == Table::TABLE {
             let table = Table::from_tuple(tuple).expect("should be a compatible tuple");
-            table.create_storage::<S>(catalog, tx.transaction())?;
+            table.create_storage(catalog.storage(), tx.transaction())?;
         }
 
         Ok(())

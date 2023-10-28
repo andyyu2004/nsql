@@ -78,7 +78,7 @@ mod private {
 
         fn bootstrap_table_storage_info() -> TableStorageInfo {
             TableStorageInfo::new(
-                Self::table().untyped(),
+                Self::table(),
                 Self::bootstrap_column_info().into_iter().map(|c| c.into()).collect(),
             )
         }
@@ -277,7 +277,7 @@ impl<'env, S: StorageEngine> Catalog<'env, S> {
         self,
         tx: &dyn TransactionContext<'env, 'txn, S, ReadWriteExecutionMode>,
     ) -> Result<SystemTableView<'env, 'txn, S, ReadWriteExecutionMode, T>> {
-        SystemTableView::new(self, tx)
+        Ok(SystemTableView::new_bootstrap(self.storage(), tx)?)
     }
 
     pub fn drop_table<'txn>(

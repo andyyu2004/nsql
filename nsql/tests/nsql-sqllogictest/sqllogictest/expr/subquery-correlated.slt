@@ -69,7 +69,7 @@ FROM integers i1
 NULL 1.0 0
 
 # regression test with subqueries everywhere. This would result in ctes being pushed down and evaluated multiple times.
-query III
+query III rowsort
 SELECT i,
        (SELECT avg(i) FROM integers),
        (SELECT count(*) FROM integers AS t WHERE t.i>i1.i)
@@ -80,11 +80,12 @@ WHERE EXISTS(SELECT 1 FROM integers AS x WHERE x.i<i1.i)
 2 1.0 0
 
 # correlated subquery with uncorrelated subquery
-query II
+query II 
 SELECT 
 (SELECT 1), 
 (SELECT count(*) FROM integers WHERE i1.i < i) 
 FROM integers i1
+ORDER BY 2 DESC
 ----
 1 2
 1 1
@@ -135,7 +136,7 @@ SELECT id,
 5  Eve   50.0 
 6  Frank 77.5 
 
-query ITD
+query ITD rowsort
 SELECT id,
        name,
        (SELECT salary

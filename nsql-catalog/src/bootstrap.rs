@@ -85,7 +85,7 @@ pub(crate) fn bootstrap<'env: 'txn, 'txn, S: StorageEngine>(
     tables.try_for_each(|table| {
         if table.oid != Table::TABLE {
             // can't do this as this table is currently open
-            table.create_storage_for_bootstrap::<S>(storage, tx.transaction())?;
+            table.create_storage::<S>(storage, tx.transaction())?;
         }
         table_table.insert(catalog, tx, table)
     })?;

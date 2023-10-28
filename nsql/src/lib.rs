@@ -2,12 +2,14 @@
 #![feature(thread_id_value, trait_upcasting)]
 
 use core::fmt;
+use std::ops::ControlFlow;
 use std::panic::AssertUnwindSafe;
 use std::path::Path;
 use std::sync::atomic::{self, AtomicBool};
 use std::sync::Arc;
 use std::{env, process};
 
+use anyhow::ensure;
 pub use anyhow::{anyhow, Error};
 use arc_swap::ArcSwapOption;
 use measureme::{EventId, Profiler, StringId};
@@ -20,7 +22,7 @@ use nsql_execution::config::SessionConfig;
 use nsql_execution::{ExecutionContext, PhysicalPlan, PhysicalPlanner, TransactionState};
 pub use nsql_lmdb::LmdbStorageEngine;
 use nsql_opt::optimize;
-use nsql_parse::ast;
+use nsql_parse::ast::{self, Visit};
 pub use nsql_parse::parse;
 pub use nsql_redb::RedbStorageEngine;
 pub use nsql_storage::tuple::Tuple;
@@ -169,6 +171,13 @@ enum ReadOrWriteTransactionContext<'env, S: StorageEngine> {
     Write(TransactionContext<'env, S, ReadWriteExecutionMode>),
 }
 
+impl<'env, S: StorageEngine> ReadOrWriteTransactionContext<'env, S> {
+    #[must_use]
+    fn is_write(&self) -> bool {
+        matches!(self, Self::Write(..))
+    }
+}
+
 #[ouroboros::self_referencing]
 struct TransactionContext<'env, S: StorageEngine, M: ExecutionMode<'env, S>> {
     tx: Box<M::Transaction>,
@@ -248,15 +257,11 @@ impl<'env, S: StorageEngine> nsql_execution::SessionContext for SessionContext<'
 
 impl<'env, S: StorageEngine> Connection<'env, S> {
     pub fn query(&self, query: &str) -> Result<MaterializedQueryOutput> {
-        std::panic::catch_unwind(AssertUnwindSafe(|| {
-            let output = self.db.shared.query(&self.ctx, query)?;
-
-            Ok(output)
-        }))
-        .map_err(|data| match data.downcast::<String>() {
-            Ok(msg) => anyhow!("{msg}"),
-            Err(_) => anyhow!("caught panic"),
-        })?
+        std::panic::catch_unwind(AssertUnwindSafe(|| self.db.shared.query(&self.ctx, query)))
+            .map_err(|data| match data.downcast::<String>() {
+                Ok(msg) => anyhow!("{msg}"),
+                Err(_) => anyhow!("caught panic"),
+            })?
     }
 }
 
@@ -295,17 +300,31 @@ impl<S: StorageEngine> Shared<S> {
 
         let catalog = Catalog::new(self.storage.storage());
 
+        // FIXME this is only a best-effort strategy at best.
+        // There must be a better way to figure out which transaction we should be using?
+        let requires_write_transaction =
+            matches!(stmt.visit(&mut RequiredTransactionModeVisitor), ControlFlow::Break(()));
+
         let tcx = match tcx {
             Some(tcx) => {
                 tracing::debug!("reusing existing transaction");
+                if requires_write_transaction {
+                    ensure!(tcx.is_write(), "cannot execute write operation in read transaction");
+                }
+
                 tcx
             }
             None => {
                 tracing::debug!("beginning fresh read transaction");
-                // FIXME detect whether we need a read or write transaction
-                ReadOrWriteTransactionContext::Write(TransactionContext::make(
-                    catalog.storage().begin_write()?,
-                ))
+                if requires_write_transaction {
+                    ReadOrWriteTransactionContext::Write(TransactionContext::make(
+                        catalog.storage().begin_write()?,
+                    ))
+                } else {
+                    ReadOrWriteTransactionContext::Read(TransactionContext::make(
+                        catalog.storage().begin()?,
+                    ))
+                }
             }
         };
 
@@ -390,6 +409,50 @@ impl<S: StorageEngine> Shared<S> {
                 Ok((None, output))
             }
             _ => Ok((Some(tcx), output)),
+        }
+    }
+}
+
+struct RequiredTransactionModeVisitor;
+
+impl nsql_parse::ast::Visitor for RequiredTransactionModeVisitor {
+    type Break = ();
+
+    fn pre_visit_statement(&mut self, stmt: &ast::Statement) -> ControlFlow<Self::Break> {
+        match stmt {
+            ast::Statement::Update { .. }
+            | ast::Statement::Insert { .. }
+            | ast::Statement::Delete { .. }
+            | ast::Statement::Truncate { .. }
+            | ast::Statement::CreateView { .. }
+            | ast::Statement::CreateTable { .. }
+            | ast::Statement::CreateSequence { .. }
+            | ast::Statement::CreateIndex { .. }
+            | ast::Statement::CreateSchema { .. }
+            | ast::Statement::Drop { .. }
+            | ast::Statement::DropFunction { .. } => ControlFlow::Break(()),
+            // RW unless explicitly read-only
+            ast::Statement::StartTransaction { modes, begin: _ }
+                if modes.iter().all(|&mode| {
+                    mode != ast::TransactionMode::AccessMode(ast::TransactionAccessMode::ReadOnly)
+                }) =>
+            {
+                ControlFlow::Break(())
+            }
+            _ => ControlFlow::Continue(()),
+        }
+    }
+
+    fn pre_visit_expr(&mut self, expr: &ast::Expr) -> ControlFlow<Self::Break> {
+        // This is a bit of a hack as it's far from complete
+        match expr {
+            ast::Expr::Function(f) => {
+                match f.name.0.last().unwrap().value.to_lowercase().as_str() {
+                    "nextval" => ControlFlow::Break(()),
+                    _ => ControlFlow::Continue(()),
+                }
+            }
+            _ => ControlFlow::Continue(()),
         }
     }
 }
