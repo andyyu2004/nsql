@@ -15,6 +15,7 @@ pub(crate) struct PhysicalInsert<'env, 'txn, S: StorageEngine> {
     id: PhysicalNodeId,
     children: [PhysicalNodeId; 1],
     table_oid: Oid<Table>,
+    // FIXME remove the mutex
     storage: OnceLock<Mutex<Option<TableStorage<'env, 'txn, S, ReadWriteExecutionMode>>>>,
     table: OnceLock<Table>,
     returning: ExecutableTupleExpr<'env, S, ReadWriteExecutionMode>,

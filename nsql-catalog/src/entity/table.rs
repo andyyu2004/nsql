@@ -81,6 +81,7 @@ impl Table {
     ) -> Result<Vec<Column>> {
         let mut columns = catalog
             .columns(tx)?
+            .as_ref()
             .scan()?
             .filter(|col| Ok(col.table == self.oid))
             .collect::<Vec<_>>()?;
@@ -102,7 +103,7 @@ impl Table {
         catalog: Catalog<'env, S>,
         tx: &dyn TransactionContext<'env, 'txn, S, M>,
     ) -> Result<Vec<Index>> {
-        catalog.indexes(tx)?.scan()?.filter(|index| Ok(index.target == self.oid)).collect()
+        catalog.indexes(tx)?.as_ref().scan()?.filter(|index| Ok(index.target == self.oid)).collect()
     }
 
     fn index_storage_infos<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(

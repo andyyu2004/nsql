@@ -17,7 +17,7 @@ use ir::expr::EvalNotConst;
 use ir::{Decimal, Path, QPath, TupleIndex};
 use itertools::Itertools;
 use nsql_catalog::{
-    Catalog, ColumnIdentity, ColumnIndex, Function, FunctionKind, Namespace, Operator,
+    Bow, Catalog, ColumnIdentity, ColumnIndex, Function, FunctionKind, Namespace, Operator,
     OperatorKind, SystemEntity, SystemTableView, Table, TransactionContext, MAIN_SCHEMA_PATH,
 };
 use nsql_core::{not_implemented, not_implemented_if, LogicalType, Name, Oid, Schema};
@@ -623,6 +623,7 @@ impl<'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
                     let ns = self
                         .catalog
                         .namespaces(self.tx)?
+                        .as_ref()
                         .find(self.catalog, self.tx, None, name)?
                         .ok_or_else(|| unbound!(Namespace, path))?;
                     Ok(ns)
@@ -635,10 +636,11 @@ impl<'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
         }
     }
 
+    #[allow(clippy::type_complexity)]
     fn get_namespaced_entity_view<T: SystemEntity<Parent = Namespace>>(
         &self,
         path: &Path,
-    ) -> Result<(&SystemTableView<'env, 'txn, S, M, T>, Namespace, Name)> {
+    ) -> Result<(Bow<'_, SystemTableView<'env, 'txn, S, M, T>>, Namespace, Name)> {
         match path {
             Path::Unqualified(name) => self.get_namespaced_entity_view::<T>(&Path::qualified(
                 Path::Unqualified(MAIN_SCHEMA_PATH.into()),
@@ -650,6 +652,7 @@ impl<'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
                     let namespace = self
                         .catalog
                         .namespaces(self.tx)?
+                        .as_ref()
                         .find(self.catalog, self.tx, None, schema)?
                         .ok_or_else(|| unbound!(Namespace, path))?;
 
@@ -666,6 +669,7 @@ impl<'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     ) -> Result<T::Key> {
         let (table, namespace, name) = self.get_namespaced_entity_view::<T>(path)?;
         let entity = table
+            .as_ref()
             .find(self.catalog, self.tx, Some(namespace.key()), &name)?
             .ok_or_else(|| unbound!(T, path))?;
 
@@ -1622,6 +1626,7 @@ impl<'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
             self.get_namespaced_entity_view::<Operator>(&Path::qualified("nsql_catalog", name))?;
 
         let mut candidates = operators
+            .as_ref()
             .scan()?
             .filter(|op| {
                 Ok(op.parent_oid(self.catalog, self.tx)?.unwrap() == namespace.key()
@@ -1656,6 +1661,7 @@ impl<'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     fn resolve_function(&self, path: &Path, args: &[LogicalType]) -> Result<ir::MonoFunction> {
         let (functions, namespace, name) = self.get_namespaced_entity_view::<Function>(path)?;
         let mut candidates = functions
+            .as_ref()
             .scan()?
             .filter(|f| {
                 Ok(f.parent_oid(self.catalog, self.tx)?.unwrap() == namespace.key()

@@ -128,8 +128,9 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> TableStorage
         info: TableStorageInfo,
         indexes: Vec<IndexStorageInfo>,
     ) -> Result<Self, S::Error> {
-        eprintln!("opening table storage: {:#?}", info.oid);
-        let tree = M::open_tree(storage, tx.transaction(), &info.oid.to_string())?;
+        let tree = M::open_tree(storage, tx.transaction(), &info.oid.to_string())
+            .unwrap_or_else(|err| panic!("failed to open table storage for `{}` {err}", info.oid));
+
         let indexes = indexes
             .into_iter()
             .map(|info| IndexStorage::open(storage, tx, info))

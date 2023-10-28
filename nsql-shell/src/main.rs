@@ -3,7 +3,7 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 
 use argh::FromArgs;
-use nsql::{LmdbStorageEngine, Nsql};
+use nsql::{Nsql, RedbStorageEngine};
 use nu_ansi_term::{Color, Style};
 use reedline::{
     default_vi_insert_keybindings, default_vi_normal_keybindings, DefaultHinter, DefaultValidator,
@@ -75,7 +75,7 @@ fn main() -> nsql::Result<()> {
             .init();
     }
 
-    let nsql = Nsql::<LmdbStorageEngine>::open(&args.path)?;
+    let nsql = Nsql::<RedbStorageEngine>::open(&args.path)?;
     let conn = nsql.connect();
 
     if let Some(cmd) = &args.cmd {

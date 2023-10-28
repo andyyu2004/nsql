@@ -221,6 +221,11 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     }
 
     #[inline]
+    fn enable_system_table_cache(&self) -> bool {
+        false
+    }
+
+    #[inline]
     fn catalog_caches(&self) -> &TransactionLocalCatalogCaches<'env, 'txn, S, M> {
         self.cache
     }
