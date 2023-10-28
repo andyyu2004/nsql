@@ -71,7 +71,7 @@ impl nsql_storage_engine::StorageEngine for RedbStorageEngine {
     #[inline]
     fn open_tree<'env, 'txn>(
         &self,
-        txn: &'txn dyn nsql_storage_engine::Transaction<'env, Self>,
+        txn: &'txn dyn nsql_storage_engine::TransactionRef<'env, Self>,
         name: &str,
     ) -> Result<Option<Self::ReadTree<'env, 'txn>>, Self::Error>
     where
@@ -207,26 +207,48 @@ impl<'env, 'txn> nsql_storage_engine::WriteTree<'env, 'txn, RedbStorageEngine>
 }
 
 impl<'env> nsql_storage_engine::Transaction<'env, RedbStorageEngine> for ReadTransaction<'env> {
+    fn commit_boxed(self: Box<Self>) -> Result<(), redb::Error> {
+        Ok(())
+    }
+
+    fn abort_boxed(self: Box<Self>) -> Result<(), redb::Error> {
+        Ok(())
+    }
+}
+
+impl<'env> nsql_storage_engine::TransactionRef<'env, RedbStorageEngine> for ReadTransaction<'env> {
     #[inline]
     fn as_read_or_write_ref(&self) -> ReadOrWriteTransactionRef<'env, '_, RedbStorageEngine> {
         ReadOrWriteTransactionRef::Read(self)
     }
 
     #[inline]
-    fn as_dyn(&self) -> &dyn nsql_storage_engine::Transaction<'env, RedbStorageEngine> {
+    fn as_dyn(&self) -> &dyn nsql_storage_engine::TransactionRef<'env, RedbStorageEngine> {
         self
     }
 }
 
-impl<'env> nsql_storage_engine::Transaction<'env, RedbStorageEngine> for Transaction<'env> {
+impl<'env> nsql_storage_engine::TransactionRef<'env, RedbStorageEngine> for Transaction<'env> {
     #[inline]
     fn as_read_or_write_ref(&self) -> ReadOrWriteTransactionRef<'env, '_, RedbStorageEngine> {
         ReadOrWriteTransactionRef::Write(self)
     }
 
     #[inline]
-    fn as_dyn(&self) -> &dyn nsql_storage_engine::Transaction<'env, RedbStorageEngine> {
+    fn as_dyn(&self) -> &dyn nsql_storage_engine::TransactionRef<'env, RedbStorageEngine> {
         self
+    }
+}
+
+impl<'env> nsql_storage_engine::Transaction<'env, RedbStorageEngine> for Transaction<'env> {
+    #[inline]
+    fn commit_boxed(self: Box<Self>) -> Result<(), redb::Error> {
+        Ok(self.0.commit()?)
+    }
+
+    #[inline]
+    fn abort_boxed(self: Box<Self>) -> Result<(), redb::Error> {
+        Ok(self.0.abort()?)
     }
 }
 

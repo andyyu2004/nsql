@@ -28,7 +28,8 @@ use profiler::Profiler;
 
 use self::config::SessionConfig;
 pub use self::executor::execute;
-use self::physical_plan::{explain, Explain, PhysicalPlan};
+pub use self::physical_plan::PhysicalPlan;
+use self::physical_plan::{explain, Explain};
 use self::pipeline::{
     MetaPipeline, MetaPipelineBuilder, Pipeline, PipelineArena, PipelineBuilder,
     PipelineBuilderArena,

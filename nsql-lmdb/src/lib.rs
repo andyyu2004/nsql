@@ -8,7 +8,7 @@ use heed::types::ByteSlice;
 use heed::Flag;
 use nsql_storage_engine::{
     fallible_iterator, KeyExists, Range, ReadOrWriteTransactionRef, ReadTree, StorageEngine,
-    Transaction, WriteTransaction, WriteTree,
+    Transaction, TransactionRef, WriteTransaction, WriteTree,
 };
 
 type Result<T, E = heed::Error> = std::result::Result<T, E>;
@@ -91,7 +91,7 @@ impl StorageEngine for LmdbStorageEngine {
     #[inline]
     fn open_tree<'env, 'txn>(
         &self,
-        txn: &'txn dyn Transaction<'env, Self>,
+        txn: &'txn dyn TransactionRef<'env, Self>,
         name: &str,
     ) -> Result<Option<Self::ReadTree<'env, 'txn>>, Self::Error>
     where
@@ -230,26 +230,51 @@ impl<'env, 'txn> WriteTree<'env, 'txn, LmdbStorageEngine> for LmdbWriteTree<'env
     }
 }
 
-impl<'env> Transaction<'env, LmdbStorageEngine> for ReadonlyTx<'env> {
+impl<'env> TransactionRef<'env, LmdbStorageEngine> for ReadonlyTx<'env> {
     #[inline]
     fn as_read_or_write_ref(&self) -> ReadOrWriteTransactionRef<'env, '_, LmdbStorageEngine> {
         ReadOrWriteTransactionRef::Read(self)
     }
 
     #[inline]
-    fn as_dyn(&self) -> &dyn Transaction<'env, LmdbStorageEngine> {
+    fn as_dyn(&self) -> &dyn TransactionRef<'env, LmdbStorageEngine> {
         self
     }
 }
 
+impl<'env> Transaction<'env, LmdbStorageEngine> for ReadonlyTx<'env> {
+    #[inline]
+    fn commit_boxed(self: Box<Self>) -> Result<(), heed::Error> {
+        Ok(())
+    }
+
+    #[inline]
+    fn abort_boxed(self: Box<Self>) -> Result<(), heed::Error> {
+        Ok(())
+    }
+}
+
 impl<'env> Transaction<'env, LmdbStorageEngine> for ReadWriteTx<'env> {
+    #[inline]
+    fn commit_boxed(self: Box<Self>) -> Result<(), heed::Error> {
+        self.0.commit()
+    }
+
+    #[inline]
+    fn abort_boxed(self: Box<Self>) -> Result<(), heed::Error> {
+        self.0.abort();
+        Ok(())
+    }
+}
+
+impl<'env> TransactionRef<'env, LmdbStorageEngine> for ReadWriteTx<'env> {
     #[inline]
     fn as_read_or_write_ref(&self) -> ReadOrWriteTransactionRef<'env, '_, LmdbStorageEngine> {
         ReadOrWriteTransactionRef::Write(self)
     }
 
     #[inline]
-    fn as_dyn(&self) -> &dyn Transaction<'env, LmdbStorageEngine> {
+    fn as_dyn(&self) -> &dyn TransactionRef<'env, LmdbStorageEngine> {
         self
     }
 }

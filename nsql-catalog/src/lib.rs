@@ -243,6 +243,13 @@ impl<'env, S: StorageEngine> Catalog<'env, S> {
         self.system_table(tx)
     }
 
+    pub fn sequences<'a, 'txn, M: ExecutionMode<'env, S>>(
+        self,
+        tx: &'a dyn TransactionContext<'env, 'txn, S, M>,
+    ) -> Result<&'a SystemTableView<'env, 'txn, S, M, Sequence>> {
+        self.system_table(tx)
+    }
+
     #[inline]
     pub fn columns<'a, 'txn, M: ExecutionMode<'env, S>>(
         self,

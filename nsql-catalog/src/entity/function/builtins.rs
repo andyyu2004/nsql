@@ -1,10 +1,12 @@
 mod aggregates;
 
 use nsql_core::Oid;
+use nsql_storage::tuple::FromTuple;
 use nsql_storage::value::{Decimal, Value};
+use nsql_storage_engine::ReadWriteExecutionMode;
 
 use super::*;
-
+use crate::SequenceData;
 
 macro_rules! cast_to {
     ($to:ty) => {
@@ -114,7 +116,7 @@ macro_rules! prefix_op {
 
 pub(crate) fn get_scalar_function<'env, S: StorageEngine, M: ExecutionMode<'env, S>>(
     oid: Oid<Function>,
-) -> Option<ScalarFunctionPtr<'env, S, M>> {
+) -> Option<ScalarFunctionPtr<S, M>> {
     Some(match oid {
         _ if oid == Function::NEG_INT => prefix_op!(- : i64),
         _ if oid == Function::NEG_FLOAT => prefix_op!(- : f64),
@@ -159,8 +161,8 @@ pub(crate) fn get_scalar_function<'env, S: StorageEngine, M: ExecutionMode<'env,
         _ if oid == Function::CAST_INT_TO_DEC => cast_to!(Decimal),
         _ if oid == Function::CAST_INT_TO_FLOAT => cast_to!(f64),
         _ if oid == Function::CAST_INT_TO_OID => cast_to!(UntypedOid),
-        _ if oid == Function::NEXTVAL => mk_nextval::<S, M>(),
-        _ if oid == Function::NEXTVAL_OID => mk_nextval_oid::<S, M>(),
+        _ if oid == Function::NEXTVAL => todo!(),
+        _ if oid == Function::NEXTVAL_OID => todo!(),
         _ if oid == Function::MK_NEXTVAL_EXPR => mk_nextval_expr::<S, M>(),
         // misc
         _ if oid == Function::RANGE2 => mk_range2::<S, M>(),
@@ -172,7 +174,7 @@ pub(crate) fn get_scalar_function<'env, S: StorageEngine, M: ExecutionMode<'env,
     })
 }
 
-fn mk_between<'env, S, M>() -> ScalarFunctionPtr<'env, S, M> {
+fn mk_between<S, M>() -> ScalarFunctionPtr<S, M> {
     |_catalog, _tx, mut args: FunctionArgs| {
         assert_eq!(args.len(), 3);
         let target = args[0].take();
@@ -216,7 +218,7 @@ pub(crate) fn get_aggregate_function(
     })
 }
 
-fn mk_range2<'env, S, M>() -> ScalarFunctionPtr<'env, S, M> {
+fn mk_range2<S, M>() -> ScalarFunctionPtr<S, M> {
     |_catalog, _tx, mut args: FunctionArgs| {
         assert_eq!(args.len(), 2);
         let start: Option<i64> = args[0].take().cast().unwrap();
@@ -228,7 +230,7 @@ fn mk_range2<'env, S, M>() -> ScalarFunctionPtr<'env, S, M> {
     }
 }
 
-fn mk_array_element<'env, S, M>() -> ScalarFunctionPtr<'env, S, M> {
+fn mk_array_element<S, M>() -> ScalarFunctionPtr<S, M> {
     |_catalog, _tx, mut args: FunctionArgs| {
         assert_eq!(args.len(), 2);
         let array = match args[0].take() {
@@ -251,7 +253,7 @@ fn mk_array_element<'env, S, M>() -> ScalarFunctionPtr<'env, S, M> {
     }
 }
 
-fn mk_array_position<'env, S, M>() -> ScalarFunctionPtr<'env, S, M> {
+fn mk_array_position<S, M>() -> ScalarFunctionPtr<S, M> {
     |_catalog, _tx, mut args: FunctionArgs| {
         assert_eq!(args.len(), 2);
         let array = match args[0].take() {
@@ -269,7 +271,7 @@ fn mk_array_position<'env, S, M>() -> ScalarFunctionPtr<'env, S, M> {
     }
 }
 
-fn mk_array_contains<'env, S, M>() -> ScalarFunctionPtr<'env, S, M> {
+fn mk_array_contains<S, M>() -> ScalarFunctionPtr<S, M> {
     |_catalog, _tx, mut args: FunctionArgs| {
         assert_eq!(args.len(), 2);
         let array = match args[0].take() {
@@ -287,42 +289,45 @@ fn mk_array_contains<'env, S, M>() -> ScalarFunctionPtr<'env, S, M> {
     }
 }
 
-fn mk_nextval<'env, S, M>() -> ScalarFunctionPtr<'env, S, M> {
-    |_catalog, _tx, _args: FunctionArgs| {
-        // assert_eq!(args.len(), 1);
-        // let tx = tx.try_as_write().expect("nextval should be passed a write transaction");
-        // let oid: Oid<Table> = args[0].take().cast().unwrap();
-        // let sequence = catalog.sequences(tx)?.get(oid)?;
-        // let seq_table = catalog.system_table_write::<Table>(tx)?.get(oid)?;
-        // let mut storage = seq_table.storage::<S, ReadWriteExecutionMode>(catalog, tx)?;
+#[allow(clippy::boxed_local)]
+fn nextval<'env: 'txn, 'txn, S: StorageEngine>(
+    catalog: Catalog<'env, S>,
+    tcx: &dyn TransactionContext<'env, 'txn, S, ReadWriteExecutionMode>,
+    mut args: FunctionArgs,
+) -> Result<Value> {
+    assert_eq!(args.len(), 1);
+    let oid: Oid<Table> = args[0].take().cast().unwrap();
+    let sequence = catalog.sequences(tcx)?.get(oid)?;
+    let seq_table = catalog.system_table_write::<Table>(tcx)?.get(oid)?;
+    let mut storage = seq_table.storage::<S, ReadWriteExecutionMode>(catalog, tcx)?;
 
-        // let current = match storage.get(Value::from(SequenceData::KEY))? {
-        //     Some(seq) => {
-        //         let current = SequenceData::from_tuple(seq)?.value;
-        //         storage.update(&SequenceData::new(current + sequence.step).into_tuple())?;
-        //         current
-        //     }
-        //     None => {
-        //         let current = sequence.start;
-        //         storage
-        //             .insert(&catalog, tx, &SequenceData::new(current + sequence.step).into_tuple())?
-        //             .expect("insert shouldn't conflict");
-        //         current
-        //     }
-        // };
-        // Ok(Value::Int64(current))
-        todo!()
-    }
+    let current = match storage.get(Value::from(SequenceData::KEY))? {
+        Some(seq) => {
+            let current = SequenceData::from_tuple(seq)?.value;
+            storage.update(&SequenceData::new(current + sequence.step).into_tuple())?;
+            current
+        }
+        None => {
+            let current = sequence.start;
+            storage
+                .insert(&catalog, tcx, &SequenceData::new(current + sequence.step).into_tuple())?
+                .expect("insert shouldn't conflict");
+            current
+        }
+    };
+    Ok(Value::Int64(current))
 }
 
-fn mk_nextval_oid<'env, S, M>() -> ScalarFunctionPtr<'env, S, M> {
-    |catalog, tx, args: FunctionArgs| {
-        let next = mk_nextval::<S, M>()(catalog, tx, args)?;
-        Ok(Value::Oid(next.cast().unwrap()))
-    }
+fn nextval_oid<'env: 'txn, 'txn, S: StorageEngine>(
+    catalog: Catalog<'env, S>,
+    tcx: &dyn TransactionContext<'env, 'txn, S, ReadWriteExecutionMode>,
+    args: FunctionArgs,
+) -> Result<Value> {
+    let next = nextval(catalog, tcx, args)?;
+    Ok(Value::Oid(next.cast().unwrap()))
 }
 
-fn mk_nextval_expr<'env, S, M>() -> ScalarFunctionPtr<'env, S, M> {
+fn mk_nextval_expr<S, M>() -> ScalarFunctionPtr<S, M> {
     |_catalog, _tx, mut args: FunctionArgs| {
         let oid: UntypedOid = args[0].take().cast().unwrap();
         Ok(Value::Expr(Expr::call(Function::NEXTVAL.untyped(), [oid.into()])))
