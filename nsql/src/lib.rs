@@ -221,11 +221,6 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     }
 
     #[inline]
-    fn enable_system_table_cache(&self) -> bool {
-        false
-    }
-
-    #[inline]
     fn catalog_caches(&self) -> &TransactionLocalCatalogCaches<'env, 'txn, S, M> {
         self.cache
     }
@@ -381,7 +376,6 @@ impl<S: StorageEngine> Shared<S> {
             let physical_plan =
                 self.profiler.profile(self.profiler.physical_plan_event_id, || {
                     do_plan(physical_planner, &tcx, plan)
-                    // physical_planner.plan(&tcx, plan)
                 })?;
 
             let ecx = ExecutionContext::<S, M>::new(catalog, &tcx, ctx);

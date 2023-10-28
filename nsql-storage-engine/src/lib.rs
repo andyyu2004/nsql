@@ -255,6 +255,8 @@ impl<'env: 'txn, 'txn, S: StorageEngine> ReadTree<'env, 'txn, S>
 pub trait ExecutionMode<'env, S: StorageEngine>:
     private::Sealed + Clone + Copy + fmt::Debug + 'static
 {
+    const READONLY: bool;
+
     type Transaction: Transaction<'env, S>;
 
     type Tree<'txn>: ReadTree<'env, 'txn, S>
@@ -280,6 +282,8 @@ pub enum ReadonlyExecutionMode {}
 impl private::Sealed for ReadonlyExecutionMode {}
 
 impl<'env, S: StorageEngine> ExecutionMode<'env, S> for ReadonlyExecutionMode {
+    const READONLY: bool = true;
+
     type Transaction = S::Transaction<'env>;
 
     type Tree<'txn> = S::ReadTree<'env, 'txn> where 'env: 'txn;
@@ -305,6 +309,8 @@ pub struct ReadWriteExecutionMode;
 impl private::Sealed for ReadWriteExecutionMode {}
 
 impl<'env, S: StorageEngine> ExecutionMode<'env, S> for ReadWriteExecutionMode {
+    const READONLY: bool = false;
+
     type Transaction = S::WriteTransaction<'env>;
 
     type Tree<'txn> = S::WriteTree<'env, 'txn>

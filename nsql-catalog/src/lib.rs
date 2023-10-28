@@ -36,8 +36,6 @@ pub type Result<T, E = Error> = std::result::Result<T, E>;
 pub trait TransactionContext<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> {
     fn transaction(&self) -> &'txn M::Transaction;
 
-    fn enable_system_table_cache(&self) -> bool;
-
     fn catalog_caches(&self) -> &TransactionLocalCatalogCaches<'env, 'txn, S, M>;
 }
 
@@ -299,7 +297,10 @@ impl<'env, S: StorageEngine> Catalog<'env, S> {
     ) -> Result<Bow<'a, SystemTableView<'env, 'txn, S, M, T>>, S::Error> {
         // When opening in read-only mode, we still open the table in bootstrap mode to avoid loading cyclic dependencies.
         // We currently only use indexes to check uniqueness not for lookups, so this isn't an issue yet.
-        if tx.enable_system_table_cache() {
+        if M::READONLY {
+            // we can't enable the cache for write operations as is because system table write operations will
+            // fail as it won't be able to open the table for insertion as it will be cached.
+            // (and the cache only provides a shared reference where we need a unique one)
             T::extract_cache(tx.catalog_caches())
                 .get_or_try_init(|| SystemTableView::new_bootstrap(self.storage(), tx))
                 .map(Bow::Borrowed)
