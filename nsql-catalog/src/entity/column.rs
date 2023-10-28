@@ -161,10 +161,10 @@ impl SystemEntity for Column {
     }
 
     #[inline]
-    fn name<'env, S: StorageEngine>(
+    fn name<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
         &self,
         _catalog: Catalog<'env, S>,
-        _tx: &dyn Transaction<'env, S>,
+        _tx: &dyn TransactionContext<'env, 'txn, S, M>,
     ) -> Result<Name> {
         Ok(Name::clone(&self.name))
     }
@@ -175,12 +175,19 @@ impl SystemEntity for Column {
     }
 
     #[inline]
-    fn parent_oid<'env, S: StorageEngine>(
+    fn parent_oid<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
         &self,
         _catalog: Catalog<'env, S>,
-        _tx: &dyn Transaction<'env, S>,
+        _tx: &dyn TransactionContext<'env, 'txn, S, M>,
     ) -> Result<Option<Oid<Self::Parent>>> {
         Ok(Some(self.table))
+    }
+
+    #[inline]
+    fn extract_cache<'a, 'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
+        caches: &'a TransactionLocalCatalogCaches<'env, 'txn, S, M>,
+    ) -> &'a OnceLock<SystemTableView<'env, 'txn, S, M, Self>> {
+        &caches.columns
     }
 }
 

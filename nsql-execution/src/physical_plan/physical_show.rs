@@ -1,8 +1,8 @@
 use std::marker::PhantomData;
 
+use ir::Value;
 use nsql_catalog::Namespace;
-use nsql_storage::value::Value;
-use nsql_storage_engine::{FallibleIterator, TransactionConversionHack};
+use nsql_storage_engine::{fallible_iterator, FallibleIterator};
 
 use super::*;
 
@@ -45,34 +45,35 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
 {
     fn source(
         &mut self,
-        ecx: &'txn ExecutionContext<'_, 'env, S, M>,
+        ecx: &ExecutionContext<'_, 'env, 'txn, S, M>,
     ) -> ExecutionResult<TupleStream<'_>> {
-        let tx: M::TransactionRef<'txn> = ecx.tx();
-        let tx: &'txn dyn Transaction<'env, S> = tx.dyn_ref();
+        let tx = ecx.tcx();
         let catalog = ecx.catalog();
 
-        let iter = match self.object_type {
-            ir::ObjectType::Table => Arc::new(catalog.tables(tx.dyn_ref())?)
-                .scan_arc()?
+        let rows = match self.object_type {
+            ir::ObjectType::Table => catalog
+                .tables(tx)?
+                .scan()?
                 .filter(|table| Ok(table.namespace() == Namespace::MAIN))
-                .map(move |table| Ok(Tuple::from(vec![Value::Text(table.name().to_string())]))),
+                .map(move |table| Ok(Tuple::from(vec![Value::Text(table.name().to_string())])))
+                .collect::<Vec<_>>()?,
         };
 
-        Ok(Box::new(iter))
+        Ok(Box::new(fallible_iterator::convert(rows.into_iter().map(Ok))))
     }
 }
 
-impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> Explain<'env, S>
-    for PhysicalShow<'env, '_, S, M>
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Explain<'env, 'txn, S, M>
+    for PhysicalShow<'env, 'txn, S, M>
 {
-    fn as_dyn(&self) -> &dyn Explain<'env, S> {
+    fn as_dyn(&self) -> &dyn Explain<'env, 'txn, S, M> {
         self
     }
 
     fn explain(
         &self,
-        _catalog: Catalog<'_, S>,
-        _tx: &dyn Transaction<'_, S>,
+        _catalog: Catalog<'env, S>,
+        _tx: &dyn TransactionContext<'env, 'txn, S, M>,
         f: &mut fmt::Formatter<'_>,
     ) -> explain::Result {
         write!(f, "show {}s", self.object_type)?;

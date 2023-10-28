@@ -65,7 +65,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSink<'env, 'txn, S, ReadWriteEx
 {
     fn sink(
         &mut self,
-        _ecx: &'txn ExecutionContext<'_, 'env, S, ReadWriteExecutionMode>,
+        _ecx: &ExecutionContext<'_, 'env, 'txn, S, ReadWriteExecutionMode>,
         tuple: Tuple,
     ) -> ExecutionResult<()> {
         self.tuples.push(tuple);
@@ -74,9 +74,9 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSink<'env, 'txn, S, ReadWriteEx
 
     fn finalize(
         &mut self,
-        ecx: &'txn ExecutionContext<'_, 'env, S, ReadWriteExecutionMode>,
+        ecx: &ExecutionContext<'_, 'env, 'txn, S, ReadWriteExecutionMode>,
     ) -> ExecutionResult<()> {
-        let tx = ecx.tx();
+        let tx = ecx.tcx();
         let catalog = ecx.catalog();
         let table = catalog.table(tx, self.table)?;
         let mut storage = table.storage::<S, ReadWriteExecutionMode>(catalog, tx)?;
@@ -100,22 +100,24 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSource<'env, 'txn, S, ReadWrite
 {
     fn source(
         &mut self,
-        _ecx: &'txn ExecutionContext<'_, 'env, S, ReadWriteExecutionMode>,
+        _ecx: &ExecutionContext<'_, 'env, 'txn, S, ReadWriteExecutionMode>,
     ) -> ExecutionResult<TupleStream<'_>> {
         let returning = std::mem::take(&mut self.returning_tuples);
         Ok(Box::new(fallible_iterator::convert(returning.into_iter().map(Ok))))
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine> Explain<'env, S> for PhysicalUpdate<'env, 'txn, S> {
-    fn as_dyn(&self) -> &dyn Explain<'env, S> {
+impl<'env: 'txn, 'txn, S: StorageEngine> Explain<'env, 'txn, S, ReadWriteExecutionMode>
+    for PhysicalUpdate<'env, 'txn, S>
+{
+    fn as_dyn(&self) -> &dyn Explain<'env, 'txn, S, ReadWriteExecutionMode> {
         self
     }
 
     fn explain(
         &self,
         catalog: Catalog<'env, S>,
-        tx: &dyn Transaction<'env, S>,
+        tx: &dyn TransactionContext<'env, 'txn, S, ReadWriteExecutionMode>,
         f: &mut fmt::Formatter<'_>,
     ) -> explain::Result {
         write!(f, "update {}", catalog.table(tx, self.table)?.name())?;

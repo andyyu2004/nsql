@@ -1,8 +1,8 @@
 use std::fmt;
 
 use nsql_arena::{ArenaMap, Idx};
-use nsql_catalog::Catalog;
-use nsql_storage_engine::{StorageEngine, Transaction};
+use nsql_catalog::{Catalog, TransactionContext};
+use nsql_storage_engine::StorageEngine;
 
 use super::PhysicalPlan;
 use crate::pipeline::MetaPipeline;
@@ -10,32 +10,34 @@ use crate::{ExecutionMode, PhysicalNodeArena, PhysicalNodeId, RootPipeline};
 
 pub type Result<T = ()> = anyhow::Result<T>;
 
-pub trait Explain<'env, S: StorageEngine> {
-    fn as_dyn(&self) -> &dyn Explain<'env, S>;
+pub trait Explain<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> {
+    fn as_dyn(&self) -> &dyn Explain<'env, 'txn, S, M>;
 
     fn explain(
         &self,
         catalog: Catalog<'env, S>,
-        tx: &dyn Transaction<'env, S>,
+        tx: &dyn TransactionContext<'env, 'txn, S, M>,
         f: &mut fmt::Formatter<'_>,
     ) -> Result;
 
     fn display<'a>(
         &'a self,
         catalog: Catalog<'env, S>,
-        tx: &'a dyn Transaction<'env, S>,
-    ) -> Display<'a, 'env, S> {
+        tx: &'a dyn TransactionContext<'env, 'txn, S, M>,
+    ) -> Display<'a, 'env, 'txn, S, M> {
         Display { catalog, tx, explain: self.as_dyn() }
     }
 }
 
-pub struct Display<'a, 'env, S: StorageEngine> {
+pub struct Display<'a, 'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> {
     catalog: Catalog<'env, S>,
-    tx: &'a dyn Transaction<'env, S>,
-    explain: &'a dyn Explain<'env, S>,
+    tx: &'a dyn TransactionContext<'env, 'txn, S, M>,
+    explain: &'a dyn Explain<'env, 'txn, S, M>,
 }
 
-impl<'a, 'env, S: StorageEngine> fmt::Display for Display<'a, 'env, S> {
+impl<'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> fmt::Display
+    for Display<'a, 'env, 'txn, S, M>
+{
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.explain.explain(self.catalog, self.tx, f).map_err(|err| {
             tracing::error!("failed to explain: {err}");
@@ -44,17 +46,17 @@ impl<'a, 'env, S: StorageEngine> fmt::Display for Display<'a, 'env, S> {
     }
 }
 
-impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Explain<'env, S>
+impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Explain<'env, 'txn, S, M>
     for RootPipeline<'env, 'txn, S, M>
 {
-    fn as_dyn(&self) -> &dyn Explain<'env, S> {
+    fn as_dyn(&self) -> &dyn Explain<'env, 'txn, S, M> {
         self
     }
 
     fn explain(
         &self,
         catalog: Catalog<'env, S>,
-        tx: &dyn Transaction<'env, S>,
+        tx: &dyn TransactionContext<'env, 'txn, S, M>,
         f: &mut fmt::Formatter<'_>,
     ) -> Result {
         RootPipelineExplainer { root_pipeline: self }.explain(catalog, tx, f)
@@ -76,7 +78,7 @@ impl<'a, 'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     fn explain_meta_pipeline(
         &self,
         catalog: Catalog<'env, S>,
-        tx: &dyn Transaction<'env, S>,
+        tx: &dyn TransactionContext<'env, 'txn, S, M>,
         f: &mut fmt::Formatter<'_>,
         meta_pipeline: Idx<MetaPipeline<'env, 'txn, S, M>>,
     ) -> Result {
@@ -117,17 +119,17 @@ impl<'a, 'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Explain<'env, S>
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Explain<'env, 'txn, S, M>
     for RootPipelineExplainer<'_, 'env, 'txn, S, M>
 {
-    fn as_dyn(&self) -> &dyn Explain<'env, S> {
+    fn as_dyn(&self) -> &dyn Explain<'env, 'txn, S, M> {
         self
     }
 
     fn explain(
         &self,
         catalog: Catalog<'env, S>,
-        tx: &dyn Transaction<'env, S>,
+        tx: &dyn TransactionContext<'env, 'txn, S, M>,
         f: &mut fmt::Formatter<'_>,
     ) -> Result {
         MetaPipelineExplainer { root: self, indent: 0 }.explain_meta_pipeline(
@@ -143,7 +145,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalPlan
     pub fn explain_tree(
         &self,
         catalog: Catalog<'env, S>,
-        tx: &dyn Transaction<'env, S>,
+        tx: &dyn TransactionContext<'env, 'txn, S, M>,
     ) -> ExplainTree {
         let mut nodes = ArenaMap::default();
         let root = self.explain_node(&mut nodes, catalog, tx, self.root, 0);
@@ -154,7 +156,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalPlan
         &self,
         nodes: &mut ArenaMap<PhysicalNodeId, ExplainNode>,
         catalog: Catalog<'env, S>,
-        tx: &dyn Transaction<'env, S>,
+        tx: &dyn TransactionContext<'env, 'txn, S, M>,
         id: PhysicalNodeId,
         depth: usize,
     ) -> PhysicalNodeId {
@@ -224,17 +226,17 @@ struct ExplainNode {
     children: Box<[PhysicalNodeId]>,
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Explain<'env, S>
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Explain<'env, 'txn, S, M>
     for PhysicalPlan<'env, 'txn, S, M>
 {
-    fn as_dyn(&self) -> &dyn Explain<'env, S> {
+    fn as_dyn(&self) -> &dyn Explain<'env, 'txn, S, M> {
         self
     }
 
     fn explain(
         &self,
         catalog: Catalog<'env, S>,
-        tx: &dyn Transaction<'env, S>,
+        tx: &dyn TransactionContext<'env, 'txn, S, M>,
         f: &mut fmt::Formatter<'_>,
     ) -> Result {
         PhysicalNodeExplainer { nodes: &self.nodes, node: self.root(), indent: 0 }
@@ -256,17 +258,17 @@ impl<'a, 'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     }
 }
 
-impl<'a, 'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Explain<'env, S>
+impl<'a, 'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Explain<'env, 'txn, S, M>
     for PhysicalNodeExplainer<'a, 'env, 'txn, S, M>
 {
-    fn as_dyn(&self) -> &dyn Explain<'env, S> {
+    fn as_dyn(&self) -> &dyn Explain<'env, 'txn, S, M> {
         self
     }
 
     fn explain(
         &self,
         catalog: Catalog<'env, S>,
-        tx: &dyn Transaction<'env, S>,
+        tx: &dyn TransactionContext<'env, 'txn, S, M>,
         f: &mut fmt::Formatter<'_>,
     ) -> Result {
         write!(f, "{:indent$}", "", indent = self.indent)?;

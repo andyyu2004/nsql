@@ -10,8 +10,8 @@ nsql-bind = { path = "../nsql-bind" }
 nsql-catalog = { path = "../nsql-catalog" }
 nsql-core = { path = "../nsql-core" }
 nsql-execution = { path = "../nsql-execution" }
-nsql-redb = {path = "../nsql-redb" }
-nsql-lmdb = {path = "../nsql-lmdb" }
+nsql-redb = { path = "../nsql-redb" }
+nsql-lmdb = { path = "../nsql-lmdb" }
 ir = {path = "../nsql-ir", package = "nsql-ir" }
 nsql-opt = { path = "../nsql-opt" }
 nsql-parse = { path = "../nsql-parse" }
@@ -23,6 +23,7 @@ mimalloc = { version = "*", default-features = false }
 tracing-tree = "0.2.4"
 tabled = { version = "0.14.0", default-features = false, features = ["std"] }
 measureme = "10.1.1"
+ouroboros = "0.18.0"
 
 [dev-dependencies]
 datatest-stable = { git = "https://github.com/andyyu2004/datatest-stable", branch = "main" }

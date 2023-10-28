@@ -15,6 +15,7 @@ pub(crate) struct PhysicalInsert<'env, 'txn, S: StorageEngine> {
     id: PhysicalNodeId,
     children: [PhysicalNodeId; 1],
     table_oid: Oid<Table>,
+    // FIXME remove the mutex
     storage: OnceLock<Mutex<Option<TableStorage<'env, 'txn, S, ReadWriteExecutionMode>>>>,
     table: OnceLock<Table>,
     returning: ExecutableTupleExpr<'env, S, ReadWriteExecutionMode>,
@@ -65,11 +66,11 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSink<'env, 'txn, S, ReadWriteEx
 {
     fn sink(
         &mut self,
-        ecx: &'txn ExecutionContext<'_, 'env, S, ReadWriteExecutionMode>,
+        ecx: &ExecutionContext<'_, 'env, 'txn, S, ReadWriteExecutionMode>,
         tuple: Tuple,
     ) -> ExecutionResult<()> {
         let catalog = ecx.catalog();
-        let tx = ecx.tx();
+        let tx = ecx.tcx();
 
         let table = self.table.get_or_try_init(|| catalog.get(tx, self.table_oid))?;
 
@@ -94,7 +95,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSink<'env, 'txn, S, ReadWriteEx
         // hack, if this is the insert of a `CREATE TABLE` we need to create the table storage
         if self.table_oid == Table::TABLE {
             let table = Table::from_tuple(tuple).expect("should be a compatible tuple");
-            table.create_storage::<S>(catalog, tx)?;
+            table.create_storage(catalog.storage(), tx.transaction())?;
         }
 
         Ok(())
@@ -102,7 +103,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSink<'env, 'txn, S, ReadWriteEx
 
     fn finalize(
         &mut self,
-        _ecx: &'txn ExecutionContext<'_, 'env, S, ReadWriteExecutionMode>,
+        _ecx: &ExecutionContext<'_, 'env, 'txn, S, ReadWriteExecutionMode>,
     ) -> ExecutionResult<()> {
         // drop the storage on finalization as it is no longer needed by this node
         // this helps avoids redb errors when the same table is opened by multiple nodes
@@ -116,22 +117,24 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSource<'env, 'txn, S, ReadWrite
 {
     fn source(
         &mut self,
-        _ecx: &'txn ExecutionContext<'_, 'env, S, ReadWriteExecutionMode>,
+        _ecx: &ExecutionContext<'_, 'env, 'txn, S, ReadWriteExecutionMode>,
     ) -> ExecutionResult<TupleStream<'_>> {
         let returning = std::mem::take(&mut self.returning_tuples);
         Ok(Box::new(fallible_iterator::convert(returning.into_iter().map(Ok))))
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine> Explain<'env, S> for PhysicalInsert<'env, 'txn, S> {
-    fn as_dyn(&self) -> &dyn Explain<'env, S> {
+impl<'env: 'txn, 'txn, S: StorageEngine> Explain<'env, 'txn, S, ReadWriteExecutionMode>
+    for PhysicalInsert<'env, 'txn, S>
+{
+    fn as_dyn(&self) -> &dyn Explain<'env, 'txn, S, ReadWriteExecutionMode> {
         self
     }
 
     fn explain(
         &self,
         catalog: Catalog<'env, S>,
-        tx: &dyn Transaction<'env, S>,
+        tx: &dyn TransactionContext<'env, 'txn, S, ReadWriteExecutionMode>,
         f: &mut fmt::Formatter<'_>,
     ) -> explain::Result {
         write!(f, "insert into {}", catalog.table(tx, self.table_oid)?.name())?;

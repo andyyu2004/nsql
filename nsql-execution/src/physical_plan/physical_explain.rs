@@ -72,7 +72,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSink<'env, 'txn, S, M>
     for PhysicalExplain<'env, 'txn, S, M>
 {
-    fn initialize(&mut self, ecx: &'txn ExecutionContext<'_, 'env, S, M>) -> ExecutionResult<()> {
+    fn initialize(&mut self, ecx: &ExecutionContext<'_, 'env, 'txn, S, M>) -> ExecutionResult<()> {
         if self.opts.timing {
             ecx.profiler().set_mode(ProfileMode::Timing);
         } else {
@@ -83,7 +83,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSink
 
     fn sink(
         &mut self,
-        _ecx: &'txn ExecutionContext<'_, 'env, S, M>,
+        _ecx: &ExecutionContext<'_, 'env, 'txn, S, M>,
         _tuple: Tuple,
     ) -> ExecutionResult<()> {
         // drop any tuples as we don't really care
@@ -96,7 +96,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
 {
     fn source(
         &mut self,
-        ecx: &'txn ExecutionContext<'_, 'env, S, M>,
+        ecx: &ExecutionContext<'_, 'env, 'txn, S, M>,
     ) -> ExecutionResult<TupleStream<'_>> {
         let scx = ecx.scx();
 
@@ -156,17 +156,17 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Explain<'env, S>
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Explain<'env, 'txn, S, M>
     for PhysicalExplain<'env, 'txn, S, M>
 {
-    fn as_dyn(&self) -> &dyn Explain<'env, S> {
+    fn as_dyn(&self) -> &dyn Explain<'env, 'txn, S, M> {
         self
     }
 
     fn explain(
         &self,
-        _catalog: Catalog<'_, S>,
-        _tx: &dyn Transaction<'_, S>,
+        _catalog: Catalog<'env, S>,
+        _tx: &dyn TransactionContext<'env, 'txn, S, M>,
         f: &mut fmt::Formatter<'_>,
     ) -> explain::Result {
         write!(f, "explain")?;

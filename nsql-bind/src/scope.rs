@@ -4,7 +4,7 @@ use anyhow::{bail, ensure};
 use ir::QPath;
 use nsql_catalog::{Column, SystemEntity, Table};
 use nsql_core::{LogicalType, Name, Oid, Schema};
-use nsql_storage_engine::{StorageEngine, Transaction};
+use nsql_storage_engine::{ExecutionMode, StorageEngine};
 
 use super::unbound;
 use crate::{Binder, Path, Result, TableAlias};
@@ -58,10 +58,9 @@ impl Scope {
     /// Find a reference to a table:
     /// If it is a cte, return a reference to the cte and it's scope.
     /// Otherwise, add a new table and its columns to the scope.
-    pub fn bind_table<'env, S: StorageEngine>(
+    pub fn bind_table<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
         &self,
-        binder: &Binder<'env, S>,
-        tx: &dyn Transaction<'env, S>,
+        binder: &Binder<'_, 'env, 'txn, S, M>,
         path: &Path,
         alias: Option<&TableAlias>,
     ) -> Result<(Scope, TableBinding)> {
@@ -71,27 +70,26 @@ impl Scope {
                 CteKind::Materialized => Ok((scope.clone(), TableBinding::MaterializedCte(name.clone(), plan.schema().clone()))),
             }
             _ => {
-                let (scope, table) = self.bind_base_table(binder, tx, path, alias)?;
+                let (scope, table) = self.bind_base_table(binder, path, alias)?;
                 Ok((scope, TableBinding::Table(table)))
             }
         }
     }
 
     /// Find a reference to a base table
-    #[tracing::instrument(skip(self, tx, binder))]
-    pub fn bind_base_table<'env, S: StorageEngine>(
+    #[tracing::instrument(skip(self, binder))]
+    pub fn bind_base_table<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
         &self,
-        binder: &Binder<'env, S>,
-        tx: &dyn Transaction<'env, S>,
+        binder: &Binder<'_, 'env, 'txn, S, M>,
         path: &Path,
         alias: Option<&TableAlias>,
     ) -> Result<(Scope, Oid<Table>)> {
         tracing::debug!("binding table");
         let mut columns = self.columns.clone();
 
-        let table_oid = binder.bind_namespaced_entity::<Table>(tx, path)?;
-        let table = binder.catalog.table(tx, table_oid)?;
-        let table_columns = table.columns(binder.catalog, tx)?;
+        let table_oid = binder.bind_namespaced_entity::<Table>(path)?;
+        let table = binder.catalog.table(binder.tx, table_oid)?;
+        let table_columns = table.columns(binder.catalog, binder.tx)?;
 
         if let Some(alias) = alias {
             // if no columns are specified, we only rename the table

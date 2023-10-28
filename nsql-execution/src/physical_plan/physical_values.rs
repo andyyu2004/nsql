@@ -25,12 +25,12 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSource<'env, 'txn, S, M>
     for PhysicalValues<'env, 'txn, S, M>
 {
-    fn source(
-        &mut self,
-        ecx: &'txn ExecutionContext<'_, 'env, S, M>,
-    ) -> ExecutionResult<TupleStream<'_>> {
+    fn source<'s>(
+        &'s mut self,
+        ecx: &'s ExecutionContext<'_, 'env, 'txn, S, M>,
+    ) -> ExecutionResult<TupleStream<'s>> {
         let storage = ecx.storage();
-        let tx = ecx.tx();
+        let tx = ecx.tcx();
         let mut index = 0;
         let iter = fallible_iterator::from_fn(move || {
             if index >= self.values.len() {
@@ -67,17 +67,17 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Explain<'env, S>
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Explain<'env, 'txn, S, M>
     for PhysicalValues<'env, 'txn, S, M>
 {
-    fn as_dyn(&self) -> &dyn Explain<'env, S> {
+    fn as_dyn(&self) -> &dyn Explain<'env, 'txn, S, M> {
         self
     }
 
     fn explain(
         &self,
         _catalog: Catalog<'_, S>,
-        _tx: &dyn Transaction<'_, S>,
+        _tx: &dyn TransactionContext<'env, 'txn, S, M>,
         f: &mut fmt::Formatter<'_>,
     ) -> explain::Result {
         write!(f, "scan {} values", self.values.len())?;

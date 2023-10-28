@@ -43,11 +43,11 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
     for PhysicalTableScan<'env, 'txn, S, M>
 {
     #[tracing::instrument(skip(self, ecx))]
-    fn source(
-        &mut self,
-        ecx: &'txn ExecutionContext<'_, 'env, S, M>,
-    ) -> ExecutionResult<TupleStream<'_>> {
-        let tx = ecx.tx();
+    fn source<'s>(
+        &'s mut self,
+        ecx: &'s ExecutionContext<'_, 'env, 'txn, S, M>,
+    ) -> ExecutionResult<TupleStream<'s>> {
+        let tx = ecx.tcx();
         let catalog = ecx.catalog();
         let storage = Arc::new(self.table.storage::<S, M>(catalog, tx)?);
 
@@ -79,17 +79,17 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode
     }
 }
 
-impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> Explain<'env, S>
-    for PhysicalTableScan<'env, '_, S, M>
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Explain<'env, 'txn, S, M>
+    for PhysicalTableScan<'env, 'txn, S, M>
 {
-    fn as_dyn(&self) -> &dyn Explain<'env, S> {
+    fn as_dyn(&self) -> &dyn Explain<'env, 'txn, S, M> {
         self
     }
 
     fn explain(
         &self,
         catalog: Catalog<'env, S>,
-        tx: &dyn Transaction<'env, S>,
+        tx: &dyn TransactionContext<'env, 'txn, S, M>,
         f: &mut fmt::Formatter<'_>,
     ) -> explain::Result {
         // In this context, we know the projection indices correspond to the column indices of the source table

@@ -6,20 +6,21 @@ use ir::fold::{ExprFold, Folder};
 
 use crate::*;
 
-pub(crate) struct SelectBinder<'a, 'env, S> {
-    binder: &'a Binder<'env, S>,
+pub(crate) struct SelectBinder<'b, 'a, 'env, 'txn, S, M> {
+    binder: &'b Binder<'a, 'env, 'txn, S, M>,
     group_by: Box<[ir::Expr]>,
     aggregates: IndexSet<(ir::MonoFunction, Box<[ir::Expr]>)>,
 }
 
-impl<'a, 'env, S: StorageEngine> SelectBinder<'a, 'env, S> {
-    pub fn new(binder: &'a Binder<'env, S>, group_by: Box<[ir::Expr]>) -> Self {
+impl<'b, 'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
+    SelectBinder<'b, 'a, 'env, 'txn, S, M>
+{
+    pub fn new(binder: &'b Binder<'a, 'env, 'txn, S, M>, group_by: Box<[ir::Expr]>) -> Self {
         Self { binder, group_by, aggregates: Default::default() }
     }
 
     pub fn bind(
         mut self,
-        tx: &dyn Transaction<'env, S>,
         scope: &Scope,
         source: Box<ir::QueryPlan>,
         items: &[ast::SelectItem],
@@ -41,7 +42,7 @@ impl<'a, 'env, S: StorageEngine> SelectBinder<'a, 'env, S> {
             }) {
                 // We add any expressions that we can successfully bind to the pre-projection.
                 // The bind may fail either because it tries to reference an alias or is otherwise bad.
-                if let Ok(bound_expr) = self.bind_maybe_aggregate_expr(tx, scope, expr) {
+                if let Ok(bound_expr) = self.bind_maybe_aggregate_expr(scope, expr) {
                     // alias to make it unnameable to avoid name clashes and thus artificial `ambiguous reference to column` errors
                     bound_extra_exprs.push(bound_expr.alias(""));
                     extra_exprs.insert(expr.clone());
@@ -51,7 +52,7 @@ impl<'a, 'env, S: StorageEngine> SelectBinder<'a, 'env, S> {
 
         let pre_projection = items
             .iter()
-            .map(|item| self.bind_select_item(tx, scope, item))
+            .map(|item| self.bind_select_item(scope, item))
             .flatten_ok()
             .collect::<Result<Vec<_>>>()?;
 
@@ -69,7 +70,7 @@ impl<'a, 'env, S: StorageEngine> SelectBinder<'a, 'env, S> {
             .iter()
             .map(|order_expr| match extra_exprs.get_index_of(&order_expr.expr) {
                 // if the order_by was not added to the pre-projection, we bind it normally
-                None => self.bind_order_by_expr(tx, &scope, order_expr),
+                None => self.bind_order_by_expr(&scope, order_expr),
                 // otherwise we bind it to the corresponding column in the pre-projection
                 Some(k) => {
                     let target_index = original_projection_len + k;
@@ -116,7 +117,7 @@ impl<'a, 'env, S: StorageEngine> SelectBinder<'a, 'env, S> {
                             )),
                         }
                     }
-                    None => self.bind_maybe_aggregate_expr(tx, &scope, expr)?,
+                    None => self.bind_maybe_aggregate_expr(&scope, expr)?,
                 };
                 ensure!(
                     matches!(expr.ty, LogicalType::Bool | LogicalType::Null),
@@ -220,12 +221,12 @@ impl<'a, 'env, S: StorageEngine> SelectBinder<'a, 'env, S> {
 
     fn bind_order_by_expr(
         &mut self,
-        tx: &dyn Transaction<'env, S>,
+
         scope: &Scope,
         order_expr: &ast::OrderByExpr,
     ) -> Result<ir::OrderExpr> {
         not_implemented_if!(!order_expr.nulls_first.unwrap_or(true));
-        let expr = self.bind_maybe_aggregate_expr(tx, scope, &order_expr.expr)?;
+        let expr = self.bind_maybe_aggregate_expr(scope, &order_expr.expr)?;
         let expr = match expr.kind {
             ir::ExprKind::Literal(ir::Value::Int64(i)) => {
                 ensure!(
@@ -254,34 +255,22 @@ impl<'a, 'env, S: StorageEngine> SelectBinder<'a, 'env, S> {
         Ok(ir::OrderExpr { expr, asc: order_expr.asc.unwrap_or(true) })
     }
 
-    fn bind_select_item(
-        &mut self,
-        tx: &dyn Transaction<'env, S>,
-        scope: &Scope,
-        item: &ast::SelectItem,
-    ) -> Result<Vec<ir::Expr>> {
+    fn bind_select_item(&mut self, scope: &Scope, item: &ast::SelectItem) -> Result<Vec<ir::Expr>> {
         let expr = match item {
-            ast::SelectItem::UnnamedExpr(expr) => {
-                self.bind_maybe_aggregate_expr(tx, scope, expr)?
-            }
+            ast::SelectItem::UnnamedExpr(expr) => self.bind_maybe_aggregate_expr(scope, expr)?,
             ast::SelectItem::ExprWithAlias { expr, alias } => {
-                self.bind_maybe_aggregate_expr(tx, scope, expr)?.alias(&alias.value)
+                self.bind_maybe_aggregate_expr(scope, expr)?.alias(&alias.value)
             }
-            _ => return self.binder.bind_select_item(tx, scope, item),
+            _ => return self.binder.bind_select_item(scope, item),
         };
 
         Ok(vec![expr])
     }
 
-    fn bind_maybe_aggregate_expr(
-        &mut self,
-        tx: &dyn Transaction<'env, S>,
-        scope: &Scope,
-        expr: &ast::Expr,
-    ) -> Result<ir::Expr> {
+    fn bind_maybe_aggregate_expr(&mut self, scope: &Scope, expr: &ast::Expr) -> Result<ir::Expr> {
         match expr {
             ast::Expr::Function(f) => {
-                let function_expr = self.binder.bind_function(tx, scope, f)?;
+                let function_expr = self.binder.bind_function(scope, f)?;
                 let kind = match function_expr.kind {
                     ir::ExprKind::FunctionCall { function, args }
                         if matches!(function.kind(), FunctionKind::Aggregate) =>
@@ -299,7 +288,7 @@ impl<'a, 'env, S: StorageEngine> SelectBinder<'a, 'env, S> {
             }
             _ => self
                 .binder
-                .walk_expr(tx, scope, expr, |expr| self.bind_maybe_aggregate_expr(tx, scope, expr)),
+                .walk_expr(scope, expr, |expr| self.bind_maybe_aggregate_expr(scope, expr)),
         }
     }
 }

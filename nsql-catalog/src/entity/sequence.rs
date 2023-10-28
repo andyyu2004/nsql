@@ -58,12 +58,12 @@ impl SystemEntity for Sequence {
     }
 
     #[inline]
-    fn name<'env, S: StorageEngine>(
+    fn name<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
         &self,
         catalog: Catalog<'env, S>,
-        tx: &dyn Transaction<'env, S>,
+        tx: &dyn TransactionContext<'env, 'txn, S, M>,
     ) -> Result<Name> {
-        Ok(catalog.get::<Table>(tx, self.oid)?.name())
+        Ok(catalog.get::<M, Table>(tx, self.oid)?.name())
     }
 
     #[inline]
@@ -72,12 +72,18 @@ impl SystemEntity for Sequence {
     }
 
     #[inline]
-    fn parent_oid<'env, S: StorageEngine>(
+    fn parent_oid<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
         &self,
         catalog: Catalog<'env, S>,
-        tx: &dyn Transaction<'env, S>,
+        tx: &dyn TransactionContext<'env, 'txn, S, M>,
     ) -> Result<Option<Oid<Self::Parent>>> {
-        catalog.get::<Table>(tx, self.oid)?.parent_oid(catalog, tx)
+        catalog.get::<M, Table>(tx, self.oid)?.parent_oid(catalog, tx)
+    }
+
+    fn extract_cache<'a, 'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
+        caches: &'a TransactionLocalCatalogCaches<'env, 'txn, S, M>,
+    ) -> &'a OnceLock<SystemTableView<'env, 'txn, S, M, Self>> {
+        &caches.sequences
     }
 }
 

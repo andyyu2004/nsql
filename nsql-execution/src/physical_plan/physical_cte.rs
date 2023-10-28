@@ -117,7 +117,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSink
 {
     fn sink(
         &mut self,
-        _ecx: &'txn ExecutionContext<'_, 'env, S, M>,
+        _ecx: &ExecutionContext<'_, 'env, 'txn, S, M>,
         tuple: Tuple,
     ) -> ExecutionResult<()> {
         // collect the data from the cte plan
@@ -125,7 +125,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSink
         Ok(())
     }
 
-    fn finalize(&mut self, ecx: &'txn ExecutionContext<'_, 'env, S, M>) -> ExecutionResult<()> {
+    fn finalize(&mut self, ecx: &ExecutionContext<'_, 'env, 'txn, S, M>) -> ExecutionResult<()> {
         // when finished execution the materialized cte, store the tuples in context for cte scan nodes to consume
         let tuples = mem::take(&mut self.materialized_data);
         ecx.instantiate_materialized_cte(Name::clone(&self.name), tuples);
@@ -138,23 +138,23 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
 {
     fn source(
         &mut self,
-        _ecx: &'txn ExecutionContext<'_, 'env, S, M>,
+        _ecx: &ExecutionContext<'_, 'env, 'txn, S, M>,
     ) -> ExecutionResult<TupleStream<'_>> {
         unreachable!()
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Explain<'env, S>
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Explain<'env, 'txn, S, M>
     for PhysicalCte<'env, 'txn, S, M>
 {
-    fn as_dyn(&self) -> &dyn Explain<'env, S> {
+    fn as_dyn(&self) -> &dyn Explain<'env, 'txn, S, M> {
         self
     }
 
     fn explain(
         &self,
-        _catalog: Catalog<'_, S>,
-        _tx: &dyn Transaction<'_, S>,
+        _catalog: Catalog<'env, S>,
+        _tx: &dyn TransactionContext<'env, 'txn, S, M>,
         f: &mut fmt::Formatter<'_>,
     ) -> explain::Result {
         write!(f, "cte {}", self.name)?;

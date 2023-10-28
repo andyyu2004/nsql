@@ -3,9 +3,9 @@ use std::fmt;
 use std::time::{Duration, Instant};
 
 use nsql_arena::{ArenaMap, Idx};
-use nsql_catalog::Catalog;
+use nsql_catalog::{Catalog, TransactionContext};
 use nsql_storage::tuple::Tuple;
-use nsql_storage_engine::{ExecutionMode, FallibleIterator, StorageEngine, Transaction};
+use nsql_storage_engine::{ExecutionMode, FallibleIterator, StorageEngine};
 
 use crate::physical_plan::{explain, Explain};
 use crate::{
@@ -139,18 +139,19 @@ where
     }
 }
 
-impl<'p, 'env, S: StorageEngine, N> Explain<'env, S> for ProfiledPhysicalNode<'p, N>
+impl<'p, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, N> Explain<'env, 'txn, S, M>
+    for ProfiledPhysicalNode<'p, N>
 where
-    N: Explain<'env, S>,
+    N: Explain<'env, 'txn, S, M>,
 {
-    fn as_dyn(&self) -> &dyn Explain<'env, S> {
+    fn as_dyn(&self) -> &dyn Explain<'env, 'txn, S, M> {
         self
     }
 
     fn explain(
         &self,
         catalog: Catalog<'env, S>,
-        tx: &dyn Transaction<'env, S>,
+        tx: &dyn TransactionContext<'env, 'txn, S, M>,
         f: &mut fmt::Formatter<'_>,
     ) -> explain::Result {
         self.node.explain(catalog, tx, f)
@@ -219,10 +220,10 @@ impl<'p, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, N>
 where
     N: PhysicalSource<'env, 'txn, S, M>,
 {
-    fn source(
-        &mut self,
-        ecx: &'txn ExecutionContext<'_, 'env, S, M>,
-    ) -> ExecutionResult<TupleStream<'_>> {
+    fn source<'s>(
+        &'s mut self,
+        ecx: &'s ExecutionContext<'_, 'env, 'txn, S, M>,
+    ) -> ExecutionResult<TupleStream<'s>> {
         let id = self.id();
         let _guard = self.profiler.start(id, NodeType::Misc);
         let iter = self.node.source(ecx)?;
@@ -260,7 +261,7 @@ where
 {
     fn execute(
         &mut self,
-        ecx: &'txn ExecutionContext<'_, 'env, S, M>,
+        ecx: &ExecutionContext<'_, 'env, 'txn, S, M>,
         input: Tuple,
     ) -> ExecutionResult<OperatorState<Tuple>> {
         let mut guard = self.profiler.start(self.id(), NodeType::Operator);
@@ -293,21 +294,21 @@ impl<'p, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, N>
 where
     N: PhysicalSink<'env, 'txn, S, M>,
 {
-    fn initialize(&mut self, ecx: &'txn ExecutionContext<'_, 'env, S, M>) -> ExecutionResult<()> {
+    fn initialize(&mut self, ecx: &ExecutionContext<'_, 'env, 'txn, S, M>) -> ExecutionResult<()> {
         let _guard = self.profiler.start(self.id(), NodeType::Misc);
         self.node.initialize(ecx)
     }
 
     fn sink(
         &mut self,
-        ecx: &'txn ExecutionContext<'_, 'env, S, M>,
+        ecx: &ExecutionContext<'_, 'env, 'txn, S, M>,
         tuple: Tuple,
     ) -> ExecutionResult<()> {
         let _guard = self.profiler.start(self.id(), NodeType::Sink);
         self.node.sink(ecx, tuple)
     }
 
-    fn finalize(&mut self, ecx: &'txn ExecutionContext<'_, 'env, S, M>) -> ExecutionResult<()> {
+    fn finalize(&mut self, ecx: &ExecutionContext<'_, 'env, 'txn, S, M>) -> ExecutionResult<()> {
         let _guard = self.profiler.start(self.id(), NodeType::Misc);
         self.node.finalize(ecx)
     }

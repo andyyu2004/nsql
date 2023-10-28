@@ -1,5 +1,7 @@
 use std::marker::PhantomData;
 
+use nsql_catalog::TransactionContext;
+
 use super::*;
 use crate::pipeline::RootPipeline;
 use crate::profiler::PhysicalNodeProfileExt;
@@ -20,7 +22,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Executor<'en
 
     fn execute_metapipeline(
         &mut self,
-        ecx: &'txn ExecutionContext<'_, 'env, S, M>,
+        ecx: &ExecutionContext<'_, 'env, 'txn, S, M>,
         meta_pipeline: Idx<MetaPipeline<'env, 'txn, S, M>>,
     ) -> ExecutionResult<()> {
         self.nodes[self.pipelines[meta_pipeline].sink]
@@ -44,7 +46,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Executor<'en
     #[tracing::instrument(skip(self, ecx), level = "info")]
     fn execute_pipeline(
         &mut self,
-        ecx: &'txn ExecutionContext<'_, 'env, S, M>,
+        ecx: &ExecutionContext<'_, 'env, 'txn, S, M>,
         pipeline: Idx<Pipeline<'env, 'txn, S, M>>,
     ) -> ExecutionResult<()> {
         // Safety: caller must ensure the indexes are unique
@@ -90,7 +92,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Executor<'en
                         "operator",
                         id= %op.id().into_raw(),
                         "{:#}",
-                        op.display(ecx.catalog(), &ecx.tx())
+                        op.display(ecx.catalog(), ecx.tcx())
                     );
 
                     let _entered = span.enter();
@@ -132,7 +134,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Executor<'en
                     "sink",
                     id = %sink.id().into_raw(),
                     "{:#}",
-                    sink.display(ecx.catalog(), &ecx.tx())
+                    sink.display(ecx.catalog(), ecx.tcx())
                 )
                 .entered();
 
@@ -148,7 +150,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Executor<'en
 }
 
 fn execute_root_pipeline<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
-    ecx: &'txn ExecutionContext<'_, 'env, S, M>,
+    ecx: &ExecutionContext<'_, 'env, 'txn, S, M>,
     pipeline: RootPipeline<'env, 'txn, S, M>,
 ) -> ExecutionResult<RootPipeline<'env, 'txn, S, M>> {
     let root = pipeline.arena.root();
@@ -158,7 +160,7 @@ fn execute_root_pipeline<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>
 }
 
 pub fn execute<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
-    ecx: &'txn ExecutionContext<'_, 'env, S, M>,
+    ecx: &ExecutionContext<'_, 'env, 'txn, S, M>,
     mut plan: PhysicalPlan<'env, 'txn, S, M>,
 ) -> ExecutionResult<Vec<Tuple>> {
     let sink = OutputSink::plan(plan.arena_mut());
@@ -217,7 +219,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
 {
     fn source(
         &mut self,
-        _ecx: &'txn ExecutionContext<'_, 'env, S, M>,
+        _ecx: &ExecutionContext<'_, 'env, 'txn, S, M>,
     ) -> ExecutionResult<TupleStream<'_>> {
         unimplemented!()
     }
@@ -228,7 +230,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSink
 {
     fn sink(
         &mut self,
-        _ecx: &'txn ExecutionContext<'_, 'env, S, M>,
+        _ecx: &ExecutionContext<'_, 'env, 'txn, S, M>,
         tuple: Tuple,
     ) -> ExecutionResult<()> {
         self.tuples.push(tuple);
@@ -236,17 +238,17 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSink
     }
 }
 
-impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> Explain<'env, S>
-    for OutputSink<'env, '_, S, M>
+impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Explain<'env, 'txn, S, M>
+    for OutputSink<'env, 'txn, S, M>
 {
-    fn as_dyn(&self) -> &dyn Explain<'env, S> {
+    fn as_dyn(&self) -> &dyn Explain<'env, 'txn, S, M> {
         self
     }
 
     fn explain(
         &self,
-        _catalog: Catalog<'_, S>,
-        _tx: &dyn Transaction<'_, S>,
+        _catalog: Catalog<'env, S>,
+        _tx: &dyn TransactionContext<'env, 'txn, S, M>,
         f: &mut fmt::Formatter<'_>,
     ) -> explain::Result {
         write!(f, "output")?;

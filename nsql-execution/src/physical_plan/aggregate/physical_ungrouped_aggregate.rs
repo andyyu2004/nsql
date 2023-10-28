@@ -45,7 +45,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
 {
     fn source(
         &mut self,
-        _ecx: &'txn ExecutionContext<'_, 'env, S, M>,
+        _ecx: &ExecutionContext<'_, 'env, 'txn, S, M>,
     ) -> ExecutionResult<TupleStream<'_>> {
         let values = mem::take(&mut self.aggregate_functions).into_iter().map(|f| f.finalize());
         Ok(Box::new(fallible_iterator::once(Tuple::from_iter(values))))
@@ -57,11 +57,11 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSink
 {
     fn sink(
         &mut self,
-        ecx: &'txn ExecutionContext<'_, 'env, S, M>,
+        ecx: &ExecutionContext<'_, 'env, 'txn, S, M>,
         tuple: Tuple,
     ) -> ExecutionResult<()> {
         let storage = ecx.storage();
-        let tx = ecx.tx();
+        let tx = ecx.tcx();
         for (state, (_f, expr)) in self.aggregate_functions[..].iter_mut().zip(&self.functions[..])
         {
             let v = expr.as_ref().map(|expr| expr.eval(storage, tx, &tuple)).transpose()?;
@@ -90,17 +90,17 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode
     impl_physical_node_conversions!(M; source, sink; not operator);
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Explain<'env, S>
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Explain<'env, 'txn, S, M>
     for PhysicalUngroupedAggregate<'env, 'txn, S, M>
 {
-    fn as_dyn(&self) -> &dyn Explain<'env, S> {
+    fn as_dyn(&self) -> &dyn Explain<'env, 'txn, S, M> {
         self
     }
 
     fn explain(
         &self,
-        _catalog: Catalog<'_, S>,
-        _tx: &dyn Transaction<'_, S>,
+        _catalog: Catalog<'env, S>,
+        _tx: &dyn TransactionContext<'env, 'txn, S, M>,
         fmt: &mut fmt::Formatter<'_>,
     ) -> explain::Result {
         write!(

@@ -5,12 +5,10 @@ use anyhow::anyhow;
 use fix_hidden_lifetime_bug::fix_hidden_lifetime_bug;
 use nsql_core::Oid;
 use nsql_storage::tuple::{FromTuple, IntoTuple};
-use nsql_storage_engine::{
-    ExecutionMode, FallibleIterator, ReadWriteExecutionMode, StorageEngine, Transaction,
-};
+use nsql_storage_engine::{ExecutionMode, FallibleIterator, ReadWriteExecutionMode, StorageEngine};
 
 use crate::entity::table::{PrimaryKeyConflict, TableStorage};
-use crate::{Catalog, FunctionCatalog, Result, SystemEntity, Table};
+use crate::{Catalog, FunctionCatalog, Result, SystemEntity, Table, TransactionContext};
 
 #[repr(transparent)]
 pub struct SystemTableView<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T> {
@@ -21,16 +19,20 @@ pub struct SystemTableView<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, 
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: SystemEntity>
     SystemTableView<'env, 'txn, S, M, T>
 {
-    pub fn new(catalog: Catalog<'env, S>, tx: M::TransactionRef<'txn>) -> Result<Self> {
+    pub fn new(
+        catalog: Catalog<'env, S>,
+        tx: &dyn TransactionContext<'env, 'txn, S, M>,
+    ) -> Result<Self> {
         // we need to view the tables in bootstrap mode to avoid a cycle
         let table =
             SystemTableView::<S, M, Table>::new_bootstrap(catalog.storage(), tx)?.get(T::table())?;
         Ok(Self { storage: table.storage(catalog, tx)?, phantom: PhantomData })
     }
 
+    #[track_caller]
     pub(crate) fn new_bootstrap(
         storage: &'env S,
-        tx: M::TransactionRef<'txn>,
+        tx: &dyn TransactionContext<'env, 'txn, S, M>,
     ) -> Result<Self, S::Error> {
         // todo indexes
         let storage = TableStorage::<'env, 'txn, S, M>::open(
@@ -60,7 +62,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: SystemEnt
     pub fn find(
         &self,
         catalog: Catalog<'env, S>,
-        tx: &dyn Transaction<'env, S>,
+        tx: &dyn TransactionContext<'env, 'txn, S, M>,
         parent: Option<Oid<T::Parent>>,
         key: &T::SearchKey,
     ) -> Result<Option<T>> {
@@ -96,7 +98,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, T: SystemEntity>
     pub fn insert(
         &mut self,
         catalog: &dyn FunctionCatalog<'env, S, ReadWriteExecutionMode>,
-        tx: &S::WriteTransaction<'env>,
+        tx: &dyn TransactionContext<'env, 'txn, S, ReadWriteExecutionMode>,
         value: T,
     ) -> Result<()> {
         self.storage.insert(catalog, tx, &value.into_tuple())?.map_err(
