@@ -63,39 +63,36 @@ impl Builder {
         self.build_query(query)
     }
 
-    // pub(crate) fn optimize(&mut self, rewrites: &[Rewrite]) {
-    //     self.egraph = egg::Runner::<Node, (), ()>::new(())
-    //         .with_egraph(mem::take(&mut self.egraph))
-    //         .run(rewrites)
-    //         .egraph;
-    // }
-
     pub fn finalize(mut self, root: Id) -> Query {
-        struct CostFunction;
+        // struct CostFunction;
 
-        impl egg::CostFunction<Node> for CostFunction {
-            type Cost = usize;
+        // impl egg::CostFunction<Node> for CostFunction {
+        //     type Cost = usize;
 
-            fn cost<C>(&mut self, _node: &Node, _costs: C) -> Self::Cost
-            where
-                C: FnMut(Id) -> Self::Cost,
-            {
-                1
-            }
-        }
+        //     fn cost<C>(&mut self, _node: &Node, _costs: C) -> Self::Cost
+        //     where
+        //         C: FnMut(Id) -> Self::Cost,
+        //     {
+        //         1
+        //     }
+        // }
 
-        let extractor = egg::Extractor::new(&self.egraph, CostFunction);
-        let (cost, best) = extractor.find_best(root);
-        tracing::debug!("best cost: {}", cost);
-        self.egraph.rebuild();
+        // let extractor = egg::Extractor::new(&self.egraph, CostFunction);
+        // let (cost, best) = extractor.find_best(root);
+        // tracing::debug!("best cost: {}", cost);
+        // self.egraph.rebuild();
 
         // create a new egraph with only the optimal nodes
-        let mut optimized_egraph = egg::EGraph::default();
+        // let mut optimized_egraph = egg::EGraph::default();
 
-        let root = optimized_egraph.add_expr(&best);
-        optimized_egraph.rebuild();
+        // let root = optimized_egraph.add_expr(&best);
+        // optimized_egraph.rebuild();
 
-        Query::new(optimized_egraph, root)
+        // Query::new(optimized_egraph, root)
+
+        // the above is a bit expensive and basically a noop atm
+        self.egraph.rebuild();
+        Query::new(self.egraph, root)
     }
 
     fn build_query(&mut self, query: &ir::QueryPlan) -> Id {
