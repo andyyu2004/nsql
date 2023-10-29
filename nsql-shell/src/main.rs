@@ -1,9 +1,10 @@
 use std::borrow::Cow;
 use std::io::Read;
 use std::path::{Path, PathBuf};
+use std::str::FromStr;
 
 use argh::FromArgs;
-use nsql::{Nsql, RedbStorageEngine};
+use nsql::{LmdbStorageEngine, Nsql, RedbStorageEngine, StorageEngine};
 use nu_ansi_term::{Color, Style};
 use reedline::{
     default_vi_insert_keybindings, default_vi_normal_keybindings, DefaultHinter, DefaultValidator,
@@ -28,12 +29,35 @@ struct Args {
     #[argh(option)]
     log_file: Option<PathBuf>,
 
+    /// storage engine to use
+    #[argh(option, default = "Default::default()")]
+    engine: StorageEngineName,
+
     /// suppress all output except errors
     #[argh(switch)]
     silent: bool,
 
     #[argh(positional)]
     path: PathBuf,
+}
+
+#[derive(Debug, Default)]
+enum StorageEngineName {
+    #[default]
+    Lmdb,
+    Redb,
+}
+
+impl FromStr for StorageEngineName {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "redb" => Ok(StorageEngineName::Redb),
+            "lmdb" => Ok(StorageEngineName::Lmdb),
+            _ => Err(format!("unknown storage engine: {s} (lmdb, redb)")),
+        }
+    }
 }
 
 struct Validator;
@@ -60,7 +84,13 @@ impl reedline::Validator for Validator {
 
 fn main() -> nsql::Result<()> {
     let args: Args = argh::from_env();
+    match &args.engine {
+        StorageEngineName::Redb => run::<RedbStorageEngine>(args),
+        StorageEngineName::Lmdb => run::<LmdbStorageEngine>(args),
+    }
+}
 
+fn run<S: StorageEngine>(args: Args) -> nsql::Result<()> {
     if let Some(log_file) = args.log_file {
         let file = &*Box::leak(Box::new(std::fs::File::create(log_file)?));
         let filter =
@@ -75,7 +105,7 @@ fn main() -> nsql::Result<()> {
             .init();
     }
 
-    let nsql = Nsql::<RedbStorageEngine>::open(&args.path)?;
+    let nsql = Nsql::<S>::open(&args.path)?;
     let conn = nsql.connect();
 
     if let Some(cmd) = &args.cmd {
