@@ -2,7 +2,7 @@
 resolver = "2"
 members = [
     "nsql",
-    "nsql-arena", 
+    "nsql-arena",
     "nsql-bind",
     "nsql-catalog",
     "nsql-core",
@@ -24,4 +24,4 @@ members = [
 debug = true
 
 [profile.release]
-lto = "thin"
+# lto = "thin"
