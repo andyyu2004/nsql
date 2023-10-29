@@ -133,7 +133,7 @@ where
 {
     #[inline]
     fn from(vs: Box<[V]>) -> Self {
-        Vec::from(vs).into()
+        vs.into_vec().into()
     }
 }
 

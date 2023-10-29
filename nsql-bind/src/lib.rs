@@ -405,7 +405,6 @@ impl<'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
 
     fn build_table_scan(
         &self,
-
         table: Oid<Table>,
         projection: Option<Box<[ColumnIndex]>>,
     ) -> Result<Box<ir::QueryPlan>> {
@@ -424,7 +423,6 @@ impl<'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
 
     fn bind_assignments(
         &self,
-
         scope: &Scope,
         table: Oid<Table>,
         assignments: &[ast::Assignment],
@@ -512,7 +510,6 @@ impl<'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
 
     fn lower_columns(
         &self,
-
         table_path: &Path,
         columns: &[ast::ColumnDef],
         mut primary_key_constraints: Vec<PrimaryKeyConstraint>,
@@ -689,7 +686,6 @@ impl<'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
 
     fn bind_subquery(
         &self,
-
         scope: &Scope,
         subquery: &ast::Query,
     ) -> Result<(Scope, Box<ir::QueryPlan>)> {
@@ -738,7 +734,6 @@ impl<'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
 
     fn bind_table_expr(
         &self,
-
         scope: &Scope,
         body: &ast::SetExpr,
         order_by: &[ast::OrderByExpr],
@@ -854,7 +849,6 @@ impl<'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
 
     fn bind_update(
         &self,
-
         scope: &Scope,
         stmt: &ast::Statement,
     ) -> Result<(Scope, Box<ir::QueryPlan>)> {
@@ -906,7 +900,6 @@ impl<'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
 
     fn bind_create_table(
         &self,
-
         namespace: &Namespace,
         table_name: Name,
         columns: Vec<CreateColumnInfo>,
@@ -1068,7 +1061,6 @@ impl<'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
 
     fn bind_insert(
         &self,
-
         scope: &Scope,
         stmt: &ast::Statement,
     ) -> Result<(Scope, Box<ir::QueryPlan>)> {
@@ -1204,7 +1196,6 @@ impl<'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
 
     fn bind_select(
         &self,
-
         scope: &Scope,
         select: &ast::Select,
         order_by: &[ast::OrderByExpr],
@@ -1273,7 +1264,6 @@ impl<'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
 
     fn bind_joint_tables(
         &self,
-
         scope: &Scope,
         tables: &ast::TableWithJoins,
     ) -> Result<(Scope, Box<ir::QueryPlan>)> {
@@ -1288,7 +1278,6 @@ impl<'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
 
     fn bind_join(
         &self,
-
         lhs_scope: &Scope,
         lhs: Box<ir::QueryPlan>,
         join: &ast::Join,
@@ -1334,7 +1323,6 @@ impl<'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
 
     fn bind_table_factor(
         &self,
-
         scope: &Scope,
         table: &ast::TableFactor,
     ) -> Result<(Scope, Box<ir::QueryPlan>)> {
@@ -1393,7 +1381,6 @@ impl<'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
 
     fn bind_table(
         &self,
-
         scope: &Scope,
         path: &Path,
         alias: Option<&ast::TableAlias>,
@@ -1404,7 +1391,6 @@ impl<'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
 
     fn bind_base_table(
         &self,
-
         scope: &Scope,
         table_name: &ast::ObjectName,
         alias: Option<&ast::TableAlias>,
@@ -1583,7 +1569,6 @@ impl<'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
 
     fn bind_unary_operator(
         &self,
-
         name: &'static str,
         operand: LogicalType,
     ) -> Result<ir::MonoOperator> {
@@ -1592,7 +1577,6 @@ impl<'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
 
     fn bind_binary_operator(
         &self,
-
         name: &'static str,
         left: LogicalType,
         right: LogicalType,
@@ -1602,7 +1586,6 @@ impl<'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
 
     fn bind_operator(
         &self,
-
         name: &'static str,
         kind: OperatorKind,
         left: LogicalType,
@@ -1685,7 +1668,6 @@ impl<'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
 
     fn walk_expr(
         &self,
-
         scope: &Scope,
         expr: &ast::Expr,
         mut f: impl FnMut(&ast::Expr) -> Result<ir::Expr>,

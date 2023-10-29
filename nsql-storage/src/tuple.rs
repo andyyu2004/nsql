@@ -266,7 +266,7 @@ pub trait FromTuple: Sized {
 
     #[inline]
     fn from_tuple(tuple: Tuple) -> Result<Self, FromTupleError> {
-        Self::from_values(Vec::from(tuple.into_values()).into_iter())
+        Self::from_values(tuple.into_values().into_vec().into_iter())
     }
 }
 
