@@ -1317,6 +1317,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "atomic-take",
+ "dashmap",
  "fix-hidden-lifetime-bug",
  "indexmap 2.0.2",
  "next-gen",

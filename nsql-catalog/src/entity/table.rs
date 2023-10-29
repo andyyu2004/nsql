@@ -78,18 +78,36 @@ impl Table {
         &self,
         catalog: Catalog<'env, S>,
         tx: &dyn TransactionContext<'env, 'txn, S, M>,
-    ) -> Result<Vec<Column>> {
-        let mut columns = catalog
-            .columns(tx)?
-            .as_ref()
-            .scan()?
-            .filter(|col| Ok(col.table == self.oid))
-            .collect::<Vec<_>>()?;
-        assert!(!columns.is_empty(), "no columns found for table `{}` `{}`", self.oid, self.name);
+    ) -> Result<Box<[Column]>> {
+        let mk_columns = || {
+            let mut columns = catalog
+                .columns(tx)?
+                .as_ref()
+                .scan()?
+                .filter(|col| Ok(col.table == self.oid))
+                .collect::<Vec<_>>()?;
+            assert!(
+                !columns.is_empty(),
+                "no columns found for table `{}` `{}`",
+                self.oid,
+                self.name
+            );
 
-        columns.sort_by_key(|col| col.index());
+            columns.sort_by_key(|col| col.index());
 
-        Ok(columns)
+            Ok(columns.into_boxed_slice())
+        };
+
+        if M::READONLY {
+            tx.catalog_caches()
+                .table_columns
+                .entry(self.oid)
+                .or_try_insert_with(mk_columns)
+                .map(|r| r.value().clone())
+        } else {
+            // we could cache this too, but we would need to update the cache on any column updates
+            mk_columns()
+        }
     }
 
     #[inline]

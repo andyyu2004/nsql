@@ -12,6 +12,7 @@ use std::ops::Deref;
 use std::sync::OnceLock;
 
 pub use anyhow::Error;
+use dashmap::DashMap;
 use expr::ExecutableFunction;
 use nsql_core::{Name, Oid};
 use nsql_storage::tuple::{FromTuple, IntoTuple};
@@ -75,6 +76,7 @@ pub struct TransactionLocalCatalogCaches<'env, 'txn, S: StorageEngine, M: Execut
     columns: OnceLock<SystemTableView<'env, 'txn, S, M, Column>>,
     indexes: OnceLock<SystemTableView<'env, 'txn, S, M, Index>>,
     sequences: OnceLock<SystemTableView<'env, 'txn, S, M, Sequence>>,
+    table_columns: DashMap<Oid<Table>, Box<[Column]>>,
 }
 
 impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Default
@@ -90,6 +92,7 @@ impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Default
             columns: Default::default(),
             indexes: Default::default(),
             sequences: Default::default(),
+            table_columns: Default::default(),
         }
     }
 }

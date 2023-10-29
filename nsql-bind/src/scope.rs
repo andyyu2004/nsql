@@ -65,9 +65,16 @@ impl Scope {
         alias: Option<&TableAlias>,
     ) -> Result<(Scope, TableBinding)> {
         match path {
-            Path::Unqualified(name) if let Some((kind, scope, plan)) = binder.ctes.borrow().get(name) => match kind {
-                CteKind::Inline => Ok((scope.clone(), TableBinding::InlineCte(plan.clone()))),
-                CteKind::Materialized => Ok((scope.clone(), TableBinding::MaterializedCte(name.clone(), plan.schema().clone()))),
+            Path::Unqualified(name)
+                if let Some((kind, scope, plan)) = binder.ctes.borrow().get(name) =>
+            {
+                match kind {
+                    CteKind::Inline => Ok((scope.clone(), TableBinding::InlineCte(plan.clone()))),
+                    CteKind::Materialized => Ok((
+                        scope.clone(),
+                        TableBinding::MaterializedCte(name.clone(), plan.schema().clone()),
+                    )),
+                }
             }
             _ => {
                 let (scope, table) = self.bind_base_table(binder, path, alias)?;
@@ -108,7 +115,7 @@ impl Scope {
             None => path.clone(),
         };
 
-        for (i, column) in table_columns.into_iter().enumerate() {
+        for (i, column) in table_columns.iter().enumerate() {
             let name = match alias {
                 Some(alias) if !alias.columns.is_empty() => alias.columns[i].clone(),
                 _ => column.name(),

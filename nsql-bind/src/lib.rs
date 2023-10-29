@@ -446,7 +446,7 @@ impl<'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
         }
 
         let mut projections = Vec::with_capacity(columns.len());
-        for column in columns {
+        for column in &columns[..] {
             let expr = if let Some(assignment) =
                 assignments.iter().find(|assn| assn.id[0].value == column.name().as_str())
             {
