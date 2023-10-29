@@ -7,6 +7,7 @@ pub struct PhysicalProjection<'env, 'txn, S, M> {
     id: PhysicalNodeId,
     child: PhysicalNodeId,
     projection: ExecutableTupleExpr<'env, S, M>,
+    evaluator: Evaluator,
     _marker: PhantomData<dyn PhysicalNode<'env, 'txn, S, M>>,
 }
 
@@ -18,8 +19,15 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
         projection: ExecutableTupleExpr<'env, S, M>,
         arena: &mut PhysicalNodeArena<'env, 'txn, S, M>,
     ) -> PhysicalNodeId {
-        arena
-            .alloc_with(|id| Box::new(Self { id, child: source, projection, _marker: PhantomData }))
+        arena.alloc_with(|id| {
+            Box::new(Self {
+                id,
+                child: source,
+                projection,
+                evaluator: Default::default(),
+                _marker: PhantomData,
+            })
+        })
     }
 }
 
@@ -34,7 +42,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     ) -> ExecutionResult<OperatorState<Tuple>> {
         let storage = ecx.storage();
         let tx = ecx.tcx();
-        let output = self.projection.eval(storage, tx, &input)?;
+        let output = self.projection.eval(&mut self.evaluator, storage, tx, &input)?;
         tracing::debug!(%input, %output, "evaluating projection");
         Ok(OperatorState::Yield(output))
     }

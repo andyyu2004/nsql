@@ -87,15 +87,6 @@ pub trait ExprEvalExt<'env, S: StorageEngine, M: ExecutionMode<'env, S>> {
 
     fn eval<'txn>(
         &self,
-        storage: &'env S,
-        tx: &dyn TransactionContext<'env, 'txn, S, M>,
-        tuple: &Tuple,
-    ) -> Result<Self::Output>
-    where
-        'env: 'txn;
-
-    fn eval_with<'txn>(
-        &self,
         evaluator: &mut Evaluator,
         storage: &'env S,
         tx: &dyn TransactionContext<'env, 'txn, S, M>,
@@ -113,20 +104,6 @@ impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> ExprEvalExt<'env, S, M>
     #[inline]
     fn eval<'txn>(
         &self,
-        storage: &'env S,
-        tx: &dyn TransactionContext<'env, 'txn, S, M>,
-        tuple: &Tuple,
-    ) -> Result<Tuple>
-    where
-        'env: 'txn,
-    {
-        let mut evaluator = Evaluator::default();
-        self.eval_with(&mut evaluator, storage, tx, tuple)
-    }
-
-    #[inline]
-    fn eval_with<'txn>(
-        &self,
         evaluator: &mut Evaluator,
         storage: &'env S,
         tx: &dyn TransactionContext<'env, 'txn, S, M>,
@@ -135,7 +112,7 @@ impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> ExprEvalExt<'env, S, M>
     where
         'env: 'txn,
     {
-        self.exprs().iter().map(|expr| expr.eval_with(evaluator, storage, tx, tuple)).collect()
+        self.exprs().iter().map(|expr| expr.eval(evaluator, storage, tx, tuple)).collect()
     }
 }
 
@@ -146,20 +123,6 @@ impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> ExprEvalExt<'env, S, M>
 
     #[inline]
     fn eval<'txn>(
-        &self,
-        storage: &'env S,
-        tx: &dyn TransactionContext<'env, 'txn, S, M>,
-        tuple: &Tuple,
-    ) -> Result<Value>
-    where
-        'env: 'txn,
-    {
-        let mut evaluator = Evaluator::default();
-        self.eval_with(&mut evaluator, storage, tx, tuple)
-    }
-
-    #[inline]
-    fn eval_with<'txn>(
         &self,
         evaluator: &mut Evaluator,
         storage: &'env S,
@@ -173,7 +136,7 @@ impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> ExprEvalExt<'env, S, M>
     }
 }
 
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct Evaluator {
     stack: Vec<Value>,
     ip: usize,

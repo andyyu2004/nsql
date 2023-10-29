@@ -16,7 +16,7 @@ use nsql_storage_engine::{
 };
 use rkyv::AlignedVec;
 
-use crate::expr::{ExprEvalExt, ScalarFunction, TupleExprResolveExt};
+use crate::expr::{Evaluator, ExprEvalExt, ScalarFunction, TupleExprResolveExt};
 use crate::{FunctionCatalog, Table, TransactionContext};
 
 #[allow(explicit_outlives_requirements)]
@@ -313,6 +313,7 @@ pub(crate) struct IndexStorage<'env, 'txn, S: StorageEngine, M: ExecutionMode<'e
     storage: TableStorage<'env, 'txn, S, M>,
     index_expr: AtomicTake<TupleExpr>,
     prepared_expr: OnceLock<TupleExpr<Box<dyn ScalarFunction<'env, S, M>>>>,
+    evaluator: Evaluator,
 }
 
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> IndexStorage<'env, 'txn, S, M> {
@@ -326,6 +327,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> IndexStorage
             storage,
             index_expr: AtomicTake::new(info.index_expr),
             prepared_expr: OnceLock::new(),
+            evaluator: Default::default(),
         })
     }
 }
@@ -342,7 +344,7 @@ impl<'env, 'txn, S: StorageEngine> IndexStorage<'env, 'txn, S, ReadWriteExecutio
             .prepared_expr
             .get_or_try_init(|| self.index_expr.take().unwrap().resolve(catalog, tx))?;
 
-        let tuple = expr.eval(catalog.storage(), tx, tuple)?;
+        let tuple = expr.eval(&mut self.evaluator, catalog.storage(), tx, tuple)?;
         self.storage
             .insert(catalog, tx, &tuple)?
             .map_err(|PrimaryKeyConflict { key }| anyhow::anyhow!("unique index conflict: {key}"))

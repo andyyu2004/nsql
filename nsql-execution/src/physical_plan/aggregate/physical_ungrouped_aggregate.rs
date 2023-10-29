@@ -14,6 +14,7 @@ pub struct PhysicalUngroupedAggregate<'env, 'txn, S, M> {
     functions: Box<[AggregateFunctionAndArgs<'env, S, M>]>,
     aggregate_functions: Vec<Box<dyn AggregateFunctionInstance>>,
     children: [PhysicalNodeId; 1],
+    evaluator: Evaluator,
     _marker: PhantomData<dyn PhysicalNode<'env, 'txn, S, M>>,
 }
 
@@ -34,6 +35,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
                     .collect(),
                 functions,
                 children: [source],
+                evaluator: Default::default(),
                 _marker: PhantomData,
             })
         })
@@ -64,7 +66,10 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSink
         let tx = ecx.tcx();
         for (state, (_f, expr)) in self.aggregate_functions[..].iter_mut().zip(&self.functions[..])
         {
-            let v = expr.as_ref().map(|expr| expr.eval(storage, tx, &tuple)).transpose()?;
+            let v = expr
+                .as_ref()
+                .map(|expr| expr.eval(&mut self.evaluator, storage, tx, &tuple))
+                .transpose()?;
             state.update(v);
         }
 

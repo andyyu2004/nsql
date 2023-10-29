@@ -16,6 +16,7 @@ pub struct PhysicalHashAggregate<'env, 'txn, S, M> {
     children: [PhysicalNodeId; 1],
     group_expr: ExecutableTupleExpr<'env, S, M>,
     output_groups: FxHashMap<Tuple, Vec<Box<dyn AggregateFunctionInstance>>>,
+    evaluator: Evaluator,
     _marker: PhantomData<dyn PhysicalNode<'env, 'txn, S, M>>,
 }
 
@@ -33,6 +34,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
                 id,
                 aggregates,
                 group_expr,
+                evaluator: Default::default(),
                 children: [source],
                 output_groups: Default::default(),
                 _marker: PhantomData,
@@ -68,13 +70,16 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSink
     ) -> ExecutionResult<()> {
         let storage = ecx.storage();
         let tx = ecx.tcx();
-        let group = self.group_expr.eval(storage, tx, &tuple)?;
+        let group = self.group_expr.eval(&mut self.evaluator, storage, tx, &tuple)?;
         let functions = self.output_groups.entry(group).or_insert_with(|| {
             self.aggregates.iter().map(|(f, _expr)| f.get_aggregate_instance()).collect()
         });
 
         for (state, (_f, expr)) in functions[..].iter_mut().zip(&self.aggregates[..]) {
-            let value = expr.as_ref().map(|expr| expr.eval(storage, tx, &tuple)).transpose()?;
+            let value = expr
+                .as_ref()
+                .map(|expr| expr.eval(&mut self.evaluator, storage, tx, &tuple))
+                .transpose()?;
             state.update(value);
         }
 

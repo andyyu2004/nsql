@@ -15,6 +15,7 @@ pub(crate) struct PhysicalUpdate<'env, 'txn, S> {
     tuples: Vec<Tuple>,
     returning: ExecutableTupleExpr<'env, S, ReadWriteExecutionMode>,
     returning_tuples: Vec<Tuple>,
+    evaluator: Evaluator,
     _marker: PhantomData<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode>>,
 }
 
@@ -35,6 +36,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalUpdate<'env, 'txn, S> {
                 tuples: Default::default(),
                 children: [source],
                 returning_tuples: Default::default(),
+                evaluator: Default::default(),
                 _marker: PhantomData,
             })
         })
@@ -87,7 +89,12 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSink<'env, 'txn, S, ReadWriteEx
             storage.update(tuple)?;
 
             if !self.returning.is_empty() {
-                self.returning_tuples.push(self.returning.eval(catalog.storage(), tx, tuple)?);
+                self.returning_tuples.push(self.returning.eval(
+                    &mut self.evaluator,
+                    catalog.storage(),
+                    tx,
+                    tuple,
+                )?);
             }
         }
 

@@ -4,6 +4,7 @@ use std::mem;
 use std::sync::atomic::{self, AtomicBool, AtomicUsize};
 
 use nsql_arena::Idx;
+use nsql_catalog::expr::Evaluator;
 
 use super::*;
 use crate::pipeline::{MetaPipelineBuilder, PipelineBuilder, PipelineBuilderArena};
@@ -21,6 +22,7 @@ pub(crate) struct PhysicalNestedLoopJoin<'env, 'txn, S, M> {
     rhs_index: AtomicUsize,
     rhs_width: usize,
     found_match_for_lhs_tuple: AtomicBool,
+    evaluator: Evaluator,
     _marker: PhantomData<dyn PhysicalNode<'env, 'txn, S, M>>,
 }
 
@@ -52,6 +54,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
                 rhs_index: AtomicUsize::new(0),
                 rhs_tuples_build: Default::default(),
                 rhs_tuples: Default::default(),
+                evaluator: Default::default(),
                 _marker: PhantomData,
             })
         })
@@ -155,7 +158,7 @@ impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalOperator<'
 
         let keep = self
             .join_predicate
-            .eval(storage, tx, &joint_tuple)?
+            .eval(&mut self.evaluator, storage, tx, &joint_tuple)?
             .cast::<Option<bool>>()?
             .unwrap_or(false);
 

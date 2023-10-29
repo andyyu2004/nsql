@@ -8,6 +8,7 @@ use super::*;
 pub struct PhysicalValues<'env, 'txn, S, M> {
     id: PhysicalNodeId,
     values: Box<[ExecutableTupleExpr<'env, S, M>]>,
+    evaluator: Evaluator,
     _marker: PhantomData<dyn PhysicalNode<'env, 'txn, S, M>>,
 }
 
@@ -18,7 +19,9 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
         values: Box<[ExecutableTupleExpr<'env, S, M>]>,
         arena: &mut PhysicalNodeArena<'env, 'txn, S, M>,
     ) -> PhysicalNodeId {
-        arena.alloc_with(|id| Box::new(Self { id, values, _marker: PhantomData }))
+        arena.alloc_with(|id| {
+            Box::new(Self { id, values, evaluator: Default::default(), _marker: PhantomData })
+        })
     }
 }
 
@@ -38,7 +41,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
             }
 
             let exprs: &ExecutableTupleExpr<'env, S, M> = &self.values[index];
-            let tuple = exprs.eval(storage, tx, &Tuple::empty())?;
+            let tuple = exprs.eval(&mut self.evaluator, storage, tx, &Tuple::empty())?;
             index += 1;
 
             Ok(Some(tuple))

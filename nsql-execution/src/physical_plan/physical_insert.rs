@@ -17,6 +17,7 @@ pub(crate) struct PhysicalInsert<'env, 'txn, S: StorageEngine> {
     table: OnceLock<Table>,
     returning: ExecutableTupleExpr<'env, S, ReadWriteExecutionMode>,
     returning_tuples: Vec<Tuple>,
+    evaluator: Evaluator,
 }
 
 impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalInsert<'env, 'txn, S> {
@@ -35,6 +36,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalInsert<'env, 'txn, S> {
                 storage: Default::default(),
                 table: Default::default(),
                 returning_tuples: Default::default(),
+                evaluator: Default::default(),
             })
         })
     }
@@ -88,7 +90,12 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSink<'env, 'txn, S, ReadWriteEx
         })?;
 
         if !self.returning.is_empty() {
-            self.returning_tuples.push(self.returning.eval(catalog.storage(), tx, &tuple)?);
+            self.returning_tuples.push(self.returning.eval(
+                &mut self.evaluator,
+                catalog.storage(),
+                tx,
+                &tuple,
+            )?);
         }
 
         // hack, if this is the insert of a `CREATE TABLE` we need to create the table storage

@@ -7,6 +7,7 @@ pub struct PhysicalFilter<'env, 'txn, S, M> {
     id: PhysicalNodeId,
     child: PhysicalNodeId,
     predicate: ExecutableExpr<'env, S, M>,
+    evaluator: Evaluator,
     _marker: PhantomData<dyn PhysicalNode<'env, 'txn, S, M>>,
 }
 
@@ -18,7 +19,15 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
         predicate: ExecutableExpr<'env, S, M>,
         arena: &mut PhysicalNodeArena<'env, 'txn, S, M>,
     ) -> PhysicalNodeId {
-        arena.alloc_with(|id| Box::new(Self { id, child: source, predicate, _marker: PhantomData }))
+        arena.alloc_with(|id| {
+            Box::new(Self {
+                id,
+                child: source,
+                predicate,
+                evaluator: Default::default(),
+                _marker: PhantomData,
+            })
+        })
     }
 }
 
@@ -33,7 +42,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     ) -> ExecutionResult<OperatorState<Tuple>> {
         let storage = ecx.storage();
         let tx = ecx.tcx();
-        let value = self.predicate.eval(storage, tx, &input)?;
+        let value = self.predicate.eval(&mut self.evaluator, storage, tx, &input)?;
         let keep = value
             .cast::<Option<bool>>()
             .expect("this should have failed during planning")
