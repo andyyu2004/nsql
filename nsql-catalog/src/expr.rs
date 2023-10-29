@@ -8,9 +8,8 @@ use nsql_storage_engine::{ExecutionMode, StorageEngine};
 
 use crate::{FunctionCatalog, TransactionContext};
 
-// Note: smallvec seems to always be slower than this for sqlite/select3.sql
-// This alias is useful for testing different types
-pub type FunctionArgs = Box<[Value]>;
+// Using the exact type to avoid an allocation
+pub type FunctionArgs<'a> = std::vec::Drain<'a, Value>; // also `impl ExactSizeIterator + 'a` doesn't work
 
 pub type ExecutableTupleExpr<'env, S, M> = TupleExpr<ExecutableFunction<'env, S, M>>;
 
@@ -27,7 +26,7 @@ pub trait ScalarFunction<'env, S: StorageEngine, M: ExecutionMode<'env, S>>:
         &self,
         storage: &'env S,
         tx: &dyn TransactionContext<'env, 'txn, S, M>,
-        args: FunctionArgs,
+        args: FunctionArgs<'_>,
     ) -> Result<Value>
     where
         'env: 'txn;
@@ -223,10 +222,7 @@ impl Evaluator {
                 Value::Array(array)
             }
             ExprOp::Call { function } => {
-                let args = self
-                    .stack
-                    .drain(self.stack.len() - function.arity()..)
-                    .collect::<FunctionArgs>();
+                let args = self.stack.drain(self.stack.len() - function.arity()..);
                 function.invoke(storage, tx, args)?
             }
             ExprOp::IfNeJmp(offset) => {

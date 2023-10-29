@@ -14,8 +14,8 @@ macro_rules! cast_to {
             assert_eq!(args.len(), 2);
             // ensure the necessary `FromValue` cases are there for this cast to succeed
             // in particular, the rust level `to` type's `FromValue` impl needs a case for the `from` type.
-            let casted: Option<$to> = args[0].take().cast().unwrap();
-            let dummy: Option<$to> = args[1].take().cast().unwrap();
+            let casted: Option<$to> = args.next().unwrap().cast().unwrap();
+            let dummy: Option<$to> = args.next().unwrap().cast().unwrap();
             assert!(dummy.is_none(), "non-null value was passed as dummy cast argument");
             Ok(Value::from(casted))
         }
@@ -26,8 +26,8 @@ macro_rules! comparison {
     ($op:tt: $ty:ty) => {
         |_catalog, _tx, mut args| {
             assert_eq!(args.len(), 2);
-            let a = args[0].take();
-            let b = args[1].take();
+            let a = args.next().unwrap();
+            let b = args.next().unwrap();
             debug_assert!(a.is_compat_with(&b), "cannot compare `{a}` and `{b}` (this should have been a type error)");
             let a: Option<$ty> = a.cast().unwrap();
             let b: Option<$ty> = b.cast().unwrap();
@@ -45,7 +45,7 @@ macro_rules! method {
     ($method:ident: $ty:ty) => {
         |_catalog, _tx, mut args| {
             assert_eq!(args.len(), 1);
-            let x: Option<$ty> = args[0].take().cast().unwrap();
+            let x: Option<$ty> = args.next().unwrap().cast().unwrap();
             match x {
                 Some(x) => Ok(Value::from(x.$method())),
                 _ => Ok(Value::Null),
@@ -58,8 +58,8 @@ macro_rules! comparison_include_null {
     ($op:tt: $ty:ty) => {
         |_catalog, _tx, mut args| {
             assert_eq!(args.len(), 2);
-            let a = args[0].take();
-            let b = args[1].take();
+            let a = args.next().unwrap();
+            let b = args.next().unwrap();
             debug_assert!(a.is_compat_with(&b), "cannot compare `{a}` and `{b}` (this should have been a type error)");
             let a: Option<$ty> = a.cast().unwrap();
             let b: Option<$ty> = b.cast().unwrap();
@@ -72,8 +72,8 @@ macro_rules! arbitary_binary_op {
     ($ty:ty, |$x:ident, $y:ident| $expr:expr) => {
         |_catalog, _tx, mut args| {
             assert_eq!(args.len(), 2);
-            let a = args[0].take();
-            let b = args[1].take();
+            let a = args.next().unwrap();
+            let b = args.next().unwrap();
             debug_assert!(
                 a.is_compat_with(&b),
                 "cannot perform binary operation with `{a}` and `{b}` (this should have been a type error)"
@@ -91,8 +91,8 @@ macro_rules! infix_op {
     ($op:tt: $ty:ty) => {
         |_catalog, _tx, mut args| {
             assert_eq!(args.len(), 2);
-            let a: Option<$ty> = args[0].take().cast().unwrap();
-            let b: Option<$ty> = args[1].take().cast().unwrap();
+            let a: Option<$ty> = args.next().unwrap().cast().unwrap();
+            let b: Option<$ty> = args.next().unwrap().cast().unwrap();
             match (a, b) {
                 (Some(a), Some(b)) => Ok(Value::from(a $op b)),
                 _  => Ok(Value::Null),
@@ -105,7 +105,7 @@ macro_rules! prefix_op {
     ($op:tt: $ty:ty) => {
         |_catalog, _tx, mut args| {
             assert_eq!(args.len(), 1);
-            let x: Option<$ty> = args[0].take().cast().unwrap();
+            let x: Option<$ty> = args.next().unwrap().cast().unwrap();
             match x {
                 Some(x) => Ok(Value::from($op x)),
                 _  => Ok(Value::Null),
@@ -121,11 +121,11 @@ pub(crate) fn get_scalar_function<'env: 'txn, 'txn, S: StorageEngine, M>(
 }
 
 fn mk_between<'env, 'txn, S, M>() -> ScalarFunctionPtr<'env, 'txn, S, M> {
-    |_catalog, _tx, mut args: FunctionArgs| {
+    |_catalog, _tx, mut args: FunctionArgs<'_>| {
         assert_eq!(args.len(), 3);
-        let target = args[0].take();
-        let lower = args[1].take();
-        let upper = args[2].take();
+        let target = args.next().unwrap();
+        let lower = args.next().unwrap();
+        let upper = args.next().unwrap();
         debug_assert!(
             target.is_compat_with(&lower)
                 && target.is_compat_with(&upper)
@@ -165,10 +165,10 @@ pub(crate) fn get_aggregate_function(
 }
 
 fn mk_range2<'env, 'txn, S, M>() -> ScalarFunctionPtr<'env, 'txn, S, M> {
-    |_catalog, _tx, mut args: FunctionArgs| {
+    |_catalog, _tx, mut args: FunctionArgs<'_>| {
         assert_eq!(args.len(), 2);
-        let start: Option<i64> = args[0].take().cast().unwrap();
-        let end: Option<i64> = args[1].take().cast().unwrap();
+        let start: Option<i64> = args.next().unwrap().cast().unwrap();
+        let end: Option<i64> = args.next().unwrap().cast().unwrap();
         match (start, end) {
             (Some(start), Some(end)) => Ok(Value::Array((start..end).map(Value::Int64).collect())),
             _ => Ok(Value::Null),
@@ -177,15 +177,15 @@ fn mk_range2<'env, 'txn, S, M>() -> ScalarFunctionPtr<'env, 'txn, S, M> {
 }
 
 fn mk_array_element<'env, 'txn, S, M>() -> ScalarFunctionPtr<'env, 'txn, S, M> {
-    |_catalog, _tx, mut args: FunctionArgs| {
+    |_catalog, _tx, mut args: FunctionArgs<'_>| {
         assert_eq!(args.len(), 2);
-        let array = match args[0].take() {
+        let array = match args.next().unwrap() {
             Value::Array(xs) => xs,
             _ => panic!("expected array"),
         };
 
         // one-indexed
-        let index: Option<i64> = args[1].take().cast().unwrap();
+        let index: Option<i64> = args.next().unwrap().cast().unwrap();
         match index {
             None => Ok(Value::Null),
             Some(index) => {
@@ -200,15 +200,15 @@ fn mk_array_element<'env, 'txn, S, M>() -> ScalarFunctionPtr<'env, 'txn, S, M> {
 }
 
 fn mk_array_position<'env, 'txn, S, M>() -> ScalarFunctionPtr<'env, 'txn, S, M> {
-    |_catalog, _tx, mut args: FunctionArgs| {
+    |_catalog, _tx, mut args: FunctionArgs<'_>| {
         assert_eq!(args.len(), 2);
-        let array = match args[0].take() {
+        let array = match args.next().unwrap() {
             Value::Array(xs) => xs,
             Value::Null => return Ok(Value::Null),
             _ => panic!("expected array"),
         };
 
-        let target = args[1].take();
+        let target = args.next().unwrap();
         match array.iter().position(|v| v.is_not_null() && v == &target) {
             // one-indexed
             Some(index) => Ok(Value::Int64(index as i64 + 1)),
@@ -218,15 +218,15 @@ fn mk_array_position<'env, 'txn, S, M>() -> ScalarFunctionPtr<'env, 'txn, S, M> 
 }
 
 fn mk_array_contains<'env, 'txn, S, M>() -> ScalarFunctionPtr<'env, 'txn, S, M> {
-    |_catalog, _tx, mut args: FunctionArgs| {
+    |_catalog, _tx, mut args: FunctionArgs<'_>| {
         assert_eq!(args.len(), 2);
-        let array = match args[0].take() {
+        let array = match args.next().unwrap() {
             Value::Array(xs) => xs,
             Value::Null => return Ok(Value::Null),
             _ => panic!("expected array"),
         };
 
-        let target = match args[1].take() {
+        let target = match args.next().unwrap() {
             Value::Null => return Ok(Value::Null),
             target => target,
         };
@@ -239,10 +239,10 @@ fn mk_array_contains<'env, 'txn, S, M>() -> ScalarFunctionPtr<'env, 'txn, S, M> 
 fn nextval<'env: 'txn, 'txn, S: StorageEngine>(
     catalog: Catalog<'env, S>,
     tcx: &dyn TransactionContext<'env, 'txn, S, ReadWriteExecutionMode>,
-    mut args: FunctionArgs,
+    mut args: FunctionArgs<'_>,
 ) -> Result<Value> {
     assert_eq!(args.len(), 1);
-    let oid: Oid<Table> = args[0].take().cast().unwrap();
+    let oid: Oid<Table> = args.next().unwrap().cast().unwrap();
     let sequence = catalog.sequences(tcx)?.get(oid)?;
     let seq_table = catalog.system_table::<ReadWriteExecutionMode, Table>(tcx)?.get(oid)?;
     let mut storage = seq_table.storage::<S, ReadWriteExecutionMode>(catalog, tcx)?;
@@ -267,15 +267,15 @@ fn nextval<'env: 'txn, 'txn, S: StorageEngine>(
 fn nextval_oid<'env: 'txn, 'txn, S: StorageEngine>(
     catalog: Catalog<'env, S>,
     tcx: &dyn TransactionContext<'env, 'txn, S, ReadWriteExecutionMode>,
-    args: FunctionArgs,
+    args: FunctionArgs<'_>,
 ) -> Result<Value> {
     let next = nextval(catalog, tcx, args)?;
     Ok(Value::Oid(next.cast().unwrap()))
 }
 
 fn mk_nextval_expr<'env, 'txn, S, M>() -> ScalarFunctionPtr<'env, 'txn, S, M> {
-    |_catalog, _tx, mut args: FunctionArgs| {
-        let oid: UntypedOid = args[0].take().cast().unwrap();
+    |_catalog, _tx, mut args: FunctionArgs<'_>| {
+        let oid: UntypedOid = args.next().unwrap().cast().unwrap();
         Ok(Value::Expr(Expr::call(Function::NEXTVAL.untyped(), [oid.into()])))
     }
 }

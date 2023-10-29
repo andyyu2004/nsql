@@ -10,8 +10,11 @@ use crate::{ColumnIdentity, FunctionCatalog, SystemEntityPrivate, TransactionCon
 
 mod builtins;
 
-pub type ScalarFunctionPtr<'env, 'txn, S, M> =
-    fn(Catalog<'env, S>, &dyn TransactionContext<'env, 'txn, S, M>, FunctionArgs) -> Result<Value>;
+pub type ScalarFunctionPtr<'env, 'txn, S, M> = fn(
+    Catalog<'env, S>,
+    &dyn TransactionContext<'env, 'txn, S, M>,
+    FunctionArgs<'_>,
+) -> Result<Value>;
 
 pub trait AggregateFunctionInstance: fmt::Debug {
     fn update(&mut self, value: Option<Value>);
@@ -78,7 +81,7 @@ impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> ScalarFunction<'env, S, 
         &self,
         storage: &'env S,
         tx: &dyn TransactionContext<'env, 'txn, S, M>,
-        args: FunctionArgs,
+        args: FunctionArgs<'_>,
     ) -> Result<Value>
     where
         'env: 'txn,
