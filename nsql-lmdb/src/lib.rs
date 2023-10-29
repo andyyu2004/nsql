@@ -2,7 +2,6 @@
 
 use std::ops::{Deref, RangeBounds};
 use std::path::Path;
-use std::sync::Arc;
 
 use heed::types::ByteSlice;
 use heed::Flag;
@@ -20,8 +19,7 @@ pub struct LmdbStorageEngine {
     env: heed::Env,
 }
 
-#[derive(Clone)]
-pub struct ReadonlyTx<'env>(Arc<SendRoTxnWrapper<'env>>);
+pub struct ReadonlyTx<'env>(SendRoTxnWrapper<'env>);
 
 struct SendRoTxnWrapper<'env>(heed::RoTxn<'env>);
 
@@ -79,7 +77,7 @@ impl StorageEngine for LmdbStorageEngine {
     #[inline]
     fn begin(&self) -> Result<Self::Transaction<'_>, Self::Error> {
         let tx = self.env.read_txn()?;
-        Ok(ReadonlyTx(Arc::new(SendRoTxnWrapper(tx))))
+        Ok(ReadonlyTx(SendRoTxnWrapper(tx)))
     }
 
     #[inline]

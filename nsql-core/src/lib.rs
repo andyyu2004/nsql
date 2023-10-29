@@ -71,6 +71,7 @@ impl fmt::Debug for Name {
 }
 
 impl fmt::Display for Name {
+    #[inline]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.name.fmt(f)
     }
@@ -79,6 +80,7 @@ impl fmt::Display for Name {
 impl Deref for Name {
     type Target = str;
 
+    #[inline]
     fn deref(&self) -> &Self::Target {
         self.name.deref()
     }

@@ -179,10 +179,12 @@ pub struct Projection {
 }
 
 impl Projection {
+    #[inline]
     pub fn exprs(self, q: &Query) -> impl ExactSizeIterator<Item = Expr<'_>> + '_ {
         q.exprs(self.projection)
     }
 
+    #[inline]
     pub fn source(self, q: &Query) -> Plan<'_> {
         q.plan(self.source)
     }

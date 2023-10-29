@@ -2,7 +2,6 @@
 
 use std::ops::{Bound, Deref, RangeBounds};
 use std::path::Path;
-use std::sync::Arc;
 
 use nsql_storage_engine::{fallible_iterator, KeyExists, Range, ReadOrWriteTransactionRef};
 use redb::{AccessGuard, ReadableTable, TableHandle};
@@ -14,18 +13,9 @@ pub struct RedbStorageEngine {
     db: redb::Database,
 }
 
-#[derive(Clone)]
-pub struct ReadTransaction<'env>(Arc<redb::ReadTransaction<'env>>);
+pub struct ReadTransaction<'env>(redb::ReadTransaction<'env>);
 
 pub struct Transaction<'env>(redb::WriteTransaction<'env>);
-
-impl<'env> Deref for Transaction<'env> {
-    type Target = ReadTransaction<'env>;
-
-    fn deref(&self) -> &Self::Target {
-        unsafe { std::mem::transmute(self) }
-    }
-}
 
 impl nsql_storage_engine::StorageEngine for RedbStorageEngine {
     type Error = redb::Error;
@@ -59,7 +49,7 @@ impl nsql_storage_engine::StorageEngine for RedbStorageEngine {
     #[inline]
     fn begin(&self) -> Result<Self::Transaction<'_>, Self::Error> {
         let tx = self.db.begin_read()?;
-        Ok(ReadTransaction(Arc::new(tx)))
+        Ok(ReadTransaction(tx))
     }
 
     #[inline]
