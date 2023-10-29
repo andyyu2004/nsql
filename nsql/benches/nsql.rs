@@ -15,7 +15,7 @@ pub fn bench_insert(c: &mut Criterion) {
         [10, 100, 1000, 10000, 100000, 1000000],
         Throughput::Elements,
         |_size| vec!["CREATE TABLE t (id int PRIMARY KEY)".into()],
-        |size| format!("INSERT INTO t SELECT * FROM UNNEST(range(1, {size}))",),
+        |size| vec![format!("INSERT INTO t SELECT * FROM UNNEST(range(1, {size}))")],
     );
 }
 
@@ -32,7 +32,7 @@ pub fn bench_nested_loop_cross_join(c: &mut Criterion) {
                 format!("INSERT INTO t SELECT * FROM UNNEST(range(1, {size}))"),
             ]
         },
-        |_| "SELECT * FROM t JOIN t".to_string(),
+        |_| vec!["SELECT * FROM t JOIN t".to_string()],
     );
 }
 
@@ -42,12 +42,12 @@ pub fn bench_trivial_query_overhead(c: &mut Criterion) {
     run(
         c,
         "trivial query overhead",
-        [100, 1000, 5000, 10000],
+        [1000, 5000, 10000, 20000],
         Throughput::Elements,
         |_size| {
             vec!["CREATE TABLE t (id int PRIMARY KEY)".into(), "INSERT INTO t VALUES (1)".into()]
         },
-        |size| iter::once("SELECT * FROM t;".repeat(size)).collect(),
+        |size| iter::once("SELECT * FROM t".to_string()).cycle().take(size).collect(),
     );
 }
 
@@ -57,7 +57,7 @@ fn run<const N: usize>(
     sizes: [usize; N],
     throughput: impl Fn(u64) -> Throughput,
     setup: impl Fn(usize) -> Vec<String>,
-    test_sql: impl Fn(usize) -> String,
+    test_sql: impl Fn(usize) -> Vec<String>,
 ) {
     let mut group = c.benchmark_group(name);
 
@@ -78,9 +78,11 @@ fn run<const N: usize>(
 
                     (nsql, test_sql(size))
                 },
-                |(nsql, sql)| {
+                |(nsql, stmts)| {
                     let conn = nsql.connect();
-                    conn.query(&sql).unwrap();
+                    for stmt in stmts {
+                        conn.query(&stmt).unwrap();
+                    }
                 },
                 criterion::BatchSize::SmallInput,
             );
