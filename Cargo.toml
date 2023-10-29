@@ -22,6 +22,8 @@ members = [
 
 [profile.bench]
 debug = true
+lto = "thin"
 
 [profile.release]
 debug = true
+lto = "thin"
