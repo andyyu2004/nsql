@@ -13,4 +13,4 @@ jobs:
       - run: |
           rustup update --no-self-update nightly
           rustup default nightly
-      - run: rustup run nightly cargo test --release -- --ignored
+      - run: rustup run nightly cargo test --release -- --include-ignored
