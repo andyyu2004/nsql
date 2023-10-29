@@ -2,7 +2,6 @@
 #![feature(thread_id_value, trait_upcasting)]
 
 use core::fmt;
-use std::ops::ControlFlow;
 use std::panic::AssertUnwindSafe;
 use std::path::Path;
 use std::sync::atomic::{self, AtomicBool};
@@ -22,7 +21,7 @@ use nsql_execution::config::SessionConfig;
 use nsql_execution::{ExecutionContext, PhysicalPlan, PhysicalPlanner, TransactionState};
 pub use nsql_lmdb::LmdbStorageEngine;
 use nsql_opt::optimize;
-use nsql_parse::ast::{self, Visit};
+use nsql_parse::ast;
 pub use nsql_parse::parse;
 pub use nsql_redb::RedbStorageEngine;
 pub use nsql_storage::tuple::Tuple;
@@ -300,42 +299,61 @@ impl<S: StorageEngine> Shared<S> {
 
         let catalog = Catalog::new(self.storage.storage());
 
-        // FIXME this is only a best-effort strategy at best.
-        // There must be a better way to figure out which transaction we should be using?
-        let requires_write_transaction =
-            matches!(stmt.visit(&mut RequiredTransactionModeVisitor), ControlFlow::Break(()));
-
-        let tcx = match tcx {
+        let (tcx, plan) = match tcx {
             Some(tcx) => {
                 tracing::debug!("reusing existing transaction");
-                if requires_write_transaction {
+                let plan = self.profiler.profile(self.profiler.bind_event_id, || match &tcx {
+                    ReadOrWriteTransactionContext::Read(tcx) => {
+                        tcx.with(|tcx| Binder::new(catalog, &tcx).bind(stmt))
+                    }
+                    ReadOrWriteTransactionContext::Write(tcx) => {
+                        tcx.with(|tcx| Binder::new(catalog, &tcx).bind(stmt))
+                    }
+                })?;
+
+                if plan.required_transaction_mode() == ir::TransactionMode::ReadWrite {
                     ensure!(tcx.is_write(), "cannot execute write operation in read transaction");
                 }
 
-                tcx
+                (tcx, plan)
             }
             None => {
-                tracing::debug!("beginning fresh read transaction");
-                if requires_write_transaction {
-                    ReadOrWriteTransactionContext::Write(TransactionContext::make(
-                        catalog.storage().begin_write()?,
-                    ))
-                } else {
-                    ReadOrWriteTransactionContext::Read(TransactionContext::make(
-                        catalog.storage().begin()?,
-                    ))
-                }
+                // create a temporary read transaction to bind the statement and figure out which type of transaction is required
+                let plan = TransactionContext::<S, ReadonlyExecutionMode>::make(
+                    catalog.storage().begin()?,
+                )
+                .with(|tcx| {
+                    self.profiler.profile(self.profiler.bind_event_id, || {
+                        Binder::new(catalog, &tcx).bind(stmt)
+                    })
+                })?;
+
+                let tcx =
+                    if matches!(plan.required_transaction_mode(), ir::TransactionMode::ReadOnly) {
+                        tracing::debug!("beginning fresh read transaction");
+                        ReadOrWriteTransactionContext::Read(TransactionContext::make(
+                            catalog.storage().begin()?,
+                        ))
+                    } else {
+                        tracing::debug!("beginning fresh write transaction");
+
+                        ReadOrWriteTransactionContext::Write(TransactionContext::make(
+                            catalog.storage().begin_write()?,
+                        ))
+                    };
+
+                (tcx, plan)
             }
         };
 
         let (tcx, output) = match tcx {
             ReadOrWriteTransactionContext::Read(tcx) => {
                 let (tcx, output) =
-                    self.execute_in(ctx, tcx, stmt, |planner, tcx, plan| planner.plan(tcx, plan))?;
+                    self.execute_in(ctx, tcx, plan, |planner, tcx, plan| planner.plan(tcx, plan))?;
                 (tcx.map(ReadOrWriteTransactionContext::Read), output)
             }
             ReadOrWriteTransactionContext::Write(tcx) => {
-                let (tcx, output) = self.execute_in(ctx, tcx, stmt, |planner, tcx, plan| {
+                let (tcx, output) = self.execute_in(ctx, tcx, plan, |planner, tcx, plan| {
                     planner.plan_write(tcx, plan)
                 })?;
                 (tcx.map(ReadOrWriteTransactionContext::Write), output)
@@ -354,8 +372,8 @@ impl<S: StorageEngine> Shared<S> {
         &'env self,
         ctx: &SessionContext<'env, S>,
         tcx: TransactionContext<'env, S, M>,
-        stmt: &ast::Statement,
-        do_plan: impl for<'txn> FnOnce(
+        plan: Box<ir::Plan>,
+        do_physical_plan: impl for<'txn> FnOnce(
             PhysicalPlanner<'env, 'txn, S, M>,
             &dyn nsql_execution::TransactionContext<'env, 'txn, S, M>,
             Box<ir::Plan<nsql_opt::Query>>,
@@ -364,10 +382,6 @@ impl<S: StorageEngine> Shared<S> {
         let (auto_commit, state, output) = tcx.with::<Result<_>>(|tcx| {
             let catalog = Catalog::new(self.storage.storage());
 
-            let plan = self
-                .profiler
-                .profile(self.profiler.bind_event_id, || Binder::new(catalog, &tcx).bind(stmt))?;
-
             let schema = Schema::new(plan.schema());
             let plan =
                 self.profiler.profile(self.profiler.optimize_event_id, || Ok(optimize(plan)))?;
@@ -375,7 +389,7 @@ impl<S: StorageEngine> Shared<S> {
             let physical_planner = PhysicalPlanner::new(catalog);
             let physical_plan =
                 self.profiler.profile(self.profiler.physical_plan_event_id, || {
-                    do_plan(physical_planner, &tcx, plan)
+                    do_physical_plan(physical_planner, &tcx, plan)
                 })?;
 
             let ecx = ExecutionContext::<S, M>::new(catalog, &tcx, ctx);
@@ -408,50 +422,6 @@ impl<S: StorageEngine> Shared<S> {
                 Ok((None, output))
             }
             _ => Ok((Some(tcx), output)),
-        }
-    }
-}
-
-struct RequiredTransactionModeVisitor;
-
-impl nsql_parse::ast::Visitor for RequiredTransactionModeVisitor {
-    type Break = ();
-
-    fn pre_visit_statement(&mut self, stmt: &ast::Statement) -> ControlFlow<Self::Break> {
-        match stmt {
-            ast::Statement::Update { .. }
-            | ast::Statement::Insert { .. }
-            | ast::Statement::Delete { .. }
-            | ast::Statement::Truncate { .. }
-            | ast::Statement::CreateView { .. }
-            | ast::Statement::CreateTable { .. }
-            | ast::Statement::CreateSequence { .. }
-            | ast::Statement::CreateIndex { .. }
-            | ast::Statement::CreateSchema { .. }
-            | ast::Statement::Drop { .. }
-            | ast::Statement::DropFunction { .. } => ControlFlow::Break(()),
-            // RW unless explicitly read-only
-            ast::Statement::StartTransaction { modes, begin: _ }
-                if modes.iter().all(|&mode| {
-                    mode != ast::TransactionMode::AccessMode(ast::TransactionAccessMode::ReadOnly)
-                }) =>
-            {
-                ControlFlow::Break(())
-            }
-            _ => ControlFlow::Continue(()),
-        }
-    }
-
-    fn pre_visit_expr(&mut self, expr: &ast::Expr) -> ControlFlow<Self::Break> {
-        // This is a bit of a hack as it's far from complete
-        match expr {
-            ast::Expr::Function(f) => {
-                match f.name.0.last().unwrap().value.to_lowercase().as_str() {
-                    "nextval" => ControlFlow::Break(()),
-                    _ => ControlFlow::Continue(()),
-                }
-            }
-            _ => ControlFlow::Continue(()),
         }
     }
 }
