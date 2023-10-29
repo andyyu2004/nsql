@@ -1,7 +1,6 @@
 use std::cell::OnceCell;
 use std::marker::PhantomData;
 use std::mem;
-use std::sync::atomic::{self, AtomicBool, AtomicUsize};
 
 use nsql_arena::Idx;
 use nsql_catalog::expr::Evaluator;
@@ -19,9 +18,9 @@ pub(crate) struct PhysicalNestedLoopJoin<'env, 'txn, S, M> {
     rhs_tuples_build: Vec<Tuple>,
     // tuples are moved into this vector during finalization (to avoid unnecessary locks)
     rhs_tuples: OnceCell<Vec<Tuple>>,
-    rhs_index: AtomicUsize,
+    rhs_index: usize,
     rhs_width: usize,
-    found_match_for_lhs_tuple: AtomicBool,
+    found_match_for_lhs_tuple: bool,
     evaluator: Evaluator,
     _marker: PhantomData<dyn PhysicalNode<'env, 'txn, S, M>>,
 }
@@ -50,8 +49,8 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
                 join_predicate,
                 rhs_width,
                 children: [lhs_node, rhs_node],
-                found_match_for_lhs_tuple: AtomicBool::new(false),
-                rhs_index: AtomicUsize::new(0),
+                found_match_for_lhs_tuple: false,
+                rhs_index: 0,
                 rhs_tuples_build: Default::default(),
                 rhs_tuples: Default::default(),
                 evaluator: Default::default(),
@@ -121,20 +120,17 @@ impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalOperator<'
         let tx = ecx.tcx();
         let rhs_tuples = self.rhs_tuples.get().expect("probing before build is finished");
 
-        let rhs_index = match self.rhs_index.fetch_update(
-            atomic::Ordering::Relaxed,
-            atomic::Ordering::Relaxed,
-            |i| {
-                if i < rhs_tuples.len() { Some(i + 1) } else { None }
-            },
-        ) {
-            Ok(next_index) => next_index,
-            Err(last_index) => {
-                assert_eq!(last_index, rhs_tuples.len());
-                self.rhs_index.store(0, atomic::Ordering::Relaxed);
+        let rhs_index = match self.rhs_index {
+            index if index < rhs_tuples.len() => {
+                self.rhs_index += 1;
+                index
+            }
+            last_index => {
+                debug_assert_eq!(last_index, rhs_tuples.len());
+                self.rhs_index = 0;
 
-                let found_match =
-                    self.found_match_for_lhs_tuple.swap(false, atomic::Ordering::Relaxed);
+                let found_match = self.found_match_for_lhs_tuple;
+                self.found_match_for_lhs_tuple = false;
                 // emit the lhs_tuple padded with nulls if no match was found
                 if !found_match && self.join_kind.is_left() {
                     tracing::trace!(
@@ -170,18 +166,18 @@ impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalOperator<'
             if matches!(self.join_kind, ir::JoinKind::Single) {
                 // If this is a single join, we only want to emit one matching tuple.
                 // Reset the rhs and continue to the next lhs tuple.
-                self.rhs_index.store(0, atomic::Ordering::Relaxed);
+                self.rhs_index = 0;
                 Ok(OperatorState::Yield(joint_tuple))
             } else if matches!(self.join_kind, ir::JoinKind::Mark) {
                 // If this is a mark join, we only want to emit the lhs tuple.
                 // Reset the rhs and continue to the next lhs tuple.
-                self.rhs_index.store(0, atomic::Ordering::Relaxed);
+                self.rhs_index = 0;
                 let lhs_tuple = Tuple::from_iter(
                     joint_tuple.into_iter().take(lhs_width).chain(std::iter::once(true.into())),
                 );
                 Ok(OperatorState::Yield(lhs_tuple))
             } else {
-                self.found_match_for_lhs_tuple.store(true, atomic::Ordering::Relaxed);
+                self.found_match_for_lhs_tuple = true;
                 Ok(OperatorState::Again(Some(joint_tuple)))
             }
         } else {
@@ -205,6 +201,7 @@ impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSink<'env,
     }
 
     fn finalize(&mut self, _ecx: &ExecutionContext<'_, 'env, 'txn, S, M>) -> ExecutionResult<()> {
+        self.rhs_tuples_build.shrink_to_fit();
         self.rhs_tuples.set(mem::take(&mut self.rhs_tuples_build)).expect("finalize called twice");
         Ok(())
     }

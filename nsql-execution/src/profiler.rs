@@ -46,7 +46,7 @@ impl Profiler {
         self.mode.set(mode);
     }
 
-    pub fn is_enabled(&self) -> bool {
+    fn is_enabled(&self) -> bool {
         self.mode.get() > ProfileMode::Disabled
     }
 
