@@ -1610,7 +1610,7 @@ impl<'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
 
         let mut candidates = operators
             .as_ref()
-            .scan()?
+            .scan(..)?
             .filter(|op| {
                 Ok(op.parent_oid(self.catalog, self.tx)?.unwrap() == namespace.key()
                     && op.name() == name)
@@ -1645,7 +1645,7 @@ impl<'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
         let (functions, namespace, name) = self.get_namespaced_entity_view::<Function>(path)?;
         let mut candidates = functions
             .as_ref()
-            .scan()?
+            .scan(..)?
             .filter(|f| {
                 Ok(f.parent_oid(self.catalog, self.tx)?.unwrap() == namespace.key()
                     && f.name() == name)

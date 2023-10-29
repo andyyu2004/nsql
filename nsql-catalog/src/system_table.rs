@@ -1,4 +1,5 @@
 use std::marker::PhantomData;
+use std::ops::RangeBounds;
 use std::sync::Arc;
 
 use anyhow::anyhow;
@@ -53,7 +54,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: SystemEnt
 {
     #[inline]
     pub fn get(&self, key: T::Key) -> Result<T> {
-        self.scan()?
+        self.scan(..)?
             .find(|entry| Ok(entry.key() == key))?
             .ok_or_else(|| anyhow!("got invalid key for {}: `{:?}", T::desc(), key))
     }
@@ -66,15 +67,22 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: SystemEnt
         parent: Option<Oid<T::Parent>>,
         key: &T::SearchKey,
     ) -> Result<Option<T>> {
-        self.scan()?.find(|entry| {
+        self.scan(..)?.find(|entry| {
             Ok(entry.parent_oid(catalog, tx)? == parent && &entry.search_key() == key)
         })
     }
 
     #[inline]
     #[fix_hidden_lifetime_bug]
-    pub fn scan(&self) -> Result<impl FallibleIterator<Item = T, Error = anyhow::Error> + '_> {
-        Ok(self.storage.scan(None)?.map_err(Into::into).map(|tuple| Ok(T::from_tuple(tuple)?)))
+    pub fn scan<'a>(
+        &'a self,
+        bounds: impl RangeBounds<[u8]> + 'a,
+    ) -> Result<impl FallibleIterator<Item = T, Error = anyhow::Error> + 'a> {
+        Ok(self
+            .storage
+            .scan(bounds, None)?
+            .map_err(Into::into)
+            .map(|tuple| Ok(T::from_tuple(tuple)?)))
     }
 
     #[inline]

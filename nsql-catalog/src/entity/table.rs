@@ -83,7 +83,7 @@ impl Table {
             let mut columns = catalog
                 .columns(tx)?
                 .as_ref()
-                .scan()?
+                .scan(..)?
                 .filter(|col| Ok(col.table == self.oid))
                 .collect::<Vec<_>>()?;
             assert!(
@@ -121,7 +121,12 @@ impl Table {
         catalog: Catalog<'env, S>,
         tx: &dyn TransactionContext<'env, 'txn, S, M>,
     ) -> Result<Vec<Index>> {
-        catalog.indexes(tx)?.as_ref().scan()?.filter(|index| Ok(index.target == self.oid)).collect()
+        catalog
+            .indexes(tx)?
+            .as_ref()
+            .scan(..)?
+            .filter(|index| Ok(index.target == self.oid))
+            .collect()
     }
 
     fn index_storage_infos<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(

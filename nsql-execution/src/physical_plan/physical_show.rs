@@ -53,7 +53,8 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
         let rows = match self.object_type {
             ir::ObjectType::Table => catalog
                 .tables(tx)?
-                .scan()?
+                .as_ref()
+                .scan(..)?
                 .filter(|table| Ok(table.namespace() == Namespace::MAIN))
                 .map(move |table| Ok(Tuple::from(vec![Value::Text(table.name().to_string())])))
                 .collect::<Vec<_>>()?,

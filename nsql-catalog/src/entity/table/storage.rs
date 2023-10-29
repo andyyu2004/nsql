@@ -1,4 +1,5 @@
 use std::fmt;
+use std::ops::RangeBounds;
 use std::sync::{Arc, OnceLock};
 
 use atomic_take::AtomicTake;
@@ -148,12 +149,13 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> TableStorage
 
     #[inline]
     #[fix_hidden_lifetime_bug]
-    pub fn scan(
-        &self,
+    pub fn scan<'a>(
+        &'a self,
+        bounds: impl RangeBounds<[u8]> + 'a,
         projection: Option<Box<[TupleIndex]>>,
-    ) -> Result<impl FallibleIterator<Item = Tuple, Error = S::Error> + '_, S::Error> {
+    ) -> Result<impl FallibleIterator<Item = Tuple, Error = S::Error> + 'a, S::Error> {
         let mut gen = Box::pin(GeneratorFn::empty());
-        gen.as_mut().init(range_gen::<S, M>, (self, projection));
+        gen.as_mut().init(range_gen::<S, M>, (self, projection, bounds));
         Ok(fallible_iterator::convert(gen))
     }
 
@@ -213,8 +215,9 @@ fn unsplit_tuple(
 fn range_gen<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
     storage: &TableStorage<'env, 'txn, S, M>,
     projection: Option<Box<[TupleIndex]>>,
+    bounds: impl RangeBounds<[u8]>,
 ) {
-    let mut range = match storage.tree.range(..) {
+    let mut range = match storage.tree.range(bounds) {
         Ok(range) => range,
         Err(err) => {
             yield_!(Err(err));
