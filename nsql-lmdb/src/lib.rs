@@ -8,7 +8,7 @@ use heed::types::ByteSlice;
 use heed::Flag;
 use nsql_storage_engine::{
     fallible_iterator, KeyExists, Range, ReadOrWriteTransactionRef, ReadTree, StorageEngine,
-    Transaction, TransactionRef, WriteTransaction, WriteTree,
+    Transaction, TransactionRef, WriteTree,
 };
 
 type Result<T, E = heed::Error> = std::result::Result<T, E>;
@@ -244,25 +244,12 @@ impl<'env> TransactionRef<'env, LmdbStorageEngine> for ReadonlyTx<'env> {
 
 impl<'env> Transaction<'env, LmdbStorageEngine> for ReadonlyTx<'env> {
     #[inline]
-    fn commit_boxed(self: Box<Self>) -> Result<(), heed::Error> {
+    fn commit(self) -> Result<(), heed::Error> {
         Ok(())
     }
 
     #[inline]
-    fn abort_boxed(self: Box<Self>) -> Result<(), heed::Error> {
-        Ok(())
-    }
-}
-
-impl<'env> Transaction<'env, LmdbStorageEngine> for ReadWriteTx<'env> {
-    #[inline]
-    fn commit_boxed(self: Box<Self>) -> Result<(), heed::Error> {
-        self.0.commit()
-    }
-
-    #[inline]
-    fn abort_boxed(self: Box<Self>) -> Result<(), heed::Error> {
-        self.0.abort();
+    fn abort(self) -> Result<(), heed::Error> {
         Ok(())
     }
 }
@@ -279,7 +266,7 @@ impl<'env> TransactionRef<'env, LmdbStorageEngine> for ReadWriteTx<'env> {
     }
 }
 
-impl<'env> WriteTransaction<'env, LmdbStorageEngine> for ReadWriteTx<'env> {
+impl<'env> Transaction<'env, LmdbStorageEngine> for ReadWriteTx<'env> {
     #[inline]
     fn commit(self) -> Result<(), heed::Error> {
         self.0.commit()

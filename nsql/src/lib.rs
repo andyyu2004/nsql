@@ -179,7 +179,7 @@ impl<'env, S: StorageEngine> ReadOrWriteTransactionContext<'env, S> {
 
 #[ouroboros::self_referencing]
 struct TransactionContext<'env, S: StorageEngine, M: ExecutionMode<'env, S>> {
-    tx: Box<M::Transaction>,
+    tx: M::Transaction,
     #[borrows(tx)]
     #[not_covariant]
     cache: TransactionLocalCatalogCaches<'env, 'this, S, M>,
@@ -191,7 +191,7 @@ impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> TransactionContext<'env,
     #[inline]
     pub fn make(tx: M::Transaction) -> TransactionContext<'env, S, M> {
         TransactionContextBuilder {
-            tx: Box::new(tx),
+            tx,
             cache_builder: |_| Default::default(),
             auto_commit: AtomicBool::new(true),
             state: AtomicEnum::new(TransactionState::Active),
@@ -201,12 +201,12 @@ impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> TransactionContext<'env,
 
     #[inline]
     pub fn commit(self) -> Result<(), S::Error> {
-        self.into_heads().tx.commit_boxed()
+        self.into_heads().tx.commit()
     }
 
     #[inline]
     pub fn abort(self) -> Result<(), S::Error> {
-        self.into_heads().tx.abort_boxed()
+        self.into_heads().tx.abort()
     }
 }
 

@@ -207,11 +207,11 @@ impl<'env, 'txn> nsql_storage_engine::WriteTree<'env, 'txn, RedbStorageEngine>
 }
 
 impl<'env> nsql_storage_engine::Transaction<'env, RedbStorageEngine> for ReadTransaction<'env> {
-    fn commit_boxed(self: Box<Self>) -> Result<(), redb::Error> {
+    fn commit(self) -> Result<(), redb::Error> {
         Ok(())
     }
 
-    fn abort_boxed(self: Box<Self>) -> Result<(), redb::Error> {
+    fn abort(self) -> Result<(), redb::Error> {
         Ok(())
     }
 }
@@ -241,18 +241,6 @@ impl<'env> nsql_storage_engine::TransactionRef<'env, RedbStorageEngine> for Tran
 }
 
 impl<'env> nsql_storage_engine::Transaction<'env, RedbStorageEngine> for Transaction<'env> {
-    #[inline]
-    fn commit_boxed(self: Box<Self>) -> Result<(), redb::Error> {
-        Ok(self.0.commit()?)
-    }
-
-    #[inline]
-    fn abort_boxed(self: Box<Self>) -> Result<(), redb::Error> {
-        Ok(self.0.abort()?)
-    }
-}
-
-impl<'env> nsql_storage_engine::WriteTransaction<'env, RedbStorageEngine> for Transaction<'env> {
     #[inline]
     fn commit(self) -> Result<(), redb::Error> {
         Ok(self.0.commit()?)

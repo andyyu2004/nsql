@@ -1,5 +1,5 @@
 #![allow(dead_code)]
-use crate::{FallibleIterator, ReadTree, StorageEngine, WriteTransaction, WriteTree};
+use crate::{FallibleIterator, ReadTree, StorageEngine, Transaction, WriteTree};
 
 fn example_usage<S: StorageEngine>() -> Result<(), S::Error> {
     let s = S::open("path")?;

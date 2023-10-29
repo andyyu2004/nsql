@@ -20,7 +20,7 @@ pub trait StorageEngine: Send + Sync + Sized + fmt::Debug + 'static {
     where
         Self: 'env;
 
-    type WriteTransaction<'env>: WriteTransaction<'env, Self>
+    type WriteTransaction<'env>: Transaction<'env, Self>
     where
         Self: 'env;
 
@@ -107,9 +107,9 @@ pub trait WriteTree<'env, 'txn, S: StorageEngine>: ReadTree<'env, 'txn, S> {
 }
 
 pub trait Transaction<'env, S: StorageEngine>: TransactionRef<'env, S> {
-    fn commit_boxed(self: Box<Self>) -> Result<(), S::Error>;
+    fn commit(self) -> Result<(), S::Error>;
 
-    fn abort_boxed(self: Box<Self>) -> Result<(), S::Error>;
+    fn abort(self) -> Result<(), S::Error>;
 }
 
 pub trait TransactionRef<'env, S: StorageEngine> {
@@ -153,12 +153,6 @@ where
     fn as_dyn(&self) -> &dyn TransactionRef<'env, S> {
         *self
     }
-}
-
-pub trait WriteTransaction<'env, S: StorageEngine>: Transaction<'env, S> {
-    fn commit(self) -> Result<(), S::Error>;
-
-    fn abort(self) -> Result<(), S::Error>;
 }
 
 pub enum ReadOrWriteTransaction<'env, S: StorageEngine> {
