@@ -318,11 +318,11 @@ impl<S: StorageEngine> Shared<S> {
                 (tcx, plan)
             }
             None => {
-                // create a temporary read transaction to bind the statement and figure out which type of transaction is required
-                let plan = TransactionContext::<S, ReadonlyExecutionMode>::make(
+                let tcx = TransactionContext::<S, ReadonlyExecutionMode>::make(
                     catalog.storage().begin()?,
-                )
-                .with(|tcx| {
+                );
+                // create a read transaction to bind the statement and figure out which type of transaction is required
+                let plan = tcx.with(|tcx| {
                     self.profiler.profile(self.profiler.bind_event_id, || {
                         Binder::new(catalog, &tcx).bind(stmt)
                     })
@@ -330,10 +330,9 @@ impl<S: StorageEngine> Shared<S> {
 
                 let tcx =
                     if matches!(plan.required_transaction_mode(), ir::TransactionMode::ReadOnly) {
+                        // reuse the read transaction we just created
                         tracing::debug!("beginning fresh read transaction");
-                        ReadOrWriteTransactionContext::Read(TransactionContext::make(
-                            catalog.storage().begin()?,
-                        ))
+                        ReadOrWriteTransactionContext::Read(tcx)
                     } else {
                         tracing::debug!("beginning fresh write transaction");
 
