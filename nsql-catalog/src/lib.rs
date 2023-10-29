@@ -115,10 +115,12 @@ mod private {
     }
 }
 
-pub trait SystemEntity: SystemEntityPrivate + FromTuple + IntoTuple + Eq + fmt::Debug {
+pub trait SystemEntity:
+    SystemEntityPrivate + FromTuple + IntoTuple + Eq + Clone + fmt::Debug
+{
     type Parent: SystemEntity;
 
-    type Key: FromTuple + Eq + Hash + fmt::Debug;
+    type Key: FromTuple + Eq + Hash + Copy + fmt::Debug;
 
     type SearchKey: Eq + Hash + fmt::Debug;
 
@@ -218,7 +220,7 @@ impl<'env, S: StorageEngine> Catalog<'env, S> {
     where
         'env: 'txn,
     {
-        self.system_table(tx)?.get(oid)
+        self.system_table(tx)?.as_ref().get(oid)
     }
 
     #[inline]

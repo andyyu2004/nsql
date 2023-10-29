@@ -1,6 +1,6 @@
 use std::error::Error;
 use std::fmt;
-use std::hash::{Hash, Hasher};
+use std::hash::Hash;
 use std::ops::{Add, Index, IndexMut};
 use std::str::FromStr;
 
@@ -12,7 +12,9 @@ use rkyv::{Archive, Archived, Deserialize, Serialize};
 use crate::value::{CastError, FromValue, Value};
 
 // FIXME make this cheap to clone
-#[derive(Clone, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
+#[derive(
+    Clone, PartialOrd, Ord, PartialEq, Eq, Hash, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
+)]
 pub struct Tuple {
     values: Box<[Value]>,
 }
@@ -23,13 +25,6 @@ impl fmt::Debug for Tuple {
     }
 }
 
-impl PartialEq for Tuple {
-    #[inline]
-    fn eq(&self, other: &Self) -> bool {
-        self.values == other.values
-    }
-}
-
 impl IntoIterator for Tuple {
     type Item = Value;
     type IntoIter = std::vec::IntoIter<Self::Item>;
@@ -37,15 +32,6 @@ impl IntoIterator for Tuple {
     #[inline]
     fn into_iter(self) -> Self::IntoIter {
         self.values.into_vec().into_iter()
-    }
-}
-
-impl Eq for Tuple {}
-
-impl Hash for Tuple {
-    #[inline]
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.values.hash(state);
     }
 }
 

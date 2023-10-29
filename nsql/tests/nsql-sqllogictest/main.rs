@@ -111,7 +111,6 @@ impl<'env, S: StorageEngine> AsyncDB for TestConnection<'env, S> {
 
     #[tracing::instrument(skip(self))]
     async fn run(&mut self, sql: &str) -> Result<DBOutput<Self::ColumnType>, Self::Error> {
-        // transmute the lifetime back to whatever we need, not sure about safety on this one but it's a test so we'll find out
         let output = self.conn.query(sql)?;
         Ok(DBOutput::Rows {
             types: output.schema.into_iter().map(TypeWrapper).collect(),

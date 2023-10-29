@@ -3,6 +3,7 @@ use std::ops::RangeBounds;
 use std::sync::Arc;
 
 use anyhow::anyhow;
+use dashmap::DashMap;
 use fix_hidden_lifetime_bug::fix_hidden_lifetime_bug;
 use nsql_core::Oid;
 use nsql_storage::tuple::{FromTuple, IntoTuple};
@@ -11,9 +12,10 @@ use nsql_storage_engine::{ExecutionMode, FallibleIterator, ReadWriteExecutionMod
 use crate::entity::table::{PrimaryKeyConflict, TableStorage};
 use crate::{Catalog, FunctionCatalog, Result, SystemEntity, Table, TransactionContext};
 
-#[repr(transparent)]
-pub struct SystemTableView<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T> {
+pub struct SystemTableView<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: SystemEntity>
+{
     storage: TableStorage<'env, 'txn, S, M>,
+    cache: DashMap<T::Key, T>,
     phantom: PhantomData<T>,
 }
 
@@ -27,7 +29,11 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: SystemEnt
         // we need to view the tables in bootstrap mode to avoid a cycle
         let table =
             SystemTableView::<S, M, Table>::new_bootstrap(catalog.storage(), tx)?.get(T::table())?;
-        Ok(Self { storage: table.storage(catalog, tx)?, phantom: PhantomData })
+        Ok(Self {
+            storage: table.storage(catalog, tx)?,
+            cache: Default::default(),
+            phantom: PhantomData,
+        })
     }
 
     #[track_caller]
@@ -44,7 +50,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: SystemEnt
             vec![],
         )?;
 
-        Ok(Self { storage, phantom: PhantomData })
+        Ok(Self { storage, cache: Default::default(), phantom: PhantomData })
     }
 }
 
@@ -54,9 +60,17 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: SystemEnt
 {
     #[inline]
     pub fn get(&self, key: T::Key) -> Result<T> {
-        self.scan(..)?
-            .find(|entry| Ok(entry.key() == key))?
-            .ok_or_else(|| anyhow!("got invalid key for {}: `{:?}", T::desc(), key))
+        let f = |key| {
+            self.scan(..)?
+                .find(|entry| Ok(entry.key() == key))?
+                .ok_or_else(|| anyhow!("got invalid key for {}: `{:?}", T::desc(), key))
+        };
+
+        if M::READONLY {
+            self.cache.entry(key).or_try_insert_with(|| f(key)).map(|v| v.value().clone())
+        } else {
+            f(key)
+        }
     }
 
     #[inline]
