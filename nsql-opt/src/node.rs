@@ -255,7 +255,8 @@ impl Builder {
                 Node::Case([scrutinee, self.add(Node::Nodes(cases)), else_result])
             }
             ir::ExprKind::Subquery(..) => {
-                panic!("subquery nodes should have been flattened by now")
+                Node::Literal(Value::Oid(Oid::new(0)))
+                // panic!("subquery nodes should have been flattened by now")
             }
             ir::ExprKind::Compiled(expr) => Node::CompiledExpr(expr.clone()),
             ir::ExprKind::Quote(expr) => Node::QuotedExpr(self.build_expr(plan, expr)),

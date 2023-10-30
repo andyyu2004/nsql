@@ -44,26 +44,26 @@ pub fn optimize(plan: Box<ir::Plan>) -> Box<ir::Plan<Query>> {
 fn optimize_query(mut plan: Box<ir::QueryPlan>) -> Query {
     plan.validate().unwrap_or_else(|err| panic!("invalid plan passed to optimizer: {err}"));
 
-    loop {
-        let passes = [
-            &mut IdentityProjectionElimination as &mut dyn Pass,
-            &mut EmptyPlanElimination,
-            &mut Decorrelate,
-            &mut DeduplicateCtes::default(),
-        ];
-        let pre_opt_plan = plan.clone();
-        for pass in passes {
-            plan = pass.fold_boxed_query_plan(plan);
-            plan.validate().unwrap_or_else(|err| {
-                panic!("invalid plan after pass `{}`: {err}\n{plan:#}", pass.name())
-            });
-            tracing::debug!("plan after pass `{}`:\n{:#}", pass.name(), plan);
-        }
+    // loop {
+    //     let passes = [
+    //         &mut IdentityProjectionElimination as &mut dyn Pass,
+    //         &mut EmptyPlanElimination,
+    //         &mut Decorrelate,
+    //         &mut DeduplicateCtes::default(),
+    //     ];
+    //     let pre_opt_plan = plan.clone();
+    //     for pass in passes {
+    //         plan = pass.fold_boxed_query_plan(plan);
+    //         plan.validate().unwrap_or_else(|err| {
+    //             panic!("invalid plan after pass `{}`: {err}\n{plan:#}", pass.name())
+    //         });
+    //         tracing::debug!("plan after pass `{}`:\n{:#}", pass.name(), plan);
+    //     }
 
-        if plan == pre_opt_plan {
-            break;
-        }
-    }
+    //     if plan == pre_opt_plan {
+    //         break;
+    //     }
+    // }
 
     let mut builder = node::Builder::default();
     let root = builder.build(&plan);
