@@ -95,7 +95,7 @@ impl Scope {
         let mut columns = self.columns.clone();
 
         let table = binder.bind_namespaced_entity::<Table>(path)?;
-        let table_columns = table.columns(binder.catalog, binder.tx)?;
+        let table_columns = table.columns(binder.catalog, binder.tcx)?;
 
         if let Some(alias) = alias {
             // if no columns are specified, we only rename the table

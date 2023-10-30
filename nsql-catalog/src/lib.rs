@@ -7,7 +7,7 @@ pub mod expr;
 mod system_table;
 
 use std::fmt;
-use std::hash::Hash;
+use std::hash::{BuildHasherDefault, Hash};
 use std::ops::Deref;
 use std::sync::OnceLock;
 
@@ -18,6 +18,7 @@ use nsql_core::{Name, Oid};
 use nsql_storage::tuple::{FromTuple, IntoTuple};
 use nsql_storage::value::Value;
 use nsql_storage_engine::{ExecutionMode, ReadWriteExecutionMode, StorageEngine};
+use rustc_hash::FxHasher;
 
 use self::bootstrap::{BootstrapColumn, BootstrapSequence};
 pub use self::entity::column::{Column, ColumnIdentity, ColumnIndex};
@@ -76,7 +77,7 @@ pub struct TransactionLocalCatalogCaches<'env, 'txn, S: StorageEngine, M: Execut
     columns: OnceLock<SystemTableView<'env, 'txn, S, M, Column>>,
     indexes: OnceLock<SystemTableView<'env, 'txn, S, M, Index>>,
     sequences: OnceLock<SystemTableView<'env, 'txn, S, M, Sequence>>,
-    table_columns: DashMap<Oid<Table>, Box<[Column]>>,
+    table_columns: DashMap<Oid<Table>, Box<[Column]>, BuildHasherDefault<FxHasher>>,
 }
 
 impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Default

@@ -1299,6 +1299,7 @@ name = "nsql-bind"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "dashmap",
  "indexmap 2.0.2",
  "itertools 0.11.0",
  "nsql-catalog",
@@ -1308,6 +1309,7 @@ dependencies = [
  "nsql-storage",
  "nsql-storage-engine",
  "rpds",
+ "rustc-hash",
  "tracing",
 ]
 
@@ -1329,6 +1331,7 @@ dependencies = [
  "nsql-util",
  "parking_lot 0.12.1",
  "rkyv",
+ "rustc-hash",
  "tracing",
 ]
 

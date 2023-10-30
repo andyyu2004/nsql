@@ -13,7 +13,7 @@ impl<'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
         mut candidates: impl FallibleIterator<Item = Operator, Error = Error>,
         arg_types: &[LogicalType],
     ) -> Result<Option<ir::MonoOperator>> {
-        let functions_table = self.catalog.functions(self.tx)?;
+        let functions_table = self.catalog.functions(self.tcx)?;
         candidates.find_map(|op| {
             let f = functions_table.get(op.function())?;
             Ok(try {

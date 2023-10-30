@@ -1,36 +1,53 @@
 #![deny(rust_2018_idioms)]
-#![feature(try_blocks)]
-#![feature(if_let_guard)]
+#![feature(try_blocks, if_let_guard, trait_upcasting)]
 
 mod function;
 mod scope;
 mod select;
 
 use std::collections::hash_map::Entry;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
+use std::hash::BuildHasherDefault;
 use std::str::FromStr;
 
 pub use anyhow::Error;
 use anyhow::{anyhow, bail, ensure};
+use dashmap::DashMap;
 use ir::expr::EvalNotConst;
 use ir::{Decimal, Path, QPath, TupleIndex};
 use itertools::Itertools;
 use nsql_catalog::{
     Bow, Catalog, ColumnIdentity, ColumnIndex, Function, FunctionKind, Namespace, Operator,
-    OperatorKind, SystemEntity, SystemTableView, Table, TransactionContext, MAIN_SCHEMA_PATH,
+    OperatorKind, SystemEntity, SystemTableView, Table, MAIN_SCHEMA_PATH,
 };
 use nsql_core::{not_implemented, not_implemented_if, LogicalType, Name, Oid, Schema};
 use nsql_parse::ast;
 use nsql_storage::expr;
 use nsql_storage_engine::{ExecutionMode, FallibleIterator, StorageEngine};
+use rustc_hash::{FxHashMap, FxHasher};
 
 use self::scope::{CteKind, Scope, TableBinding};
 use self::select::SelectBinder;
 
+pub trait TransactionContext<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>:
+    nsql_catalog::TransactionContext<'env, 'txn, S, M>
+{
+    fn binder_caches(&self) -> &TransactionLocalBinderCaches;
+}
+
+type OperatorCacheKey = (&'static str, LogicalType, LogicalType);
+type FunctionCacheKey = (Path, Box<[LogicalType]>);
+
+#[derive(Default)]
+pub struct TransactionLocalBinderCaches {
+    operators: DashMap<OperatorCacheKey, ir::MonoOperator, BuildHasherDefault<FxHasher>>,
+    functions: DashMap<FunctionCacheKey, ir::MonoFunction, BuildHasherDefault<FxHasher>>,
+}
+
 pub struct Binder<'a, 'env, 'txn, S, M> {
     catalog: Catalog<'env, S>,
-    tx: &'a dyn TransactionContext<'env, 'txn, S, M>,
-    ctes: HashMap<Name, CteMeta>,
+    tcx: &'a dyn TransactionContext<'env, 'txn, S, M>,
+    ctes: FxHashMap<Name, CteMeta>,
 }
 
 type CteMeta = (CteKind, Scope, Box<ir::QueryPlan>);
@@ -55,7 +72,7 @@ impl<'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
         catalog: Catalog<'env, S>,
         tx: &'a dyn TransactionContext<'env, 'txn, S, M>,
     ) -> Self {
-        Self { catalog, tx, ctes: Default::default() }
+        Self { catalog, tcx: tx, ctes: Default::default() }
     }
 
     pub fn bind(&mut self, stmt: &ast::Statement) -> Result<Box<ir::Plan>> {
@@ -77,8 +94,10 @@ impl<'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
                 };
 
                 let table = Table::NAMESPACE;
-                let columns =
-                    self.catalog.get::<M, Table>(self.tx, table)?.columns(self.catalog, self.tx)?;
+                let columns = self
+                    .catalog
+                    .get::<M, Table>(self.tcx, table)?
+                    .columns(self.catalog, self.tcx)?;
                 assert_eq!(columns.len(), 2);
                 let table_oid_column = &columns[0];
                 assert_eq!(table_oid_column.name(), "oid");
@@ -408,7 +427,7 @@ impl<'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
         projection: Option<Box<[ColumnIndex]>>,
     ) -> Result<Box<ir::QueryPlan>> {
         let columns =
-            self.catalog.get::<M, Table>(self.tx, table)?.columns(self.catalog, self.tx)?;
+            self.catalog.get::<M, Table>(self.tcx, table)?.columns(self.catalog, self.tcx)?;
         let schema = columns.iter().map(|column| column.logical_type()).collect::<Schema>();
         let projected_schema = projection
             .as_ref()
@@ -426,8 +445,8 @@ impl<'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
         table: Oid<Table>,
         assignments: &[ast::Assignment],
     ) -> Result<Box<[ir::Expr]>> {
-        let table = self.catalog.get::<M, Table>(self.tx, table)?;
-        let columns = table.columns(self.catalog, self.tx)?;
+        let table = self.catalog.get::<M, Table>(self.tcx, table)?;
+        let columns = table.columns(self.catalog, self.tcx)?;
 
         for assignment in assignments {
             assert!(!assignment.id.is_empty());
@@ -618,9 +637,9 @@ impl<'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
                 Path::Unqualified(name) => {
                     let ns = self
                         .catalog
-                        .namespaces(self.tx)?
+                        .namespaces(self.tcx)?
                         .as_ref()
-                        .find(self.catalog, self.tx, None, name)?
+                        .find(self.catalog, self.tcx, None, name)?
                         .ok_or_else(|| unbound!(Namespace, path))?;
                     Ok(ns)
                 }
@@ -647,12 +666,12 @@ impl<'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
                 Path::Unqualified(schema) => {
                     let namespace = self
                         .catalog
-                        .namespaces(self.tx)?
+                        .namespaces(self.tcx)?
                         .as_ref()
-                        .find(self.catalog, self.tx, None, schema)?
+                        .find(self.catalog, self.tcx, None, schema)?
                         .ok_or_else(|| unbound!(Namespace, path))?;
 
-                    Ok((self.catalog.system_table::<M, T>(self.tx)?, namespace, name.clone()))
+                    Ok((self.catalog.system_table::<M, T>(self.tcx)?, namespace, name.clone()))
                 }
             },
         }
@@ -666,7 +685,7 @@ impl<'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
         let (table, namespace, name) = self.get_namespaced_entity_view::<T>(path)?;
         let entity = table
             .as_ref()
-            .find(self.catalog, self.tx, Some(namespace.key()), &name)?
+            .find(self.catalog, self.tcx, Some(namespace.key()), &name)?
             .ok_or_else(|| unbound!(T, path))?;
 
         Ok(entity)
@@ -911,8 +930,10 @@ impl<'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
             bail!("table must have a primary key defined")
         }
 
-        let table_columns =
-            self.catalog.get::<M, Table>(self.tx, Table::TABLE)?.columns(self.catalog, self.tx)?;
+        let table_columns = self
+            .catalog
+            .get::<M, Table>(self.tcx, Table::TABLE)?
+            .columns(self.catalog, self.tcx)?;
         assert_eq!(table_columns.len(), 3);
         let oid_column = &table_columns[0];
 
@@ -1030,7 +1051,7 @@ impl<'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
 
                                     let f = self
                                         .catalog
-                                        .functions(self.tx)?
+                                        .functions(self.tcx)?
                                         .get(Function::MK_NEXTVAL_EXPR)?;
 
                                     let function = ir::MonoFunction::new(f, LogicalType::Expr);
@@ -1102,7 +1123,7 @@ impl<'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
         let (scope, table) = self.bind_base_table(scope, table_name, None)?;
 
         let table_columns =
-            self.catalog.table::<M>(self.tx, table)?.columns(self.catalog, self.tx)?;
+            self.catalog.table::<M>(self.tcx, table)?.columns(self.catalog, self.tcx)?;
 
         if source.schema().width() > table_columns.len() {
             bail!(
@@ -1534,7 +1555,7 @@ impl<'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
         name: &'static str,
         operand: LogicalType,
     ) -> Result<ir::MonoOperator> {
-        self.bind_operator(name, OperatorKind::Unary, LogicalType::Null, operand)
+        self.resolve_operator(name, OperatorKind::Unary, LogicalType::Null, operand)
     }
 
     fn bind_binary_operator(
@@ -1543,89 +1564,108 @@ impl<'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
         left: LogicalType,
         right: LogicalType,
     ) -> Result<ir::MonoOperator> {
-        self.bind_operator(name, OperatorKind::Binary, left, right)
+        self.resolve_operator(name, OperatorKind::Binary, left, right)
     }
 
-    fn bind_operator(
+    fn resolve_operator(
         &mut self,
         name: &'static str,
         kind: OperatorKind,
         left: LogicalType,
         right: LogicalType,
     ) -> Result<ir::MonoOperator> {
-        if matches!(kind, OperatorKind::Unary) {
-            assert!(matches!(left, LogicalType::Null));
-        }
+        self.tcx
+            .binder_caches()
+            .operators
+            .entry((name, left.clone(), right.clone()))
+            .or_try_insert_with(|| {
+                if matches!(kind, OperatorKind::Unary) {
+                    assert!(matches!(left, LogicalType::Null));
+                }
 
-        // handle null type defaulting
-        let (left, right) = match (kind, left, right) {
-            // default to `int64` if arguments are null
-            (_, LogicalType::Null, LogicalType::Null) => (LogicalType::Int64, LogicalType::Int64),
-            (OperatorKind::Unary, LogicalType::Null, ty) => (LogicalType::Null, ty),
-            (OperatorKind::Binary, LogicalType::Null, ty) => (ty.clone(), ty),
-            (_, ty, LogicalType::Null) => (ty.clone(), ty),
-            (_, left, right) => (left, right),
-        };
+                // handle null type defaulting
+                let (left, right) = match (kind, left, right) {
+                    // default to `int64` if arguments are null
+                    (_, LogicalType::Null, LogicalType::Null) => {
+                        (LogicalType::Int64, LogicalType::Int64)
+                    }
+                    (OperatorKind::Unary, LogicalType::Null, ty) => (LogicalType::Null, ty),
+                    (OperatorKind::Binary, LogicalType::Null, ty) => (ty.clone(), ty),
+                    (_, ty, LogicalType::Null) => (ty.clone(), ty),
+                    (_, left, right) => (left, right),
+                };
 
-        let (operators, namespace, name) =
-            self.get_namespaced_entity_view::<Operator>(&Path::qualified("nsql_catalog", name))?;
+                let (operators, namespace, name) = self.get_namespaced_entity_view::<Operator>(
+                    &Path::qualified("nsql_catalog", name),
+                )?;
 
-        let mut candidates = operators
-            .as_ref()
-            .scan(..)?
-            .filter(|op| {
-                Ok(op.parent_oid(self.catalog, self.tx)?.unwrap() == namespace.key()
-                    && op.name() == name)
+                let mut candidates = operators
+                    .as_ref()
+                    .scan(..)?
+                    .filter(|op| {
+                        Ok(op.parent_oid(self.catalog, self.tcx)?.unwrap() == namespace.key()
+                            && op.name() == name)
+                    })
+                    .peekable();
+
+                if candidates.peek()?.is_none() {
+                    return Err(unbound!(Operator, name));
+                }
+
+                let operator = match kind {
+                    OperatorKind::Unary => {
+                        let args = [right];
+                        self.resolve_candidate_operators(candidates, &args)?.ok_or_else(|| {
+                            let [right] = args;
+                            anyhow!("no operator overload for `{name}{right}`")
+                        })?
+                    }
+                    OperatorKind::Binary => {
+                        let args = [left, right];
+                        self.resolve_candidate_operators(candidates, &args)?.ok_or_else(|| {
+                            let [left, right] = args;
+                            anyhow!("no operator overload for `{left} {name} {right}`")
+                        })?
+                    }
+                };
+
+                Ok(operator)
             })
-            .peekable();
-
-        if candidates.peek()?.is_none() {
-            return Err(unbound!(Operator, name));
-        }
-
-        let operator = match kind {
-            OperatorKind::Unary => {
-                let args = [right];
-                self.resolve_candidate_operators(candidates, &args)?.ok_or_else(|| {
-                    let [right] = args;
-                    anyhow!("no operator overload for `{name}{right}`")
-                })?
-            }
-            OperatorKind::Binary => {
-                let args = [left, right];
-                self.resolve_candidate_operators(candidates, &args)?.ok_or_else(|| {
-                    let [left, right] = args;
-                    anyhow!("no operator overload for `{left} {name} {right}`")
-                })?
-            }
-        };
-
-        Ok(operator)
+            .map(|entry| entry.value().clone())
     }
 
     fn resolve_function(&mut self, path: &Path, args: &[LogicalType]) -> Result<ir::MonoFunction> {
-        let (functions, namespace, name) = self.get_namespaced_entity_view::<Function>(path)?;
-        let mut candidates = functions
-            .as_ref()
-            .scan(..)?
-            .filter(|f| {
-                Ok(f.parent_oid(self.catalog, self.tx)?.unwrap() == namespace.key()
-                    && f.name() == name)
+        self.tcx
+            .binder_caches()
+            .functions
+            .entry((path.clone(), args.into()))
+            .or_try_insert_with(|| {
+                let (functions, namespace, name) =
+                    self.get_namespaced_entity_view::<Function>(path)?;
+                let mut candidates = functions
+                    .as_ref()
+                    .scan(..)?
+                    .filter(|f| {
+                        Ok(f.parent_oid(self.catalog, self.tcx)?.unwrap() == namespace.key()
+                            && f.name() == name)
+                    })
+                    .peekable();
+
+                if candidates.peek()?.is_none() {
+                    return Err(unbound!(Function, path));
+                }
+
+                let function =
+                    self.resolve_candidate_functions(candidates, args)?.ok_or_else(|| {
+                        anyhow!(
+                            "no `{path}` function overload matches argument types ({})",
+                            args.iter().format(", ")
+                        )
+                    })?;
+
+                Ok(function)
             })
-            .peekable();
-
-        if candidates.peek()?.is_none() {
-            return Err(unbound!(Function, path));
-        }
-
-        let function = self.resolve_candidate_functions(candidates, args)?.ok_or_else(|| {
-            anyhow!(
-                "no `{path}` function overload matches argument types ({})",
-                args.iter().format(", ")
-            )
-        })?;
-
-        Ok(function)
+            .map(|entry| entry.value().clone())
     }
 
     // Ensure that all expressions have compatible types.
