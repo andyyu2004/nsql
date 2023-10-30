@@ -29,10 +29,8 @@ SELECT * FROM t ORDER BY y, x DESC
 3 4
 5 6
 
-query error
+query error column `z` not in scope
 SELECT * FROM t ORDER BY z DESC
-----
-column `z` not in scope
 
 # can access alias in order by
 query I
@@ -60,7 +58,5 @@ SELECT x AS s FROM (VALUES(1), (2)) AS t(x) ORDER BY 1 DESC
 1
 
 
-query error
+query error order index out of range, should be between 1 and 1
 SELECT x AS s FROM (VALUES(1), (2)) AS t(x) ORDER BY 2 DESC
-----
-order index out of range, should be between 1 and 1

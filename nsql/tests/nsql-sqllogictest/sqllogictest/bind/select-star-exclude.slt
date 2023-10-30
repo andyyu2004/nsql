@@ -5,7 +5,5 @@ SELECT * EXCLUDE (letter) FROM (VALUES (1, 'one'), (2, 'two'), (3, 'three')) AS 
 2
 3
 
-query error
+query error selection list is empty after excluding columns
 SELECT * EXCLUDE (num, letter) FROM (VALUES (1, 'one'), (2, 'two'), (3, 'three')) AS t (num, letter)
-----
-selection list is empty after excluding columns

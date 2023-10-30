@@ -13,7 +13,5 @@ query B
 SELECT x FROM t WHERE NULL;
 ----
 
-query error
+query error expected predicate type of WHERE to be of type bool, got type int
 SELECT x FROM t WHERE 1;
-----
-expected predicate type of WHERE to be of type bool, got type int

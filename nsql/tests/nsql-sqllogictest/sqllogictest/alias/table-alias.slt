@@ -16,10 +16,8 @@ SELECT u.x FROM t AS u;
 statement error
 SELECT u.x FROM t AS u(t);
 
-statement error
+statement error table `t` has 1 columns, but 2 columns were specified in alias
 SELECT u.x FROM t AS u(t, u);
-----
-table `t` has 1 columns, but 2 columns were specified in alias
 
 statement ok
 SELECT u.t FROM t AS u(t);

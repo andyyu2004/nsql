@@ -8,18 +8,14 @@ SELECT 1 = 1
 ----
 true
 
-query error
+query error no operator overload for `int = boolean`
 SELECT 1 = false
-----
-no operator overload for `int = boolean`
 
 query I
 SELECT NOT false
 ----
 true
 
-query error
+query error no operator overload for `!int`
 SELECT NOT 1
-----
-no operator overload for `!int`
 

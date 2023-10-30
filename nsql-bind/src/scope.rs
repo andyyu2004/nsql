@@ -60,13 +60,13 @@ impl Scope {
     /// Otherwise, add a new table and its columns to the scope.
     pub fn bind_table<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
         &self,
-        binder: &Binder<'_, 'env, 'txn, S, M>,
+        binder: &mut Binder<'_, 'env, 'txn, S, M>,
         path: &Path,
         alias: Option<&TableAlias>,
     ) -> Result<(Scope, TableBinding)> {
         match path {
             Path::Unqualified(name)
-                if let Some((kind, scope, plan)) = binder.ctes.borrow().get(name) =>
+                if let Some((kind, scope, plan)) = binder.ctes.get(name) =>
             {
                 match kind {
                     CteKind::Inline => Ok((scope.clone(), TableBinding::InlineCte(plan.clone()))),
@@ -87,7 +87,7 @@ impl Scope {
     #[tracing::instrument(skip(self, binder))]
     pub fn bind_base_table<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
         &self,
-        binder: &Binder<'_, 'env, 'txn, S, M>,
+        binder: &mut Binder<'_, 'env, 'txn, S, M>,
         path: &Path,
         alias: Option<&TableAlias>,
     ) -> Result<(Scope, Oid<Table>)> {

@@ -22,16 +22,12 @@ SELECT 1 FROM (VALUES (1), (2), (3)) LIMIT NULL
 1
 1
 
-
 query I
 SELECT 1 FROM (VALUES (1), (2), (3)) LIMIT 1.7
 ----
 1
 
-
-query error
+query error column `x` not in scope
 SELECT x FROM (VALUES (1), (2), (3)) AS t(x) LIMIT x
-----
-column `x` not in scope
 
 

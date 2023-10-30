@@ -5,15 +5,11 @@ SELECT * FROM UNNEST([1, 2, 3])
 2
 3
 
-query error
+query error UNNEST expression must be an array
 SELECT * FROM UNNEST(null)
-----
-UNNEST expression must be an array
 
-query error
+query error UNNEST expression must be an array
 SELECT * FROM UNNEST(1)
-----
-UNNEST expression must be an array
 
 query I
 SELECT * FROM UNNEST(range(5, 8))

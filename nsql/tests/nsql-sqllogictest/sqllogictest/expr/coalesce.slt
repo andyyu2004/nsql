@@ -1,7 +1,5 @@
-query error 
+query error coalesce requires at least one argument
 SELECT COALESCE()
-----
-COALESCE requires at least one argument
 
 query I
 SELECT coalesce(1)

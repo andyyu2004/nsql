@@ -1,19 +1,13 @@
 
 # FIXME we should have a slightly better error message for these two
-query error
+query error aggregate functions are not allowed in this context
 SELECT x FROM (VALUES(1)) AS t(x) GROUP BY SUM(x)
-----
-aggregate not allowed here
 
-query error
+query error aggregate functions are not allowed in this context
 SELECT x FROM (VALUES(1)) AS t(x) WHERE SUM(x) = 2
-----
-aggregate not allowed here
 
-query error
+query error expression `t.x` must appear in the GROUP BY clause or be used in an aggregate function
 SELECT x+2 FROM (VALUES(1)) AS t(x) GROUP BY x + 1
-----
-expression `t.x` must appear in the GROUP BY clause or be used in an aggregate function
 
 query I
 SELECT x+1 FROM (VALUES(1)) t(x) GROUP BY x + 1
@@ -30,10 +24,8 @@ SELECT SUM(x), PRODUCT(x) FROM (VALUES(1), (2)) AS t(x);
 ----
 3 2
 
-query error
+query error expression `t.x` must appear in the GROUP BY clause or be used in an aggregate function
 SELECT x, SUM(x) FROM (VALUES(1), (2)) AS t(x);
-----
-expression `t.x` must appear in the GROUP BY clause or be used in an aggregate function
 
 query II
 SELECT 42, SUM(x) FROM (VALUES(1), (2)) AS t(x);

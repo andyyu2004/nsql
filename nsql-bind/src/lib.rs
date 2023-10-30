@@ -6,7 +6,6 @@ mod function;
 mod scope;
 mod select;
 
-use std::cell::RefCell;
 use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
 use std::str::FromStr;
@@ -31,7 +30,7 @@ use self::select::SelectBinder;
 pub struct Binder<'a, 'env, 'txn, S, M> {
     catalog: Catalog<'env, S>,
     tx: &'a dyn TransactionContext<'env, 'txn, S, M>,
-    ctes: RefCell<HashMap<Name, CteMeta>>,
+    ctes: HashMap<Name, CteMeta>,
 }
 
 type CteMeta = (CteKind, Scope, Box<ir::QueryPlan>);
@@ -59,7 +58,7 @@ impl<'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
         Self { catalog, tx, ctes: Default::default() }
     }
 
-    pub fn bind(&self, stmt: &ast::Statement) -> Result<Box<ir::Plan>> {
+    pub fn bind(&mut self, stmt: &ast::Statement) -> Result<Box<ir::Plan>> {
         let scope = &Scope::default();
         let plan = match stmt {
             ast::Statement::CreateSchema { schema_name, if_not_exists } => {
@@ -404,7 +403,7 @@ impl<'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     }
 
     fn build_table_scan(
-        &self,
+        &mut self,
         table: Oid<Table>,
         projection: Option<Box<[ColumnIndex]>>,
     ) -> Result<Box<ir::QueryPlan>> {
@@ -422,7 +421,7 @@ impl<'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     }
 
     fn bind_assignments(
-        &self,
+        &mut self,
         scope: &Scope,
         table: Oid<Table>,
         assignments: &[ast::Assignment],
@@ -473,7 +472,7 @@ impl<'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     }
 
     fn lower_table_constraints(
-        &self,
+        &mut self,
         column_defs: &[ast::ColumnDef],
         constraints: &[ast::TableConstraint],
     ) -> Result<Vec<PrimaryKeyConstraint>> {
@@ -509,7 +508,7 @@ impl<'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     }
 
     fn lower_columns(
-        &self,
+        &mut self,
         table_path: &Path,
         columns: &[ast::ColumnDef],
         mut primary_key_constraints: Vec<PrimaryKeyConstraint>,
@@ -581,7 +580,7 @@ impl<'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
         Ok(columns)
     }
 
-    fn lower_ty(&self, ty: &ast::DataType) -> Result<LogicalType> {
+    fn lower_ty(&mut self, ty: &ast::DataType) -> Result<LogicalType> {
         match ty {
             ast::DataType::Int(width) | ast::DataType::Integer(width) if width.is_none() => {
                 Ok(LogicalType::Int64)
@@ -612,7 +611,7 @@ impl<'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
         }
     }
 
-    fn bind_namespace(&self, path: &Path) -> Result<Namespace> {
+    fn bind_namespace(&mut self, path: &Path) -> Result<Namespace> {
         match path {
             Path::Qualified(QPath { prefix, .. }) => match prefix.as_ref() {
                 Path::Qualified(QPath { .. }) => not_implemented!("qualified schemas"),
@@ -635,9 +634,9 @@ impl<'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
 
     #[allow(clippy::type_complexity)]
     fn get_namespaced_entity_view<T: SystemEntity<Parent = Namespace>>(
-        &self,
+        &mut self,
         path: &Path,
-    ) -> Result<(Bow<'_, SystemTableView<'env, 'txn, S, M, T>>, Namespace, Name)> {
+    ) -> Result<(Bow<'a, SystemTableView<'env, 'txn, S, M, T>>, Namespace, Name)> {
         match path {
             Path::Unqualified(name) => self.get_namespaced_entity_view::<T>(&Path::qualified(
                 Path::Unqualified(MAIN_SCHEMA_PATH.into()),
@@ -660,10 +659,10 @@ impl<'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     }
 
     /// bind an entity that lives within a namespace and whose name uniquely identifies it within the namespace
-    fn bind_namespaced_entity<T: SystemEntity<Parent = Namespace, SearchKey = Name>>(
-        &self,
-        path: &Path,
-    ) -> Result<T> {
+    fn bind_namespaced_entity<T>(&mut self, path: &Path) -> Result<T>
+    where
+        T: SystemEntity<Parent = Namespace, SearchKey = Name> + 'a,
+    {
         let (table, namespace, name) = self.get_namespaced_entity_view::<T>(path)?;
         let entity = table
             .as_ref()
@@ -673,7 +672,7 @@ impl<'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
         Ok(entity)
     }
 
-    fn lower_path(&self, name: &[ast::Ident]) -> Result<Path> {
+    fn lower_path(&mut self, name: &[ast::Ident]) -> Result<Path> {
         // FIXME naive impl for now
         match name {
             [] => unreachable!("empty name?"),
@@ -685,14 +684,18 @@ impl<'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     }
 
     fn bind_subquery(
-        &self,
+        &mut self,
         scope: &Scope,
         subquery: &ast::Query,
     ) -> Result<(Scope, Box<ir::QueryPlan>)> {
         self.bind_query(&scope.subscope(), subquery)
     }
 
-    fn bind_query(&self, scope: &Scope, query: &ast::Query) -> Result<(Scope, Box<ir::QueryPlan>)> {
+    fn bind_query(
+        &mut self,
+        scope: &Scope,
+        query: &ast::Query,
+    ) -> Result<(Scope, Box<ir::QueryPlan>)> {
         let ast::Query { with, body, order_by, limit, offset, fetch, locks, limit_by } = query;
         not_implemented_if!(offset.is_some());
         not_implemented_if!(fetch.is_some());
@@ -733,7 +736,7 @@ impl<'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     }
 
     fn bind_table_expr(
-        &self,
+        &mut self,
         scope: &Scope,
         body: &ast::SetExpr,
         order_by: &[ast::OrderByExpr],
@@ -797,7 +800,7 @@ impl<'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
         Ok((scope, expr))
     }
 
-    fn bind_create_sequence(&self, seq: &CreateSequenceInfo<'_>) -> Result<Box<ir::QueryPlan>> {
+    fn bind_create_sequence(&mut self, seq: &CreateSequenceInfo<'_>) -> Result<Box<ir::QueryPlan>> {
         // This is the plan to create the underlying sequence data table.
         let create_seq_table_plan = self.bind_create_table(
             seq.namespace,
@@ -848,7 +851,7 @@ impl<'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     }
 
     fn bind_update(
-        &self,
+        &mut self,
         scope: &Scope,
         stmt: &ast::Statement,
     ) -> Result<(Scope, Box<ir::QueryPlan>)> {
@@ -899,7 +902,7 @@ impl<'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     }
 
     fn bind_create_table(
-        &self,
+        &mut self,
         namespace: &Namespace,
         table_name: Name,
         columns: Vec<CreateColumnInfo>,
@@ -1060,7 +1063,7 @@ impl<'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     }
 
     fn bind_insert(
-        &self,
+        &mut self,
         scope: &Scope,
         stmt: &ast::Statement,
     ) -> Result<(Scope, Box<ir::QueryPlan>)> {
@@ -1195,7 +1198,7 @@ impl<'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     }
 
     fn bind_select(
-        &self,
+        &mut self,
         scope: &Scope,
         select: &ast::Select,
         order_by: &[ast::OrderByExpr],
@@ -1263,7 +1266,7 @@ impl<'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     }
 
     fn bind_joint_tables(
-        &self,
+        &mut self,
         scope: &Scope,
         tables: &ast::TableWithJoins,
     ) -> Result<(Scope, Box<ir::QueryPlan>)> {
@@ -1277,7 +1280,7 @@ impl<'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     }
 
     fn bind_join(
-        &self,
+        &mut self,
         lhs_scope: &Scope,
         lhs: Box<ir::QueryPlan>,
         join: &ast::Join,
@@ -1322,7 +1325,7 @@ impl<'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     }
 
     fn bind_table_factor(
-        &self,
+        &mut self,
         scope: &Scope,
         table: &ast::TableFactor,
     ) -> Result<(Scope, Box<ir::QueryPlan>)> {
@@ -1380,7 +1383,7 @@ impl<'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     }
 
     fn bind_table(
-        &self,
+        &mut self,
         scope: &Scope,
         path: &Path,
         alias: Option<&ast::TableAlias>,
@@ -1390,7 +1393,7 @@ impl<'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     }
 
     fn bind_base_table(
-        &self,
+        &mut self,
         scope: &Scope,
         table_name: &ast::ObjectName,
         alias: Option<&ast::TableAlias>,
@@ -1400,18 +1403,18 @@ impl<'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
         scope.bind_base_table(self, &path, alias.as_ref())
     }
 
-    fn lower_table_alias(&self, alias: &ast::TableAlias) -> TableAlias {
+    fn lower_table_alias(&mut self, alias: &ast::TableAlias) -> TableAlias {
         TableAlias {
             table_name: self.lower_name(&alias.name),
             columns: alias.columns.iter().map(|col| self.lower_name(col)).collect::<Vec<_>>(),
         }
     }
 
-    fn lower_name(&self, name: &ast::Ident) -> Name {
+    fn lower_name(&mut self, name: &ast::Ident) -> Name {
         name.value.as_str().into()
     }
 
-    fn bind_select_item(&self, scope: &Scope, item: &ast::SelectItem) -> Result<Vec<ir::Expr>> {
+    fn bind_select_item(&mut self, scope: &Scope, item: &ast::SelectItem) -> Result<Vec<ir::Expr>> {
         let expr = match item {
             ast::SelectItem::UnnamedExpr(expr) => self.bind_expr(scope, expr)?,
             ast::SelectItem::ExprWithAlias { expr, alias } => {
@@ -1450,7 +1453,7 @@ impl<'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
         Ok(vec![expr])
     }
 
-    fn bind_values(&self, scope: &Scope, values: &ast::Values) -> Result<(Scope, ir::Values)> {
+    fn bind_values(&mut self, scope: &Scope, values: &ast::Values) -> Result<(Scope, ir::Values)> {
         assert!(!values.rows.is_empty(), "values can't be empty");
 
         let expected_cols = values.rows[0].len();
@@ -1476,11 +1479,11 @@ impl<'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
         Ok((scope.bind_values(&values), values))
     }
 
-    fn bind_row(&self, scope: &Scope, row: &[ast::Expr]) -> Result<Box<[ir::Expr]>> {
+    fn bind_row(&mut self, scope: &Scope, row: &[ast::Expr]) -> Result<Box<[ir::Expr]>> {
         row.iter().map(|expr| self.bind_expr(scope, expr)).collect()
     }
 
-    fn bind_predicate(&self, scope: &Scope, predicate: &ast::Expr) -> Result<ir::Expr> {
+    fn bind_predicate(&mut self, scope: &Scope, predicate: &ast::Expr) -> Result<ir::Expr> {
         let predicate = self.bind_expr(scope, predicate)?;
         // We intentionally are being strict here and only allow boolean predicates rather than
         // anything that can be cast to a boolean.
@@ -1494,55 +1497,14 @@ impl<'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     }
 
     fn bind_ident(
-        &self,
+        &mut self,
         scope: &Scope,
         ident: &ast::Ident,
     ) -> Result<(LogicalType, ir::ColumnRef)> {
         scope.lookup_column(&Path::Unqualified(ident.value.clone().into()))
     }
 
-    fn bind_function(&self, scope: &Scope, f: &ast::Function) -> Result<ir::Expr> {
-        let ast::Function { name, args, over, distinct, special, order_by } = f;
-        not_implemented_if!(over.is_some());
-        not_implemented_if!(*distinct);
-        not_implemented_if!(*special);
-        not_implemented_if!(!order_by.is_empty());
-
-        if f.name.0.len() == 1 && f.name.0[0].value.to_lowercase() == "coalesce" {
-            let ast::Function { name: _, args, over, distinct, special, order_by } = f;
-            // should probably give a more specific error for coalesce
-            not_implemented_if!(over.is_some());
-            not_implemented_if!(*distinct);
-            not_implemented_if!(*special);
-            not_implemented_if!(!order_by.is_empty());
-
-            ensure!(!args.is_empty(), "coalesce requires at least one argument");
-
-            let args = self.bind_args(scope, args)?;
-            let ty = self
-                .ensure_exprs_have_compat_types(&args)
-                .map_err(|(expected, actual)| {
-                    anyhow!(
-                        "`coalesce` arguments must have compatible types: expected type {expected}, got {actual}",
-                    )
-                })?
-                // if all arguments are `NULL` then default to the `NULL` type
-                .unwrap_or(LogicalType::Null);
-            return Ok(ir::Expr { ty, kind: ir::ExprKind::Coalesce(args) });
-        }
-
-        let args = self.bind_args(scope, args)?;
-        let arg_types = args.iter().map(|arg| arg.ty.clone()).collect::<Box<_>>();
-        let path = self.lower_path(&name.0)?;
-        let function = self.resolve_function(&path, &arg_types)?;
-
-        Ok(ir::Expr {
-            ty: function.return_type(),
-            kind: ir::ExprKind::FunctionCall { function, args },
-        })
-    }
-
-    fn bind_args(&self, scope: &Scope, args: &[ast::FunctionArg]) -> Result<Box<[ir::Expr]>> {
+    fn bind_args(&mut self, scope: &Scope, args: &[ast::FunctionArg]) -> Result<Box<[ir::Expr]>> {
         let args = args
             .iter()
             // filter out any wildcard parameters, we just treat it like it's not there for now
@@ -1568,7 +1530,7 @@ impl<'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     }
 
     fn bind_unary_operator(
-        &self,
+        &mut self,
         name: &'static str,
         operand: LogicalType,
     ) -> Result<ir::MonoOperator> {
@@ -1576,7 +1538,7 @@ impl<'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     }
 
     fn bind_binary_operator(
-        &self,
+        &mut self,
         name: &'static str,
         left: LogicalType,
         right: LogicalType,
@@ -1585,7 +1547,7 @@ impl<'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     }
 
     fn bind_operator(
-        &self,
+        &mut self,
         name: &'static str,
         kind: OperatorKind,
         left: LogicalType,
@@ -1641,7 +1603,7 @@ impl<'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
         Ok(operator)
     }
 
-    fn resolve_function(&self, path: &Path, args: &[LogicalType]) -> Result<ir::MonoFunction> {
+    fn resolve_function(&mut self, path: &Path, args: &[LogicalType]) -> Result<ir::MonoFunction> {
         let (functions, namespace, name) = self.get_namespaced_entity_view::<Function>(path)?;
         let mut candidates = functions
             .as_ref()
@@ -1666,351 +1628,9 @@ impl<'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
         Ok(function)
     }
 
-    fn walk_expr(
-        &self,
-        scope: &Scope,
-        expr: &ast::Expr,
-        mut f: impl FnMut(&ast::Expr) -> Result<ir::Expr>,
-    ) -> Result<ir::Expr> {
-        let (ty, kind) = match expr {
-            ast::Expr::Value(literal) => return Ok(self.bind_value_expr(literal)),
-            ast::Expr::Nested(expr) => return self.walk_expr(scope, expr, f),
-            ast::Expr::Identifier(ident) => {
-                let (ty, col) = self.bind_ident(scope, ident)?;
-                (ty, ir::ExprKind::ColumnRef(col))
-            }
-            ast::Expr::CompoundIdentifier(ident) => {
-                let path = self.lower_path(ident)?;
-                let (ty, col) = scope.lookup_column(&path)?;
-                (ty, ir::ExprKind::ColumnRef(col))
-            }
-            ast::Expr::UnaryOp { op, expr } => return self.bind_unary_expr(op, expr, &mut f),
-            ast::Expr::BinaryOp { left, op, right } => {
-                let op = match op {
-                    ast::BinaryOperator::Eq => Operator::EQ,
-                    ast::BinaryOperator::NotEq => Operator::NEQ,
-                    ast::BinaryOperator::Plus => Operator::PLUS,
-                    ast::BinaryOperator::Minus => Operator::MINUS,
-                    ast::BinaryOperator::Lt => Operator::LT,
-                    ast::BinaryOperator::LtEq => Operator::LTE,
-                    ast::BinaryOperator::GtEq => Operator::GTE,
-                    ast::BinaryOperator::Gt => Operator::GT,
-                    ast::BinaryOperator::Multiply => Operator::STAR,
-                    ast::BinaryOperator::Divide => Operator::SLASH,
-                    // the compiler should special case these operators and implement short circuiting
-                    ast::BinaryOperator::And => Operator::AND,
-                    ast::BinaryOperator::Or => Operator::OR,
-                    ast::BinaryOperator::Xor
-                    | ast::BinaryOperator::StringConcat
-                    | ast::BinaryOperator::Spaceship
-                    | ast::BinaryOperator::BitwiseOr
-                    | ast::BinaryOperator::BitwiseAnd
-                    | ast::BinaryOperator::BitwiseXor
-                    | ast::BinaryOperator::PGBitwiseXor
-                    | ast::BinaryOperator::PGBitwiseShiftLeft
-                    | ast::BinaryOperator::PGBitwiseShiftRight
-                    | ast::BinaryOperator::PGExp
-                    | ast::BinaryOperator::PGRegexMatch
-                    | ast::BinaryOperator::PGRegexIMatch
-                    | ast::BinaryOperator::PGRegexNotMatch
-                    | ast::BinaryOperator::PGRegexNotIMatch
-                    | ast::BinaryOperator::PGCustomBinaryOperator(_) => {
-                        bail!("unsupported binary operator: {:?}", op)
-                    }
-                    _ => bail!("unsupported binary operator: {:?}", op),
-                };
-                return self.bind_binary_expr(op, left, right, &mut f);
-            }
-            ast::Expr::IsDistinctFrom(lhs, rhs) => {
-                return self.bind_binary_expr(Operator::IS_DISTINCT_FROM, lhs, rhs, f);
-            }
-            ast::Expr::IsNotDistinctFrom(lhs, rhs) => {
-                return self.bind_binary_expr(Operator::IS_NOT_DISTINCT_FROM, lhs, rhs, f);
-            }
-            // Implement `x IS NULL` as `x IS NOT DISTINCT FROM NULL` for now although this is not quite spec compliant.
-            // https://stackoverflow.com/questions/58997907/is-there-a-difference-between-is-null-and-is-not-distinct-from-null
-            ast::Expr::IsNull(expr) => {
-                let expr = Box::new(f(expr)?);
-                let operator = self.bind_binary_operator(
-                    Operator::IS_NOT_DISTINCT_FROM,
-                    expr.ty(),
-                    expr.ty(),
-                )?;
-                let ty = expr.ty();
-                (
-                    operator.return_type(),
-                    ir::ExprKind::BinaryOperator {
-                        operator,
-                        lhs: expr,
-                        rhs: Box::new(ir::Expr {
-                            ty,
-                            kind: ir::ExprKind::Literal(ir::Value::Null),
-                        }),
-                    },
-                )
-            }
-            ast::Expr::IsNotNull(expr) => {
-                let expr = Box::new(f(expr)?);
-                let operator =
-                    self.bind_binary_operator(Operator::IS_DISTINCT_FROM, expr.ty(), expr.ty())?;
-                let ty = expr.ty();
-                (
-                    operator.return_type(),
-                    ir::ExprKind::BinaryOperator {
-                        operator,
-                        lhs: expr,
-                        rhs: Box::new(ir::Expr {
-                            ty,
-                            kind: ir::ExprKind::Literal(ir::Value::Null),
-                        }),
-                    },
-                )
-            }
-            ast::Expr::Between { expr, negated, low, high } => {
-                if *negated {
-                    return self.walk_expr(
-                        scope,
-                        &ast::Expr::UnaryOp {
-                            op: ast::UnaryOperator::Not,
-                            expr: Box::new(ast::Expr::Between {
-                                expr: expr.clone(),
-                                negated: false,
-                                low: low.clone(),
-                                high: high.clone(),
-                            }),
-                        },
-                        f,
-                    );
-                }
-
-                // implement `BETWEEN` as it's own function rather than desugaring to `x >= low AND x <= high` for potential efficiency gains
-                let expr = f(expr)?;
-                let low = f(low)?;
-                let high = f(high)?;
-                let args = [expr.ty(), low.ty(), high.ty()];
-                let function =
-                    self.resolve_function(&Path::qualified(MAIN_SCHEMA_PATH, "between"), &args)?;
-                (
-                    function.return_type(),
-                    ir::ExprKind::FunctionCall { function, args: [expr, low, high].into() },
-                )
-            }
-
-            ast::Expr::Cast { expr, data_type } => {
-                let expr = f(expr)?;
-                let target = self.lower_ty(data_type)?;
-                // We implement `CAST` by hacking operator overloading.
-                // We search for a cast function `(from, target) -> target` with the second parameter being a dummy argument.
-                let args = [expr.ty(), target];
-                let function =
-                    self.resolve_function(&Path::qualified(MAIN_SCHEMA_PATH, "cast"), &args)?;
-                let [_, target] = args;
-                (
-                    function.return_type(),
-                    ir::ExprKind::FunctionCall {
-                        function,
-                        args: [
-                            expr,
-                            // just pass null as the dummy argument as it is unused
-                            ir::Expr { ty: target, kind: ir::ExprKind::Literal(ir::Value::Null) },
-                        ]
-                        .into(),
-                    },
-                )
-            }
-            ast::Expr::Array(array) => {
-                let exprs = array.elem.iter().map(f).collect::<Result<Box<_>, _>>()?;
-                let ty =
-                    self.ensure_exprs_have_compat_types(&exprs).map_err(|(actual, expected)| {
-                        anyhow!(
-                            "cannot create array of type {expected} with element of type {actual}",
-                        )
-                    })?;
-
-                // default type to `Int64` if there are no non-null elements
-                let ty = ty.unwrap_or(LogicalType::Int64);
-                (LogicalType::Array(Box::new(ty)), ir::ExprKind::Array(exprs))
-            }
-            ast::Expr::Function(f) => {
-                let expr = self.bind_function(scope, f)?;
-                match expr.kind {
-                    ir::ExprKind::FunctionCall { function, .. }
-                        if matches!(function.kind(), FunctionKind::Aggregate) =>
-                    {
-                        // fixme better message
-                        bail!("aggregate function not allowed here")
-                    }
-                    kind => (expr.ty, kind),
-                }
-            }
-            ast::Expr::Subquery(subquery) => {
-                let (_, plan) = self.bind_subquery(scope, subquery)?;
-                return ir::Expr::scalar_subquery(plan);
-            }
-            ast::Expr::Exists { subquery, negated } => {
-                // `NOT EXISTS (subquery)` is literally `NOT (EXISTS (subquery))` so do that transformation
-                if *negated {
-                    return self.walk_expr(
-                        scope,
-                        &ast::Expr::UnaryOp {
-                            op: ast::UnaryOperator::Not,
-                            expr: Box::new(ast::Expr::Exists {
-                                subquery: subquery.clone(),
-                                negated: false,
-                            }),
-                        },
-                        f,
-                    );
-                }
-
-                let (_scope, plan) = self.bind_subquery(scope, subquery)?;
-                (LogicalType::Bool, ir::ExprKind::Subquery(ir::SubqueryKind::Exists, plan))
-            }
-            ast::Expr::InList { expr, list, negated } => {
-                assert!(!list.is_empty(), "this should be syntactically invalid");
-                // x IN (x1..xn) is desugared into `x = x1 OR .. OR x = xn`. This maintains the desired NULL behaviour.
-                // x NOT IN (x1..xn) => `x <> x1 AND .. AND x <> xn`
-                // https://www.postgresql.org/docs/current/functions-comparisons.html#FUNCTIONS-COMPARISONS-NOT-IN
-
-                let op =
-                    if *negated { ast::BinaryOperator::NotEq } else { ast::BinaryOperator::Eq };
-
-                let desugared = list.iter().skip(1).cloned().fold(
-                    ast::Expr::BinaryOp {
-                        left: expr.clone(),
-                        op,
-                        right: Box::new(list[0].clone()),
-                    },
-                    |acc, x| ast::Expr::BinaryOp {
-                        left: Box::new(acc),
-                        op: if *negated {
-                            ast::BinaryOperator::And
-                        } else {
-                            ast::BinaryOperator::Or
-                        },
-                        right: Box::new(ast::Expr::BinaryOp {
-                            left: expr.clone(),
-                            op: if *negated {
-                                ast::BinaryOperator::NotEq
-                            } else {
-                                ast::BinaryOperator::Eq
-                            },
-                            right: Box::new(x),
-                        }),
-                    },
-                );
-
-                let expr = self.walk_expr(scope, &desugared, f)?;
-                assert_eq!(
-                    expr.ty,
-                    LogicalType::Bool,
-                    "expected desugared IN expr to evaluate to bool ({expr})"
-                );
-
-                return Ok(expr);
-            }
-            ast::Expr::Case { operand, conditions, results, else_result } => {
-                assert_eq!(conditions.len(), results.len());
-                assert!(!conditions.is_empty());
-
-                let scrutinee = match operand {
-                    Some(scrutinee) => f(scrutinee)?,
-                    // if there is no scrutinee, we can just use a literal `true` to compare each branch against
-                    None => literal(true),
-                };
-
-                let cases = conditions
-                    .iter()
-                    .zip(results)
-                    .map(|(when, then)| {
-                        let when = f(when)?;
-                        ensure!(
-                            when.ty == scrutinee.ty,
-                            "case condition must match type of scrutinee, expected `{}`, got `{}`",
-                            scrutinee.ty,
-                            when.ty
-                        );
-
-                        let then = f(then)?;
-                        Ok(ir::Case { when, then })
-                    })
-                    .collect::<Result<Box<_>, _>>()?;
-
-                let else_result = else_result.as_ref().map(|r| f(r).map(Box::new)).transpose()?;
-
-                let mut result_type: LogicalType = cases[0].then.ty.clone();
-                for expr in
-                    cases.iter().map(|case| &case.then).chain(else_result.iter().map(AsRef::as_ref))
-                {
-                    let expr: &ir::Expr = expr;
-                    result_type = result_type.common_supertype(&expr.ty).ok_or_else(|| {
-                        anyhow!(
-                            "all case results must have the same type, expected `{}`, got `{}`",
-                            result_type,
-                            expr.ty
-                        )
-                    })?;
-                }
-
-                (
-                    result_type,
-                    ir::ExprKind::Case { scrutinee: Box::new(scrutinee), cases, else_result },
-                )
-            }
-            _ => todo!("todo expr: {:?}", expr),
-        };
-
-        Ok(ir::Expr { ty, kind })
-    }
-
-    fn bind_unary_expr(
-        &self,
-        op: &ast::UnaryOperator,
-        expr: &ast::Expr,
-        mut f: impl FnMut(&ast::Expr) -> Result<ir::Expr>,
-    ) -> Result<ir::Expr> {
-        let bound_expr = f(expr)?;
-        let expr = Box::new(bound_expr);
-
-        let op = match op {
-            ast::UnaryOperator::Plus => todo!(),
-            ast::UnaryOperator::Minus => Operator::MINUS,
-            ast::UnaryOperator::Not => Operator::NOT,
-            ast::UnaryOperator::PGBitwiseNot => todo!(),
-            ast::UnaryOperator::PGSquareRoot => todo!(),
-            ast::UnaryOperator::PGCubeRoot => todo!(),
-            ast::UnaryOperator::PGPostfixFactorial => todo!(),
-            ast::UnaryOperator::PGPrefixFactorial => todo!(),
-            ast::UnaryOperator::PGAbs => todo!(),
-        };
-
-        let operator = self.bind_unary_operator(op, expr.ty())?;
-        let ty = operator.return_type();
-        let kind = ir::ExprKind::UnaryOperator { operator, expr };
-
-        Ok(ir::Expr { ty, kind })
-    }
-
-    fn bind_binary_expr(
-        &self,
-        op: &'static str,
-        lhs: &ast::Expr,
-        rhs: &ast::Expr,
-        mut f: impl FnMut(&ast::Expr) -> Result<ir::Expr>,
-    ) -> Result<ir::Expr> {
-        let lhs = Box::new(f(lhs)?);
-        let rhs = Box::new(f(rhs)?);
-
-        let operator = self.bind_binary_operator(op, lhs.ty(), rhs.ty())?;
-        let ty = operator.return_type();
-        let kind = ir::ExprKind::BinaryOperator { operator, lhs, rhs };
-
-        Ok(ir::Expr { ty, kind })
-    }
-
     // Ensure that all expressions have compatible types.
     fn ensure_exprs_have_compat_types(
-        &self,
+        &mut self,
         exprs: &[ir::Expr],
     ) -> Result<Option<LogicalType>, (LogicalType, LogicalType)> {
         let mut expected_ty = None;
@@ -2027,16 +1647,16 @@ impl<'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
         Ok(expected_ty)
     }
 
-    fn bind_expr(&self, scope: &Scope, expr: &ast::Expr) -> Result<ir::Expr> {
-        self.walk_expr(scope, expr, |expr| self.bind_expr(scope, expr))
-    }
+    // fn bind_expr(&mut self, scope: &Scope, expr: &ast::Expr) -> Result<ir::Expr> {
+    //     self.walk_expr(scope, expr, |expr| self.bind_expr(scope, expr))
+    // }
 
-    fn bind_value_expr(&self, value: &ast::Value) -> ir::Expr {
+    fn bind_value_expr(&mut self, value: &ast::Value) -> ir::Expr {
         let value = self.bind_value(value);
         literal(value)
     }
 
-    fn bind_value(&self, val: &ast::Value) -> ir::Value {
+    fn bind_value(&mut self, val: &ast::Value) -> ir::Value {
         match val {
             ast::Value::Number(n, b) => {
                 assert!(!b, "what does this bool mean?");
@@ -2065,7 +1685,7 @@ impl<'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     }
 
     /// bind a cte, returning `Some(cte)` if the cte is materialized, and none otherwise
-    fn bind_cte(&self, scope: &Scope, cte: &ast::Cte) -> Result<Option<ir::Cte>> {
+    fn bind_cte(&mut self, scope: &Scope, cte: &ast::Cte) -> Result<Option<ir::Cte>> {
         let ast::Cte { alias, query, from, materialized } = cte;
         let materialized = materialized.unwrap_or(true);
         let kind = if materialized { CteKind::Materialized } else { CteKind::Inline };
@@ -2079,7 +1699,7 @@ impl<'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
         let name = Name::clone(&alias.table_name);
         let scope = cte_scope.alias(alias)?;
 
-        match self.ctes.borrow_mut().entry(Name::clone(&name)) {
+        match self.ctes.entry(Name::clone(&name)) {
             Entry::Occupied(_) => {
                 bail!("common table expression with name `{name}` specified more than once")
             }
@@ -2154,4 +1774,423 @@ struct CreateSequenceInfo<'a> {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 struct PrimaryKeyConstraint {
     column_indices: Vec<usize>,
+}
+
+impl<'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
+    ExprBinder<'a, 'env, 'txn, S, M> for Binder<'a, 'env, 'txn, S, M>
+{
+    fn binder(&mut self) -> &mut Binder<'a, 'env, 'txn, S, M> {
+        self
+    }
+
+    fn bind_function(&mut self, scope: &Scope, f: &ast::Function) -> Result<ir::Expr> {
+        let ast::Function { name, args, over, distinct, special, order_by } = f;
+        not_implemented_if!(over.is_some());
+        not_implemented_if!(*distinct);
+        not_implemented_if!(*special);
+        not_implemented_if!(!order_by.is_empty());
+
+        if f.name.0.len() == 1 && f.name.0[0].value.to_lowercase() == "coalesce" {
+            let ast::Function { name: _, args, over, distinct, special, order_by } = f;
+            // should probably give a more specific error for coalesce
+            not_implemented_if!(over.is_some());
+            not_implemented_if!(*distinct);
+            not_implemented_if!(*special);
+            not_implemented_if!(!order_by.is_empty());
+
+            ensure!(!args.is_empty(), "coalesce requires at least one argument");
+
+            let args = self.bind_args(scope, args)?;
+            let ty = self
+                .ensure_exprs_have_compat_types(&args)
+                .map_err(|(expected, actual)| {
+                    anyhow!(
+                        "`coalesce` arguments must have compatible types: expected type {expected}, got {actual}",
+                    )
+                })?
+                // if all arguments are `NULL` then default to the `NULL` type
+                .unwrap_or(LogicalType::Null);
+            return Ok(ir::Expr { ty, kind: ir::ExprKind::Coalesce(args) });
+        }
+
+        let args = self.bind_args(scope, args)?;
+        let arg_types = args.iter().map(|arg| arg.ty.clone()).collect::<Box<_>>();
+        let path = self.lower_path(&name.0)?;
+        let function = self.resolve_function(&path, &arg_types)?;
+
+        Ok(ir::Expr {
+            ty: function.return_type(),
+            kind: ir::ExprKind::FunctionCall { function, args },
+        })
+    }
+}
+
+trait ExprBinder<'a, 'env: 'txn, 'txn: 'a, S: StorageEngine, M: ExecutionMode<'env, S>> {
+    fn binder(&mut self) -> &mut Binder<'a, 'env, 'txn, S, M>;
+
+    fn bind_expr(&mut self, scope: &Scope, expr: &ast::Expr) -> Result<ir::Expr> {
+        self.walk_expr(scope, expr)
+    }
+
+    fn bind_function(&mut self, scope: &Scope, f: &ast::Function) -> Result<ir::Expr>;
+
+    fn bind_select_item(&mut self, scope: &Scope, item: &ast::SelectItem) -> Result<Vec<ir::Expr>> {
+        let expr = match item {
+            ast::SelectItem::UnnamedExpr(expr) => self.bind_expr(scope, expr)?,
+            ast::SelectItem::ExprWithAlias { expr, alias } => {
+                self.bind_expr(scope, expr)?.alias(&alias.value)
+            }
+            _ => return self.binder().bind_select_item(scope, item),
+        };
+
+        Ok(vec![expr])
+    }
+
+    fn bind_unary_expr(
+        &mut self,
+        scope: &Scope,
+        op: &ast::UnaryOperator,
+        expr: &ast::Expr,
+    ) -> Result<ir::Expr> {
+        let bound_expr = self.bind_expr(scope, expr)?;
+        let expr = Box::new(bound_expr);
+
+        let op = match op {
+            ast::UnaryOperator::Plus => todo!(),
+            ast::UnaryOperator::Minus => Operator::MINUS,
+            ast::UnaryOperator::Not => Operator::NOT,
+            ast::UnaryOperator::PGBitwiseNot => todo!(),
+            ast::UnaryOperator::PGSquareRoot => todo!(),
+            ast::UnaryOperator::PGCubeRoot => todo!(),
+            ast::UnaryOperator::PGPostfixFactorial => todo!(),
+            ast::UnaryOperator::PGPrefixFactorial => todo!(),
+            ast::UnaryOperator::PGAbs => todo!(),
+        };
+
+        let operator = self.binder().bind_unary_operator(op, expr.ty())?;
+        let ty = operator.return_type();
+        let kind = ir::ExprKind::UnaryOperator { operator, expr };
+
+        Ok(ir::Expr { ty, kind })
+    }
+
+    fn bind_binary_expr(
+        &mut self,
+        scope: &Scope,
+        op: &'static str,
+        lhs: &ast::Expr,
+        rhs: &ast::Expr,
+    ) -> Result<ir::Expr> {
+        let lhs = Box::new(self.bind_expr(scope, lhs)?);
+        let rhs = Box::new(self.bind_expr(scope, rhs)?);
+
+        let operator = self.binder().bind_binary_operator(op, lhs.ty(), rhs.ty())?;
+        let ty = operator.return_type();
+        let kind = ir::ExprKind::BinaryOperator { operator, lhs, rhs };
+
+        Ok(ir::Expr { ty, kind })
+    }
+
+    fn walk_expr(&mut self, scope: &Scope, expr: &ast::Expr) -> Result<ir::Expr> {
+        let (ty, kind) = match expr {
+            ast::Expr::Value(literal) => return Ok(self.binder().bind_value_expr(literal)),
+            ast::Expr::Nested(expr) => return self.bind_expr(scope, expr),
+            ast::Expr::Identifier(ident) => {
+                let (ty, col) = self.binder().bind_ident(scope, ident)?;
+                (ty, ir::ExprKind::ColumnRef(col))
+            }
+            ast::Expr::CompoundIdentifier(ident) => {
+                let path = self.binder().lower_path(ident)?;
+                let (ty, col) = scope.lookup_column(&path)?;
+                (ty, ir::ExprKind::ColumnRef(col))
+            }
+            ast::Expr::UnaryOp { op, expr } => {
+                return self.bind_unary_expr(scope, op, expr);
+            }
+            ast::Expr::BinaryOp { left, op, right } => {
+                let op = match op {
+                    ast::BinaryOperator::Eq => Operator::EQ,
+                    ast::BinaryOperator::NotEq => Operator::NEQ,
+                    ast::BinaryOperator::Plus => Operator::PLUS,
+                    ast::BinaryOperator::Minus => Operator::MINUS,
+                    ast::BinaryOperator::Lt => Operator::LT,
+                    ast::BinaryOperator::LtEq => Operator::LTE,
+                    ast::BinaryOperator::GtEq => Operator::GTE,
+                    ast::BinaryOperator::Gt => Operator::GT,
+                    ast::BinaryOperator::Multiply => Operator::STAR,
+                    ast::BinaryOperator::Divide => Operator::SLASH,
+                    // the compiler should special case these operators and implement short circuiting
+                    ast::BinaryOperator::And => Operator::AND,
+                    ast::BinaryOperator::Or => Operator::OR,
+                    ast::BinaryOperator::Xor
+                    | ast::BinaryOperator::StringConcat
+                    | ast::BinaryOperator::Spaceship
+                    | ast::BinaryOperator::BitwiseOr
+                    | ast::BinaryOperator::BitwiseAnd
+                    | ast::BinaryOperator::BitwiseXor
+                    | ast::BinaryOperator::PGBitwiseXor
+                    | ast::BinaryOperator::PGBitwiseShiftLeft
+                    | ast::BinaryOperator::PGBitwiseShiftRight
+                    | ast::BinaryOperator::PGExp
+                    | ast::BinaryOperator::PGRegexMatch
+                    | ast::BinaryOperator::PGRegexIMatch
+                    | ast::BinaryOperator::PGRegexNotMatch
+                    | ast::BinaryOperator::PGRegexNotIMatch
+                    | ast::BinaryOperator::PGCustomBinaryOperator(_) => {
+                        bail!("unsupported binary operator: {:?}", op)
+                    }
+                    _ => bail!("unsupported binary operator: {:?}", op),
+                };
+                return self.bind_binary_expr(scope, op, left, right);
+            }
+            ast::Expr::IsDistinctFrom(lhs, rhs) => {
+                return self.bind_binary_expr(scope, Operator::IS_DISTINCT_FROM, lhs, rhs);
+            }
+            ast::Expr::IsNotDistinctFrom(lhs, rhs) => {
+                return self.bind_binary_expr(scope, Operator::IS_NOT_DISTINCT_FROM, lhs, rhs);
+            }
+            // Implement `x IS NULL` as `x IS NOT DISTINCT FROM NULL` for now although this is not quite spec compliant.
+            // https://stackoverflow.com/questions/58997907/is-there-a-difference-between-is-null-and-is-not-distinct-from-null
+            ast::Expr::IsNull(expr) => {
+                let expr = Box::new(self.bind_expr(scope, expr)?);
+                let operator = self.binder().bind_binary_operator(
+                    Operator::IS_NOT_DISTINCT_FROM,
+                    expr.ty(),
+                    expr.ty(),
+                )?;
+                let ty = expr.ty();
+                (
+                    operator.return_type(),
+                    ir::ExprKind::BinaryOperator {
+                        operator,
+                        lhs: expr,
+                        rhs: Box::new(ir::Expr {
+                            ty,
+                            kind: ir::ExprKind::Literal(ir::Value::Null),
+                        }),
+                    },
+                )
+            }
+            ast::Expr::IsNotNull(expr) => {
+                let expr = Box::new(self.bind_expr(scope, expr)?);
+                let operator = self.binder().bind_binary_operator(
+                    Operator::IS_DISTINCT_FROM,
+                    expr.ty(),
+                    expr.ty(),
+                )?;
+                let ty = expr.ty();
+                (
+                    operator.return_type(),
+                    ir::ExprKind::BinaryOperator {
+                        operator,
+                        lhs: expr,
+                        rhs: Box::new(ir::Expr {
+                            ty,
+                            kind: ir::ExprKind::Literal(ir::Value::Null),
+                        }),
+                    },
+                )
+            }
+            ast::Expr::Between { expr, negated, low, high } => {
+                if *negated {
+                    return self.walk_expr(
+                        scope,
+                        &ast::Expr::UnaryOp {
+                            op: ast::UnaryOperator::Not,
+                            expr: Box::new(ast::Expr::Between {
+                                expr: expr.clone(),
+                                negated: false,
+                                low: low.clone(),
+                                high: high.clone(),
+                            }),
+                        },
+                    );
+                }
+
+                // implement `BETWEEN` as it's own function rather than desugaring to `x >= low AND x <= high` for potential efficiency gains
+                let expr = self.bind_expr(scope, expr)?;
+                let low = self.bind_expr(scope, low)?;
+                let high = self.bind_expr(scope, high)?;
+                let args = [expr.ty(), low.ty(), high.ty()];
+                let function = self
+                    .binder()
+                    .resolve_function(&Path::qualified(MAIN_SCHEMA_PATH, "between"), &args)?;
+                (
+                    function.return_type(),
+                    ir::ExprKind::FunctionCall { function, args: [expr, low, high].into() },
+                )
+            }
+
+            ast::Expr::Cast { expr, data_type } => {
+                let expr = self.bind_expr(scope, expr)?;
+                let target = self.binder().lower_ty(data_type)?;
+                // We implement `CAST` by hacking operator overloading.
+                // We search for a cast function `(from, target) -> target` with the second parameter being a dummy argument.
+                let args = [expr.ty(), target];
+                let function = self
+                    .binder()
+                    .resolve_function(&Path::qualified(MAIN_SCHEMA_PATH, "cast"), &args)?;
+                let [_, target] = args;
+                (
+                    function.return_type(),
+                    ir::ExprKind::FunctionCall {
+                        function,
+                        args: [
+                            expr,
+                            // just pass null as the dummy argument as it is unused
+                            ir::Expr { ty: target, kind: ir::ExprKind::Literal(ir::Value::Null) },
+                        ]
+                        .into(),
+                    },
+                )
+            }
+            ast::Expr::Array(array) => {
+                let exprs = array
+                    .elem
+                    .iter()
+                    .map(|expr| self.bind_expr(scope, expr))
+                    .collect::<Result<Box<_>, _>>()?;
+                let ty = self.binder().ensure_exprs_have_compat_types(&exprs).map_err(
+                    |(actual, expected)| {
+                        anyhow!(
+                            "cannot create array of type {expected} with element of type {actual}",
+                        )
+                    },
+                )?;
+
+                // default type to `Int64` if there are no non-null elements
+                let ty = ty.unwrap_or(LogicalType::Int64);
+                (LogicalType::Array(Box::new(ty)), ir::ExprKind::Array(exprs))
+            }
+            ast::Expr::Function(f) => {
+                let expr = self.bind_function(scope, f)?;
+                if let ir::ExprKind::FunctionCall { function, .. } = &expr.kind {
+                    if matches!(function.kind(), FunctionKind::Aggregate) {
+                        // FIXME better error message
+                        bail!("aggregate functions are not allowed in this context");
+                    }
+                };
+                return Ok(expr);
+            }
+            ast::Expr::Subquery(subquery) => {
+                let (_, plan) = self.binder().bind_subquery(scope, subquery)?;
+                return ir::Expr::scalar_subquery(plan);
+            }
+            ast::Expr::Exists { subquery, negated } => {
+                // `NOT EXISTS (subquery)` is literally `NOT (EXISTS (subquery))` so do that transformation
+                if *negated {
+                    return self.bind_expr(
+                        scope,
+                        &ast::Expr::UnaryOp {
+                            op: ast::UnaryOperator::Not,
+                            expr: Box::new(ast::Expr::Exists {
+                                subquery: subquery.clone(),
+                                negated: false,
+                            }),
+                        },
+                    );
+                }
+
+                let (_scope, plan) = self.binder().bind_subquery(scope, subquery)?;
+                (LogicalType::Bool, ir::ExprKind::Subquery(ir::SubqueryKind::Exists, plan))
+            }
+            ast::Expr::InList { expr, list, negated } => {
+                assert!(!list.is_empty(), "this should be syntactically invalid");
+                // x IN (x1..xn) is desugared into `x = x1 OR .. OR x = xn`. This maintains the desired NULL behaviour.
+                // x NOT IN (x1..xn) => `x <> x1 AND .. AND x <> xn`
+                // https://www.postgresql.org/docs/current/functions-comparisons.html#FUNCTIONS-COMPARISONS-NOT-IN
+
+                let op =
+                    if *negated { ast::BinaryOperator::NotEq } else { ast::BinaryOperator::Eq };
+
+                let desugared = list.iter().skip(1).cloned().fold(
+                    ast::Expr::BinaryOp {
+                        left: expr.clone(),
+                        op,
+                        right: Box::new(list[0].clone()),
+                    },
+                    |acc, x| ast::Expr::BinaryOp {
+                        left: Box::new(acc),
+                        op: if *negated {
+                            ast::BinaryOperator::And
+                        } else {
+                            ast::BinaryOperator::Or
+                        },
+                        right: Box::new(ast::Expr::BinaryOp {
+                            left: expr.clone(),
+                            op: if *negated {
+                                ast::BinaryOperator::NotEq
+                            } else {
+                                ast::BinaryOperator::Eq
+                            },
+                            right: Box::new(x),
+                        }),
+                    },
+                );
+
+                let expr = self.bind_expr(scope, &desugared)?;
+                assert_eq!(
+                    expr.ty,
+                    LogicalType::Bool,
+                    "expected desugared IN expr to evaluate to bool ({expr})"
+                );
+
+                return Ok(expr);
+            }
+            ast::Expr::Case { operand, conditions, results, else_result } => {
+                assert_eq!(conditions.len(), results.len());
+                assert!(!conditions.is_empty());
+
+                let scrutinee = match operand {
+                    Some(scrutinee) => self.bind_expr(scope, scrutinee)?,
+                    // if there is no scrutinee, we can just use a literal `true` to compare each branch against
+                    None => literal(true),
+                };
+
+                let cases = conditions
+                    .iter()
+                    .zip(results)
+                    .map(|(when, then)| {
+                        let when = self.bind_expr(scope, when)?;
+                        ensure!(
+                            when.ty == scrutinee.ty,
+                            "case condition must match type of scrutinee, expected `{}`, got `{}`",
+                            scrutinee.ty,
+                            when.ty
+                        );
+
+                        let then = self.bind_expr(scope, then)?;
+                        Ok(ir::Case { when, then })
+                    })
+                    .collect::<Result<Box<_>, _>>()?;
+
+                let else_result = else_result
+                    .as_ref()
+                    .map(|r| self.bind_expr(scope, r).map(Box::new))
+                    .transpose()?;
+
+                let mut result_type: LogicalType = cases[0].then.ty.clone();
+                for expr in
+                    cases.iter().map(|case| &case.then).chain(else_result.iter().map(AsRef::as_ref))
+                {
+                    let expr: &ir::Expr = expr;
+                    result_type = result_type.common_supertype(&expr.ty).ok_or_else(|| {
+                        anyhow!(
+                            "all case results must have the same type, expected `{}`, got `{}`",
+                            result_type,
+                            expr.ty
+                        )
+                    })?;
+                }
+
+                (
+                    result_type,
+                    ir::ExprKind::Case { scrutinee: Box::new(scrutinee), cases, else_result },
+                )
+            }
+            _ => todo!("todo expr: {:?}", expr),
+        };
+
+        Ok(ir::Expr { ty, kind })
+    }
 }

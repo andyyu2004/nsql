@@ -7,7 +7,7 @@ use ir::fold::{ExprFold, Folder};
 use crate::*;
 
 pub(crate) struct SelectBinder<'b, 'a, 'env, 'txn, S, M> {
-    binder: &'b Binder<'a, 'env, 'txn, S, M>,
+    binder: &'b mut Binder<'a, 'env, 'txn, S, M>,
     group_by: Box<[ir::Expr]>,
     aggregates: IndexSet<(ir::MonoFunction, Box<[ir::Expr]>)>,
 }
@@ -15,7 +15,7 @@ pub(crate) struct SelectBinder<'b, 'a, 'env, 'txn, S, M> {
 impl<'b, 'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     SelectBinder<'b, 'a, 'env, 'txn, S, M>
 {
-    pub fn new(binder: &'b Binder<'a, 'env, 'txn, S, M>, group_by: Box<[ir::Expr]>) -> Self {
+    pub fn new(binder: &'b mut Binder<'a, 'env, 'txn, S, M>, group_by: Box<[ir::Expr]>) -> Self {
         Self { binder, group_by, aggregates: Default::default() }
     }
 
@@ -42,7 +42,7 @@ impl<'b, 'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
             }) {
                 // We add any expressions that we can successfully bind to the pre-projection.
                 // The bind may fail either because it tries to reference an alias or is otherwise bad.
-                if let Ok(bound_expr) = self.bind_maybe_aggregate_expr(scope, expr) {
+                if let Ok(bound_expr) = self.bind_expr(scope, expr) {
                     // alias to make it unnameable to avoid name clashes and thus artificial `ambiguous reference to column` errors
                     bound_extra_exprs.push(bound_expr.alias(""));
                     extra_exprs.insert(expr.clone());
@@ -117,7 +117,7 @@ impl<'b, 'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
                             )),
                         }
                     }
-                    None => self.bind_maybe_aggregate_expr(&scope, expr)?,
+                    None => self.bind_expr(&scope, expr)?,
                 };
                 ensure!(
                     matches!(expr.ty, LogicalType::Bool | LogicalType::Null),
@@ -221,12 +221,11 @@ impl<'b, 'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
 
     fn bind_order_by_expr(
         &mut self,
-
         scope: &Scope,
         order_expr: &ast::OrderByExpr,
     ) -> Result<ir::OrderExpr> {
         not_implemented_if!(!order_expr.nulls_first.unwrap_or(true));
-        let expr = self.bind_maybe_aggregate_expr(scope, &order_expr.expr)?;
+        let expr = self.bind_expr(scope, &order_expr.expr)?;
         let expr = match expr.kind {
             ir::ExprKind::Literal(ir::Value::Int64(i)) => {
                 ensure!(
@@ -254,41 +253,32 @@ impl<'b, 'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
         };
         Ok(ir::OrderExpr { expr, asc: order_expr.asc.unwrap_or(true) })
     }
+}
 
-    fn bind_select_item(&mut self, scope: &Scope, item: &ast::SelectItem) -> Result<Vec<ir::Expr>> {
-        let expr = match item {
-            ast::SelectItem::UnnamedExpr(expr) => self.bind_maybe_aggregate_expr(scope, expr)?,
-            ast::SelectItem::ExprWithAlias { expr, alias } => {
-                self.bind_maybe_aggregate_expr(scope, expr)?.alias(&alias.value)
-            }
-            _ => return self.binder.bind_select_item(scope, item),
-        };
-
-        Ok(vec![expr])
+impl<'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
+    ExprBinder<'a, 'env, 'txn, S, M> for SelectBinder<'_, 'a, 'env, 'txn, S, M>
+{
+    fn binder(&mut self) -> &mut Binder<'a, 'env, 'txn, S, M> {
+        self.binder
     }
 
-    fn bind_maybe_aggregate_expr(&mut self, scope: &Scope, expr: &ast::Expr) -> Result<ir::Expr> {
-        match expr {
-            ast::Expr::Function(f) => {
-                let function_expr = self.binder.bind_function(scope, f)?;
-                let kind = match function_expr.kind {
-                    ir::ExprKind::FunctionCall { function, args }
-                        if matches!(function.kind(), FunctionKind::Aggregate) =>
-                    {
-                        let (idx, _exists) = self.aggregates.insert_full((function, args));
-                        ir::ExprKind::ColumnRef(ir::ColumnRef::new(
-                            // the first N columns are the group by columns followed by the aggregate columns
-                            TupleIndex::new(self.group_by.len() + idx),
-                            QPath::new("agg", expr.to_string()),
-                        ))
-                    }
-                    kind => kind,
-                };
-                Ok(ir::Expr { ty: function_expr.ty, kind })
+    fn bind_function(&mut self, scope: &Scope, f: &ast::Function) -> Result<ir::Expr> {
+        let function_expr = self.binder.bind_function(scope, f)?;
+        let display = function_expr.to_string();
+        let kind = match function_expr.kind {
+            ir::ExprKind::FunctionCall { function, args }
+                if matches!(function.kind(), FunctionKind::Aggregate) =>
+            {
+                let (idx, _exists) = self.aggregates.insert_full((function, args));
+                ir::ExprKind::ColumnRef(ir::ColumnRef::new(
+                    // the first N columns are the group by columns followed by the aggregate columns
+                    TupleIndex::new(self.group_by.len() + idx),
+                    QPath::new("agg", display),
+                ))
             }
-            _ => self
-                .binder
-                .walk_expr(scope, expr, |expr| self.bind_maybe_aggregate_expr(scope, expr)),
-        }
+            kind => kind,
+        };
+
+        Ok(ir::Expr { ty: function_expr.ty, kind })
     }
 }

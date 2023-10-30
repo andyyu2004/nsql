@@ -1,7 +1,5 @@
-query error
+query error column `x` is ambiguous, it could refer to any one of `t.x`, `t.x`
 SELECT x FROM (VALUES(1, 2)) AS t(x, x)
-----
-column `x` is ambiguous, it could refer to any one of `t.x`, `t.x`
 
 statement ok
 CREATE TABLE t (x int PRIMARY KEY);
@@ -20,10 +18,8 @@ SELECT * FROM t JOIN u;
 ----
 1 2
 
-query error
+query error column `x` is ambiguous, it could refer to any one of `t.x`, `u.x`
 SELECT x FROM t JOIN u;
-----
-column `x` is ambiguous, it could refer to any one of `t.x`, `u.x`
 
 query I
 SELECT t.x FROM t JOIN u;

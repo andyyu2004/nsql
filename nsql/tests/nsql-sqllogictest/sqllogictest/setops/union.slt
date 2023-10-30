@@ -26,14 +26,10 @@ SELECT 1 UNION ALL SELECT 2
 2
 
 
-query error
+query error schemas of set operation operands are not compatible
 SELECT 1 UNION ALL SELECT 'foo'
-----
-schemas of set operation operands are not compatible
 
 
 
-query error
+query error schemas of set operation operands are not compatible
 SELECT 'foo' UNION ALL SELECT 1
-----
-schemas of set operation operands are not compatible
