@@ -1684,27 +1684,8 @@ impl<'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
                 let (ty, col) = scope.lookup_column(&path)?;
                 (ty, ir::ExprKind::ColumnRef(col))
             }
-            ast::Expr::UnaryOp { op, expr } => {
-                let expr = Box::new(f(expr)?);
-                let op = match op {
-                    ast::UnaryOperator::Plus => todo!(),
-                    ast::UnaryOperator::Minus => Operator::MINUS,
-                    ast::UnaryOperator::Not => Operator::NOT,
-                    ast::UnaryOperator::PGBitwiseNot => todo!(),
-                    ast::UnaryOperator::PGSquareRoot => todo!(),
-                    ast::UnaryOperator::PGCubeRoot => todo!(),
-                    ast::UnaryOperator::PGPostfixFactorial => todo!(),
-                    ast::UnaryOperator::PGPrefixFactorial => todo!(),
-                    ast::UnaryOperator::PGAbs => todo!(),
-                };
-
-                let operator = self.bind_unary_operator(op, expr.ty())?;
-                (operator.return_type(), ir::ExprKind::UnaryOperator { operator, expr })
-            }
+            ast::Expr::UnaryOp { op, expr } => return self.bind_unary_expr(op, expr, &mut f),
             ast::Expr::BinaryOp { left, op, right } => {
-                let lhs = Box::new(f(left)?);
-                let rhs = Box::new(f(right)?);
-
                 let op = match op {
                     ast::BinaryOperator::Eq => Operator::EQ,
                     ast::BinaryOperator::NotEq => Operator::NEQ,
@@ -1738,23 +1719,13 @@ impl<'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
                     }
                     _ => bail!("unsupported binary operator: {:?}", op),
                 };
-
-                let operator = self.bind_binary_operator(op, lhs.ty(), rhs.ty())?;
-                (operator.return_type(), ir::ExprKind::BinaryOperator { operator, lhs, rhs })
+                return self.bind_binary_expr(op, left, right, &mut f);
             }
             ast::Expr::IsDistinctFrom(lhs, rhs) => {
-                let lhs = Box::new(f(lhs)?);
-                let rhs = Box::new(f(rhs)?);
-                let operator =
-                    self.bind_binary_operator(Operator::IS_DISTINCT_FROM, lhs.ty(), rhs.ty())?;
-                (operator.return_type(), ir::ExprKind::BinaryOperator { operator, lhs, rhs })
+                return self.bind_binary_expr(Operator::IS_DISTINCT_FROM, lhs, rhs, f);
             }
             ast::Expr::IsNotDistinctFrom(lhs, rhs) => {
-                let lhs = Box::new(f(lhs)?);
-                let rhs = Box::new(f(rhs)?);
-                let operator =
-                    self.bind_binary_operator(Operator::IS_NOT_DISTINCT_FROM, lhs.ty(), rhs.ty())?;
-                (operator.return_type(), ir::ExprKind::BinaryOperator { operator, lhs, rhs })
+                return self.bind_binary_expr(Operator::IS_NOT_DISTINCT_FROM, lhs, rhs, f);
             }
             // Implement `x IS NULL` as `x IS NOT DISTINCT FROM NULL` for now although this is not quite spec compliant.
             // https://stackoverflow.com/questions/58997907/is-there-a-difference-between-is-null-and-is-not-distinct-from-null
@@ -1988,6 +1959,51 @@ impl<'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
             }
             _ => todo!("todo expr: {:?}", expr),
         };
+
+        Ok(ir::Expr { ty, kind })
+    }
+
+    fn bind_unary_expr(
+        &self,
+        op: &ast::UnaryOperator,
+        expr: &ast::Expr,
+        mut f: impl FnMut(&ast::Expr) -> Result<ir::Expr>,
+    ) -> Result<ir::Expr> {
+        let bound_expr = f(expr)?;
+        let expr = Box::new(bound_expr);
+
+        let op = match op {
+            ast::UnaryOperator::Plus => todo!(),
+            ast::UnaryOperator::Minus => Operator::MINUS,
+            ast::UnaryOperator::Not => Operator::NOT,
+            ast::UnaryOperator::PGBitwiseNot => todo!(),
+            ast::UnaryOperator::PGSquareRoot => todo!(),
+            ast::UnaryOperator::PGCubeRoot => todo!(),
+            ast::UnaryOperator::PGPostfixFactorial => todo!(),
+            ast::UnaryOperator::PGPrefixFactorial => todo!(),
+            ast::UnaryOperator::PGAbs => todo!(),
+        };
+
+        let operator = self.bind_unary_operator(op, expr.ty())?;
+        let ty = operator.return_type();
+        let kind = ir::ExprKind::UnaryOperator { operator, expr };
+
+        Ok(ir::Expr { ty, kind })
+    }
+
+    fn bind_binary_expr(
+        &self,
+        op: &'static str,
+        lhs: &ast::Expr,
+        rhs: &ast::Expr,
+        mut f: impl FnMut(&ast::Expr) -> Result<ir::Expr>,
+    ) -> Result<ir::Expr> {
+        let lhs = Box::new(f(lhs)?);
+        let rhs = Box::new(f(rhs)?);
+
+        let operator = self.bind_binary_operator(op, lhs.ty(), rhs.ty())?;
+        let ty = operator.return_type();
+        let kind = ir::ExprKind::BinaryOperator { operator, lhs, rhs };
 
         Ok(ir::Expr { ty, kind })
     }
