@@ -298,7 +298,7 @@ impl<'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
                     .map(|name| match object_type {
                         ast::ObjectType::Table => {
                             let table = self.bind_namespaced_entity::<Table>(name)?;
-                            Ok(ir::EntityRef::Table(table))
+                            Ok(ir::EntityRef::Table(table.key()))
                         }
                         ast::ObjectType::View => todo!(),
                         ast::ObjectType::Index => todo!(),
@@ -663,14 +663,14 @@ impl<'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     fn bind_namespaced_entity<T: SystemEntity<Parent = Namespace, SearchKey = Name>>(
         &self,
         path: &Path,
-    ) -> Result<T::Key> {
+    ) -> Result<T> {
         let (table, namespace, name) = self.get_namespaced_entity_view::<T>(path)?;
         let entity = table
             .as_ref()
             .find(self.catalog, self.tx, Some(namespace.key()), &name)?
             .ok_or_else(|| unbound!(T, path))?;
 
-        Ok(entity.key())
+        Ok(entity)
     }
 
     fn lower_path(&self, name: &[ast::Ident]) -> Result<Path> {

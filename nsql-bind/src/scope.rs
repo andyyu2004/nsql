@@ -94,8 +94,7 @@ impl Scope {
         tracing::debug!("binding table");
         let mut columns = self.columns.clone();
 
-        let table_oid = binder.bind_namespaced_entity::<Table>(path)?;
-        let table = binder.catalog.table(binder.tx, table_oid)?;
+        let table = binder.bind_namespaced_entity::<Table>(path)?;
         let table_columns = table.columns(binder.catalog, binder.tx)?;
 
         if let Some(alias) = alias {
@@ -124,7 +123,7 @@ impl Scope {
             columns.push_back_mut((QPath::new(path.clone(), name), column.logical_type()));
         }
 
-        Ok((self.with_columns(columns), table_oid))
+        Ok((self.with_columns(columns), table.key()))
     }
 
     pub fn lookup_by_index(&self, index: usize) -> (QPath, LogicalType) {
