@@ -5,3 +5,4 @@ perf.data.old
 profile.json
 target
 dhat.out*
+callgrind.out*
