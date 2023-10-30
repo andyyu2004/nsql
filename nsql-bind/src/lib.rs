@@ -1,36 +1,50 @@
 #![deny(rust_2018_idioms)]
-#![feature(try_blocks)]
-#![feature(if_let_guard)]
+#![feature(try_blocks, if_let_guard, trait_upcasting)]
 
 mod function;
 mod scope;
 mod select;
 
 use std::collections::hash_map::Entry;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
+use std::hash::BuildHasherDefault;
 use std::str::FromStr;
 
 pub use anyhow::Error;
 use anyhow::{anyhow, bail, ensure};
+use dashmap::DashMap;
 use ir::expr::EvalNotConst;
 use ir::{Decimal, Path, QPath, TupleIndex};
 use itertools::Itertools;
 use nsql_catalog::{
     Bow, Catalog, ColumnIdentity, ColumnIndex, Function, FunctionKind, Namespace, Operator,
-    OperatorKind, SystemEntity, SystemTableView, Table, TransactionContext, MAIN_SCHEMA_PATH,
+    OperatorKind, SystemEntity, SystemTableView, Table, MAIN_SCHEMA_PATH,
 };
 use nsql_core::{not_implemented, not_implemented_if, LogicalType, Name, Oid, Schema};
 use nsql_parse::ast;
 use nsql_storage::expr;
 use nsql_storage_engine::{ExecutionMode, FallibleIterator, StorageEngine};
+use rustc_hash::{FxHashMap, FxHasher};
 
 use self::scope::{CteKind, Scope, TableBinding};
 use self::select::SelectBinder;
 
+pub trait TransactionContext<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>:
+    nsql_catalog::TransactionContext<'env, 'txn, S, M>
+{
+    fn binder_caches(&self) -> &TransactionLocalBinderCaches;
+}
+
+#[derive(Default)]
+pub struct TransactionLocalBinderCaches {
+    operators:
+        DashMap<(&'static str, LogicalType, LogicalType), Operator, BuildHasherDefault<FxHasher>>,
+}
+
 pub struct Binder<'a, 'env, 'txn, S, M> {
     catalog: Catalog<'env, S>,
     tx: &'a dyn TransactionContext<'env, 'txn, S, M>,
-    ctes: HashMap<Name, CteMeta>,
+    ctes: FxHashMap<Name, CteMeta>,
 }
 
 type CteMeta = (CteKind, Scope, Box<ir::QueryPlan>);
@@ -1534,7 +1548,7 @@ impl<'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
         name: &'static str,
         operand: LogicalType,
     ) -> Result<ir::MonoOperator> {
-        self.bind_operator(name, OperatorKind::Unary, LogicalType::Null, operand)
+        self.resolve_operator(name, OperatorKind::Unary, LogicalType::Null, operand)
     }
 
     fn bind_binary_operator(
@@ -1543,10 +1557,10 @@ impl<'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
         left: LogicalType,
         right: LogicalType,
     ) -> Result<ir::MonoOperator> {
-        self.bind_operator(name, OperatorKind::Binary, left, right)
+        self.resolve_operator(name, OperatorKind::Binary, left, right)
     }
 
-    fn bind_operator(
+    fn resolve_operator(
         &mut self,
         name: &'static str,
         kind: OperatorKind,

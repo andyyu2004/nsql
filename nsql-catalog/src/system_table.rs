@@ -1,3 +1,4 @@
+use std::hash::BuildHasherDefault;
 use std::marker::PhantomData;
 use std::ops::RangeBounds;
 use std::sync::Arc;
@@ -8,6 +9,7 @@ use fix_hidden_lifetime_bug::fix_hidden_lifetime_bug;
 use nsql_core::Oid;
 use nsql_storage::tuple::{FromTuple, IntoTuple};
 use nsql_storage_engine::{ExecutionMode, FallibleIterator, ReadWriteExecutionMode, StorageEngine};
+use rustc_hash::FxHasher;
 
 use crate::entity::table::{PrimaryKeyConflict, TableStorage};
 use crate::{Catalog, FunctionCatalog, Result, SystemEntity, Table, TransactionContext};
@@ -15,7 +17,7 @@ use crate::{Catalog, FunctionCatalog, Result, SystemEntity, Table, TransactionCo
 pub struct SystemTableView<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: SystemEntity>
 {
     storage: TableStorage<'env, 'txn, S, M>,
-    cache: DashMap<T::Key, T>,
+    cache: DashMap<T::Key, T, BuildHasherDefault<FxHasher>>,
     phantom: PhantomData<T>,
 }
 

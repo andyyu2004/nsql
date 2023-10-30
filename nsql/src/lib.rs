@@ -182,7 +182,8 @@ struct TransactionContext<'env, S: StorageEngine, M: ExecutionMode<'env, S>> {
     tx: M::Transaction,
     #[borrows(tx)]
     #[not_covariant]
-    cache: TransactionLocalCatalogCaches<'env, 'this, S, M>,
+    catalog_caches: TransactionLocalCatalogCaches<'env, 'this, S, M>,
+    binder_caches: nsql_bind::TransactionLocalBinderCaches,
     auto_commit: AtomicBool,
     state: AtomicEnum<TransactionState>,
 }
@@ -192,7 +193,8 @@ impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> TransactionContext<'env,
     pub fn make(tx: M::Transaction) -> TransactionContext<'env, S, M> {
         TransactionContextBuilder {
             tx,
-            cache_builder: |_| Default::default(),
+            catalog_caches_builder: |_| Default::default(),
+            binder_caches: Default::default(),
             auto_commit: AtomicBool::new(true),
             state: AtomicEnum::new(TransactionState::Active),
         }
@@ -221,7 +223,17 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
 
     #[inline]
     fn catalog_caches(&self) -> &TransactionLocalCatalogCaches<'env, 'txn, S, M> {
-        self.cache
+        self.catalog_caches
+    }
+}
+
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
+    nsql_bind::TransactionContext<'env, 'txn, S, M>
+    for ouroboros_impl_transaction_context::BorrowedFields<'_, 'txn, 'env, S, M>
+{
+    #[inline]
+    fn binder_caches(&self) -> &nsql_bind::TransactionLocalBinderCaches {
+        self.binder_caches
     }
 }
 

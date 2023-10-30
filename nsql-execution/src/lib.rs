@@ -9,6 +9,7 @@ mod pipeline;
 mod profiler;
 
 use std::fmt;
+use std::hash::BuildHasherDefault;
 use std::ops::{Index, IndexMut};
 use std::sync::atomic::{self, AtomicBool};
 use std::sync::Arc;
@@ -25,6 +26,7 @@ use nsql_util::atomic::AtomicEnum;
 pub use physical_plan::PhysicalPlanner;
 use pipeline::RootPipeline;
 use profiler::Profiler;
+use rustc_hash::FxHasher;
 
 use self::config::SessionConfig;
 pub use self::executor::execute;
@@ -513,7 +515,7 @@ pub struct ExecutionContext<'a, 'env, 'txn, S: StorageEngine, M: ExecutionMode<'
     catalog: Catalog<'env, S>,
     tcx: &'a dyn TransactionContext<'env, 'txn, S, M>,
     scx: &'a (dyn SessionContext + 'a),
-    materialized_ctes: DashMap<Name, Arc<[Tuple]>>,
+    materialized_ctes: DashMap<Name, Arc<[Tuple]>, BuildHasherDefault<FxHasher>>,
     profiler: Profiler,
 }
 
