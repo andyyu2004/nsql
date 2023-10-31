@@ -1,0 +1,9 @@
+[package]
+name = "nsql-memkv"
+version = "0.1.0"
+edition = "2021"
+
+
+[dependencies]
+memkv = { path = "../memkv-rs" }
+nsql-storage-engine = { path = "../nsql-storage-engine" }

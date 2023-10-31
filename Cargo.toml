@@ -18,6 +18,8 @@ members = [
     "nsql-util",
     "nsql-lmdb",
     "nsql-redb",
+    "nsql-memkv",
+    "memkv-rs",
 ]
 
 [profile.bench]
