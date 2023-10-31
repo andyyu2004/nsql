@@ -43,6 +43,7 @@ impl Visitor for Validator {
 }
 
 impl QueryPlan {
+    #[cfg(debug_assertions)]
     pub fn validate(&self) -> Result<(), ValidationError> {
         let mut validator = Validator::default();
         validator.visit_query_plan(self);

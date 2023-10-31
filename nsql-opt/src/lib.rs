@@ -42,6 +42,7 @@ pub fn optimize(plan: Box<ir::Plan>) -> Box<ir::Plan<Query>> {
 }
 
 fn optimize_query(mut plan: Box<ir::QueryPlan>) -> Query {
+    #[cfg(debug_assertions)]
     plan.validate().unwrap_or_else(|err| panic!("invalid plan passed to optimizer: {err}"));
 
     loop {
@@ -54,6 +55,7 @@ fn optimize_query(mut plan: Box<ir::QueryPlan>) -> Query {
         let pre_opt_plan = plan.clone();
         for pass in passes {
             plan = pass.fold_boxed_query_plan(plan);
+            #[cfg(debug_assertions)]
             plan.validate().unwrap_or_else(|err| {
                 panic!("invalid plan after pass `{}`: {err}\n{plan:#}", pass.name())
             });
