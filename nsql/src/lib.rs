@@ -124,20 +124,76 @@ struct Shared<S> {
 struct NsqlProfiler {
     profiler: Profiler,
     generic_event_kind: StringId,
+
+    debug_event_id: EventId,
+
     bind_event_id: EventId,
+
     optimize_event_id: EventId,
+    opt_transform_event_id: EventId,
+    opt_egraph_event_id: EventId,
+    opt_build_egraph_event_id: EventId,
+
     physical_plan_event_id: EventId,
+    physical_plan_compile_event_id: EventId,
+    physical_plan_explain_event_id: EventId,
+
     execute_event_id: EventId,
+
     thread_id: u32,
+}
+
+impl nsql_core::Profiler for NsqlProfiler {
+    type EventId = EventId;
+
+    fn debug_event_id(&self) -> Self::EventId {
+        self.debug_event_id
+    }
+
+    fn profile<R>(&self, event_id: Self::EventId, f: impl FnOnce() -> R) -> R {
+        self.profile(event_id, f)
+    }
+}
+
+impl nsql_opt::Profiler for NsqlProfiler {
+    fn transform_event_id(&self) -> Self::EventId {
+        self.opt_transform_event_id
+    }
+
+    fn optimize_egraph_event_id(&self) -> Self::EventId {
+        self.opt_egraph_event_id
+    }
+
+    fn build_egraph_event_id(&self) -> Self::EventId {
+        self.opt_build_egraph_event_id
+    }
+}
+
+impl nsql_execution::PlannerProfiler for NsqlProfiler {
+    fn compile_event_id(&self) -> Self::EventId {
+        self.physical_plan_compile_event_id
+    }
+
+    fn explain_event_id(&self) -> Self::EventId {
+        self.physical_plan_explain_event_id
+    }
 }
 
 impl NsqlProfiler {
     fn new(profiler: Profiler) -> Self {
+        let mk_id = |s: &str| EventId::from_label(profiler.alloc_string(s));
+
         Self {
-            bind_event_id: EventId::from_label(profiler.alloc_string("bind")),
-            optimize_event_id: EventId::from_label(profiler.alloc_string("optimize")),
-            physical_plan_event_id: EventId::from_label(profiler.alloc_string("physical_plan")),
-            execute_event_id: EventId::from_label(profiler.alloc_string("execute")),
+            debug_event_id: mk_id("debug"),
+            bind_event_id: mk_id("bind"),
+            optimize_event_id: mk_id("optimize"),
+            opt_transform_event_id: mk_id("opt-transform"),
+            opt_egraph_event_id: mk_id("opt-egraph-build"),
+            opt_build_egraph_event_id: mk_id("opt-egraph-optimize"),
+            physical_plan_event_id: mk_id("physical-plan"),
+            physical_plan_compile_event_id: mk_id("compile"),
+            physical_plan_explain_event_id: mk_id("explain"),
+            execute_event_id: mk_id("execute"),
             generic_event_kind: profiler.alloc_string("generic"),
             // everything is currently single-threaded and always will be except for execution stuff
             thread_id: std::thread::current().id().as_u64().get() as u32,
@@ -145,7 +201,11 @@ impl NsqlProfiler {
         }
     }
 
-    fn profile<R>(&self, event_id: EventId, f: impl FnOnce() -> Result<R>) -> Result<R> {
+    fn try_profile<R>(&self, event_id: EventId, f: impl FnOnce() -> Result<R>) -> Result<R> {
+        self.profile(event_id, f)
+    }
+
+    fn profile<R>(&self, event_id: EventId, f: impl FnOnce() -> R) -> R {
         let _guard = self.profiler.start_recording_interval_event(
             self.generic_event_kind,
             event_id,
@@ -314,14 +374,15 @@ impl<S: StorageEngine> Shared<S> {
         let (tcx, plan) = match tcx {
             Some(tcx) => {
                 tracing::debug!("reusing existing transaction");
-                let plan = self.profiler.profile(self.profiler.bind_event_id, || match &tcx {
-                    ReadOrWriteTransactionContext::Read(tcx) => {
-                        tcx.with(|tcx| Binder::new(catalog, &tcx).bind(stmt))
-                    }
-                    ReadOrWriteTransactionContext::Write(tcx) => {
-                        tcx.with(|tcx| Binder::new(catalog, &tcx).bind(stmt))
-                    }
-                })?;
+                let plan =
+                    self.profiler.try_profile(self.profiler.bind_event_id, || match &tcx {
+                        ReadOrWriteTransactionContext::Read(tcx) => {
+                            tcx.with(|tcx| Binder::new(catalog, &tcx).bind(stmt))
+                        }
+                        ReadOrWriteTransactionContext::Write(tcx) => {
+                            tcx.with(|tcx| Binder::new(catalog, &tcx).bind(stmt))
+                        }
+                    })?;
 
                 if plan.required_transaction_mode() == ir::TransactionMode::ReadWrite {
                     ensure!(tcx.is_write(), "cannot execute write operation in read transaction");
@@ -335,7 +396,7 @@ impl<S: StorageEngine> Shared<S> {
                 );
                 // create a read transaction to bind the statement and figure out which type of transaction is required
                 let plan = tcx.with(|tcx| {
-                    self.profiler.profile(self.profiler.bind_event_id, || {
+                    self.profiler.try_profile(self.profiler.bind_event_id, || {
                         Binder::new(catalog, &tcx).bind(stmt)
                     })
                 })?;
@@ -359,13 +420,14 @@ impl<S: StorageEngine> Shared<S> {
 
         let (tcx, output) = match tcx {
             ReadOrWriteTransactionContext::Read(tcx) => {
-                let (tcx, output) =
-                    self.execute_in(ctx, tcx, plan, |planner, tcx, plan| planner.plan(tcx, plan))?;
+                let (tcx, output) = self.execute_in(ctx, tcx, plan, |planner, tcx, plan| {
+                    planner.plan(&self.profiler, tcx, plan)
+                })?;
                 (tcx.map(ReadOrWriteTransactionContext::Read), output)
             }
             ReadOrWriteTransactionContext::Write(tcx) => {
                 let (tcx, output) = self.execute_in(ctx, tcx, plan, |planner, tcx, plan| {
-                    planner.plan_write(tcx, plan)
+                    planner.plan_write(&self.profiler, tcx, plan)
                 })?;
                 (tcx.map(ReadOrWriteTransactionContext::Write), output)
             }
@@ -394,17 +456,18 @@ impl<S: StorageEngine> Shared<S> {
             let catalog = Catalog::new(self.storage.storage());
 
             let schema = Schema::new(plan.schema());
-            let plan =
-                self.profiler.profile(self.profiler.optimize_event_id, || Ok(optimize(plan)))?;
+            let plan = self.profiler.try_profile(self.profiler.optimize_event_id, || {
+                Ok(optimize(&self.profiler, plan))
+            })?;
 
             let physical_planner = PhysicalPlanner::new(catalog);
             let physical_plan =
-                self.profiler.profile(self.profiler.physical_plan_event_id, || {
+                self.profiler.try_profile(self.profiler.physical_plan_event_id, || {
                     do_physical_plan(physical_planner, &tcx, plan)
                 })?;
 
             let ecx = ExecutionContext::<S, M>::new(catalog, &tcx, ctx);
-            let tuples = self.profiler.profile(self.profiler.execute_event_id, || {
+            let tuples = self.profiler.try_profile(self.profiler.execute_event_id, || {
                 nsql_execution::execute(&ecx, physical_plan)
             })?;
 

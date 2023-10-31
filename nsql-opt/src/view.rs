@@ -36,14 +36,17 @@ impl Query {
         &self.egraph
     }
 
+    #[inline]
     pub fn root(&self) -> Plan<'_> {
         self.plan(self.root)
     }
 
+    #[inline]
     fn node(&self, id: Id) -> &Node {
         &self.egraph[id].nodes[0]
     }
 
+    #[inline]
     fn nodes(&self, id: Id) -> &[Id] {
         match self.node(id) {
             Node::Nodes(nodes) => nodes,
@@ -51,6 +54,7 @@ impl Query {
         }
     }
 
+    #[inline]
     fn function(&self, id: Id) -> Oid<ir::Function> {
         match *self.node(id) {
             Node::Function(f) => f,
@@ -58,6 +62,7 @@ impl Query {
         }
     }
 
+    #[inline]
     fn exprs(&self, id: Id) -> impl ExactSizeIterator<Item = Expr<'_>> {
         match self.node(id) {
             Node::Nodes(exprs) => exprs.iter().map(|&id| self.expr(id)),
@@ -286,20 +291,16 @@ impl Limit {
 
     #[inline]
     pub fn limit(self, q: &Query) -> u64 {
-        match q.expr(self.limit){
-            Expr::Literal(lit) if let &ir::Value::Int64(limit) = lit.value(q) => {
-                limit as u64
-            },
+        match q.expr(self.limit) {
+            Expr::Literal(lit) if let &ir::Value::Int64(limit) = lit.value(q) => limit as u64,
             _ => panic!("expected `Literal` text node"),
         }
     }
 
     #[inline]
     pub fn limit_exceeded_message(self, q: &Query) -> Option<String> {
-        match q.expr(self.msg?){
-            Expr::Literal(lit) if let ir::Value::Text(msg) = lit.value(q) => {
-                Some(msg.clone())
-            },
+        match q.expr(self.msg?) {
+            Expr::Literal(lit) if let ir::Value::Text(msg) = lit.value(q) => Some(msg.clone()),
             _ => panic!("expected `Literal` text node"),
         }
     }

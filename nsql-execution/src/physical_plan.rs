@@ -67,6 +67,12 @@ use crate::{
     PhysicalSource, ReadWriteExecutionMode, Tuple, TupleStream,
 };
 
+pub trait PlannerProfiler: nsql_core::Profiler {
+    fn compile_event_id(&self) -> Self::EventId;
+
+    fn explain_event_id(&self) -> Self::EventId;
+}
+
 pub struct PhysicalPlanner<'env, 'txn, S, M> {
     arena: PhysicalNodeArena<'env, 'txn, S, M>,
     catalog: Catalog<'env, S>,
@@ -78,13 +84,6 @@ pub struct PhysicalPlanner<'env, 'txn, S, M> {
 pub struct PhysicalPlan<'env, 'txn, S, M> {
     nodes: PhysicalNodeArena<'env, 'txn, S, M>,
     root: PhysicalNodeId,
-}
-
-impl<'env, 'txn, S, M> Clone for PhysicalPlan<'env, 'txn, S, M> {
-    fn clone(&self) -> Self {
-        todo!()
-        // Self { nodes: self.nodes.clone(), root: self.root }
-    }
 }
 
 impl<'env, 'txn, S, M> PhysicalPlan<'env, 'txn, S, M> {
@@ -120,28 +119,32 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     #[inline]
     pub fn plan(
         mut self,
+        profiler: &impl PlannerProfiler,
         tx: &dyn TransactionContext<'env, 'txn, S, M>,
         plan: Box<ir::Plan<opt::Query>>,
     ) -> Result<PhysicalPlan<'env, 'txn, S, M>> {
-        self.do_plan(tx, plan).map(|root| PhysicalPlan { nodes: self.arena, root })
+        self.do_plan(profiler, tx, plan).map(|root| PhysicalPlan { nodes: self.arena, root })
     }
 
     #[inline]
     fn do_plan(
         &mut self,
+        profiler: &impl PlannerProfiler,
         tx: &dyn TransactionContext<'env, 'txn, S, M>,
         plan: Box<ir::Plan<opt::Query>>,
     ) -> Result<PhysicalNodeId> {
         self.fold_plan(
+            profiler,
             tx,
             plan,
-            |planner, plan| planner.do_plan(tx, plan),
-            |planner, q| planner.plan_root_query(tx, q),
+            |planner, plan| planner.do_plan(profiler, tx, plan),
+            |planner, q| planner.plan_root_query(profiler, tx, q),
         )
     }
 
     fn fold_plan(
         &mut self,
+        profiler: &impl PlannerProfiler,
         tx: &dyn TransactionContext<'env, 'txn, S, M>,
         plan: Box<ir::Plan<opt::Query>>,
         mut f: impl FnMut(&mut Self, Box<ir::Plan<opt::Query>>) -> Result<PhysicalNodeId>,
@@ -155,28 +158,31 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
             ir::Plan::Show(object_type) => PhysicalShow::plan(object_type, &mut self.arena),
             ir::Plan::Query(q) => plan_query(self, &q)?,
             ir::Plan::Explain(opts, logical_plan) => {
-                let logical_explain = if opts.verbose {
-                    format!("{logical_plan:#}")
-                } else {
-                    format!("{logical_plan}")
-                };
+                profiler.profile::<Result<_>>(profiler.explain_event_id(), || {
+                    let logical_explain = if opts.verbose {
+                        format!("{logical_plan:#}")
+                    } else {
+                        format!("{logical_plan}")
+                    };
 
-                let root = f(self, logical_plan)?;
-                let mut physical_plan = PhysicalPlan { nodes: mem::take(&mut self.arena), root };
-                let physical_explain = physical_plan.explain_tree(self.catalog, tx);
-                let sink = OutputSink::plan(physical_plan.arena_mut());
-                let pipeline = crate::build_pipelines(sink, physical_plan);
-                let pipeline_explain = pipeline.display(self.catalog, tx).to_string();
-                let (_pipelines, arena) = pipeline.into_parts();
-                self.arena = arena;
-                PhysicalExplain::plan(
-                    opts,
-                    root,
-                    logical_explain,
-                    physical_explain,
-                    pipeline_explain,
-                    &mut self.arena,
-                )
+                    let root = f(self, logical_plan)?;
+                    let mut physical_plan =
+                        PhysicalPlan { nodes: mem::take(&mut self.arena), root };
+                    let physical_explain = physical_plan.explain_tree(self.catalog, tx);
+                    let sink = OutputSink::plan(physical_plan.arena_mut());
+                    let pipeline = crate::build_pipelines(sink, physical_plan);
+                    let pipeline_explain = pipeline.display(self.catalog, tx).to_string();
+                    let (_pipelines, arena) = pipeline.into_parts();
+                    self.arena = arena;
+                    Ok(PhysicalExplain::plan(
+                        opts,
+                        root,
+                        logical_explain,
+                        physical_explain,
+                        pipeline_explain,
+                        &mut self.arena,
+                    ))
+                })?
             }
             ir::Plan::Drop(..) => {
                 unreachable!("write plans should go through plan_write_node, got drop node")
@@ -193,23 +199,28 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
 
     fn plan_root_query(
         &mut self,
+        profiler: &impl PlannerProfiler,
         tx: &dyn TransactionContext<'env, 'txn, S, M>,
         q: &opt::Query,
     ) -> Result<PhysicalNodeId> {
-        self.plan_node(tx, q, q.root())
+        self.plan_node(profiler, tx, q, q.root())
     }
 
     fn plan_node(
         &mut self,
+        profiler: &impl PlannerProfiler,
         tx: &dyn TransactionContext<'env, 'txn, S, M>,
         q: &opt::Query,
         plan: opt::Plan<'_>,
     ) -> Result<PhysicalNodeId> {
-        self.fold_query_plan(tx, q, plan, |planner, node| planner.plan_node(tx, q, node))
+        self.fold_query_plan(profiler, tx, q, plan, |planner, node| {
+            planner.plan_node(profiler, tx, q, node)
+        })
     }
 
     fn fold_query_plan(
         &mut self,
+        profiler: &impl PlannerProfiler,
         tx: &dyn TransactionContext<'env, 'txn, S, M>,
         q: &opt::Query,
         plan: opt::Plan<'_>,
@@ -221,7 +232,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
                 let exprs = projection.exprs(q);
                 PhysicalProjection::plan(
                     f(self, source)?,
-                    self.compile_exprs(tx, q, exprs)?,
+                    self.compile_exprs(profiler, tx, q, exprs)?,
                     &mut self.arena,
                 )
             }
@@ -229,14 +240,14 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
                 // we expect a join node to be followed by a filter
                 opt::Plan::Join(join) => PhysicalNestedLoopJoin::plan(
                     join.kind(),
-                    self.compile_expr(tx, q, filter.predicate(q))?,
+                    self.compile_expr(profiler, tx, q, filter.predicate(q))?,
                     f(self, join.lhs(q))?,
                     f(self, join.rhs(q))?,
                     &mut self.arena,
                 ),
                 _ => {
                     let source = f(self, filter.source(q))?;
-                    let predicate = self.compile_expr(tx, q, filter.predicate(q))?;
+                    let predicate = self.compile_expr(profiler, tx, q, filter.predicate(q))?;
                     PhysicalFilter::plan(source, predicate, &mut self.arena)
                 }
             },
@@ -265,7 +276,8 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
                 PhysicalHashDistinct::plan(source, &mut self.arena)
             }
             opt::Plan::Aggregate(agg) => {
-                let aggregates = self.compile_aggregate_functions(tx, q, agg.aggregates(q))?;
+                let aggregates =
+                    self.compile_aggregate_functions(profiler, tx, q, agg.aggregates(q))?;
                 let group_by = agg.group_by(q);
                 let source = f(self, agg.source(q))?;
                 if group_by.is_empty() {
@@ -274,7 +286,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
                     PhysicalHashAggregate::plan(
                         aggregates,
                         source,
-                        self.compile_exprs(tx, q, group_by)?,
+                        self.compile_exprs(profiler, tx, q, group_by)?,
                         &mut self.arena,
                     )
                 }
@@ -282,13 +294,13 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
             opt::Plan::Values(values) => PhysicalValues::plan(
                 values
                     .rows(q)
-                    .map(|exprs| self.compile_exprs(tx, q, exprs))
+                    .map(|exprs| self.compile_exprs(profiler, tx, q, exprs))
                     .collect::<Result<_>>()?,
                 &mut self.arena,
             ),
             opt::Plan::Order(order) => PhysicalOrder::plan(
                 f(self, order.source(q))?,
-                self.compile_order_exprs(tx, q, order.order_exprs(q))?,
+                self.compile_order_exprs(profiler, tx, q, order.order_exprs(q))?,
                 &mut self.arena,
             ),
             opt::Plan::TableScan(scan) => {
@@ -303,9 +315,10 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
             opt::Plan::Union(union) => {
                 PhysicalUnion::plan(f(self, union.lhs(q))?, f(self, union.rhs(q))?, &mut self.arena)
             }
-            opt::Plan::Unnest(unnest) => {
-                PhysicalUnnest::plan(self.compile_expr(tx, q, unnest.expr(q))?, &mut self.arena)
-            }
+            opt::Plan::Unnest(unnest) => PhysicalUnnest::plan(
+                self.compile_expr(profiler, tx, q, unnest.expr(q))?,
+                &mut self.arena,
+            ),
             opt::Plan::Update(..) | opt::Plan::Insert(..) => unreachable!(
                 "write query plans should go through plan_write_query_node, got plan {:?}",
                 plan,
@@ -329,43 +342,48 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     #[allow(clippy::type_complexity)]
     fn compile_order_exprs(
         &mut self,
+        profiler: &impl PlannerProfiler,
         tx: &dyn TransactionContext<'env, 'txn, S, M>,
         q: &opt::Query,
         exprs: impl Iterator<Item = ir::OrderExpr<opt::Expr<'_>>>,
     ) -> Result<Box<[ir::OrderExpr<ExecutableExpr<'env, S, M>>]>> {
-        exprs.map(|expr| self.compile_order_expr(tx, q, expr)).collect()
+        exprs.map(|expr| self.compile_order_expr(profiler, tx, q, expr)).collect()
     }
 
     fn compile_order_expr(
         &mut self,
+        profiler: &impl PlannerProfiler,
         tx: &dyn TransactionContext<'env, 'txn, S, M>,
         q: &opt::Query,
         expr: ir::OrderExpr<opt::Expr<'_>>,
     ) -> Result<ir::OrderExpr<ExecutableExpr<'env, S, M>>> {
-        Ok(ir::OrderExpr { expr: self.compile_expr(tx, q, expr.expr)?, asc: expr.asc })
+        Ok(ir::OrderExpr { expr: self.compile_expr(profiler, tx, q, expr.expr)?, asc: expr.asc })
     }
 
     fn compile_exprs(
         &mut self,
+        profiler: &impl PlannerProfiler,
         tx: &dyn TransactionContext<'env, 'txn, S, M>,
         q: &opt::Query,
         exprs: impl Iterator<Item = opt::Expr<'_>>,
     ) -> Result<ExecutableTupleExpr<'env, S, M>> {
-        self.compiler.compile_many(&self.catalog, tx, q, exprs)
+        self.compiler.compile_many(profiler, &self.catalog, tx, q, exprs)
     }
 
     fn compile_expr(
         &mut self,
+        profiler: &impl PlannerProfiler,
         tx: &dyn TransactionContext<'env, 'txn, S, M>,
         q: &opt::Query,
         expr: opt::Expr<'_>,
     ) -> Result<ExecutableExpr<'env, S, M>> {
-        self.compiler.compile(&self.catalog, tx, q, expr)
+        self.compiler.compile(profiler, &self.catalog, tx, q, expr)
     }
 
     #[allow(clippy::type_complexity)]
     fn compile_aggregate_functions(
         &mut self,
+        profiler: &impl PlannerProfiler,
         tx: &dyn TransactionContext<'env, 'txn, S, M>,
         q: &opt::Query,
         functions: impl IntoIterator<Item = opt::CallExpr<'_>>,
@@ -382,7 +400,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
 
                 match args.next() {
                     Some(arg) => {
-                        let arg = self.compile_expr(tx, q, arg)?;
+                        let arg = self.compile_expr(profiler, tx, q, arg)?;
                         Ok((f, Some(arg)))
                     }
                     None => Ok((f, None)),
@@ -395,38 +413,43 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
 impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalPlanner<'env, 'txn, S, ReadWriteExecutionMode> {
     pub fn plan_write(
         mut self,
+        profiler: &impl PlannerProfiler,
         tx: &dyn TransactionContext<'env, 'txn, S, ReadWriteExecutionMode>,
         plan: Box<ir::Plan<opt::Query>>,
     ) -> Result<PhysicalPlan<'env, 'txn, S, ReadWriteExecutionMode>> {
-        self.do_plan_write(tx, plan).map(|root| PhysicalPlan { nodes: self.arena, root })
+        self.do_plan_write(profiler, tx, plan).map(|root| PhysicalPlan { nodes: self.arena, root })
     }
 
     fn do_plan_write(
         &mut self,
+        profiler: &impl PlannerProfiler,
         tx: &dyn TransactionContext<'env, 'txn, S, ReadWriteExecutionMode>,
         plan: Box<ir::Plan<opt::Query>>,
     ) -> Result<PhysicalNodeId> {
         match *plan {
             ir::Plan::Drop(refs) => Ok(PhysicalDrop::plan(refs, &mut self.arena)),
             _ => self.fold_plan(
+                profiler,
                 tx,
                 plan,
-                |planner, plan| planner.do_plan_write(tx, plan),
-                |planner, q| planner.plan_root_write_query(tx, q),
+                |planner, plan| planner.do_plan_write(profiler, tx, plan),
+                |planner, q| planner.plan_root_write_query(profiler, tx, q),
             ),
         }
     }
 
     fn plan_root_write_query(
         &mut self,
+        profiler: &impl PlannerProfiler,
         tx: &dyn TransactionContext<'env, 'txn, S, ReadWriteExecutionMode>,
         q: &opt::Query,
     ) -> Result<PhysicalNodeId> {
-        self.plan_write_query(tx, q, q.root())
+        self.plan_write_query(profiler, tx, q, q.root())
     }
 
     fn plan_write_query(
         &mut self,
+        profiler: &impl PlannerProfiler,
         tx: &dyn TransactionContext<'env, 'txn, S, ReadWriteExecutionMode>,
         q: &opt::Query,
         plan: opt::Plan<'_>,
@@ -434,19 +457,19 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalPlanner<'env, 'txn, S, ReadWrit
         let plan = match plan {
             opt::Plan::Update(insert) => PhysicalUpdate::plan(
                 insert.table(q),
-                self.plan_write_query(tx, q, insert.source(q))?,
-                self.compile_exprs(tx, q, insert.returning(q))?,
+                self.plan_write_query(profiler, tx, q, insert.source(q))?,
+                self.compile_exprs(profiler, tx, q, insert.returning(q))?,
                 &mut self.arena,
             ),
             opt::Plan::Insert(insert) => PhysicalInsert::plan(
                 insert.table(q),
-                self.plan_write_query(tx, q, insert.source(q))?,
-                self.compile_exprs(tx, q, insert.returning(q))?,
+                self.plan_write_query(profiler, tx, q, insert.source(q))?,
+                self.compile_exprs(profiler, tx, q, insert.returning(q))?,
                 &mut self.arena,
             ),
             _ => {
-                return self.fold_query_plan(tx, q, plan, |planner, node| {
-                    planner.plan_write_query(tx, q, node)
+                return self.fold_query_plan(profiler, tx, q, plan, |planner, node| {
+                    planner.plan_write_query(profiler, tx, q, node)
                 });
             }
         };

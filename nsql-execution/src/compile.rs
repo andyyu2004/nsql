@@ -7,6 +7,8 @@ use nsql_core::{Oid, UntypedOid};
 use nsql_storage::expr::{Expr, ExprOp, TupleExpr};
 use nsql_storage_engine::{ExecutionMode, StorageEngine};
 
+use crate::physical_plan::PlannerProfiler;
+
 #[derive(Debug)]
 pub(crate) struct Compiler<F> {
     ops: Vec<ExprOp<F>>,
@@ -21,6 +23,7 @@ impl<F> Default for Compiler<F> {
 impl<F> Compiler<F> {
     pub fn compile_many<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
         &mut self,
+        profiler: &impl PlannerProfiler,
         catalog: &dyn FunctionCatalog<'env, S, M, F>,
         tx: &dyn TransactionContext<'env, 'txn, S, M>,
         q: &opt::Query,
@@ -28,25 +31,29 @@ impl<F> Compiler<F> {
     ) -> Result<TupleExpr<F>> {
         exprs
             .into_iter()
-            .map(|expr| self.compile(catalog, tx, q, expr))
+            .map(|expr| self.compile(profiler, catalog, tx, q, expr))
             .collect::<Result<Box<_>>>()
             .map(TupleExpr::new)
     }
 
     pub fn compile<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
         &mut self,
+        profiler: &impl PlannerProfiler,
         catalog: &dyn FunctionCatalog<'env, S, M, F>,
         tx: &dyn TransactionContext<'env, 'txn, S, M>,
         q: &opt::Query,
         expr: opt::Expr<'_>,
     ) -> Result<Expr<F>> {
-        self.build(catalog, tx, q, &expr)?;
-        self.emit(ExprOp::Return);
-        Ok(Expr::new(expr.display(q), mem::take(&mut self.ops)))
+        profiler.profile(profiler.compile_event_id(), || {
+            self.build(profiler, catalog, tx, q, &expr)?;
+            self.emit(ExprOp::Return);
+            Ok(Expr::new(expr.display(q), mem::take(&mut self.ops)))
+        })
     }
 
     fn build<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
         &mut self,
+        profiler: &impl PlannerProfiler,
         catalog: &dyn FunctionCatalog<'env, S, M, F>,
         tx: &dyn TransactionContext<'env, 'txn, S, M>,
         q: &opt::Query,
@@ -62,7 +69,7 @@ impl<F> Compiler<F> {
                 self.ops = expr.resolve(catalog, tx)?.into_ops();
             }
             opt::Expr::ColumnRef(col) => {
-                assert!(
+                debug_assert!(
                     col.level == 0,
                     "correlated column references should be resolved before compilation, got column reference: {col:?}",
                 );
@@ -73,7 +80,7 @@ impl<F> Compiler<F> {
                 let exprs = array.exprs(q);
                 let len = exprs.len();
                 for expr in exprs {
-                    self.build(catalog, tx, q, &expr)?;
+                    self.build(profiler, catalog, tx, q, &expr)?;
                 }
                 self.emit(ExprOp::MkArray { len });
             }
@@ -81,7 +88,7 @@ impl<F> Compiler<F> {
                 let function = catalog.get_function(tx, call.function())?;
                 let args = call.args(q);
                 for arg in args {
-                    self.build(catalog, tx, q, &arg)?;
+                    self.build(profiler, catalog, tx, q, &arg)?;
                 }
                 self.emit(ExprOp::Call { function });
             }
@@ -96,7 +103,7 @@ impl<F> Compiler<F> {
                         self.emit(ExprOp::Pop);
                     }
 
-                    self.build(catalog, tx, q, &expr)?;
+                    self.build(profiler, catalog, tx, q, &expr)?;
                     // we need to duplicate the value because we need to keep it on the stack if it is non-null
                     self.emit(ExprOp::Dup);
                     next_branch_marker = Some(self.emit_jmp(ExprOp::IfNullJmp));
@@ -134,13 +141,13 @@ impl<F> Compiler<F> {
                     // FIXME should this be evaluated once or once per branch?
                     // probably once in total (so might need a dup instruction rather than rebuilding it every time)
                     // push the scrutinee onto the stack
-                    self.build(catalog, tx, q, &scrutinee)?;
+                    self.build(profiler, catalog, tx, q, &scrutinee)?;
                     // push the comparison expression onto the stack
-                    self.build(catalog, tx, q, &when)?;
+                    self.build(profiler, catalog, tx, q, &when)?;
                     // if the comparison is false, jump to the next `when` branch
                     next_branch_marker = Some(self.emit_jmp(ExprOp::IfNeJmp));
                     // build the `then` expression
-                    self.build(catalog, tx, q, &then)?;
+                    self.build(profiler, catalog, tx, q, &then)?;
                     // and jump to the end of the case
                     end_markers.push(self.emit_jmp(ExprOp::Jmp));
                 }
@@ -151,7 +158,7 @@ impl<F> Compiler<F> {
                     .expect("this should exist as cases are non-empty")
                     .backpatch(self);
 
-                self.build(catalog, tx, q, &else_expr)?;
+                self.build(profiler, catalog, tx, q, &else_expr)?;
 
                 // backpatch all the end markers
                 for marker in end_markers {
@@ -181,6 +188,7 @@ impl<F> Compiler<F> {
 
                 let mut compiler = Compiler::<UntypedOid>::default();
                 let expr = compiler.compile::<S, M>(
+                    profiler,
                     &NoopCatalog(catalog.storage()),
                     tx,
                     q,

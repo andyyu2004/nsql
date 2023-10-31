@@ -16,12 +16,20 @@ use rustc_hash::FxHashSet;
 use self::decorrelate::Decorrelate;
 pub use self::view::{CallExpr, Expr, Plan, Query};
 
+pub trait Profiler: nsql_core::Profiler {
+    fn transform_event_id(&self) -> Self::EventId;
+
+    fn optimize_egraph_event_id(&self) -> Self::EventId;
+
+    fn build_egraph_event_id(&self) -> Self::EventId;
+}
+
 trait Pass: Folder {
     fn name(&self) -> &'static str;
 }
 
 #[allow(clippy::boxed_local)]
-pub fn optimize(plan: Box<ir::Plan>) -> Box<ir::Plan<Query>> {
+pub fn optimize(profiler: &impl Profiler, plan: Box<ir::Plan>) -> Box<ir::Plan<Query>> {
     let optimized = match *plan {
         ir::Plan::Show(show) => ir::Plan::Show(show),
         ir::Plan::Drop(refs) => ir::Plan::Drop(refs),
@@ -29,11 +37,11 @@ pub fn optimize(plan: Box<ir::Plan>) -> Box<ir::Plan<Query>> {
         ir::Plan::SetVariable { name, value, scope } => {
             ir::Plan::SetVariable { name, value, scope }
         }
-        ir::Plan::Explain(opts, query) => ir::Plan::Explain(opts, optimize(query)),
-        ir::Plan::Query(query) => ir::Plan::Query(optimize_query(query)),
+        ir::Plan::Explain(opts, query) => ir::Plan::Explain(opts, optimize(profiler, query)),
+        ir::Plan::Query(query) => ir::Plan::Query(optimize_query(profiler, query)),
         ir::Plan::Copy(cp) => ir::Plan::Copy(match cp {
             ir::Copy::To(ir::CopyTo { src, dst }) => {
-                ir::Copy::To(ir::CopyTo { src: optimize_query(src), dst })
+                ir::Copy::To(ir::CopyTo { src: optimize_query(profiler, src), dst })
             }
         }),
     };
@@ -41,35 +49,37 @@ pub fn optimize(plan: Box<ir::Plan>) -> Box<ir::Plan<Query>> {
     Box::new(optimized)
 }
 
-fn optimize_query(mut plan: Box<ir::QueryPlan>) -> Query {
+fn optimize_query(profiler: &impl Profiler, mut plan: Box<ir::QueryPlan>) -> Query {
     #[cfg(debug_assertions)]
     plan.validate().unwrap_or_else(|err| panic!("invalid plan passed to optimizer: {err}"));
 
-    loop {
-        let passes = [
-            &mut IdentityProjectionElimination as &mut dyn Pass,
-            &mut EmptyPlanElimination,
-            &mut Decorrelate,
-            &mut DeduplicateCtes::default(),
-        ];
-        let pre_opt_plan = plan.clone();
-        for pass in passes {
-            plan = pass.fold_boxed_query_plan(plan);
-            #[cfg(debug_assertions)]
-            plan.validate().unwrap_or_else(|err| {
-                panic!("invalid plan after pass `{}`: {err}\n{plan:#}", pass.name())
-            });
-            tracing::debug!("plan after pass `{}`:\n{:#}", pass.name(), plan);
-        }
+    let plan = profiler.profile(profiler.transform_event_id(), || {
+        loop {
+            let passes = [
+                &mut IdentityProjectionElimination as &mut dyn Pass,
+                &mut EmptyPlanElimination,
+                &mut Decorrelate,
+                &mut DeduplicateCtes::default(),
+            ];
+            let pre_opt_plan = plan.clone();
+            for pass in passes {
+                plan = pass.fold_boxed_query_plan(plan);
+                #[cfg(debug_assertions)]
+                plan.validate().unwrap_or_else(|err| {
+                    panic!("invalid plan after pass `{}`: {err}\n{plan:#}", pass.name())
+                });
+                tracing::debug!("plan after pass `{}`:\n{:#}", pass.name(), plan);
+            }
 
-        if plan == pre_opt_plan {
-            break;
+            if plan == pre_opt_plan {
+                break plan;
+            }
         }
-    }
+    });
 
     let mut builder = node::Builder::default();
-    let root = builder.build(&plan);
-    builder.finalize(root)
+    let root = profiler.profile(profiler.build_egraph_event_id(), || builder.build(&plan));
+    profiler.profile(profiler.optimize_egraph_event_id(), || builder.finalize(root))
 }
 
 struct IdentityProjectionElimination;
