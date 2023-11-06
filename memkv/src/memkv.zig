@@ -166,6 +166,10 @@ fn ensure_key_size(key: []const u8) !void {
     if (key.len > MAX_KEY_SIZE) return PutError.KeyTooLarge;
 }
 
+fn ensure_value_size(value: []const u8) !void {
+    if (value.len > MAX_VALUE_SIZE) return PutError.ValueTooLarge;
+}
+
 const Cursor = struct {
     const Self = @This();
 
@@ -203,6 +207,7 @@ const Cursor = struct {
 
     pub fn put(self: *Self, key: []const u8, value: []const u8) !void {
         try ensure_key_size(key);
+        try ensure_value_size(value);
 
         const entry = self.search(key);
         switch (entry) {
@@ -420,6 +425,7 @@ fn test_get(tree: *WriteTree, key: []const u8, value: []const u8) !void {
 const PutError = error{
     KeyExists,
     KeyTooLarge,
+    ValueTooLarge,
 };
 
 test "smoke" {
@@ -449,9 +455,14 @@ test "error conditions" {
     defer tree.deinit();
 
     const key = mem.zeroes([MAX_KEY_SIZE]u8);
-
     try test_put_and_get(tree, &key, "test");
 
     const tooLargeKey = mem.zeroes([MAX_KEY_SIZE + 1]u8);
     try testing.expectError(PutError.KeyTooLarge, tree.put(&tooLargeKey, "test"));
+
+    const value = mem.zeroes([MAX_VALUE_SIZE]u8);
+    try test_put_and_get(tree, "test", &value);
+
+    const tooLargeValue = mem.zeroes([MAX_VALUE_SIZE + 1]u8);
+    try testing.expectError(PutError.ValueTooLarge, tree.put("test", &tooLargeValue));
 }
