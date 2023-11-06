@@ -9,8 +9,9 @@ const eql = std.mem.eql;
 const ArrayList = std.ArrayList;
 
 const PGSZ = mem.page_size;
-const MAX_KEY_SIZE = 1 << 12 - 1;
-const MAX_VALUE_SIZE = 1 << 32 - 1;
+const MAX_KEY_SIZE = (1 << 9) - 1;
+// const MAX_VALUE_SIZE = (1 << 32) - 1;
+const MAX_VALUE_SIZE = PGSZ / 3; // no overflow pages yet
 
 const PageNumber = enum(u64) {
     root = 0,
@@ -90,10 +91,10 @@ const Env = struct {
         const pgno: PageNumber = @enumFromInt(self.next_pgno.fetchAdd(1, Ordering.AcqRel));
         const offset = pgno.offset();
         const page: *Page = @ptrCast(@alignCast(&self.buf[offset]));
+
         page.* = .{
             .pgno = pgno,
             .flags = flags,
-            .free_start = @sizeOf(Page),
             .free_end = PGSZ,
         };
         return pgno;
@@ -162,7 +163,7 @@ const WriteTree = struct {
 };
 
 fn ensure_key_size(key: []const u8) !void {
-    if (key.len > MAX_KEY_SIZE) return error.KeyTooLarge;
+    if (key.len > MAX_KEY_SIZE) return PutError.KeyTooLarge;
 }
 
 const Cursor = struct {
@@ -205,17 +206,12 @@ const Cursor = struct {
 
         const entry = self.search(key);
         switch (entry) {
-            .left => |slot| return self.set(slot, key, value),
+            .left => |idx| return self.current_page().insert_at(idx, key, value),
             .right => return PutError.KeyExists,
         }
     }
 
-    /// Insert a new entry into the tree at the current cursor position.
-    fn set(self: *Self, slot: u16, key: []const u8, value: []const u8) !void {
-        return self.current_page().add_entry(slot, key, value);
-    }
-
-    fn search(self: *Self, key: []const u8) Either(u16, *Entry) {
+    fn search(self: *Self, key: []const u8) Either(u16, *const Entry) {
         var page = self.current_page();
         while (page.is_internal()) {
             unreachable;
@@ -241,7 +237,7 @@ const Entry = extern struct {
     },
     u: extern union {
         child_pgno: PageNumber, // internal node
-        data_size: u32, // leaf node
+        value_size: u32, // leaf node
     },
     data_array: [0]u8,
 
@@ -254,20 +250,24 @@ const Entry = extern struct {
         return self.u.child_pgno;
     }
 
-    fn data_size(self: *const Entry) u32 {
-        return self.u.data_size;
+    fn value_size(self: *const Entry) u32 {
+        return self.u.value_size;
     }
 
-    fn data(self: *Entry) [*]u8 {
+    fn data(self: *const Entry) [*]const u8 {
         return @ptrCast(&self.data_array);
     }
 
-    fn key(self: *Entry) []u8 {
+    fn data_mut(self: *Entry) [*]u8 {
+        return @ptrCast(&self.data_array);
+    }
+
+    fn key(self: *const Entry) []const u8 {
         return self.data()[0..self.meta.key_size];
     }
 
-    fn value(self: *Entry) []u8 {
-        return self.data()[self.meta.key_size .. self.meta.key_size + self.data_size()];
+    fn value(self: *const Entry) []const u8 {
+        return self.data()[self.meta.key_size .. self.meta.key_size + self.value_size()];
     }
 };
 
@@ -283,7 +283,6 @@ const Page = extern struct {
 
     pgno: PageNumber,
     flags: Flags,
-    free_start: Offset,
     free_end: Offset,
     /// number of allocated slots
     slot_count: u16 = 0,
@@ -312,32 +311,36 @@ const Page = extern struct {
         return !self.flags.LEAF;
     }
 
-    pub fn slots(self: *Page) []Offset {
+    pub fn offsets(self: *const Page) []const Offset {
+        const ptr: [*]const Offset = @ptrCast(&self.slot_array);
+        return ptr[0..self.slot_count];
+    }
+
+    pub fn offsets_mut(self: *Page) []Offset {
         const ptr: [*]Offset = @ptrCast(&self.slot_array);
         return ptr[0..self.slot_count];
     }
 
     /// Search for an entry within a page.
     /// Returns the entry with the smallest `k` where `k` >= `key`.
-    fn search(self: *Page, target: []const u8) Either(u16, *Entry) {
-        if (self.slot_count == 0) {
-            return .{ .left = 0 };
-        }
-
+    fn search(self: *Page, target: []const u8) Either(u16, *const Entry) {
         var low: u16 = 0;
-        var high: u16 = self.slot_count - 1;
+        var high: u16 = self.slot_count;
         if (self.is_leaf()) {
-            while (low <= high) {
+            while (low < high) {
                 const mid = (low + high) / 2;
                 const ent = self.entry(mid);
                 const key = ent.key();
+
                 switch (mem.order(u8, target, key)) {
-                    .lt => high = mid - 1,
+                    .lt => high = mid,
                     .eq => return .{ .right = ent },
                     .gt => low = mid + 1,
                 }
             }
 
+            // need to test this case, is it low or high we should return?
+            debug.assert(low == high);
             return .{ .left = low };
         } else {
             // TODO
@@ -345,43 +348,58 @@ const Page = extern struct {
         }
     }
 
-    fn free_space(self: *const Page) u16 {
-        return self.free_end - self.free_start;
+    fn free_start(self: *const Page) u16 {
+        return @sizeOf(Self) + @sizeOf(Offset) * self.slot_count;
     }
 
-    fn add_entry(self: *Page, slot: u16, key: []const u8, value: []const u8) !void {
+    fn free_space(self: *const Page) u16 {
+        return self.free_end - self.free_start();
+    }
+
+    fn insert_at(self: *Page, slot_idx: u16, key: []const u8, value: []const u8) !void {
         debug.assert(key.len <= MAX_KEY_SIZE);
         debug.assert(value.len <= MAX_VALUE_SIZE);
 
         // allocate fresh slot
-        const len = key.len + value.len;
-        self.free_end -= @intCast(len);
+        const size = key.len + value.len + @sizeOf(Entry);
+        debug.assert(self.free_space() >= size);
+
+        // shift over existing entries as required
+        var i = self.slot_count;
+        self.slot_count += 1;
+        const offs = self.offsets_mut();
+        while (i > slot_idx) {
+            offs[i] = offs[i - 1];
+            i -= 1;
+        }
+
+        self.free_end -= @intCast(size);
         // ensure the entry is aligned (page is also 8 byte aligned so this works)
         self.free_end = self.free_end - @rem(self.free_end, @alignOf(Entry));
         const start = self.free_end;
-        self.slot_count += 1;
-        self.slots()[slot] = start;
+        offs[slot_idx] = start;
 
-        const ent = self.entry(slot);
+        const ent = self.entry_mut(slot_idx);
         ent.meta.key_size = @intCast(key.len);
-        ent.u.data_size = @intCast(value.len);
-        const ptr = ent.data();
+        ent.u.value_size = @intCast(value.len);
+        const ptr = ent.data_mut();
 
         @memcpy(ptr, key);
         @memcpy(ptr + ent.meta.key_size, value);
-        // FIXME shift offsets and stuff
-
     }
 
-    fn raw_entry_ptr(self: *const Page, i: u16) *const u8 {
-        const slot = self.slots()[i];
-        const ptr = &@as([*]u8, @ptrCast(self))[slot];
-        return ptr;
+    fn entry(self: *const Page, i: u16) *const Entry {
+        debug.assert(i < self.slot_count);
+        const offset = self.offsets()[i];
+        debug.assert(offset >= self.free_start());
+        debug.assert(offset < PGSZ);
+        const ptr = &@as([*]const u8, @ptrCast(self))[offset];
+        return @ptrCast(@alignCast(ptr));
     }
 
-    fn entry(self: *Page, i: u16) *Entry {
-        const slot = self.slots()[i];
-        const ptr = &@as([*]u8, @ptrCast(self))[slot];
+    fn entry_mut(self: *Page, i: u16) *Entry {
+        const offset = self.offsets()[i];
+        const ptr = &@as([*]u8, @ptrCast(self))[offset];
         return @ptrCast(@alignCast(ptr));
     }
 };
@@ -390,7 +408,10 @@ const testing = std.testing;
 
 fn test_put_and_get(tree: *WriteTree, key: []const u8, value: []const u8) !void {
     try tree.put(key, value);
+    try test_get(tree, key, value);
+}
 
+fn test_get(tree: *WriteTree, key: []const u8, value: []const u8) !void {
     var v = try tree.get(key);
     try testing.expect(v != null);
     try testing.expectEqualStrings(value, v.?);
@@ -398,14 +419,11 @@ fn test_put_and_get(tree: *WriteTree, key: []const u8, value: []const u8) !void 
 
 const PutError = error{
     KeyExists,
+    KeyTooLarge,
 };
 
 test "smoke" {
-    const allocator = std.heap.c_allocator;
-
-    testing.refAllDecls(@This());
-
-    var env = try Env.init(allocator);
+    var env = try Env.init(std.heap.c_allocator);
     var txn = try env.begin_write();
     defer txn.deinit();
     var tree = try txn.open("test");
@@ -413,5 +431,27 @@ test "smoke" {
 
     try test_put_and_get(tree, "hello", "world");
     try testing.expectError(PutError.KeyExists, tree.put("hello", "world"));
-    // try test_put_and_get(tree, "a", "b");
+    try test_put_and_get(tree, "a", "b");
+    try test_get(tree, "hello", "world");
+    try testing.expectError(PutError.KeyExists, tree.put("hello", "b"));
+    try testing.expectError(PutError.KeyExists, tree.put("a", "test"));
+
+    try test_put_and_get(tree, "", "empty");
+    try testing.expectError(PutError.KeyExists, tree.put("hello", "b"));
+    try testing.expectError(PutError.KeyExists, tree.put("a", "test"));
+}
+
+test "error conditions" {
+    var env = try Env.init(std.heap.c_allocator);
+    var txn = try env.begin_write();
+    defer txn.deinit();
+    var tree = try txn.open("test");
+    defer tree.deinit();
+
+    const key = mem.zeroes([MAX_KEY_SIZE]u8);
+
+    try test_put_and_get(tree, &key, "test");
+
+    const tooLargeKey = mem.zeroes([MAX_KEY_SIZE + 1]u8);
+    try testing.expectError(PutError.KeyTooLarge, tree.put(&tooLargeKey, "test"));
 }
