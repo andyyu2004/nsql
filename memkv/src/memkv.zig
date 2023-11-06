@@ -211,7 +211,14 @@ const Cursor = struct {
 
         const entry = self.search(key);
         switch (entry) {
-            .left => |idx| return self.current_page().insert_at(idx, key, value),
+            .left => |idx| {
+                return self.current_page().insert_at(idx, key, value) catch |err| switch (err) {
+                    error.PageFull => {
+                        // TODO
+                        @panic("todo split");
+                    },
+                };
+            },
             .right => return PutError.KeyExists,
         }
     }
@@ -367,7 +374,7 @@ const Page = extern struct {
 
         // allocate fresh slot
         const size = key.len + value.len + @sizeOf(Entry);
-        debug.assert(self.free_space() >= size);
+        if (self.free_space() < size) return error.PageFull;
 
         // shift over existing entries as required
         var i = self.slot_count;
@@ -465,4 +472,18 @@ test "error conditions" {
 
     const tooLargeValue = mem.zeroes([MAX_VALUE_SIZE + 1]u8);
     try testing.expectError(PutError.ValueTooLarge, tree.put("test", &tooLargeValue));
+}
+
+test "split" {
+    var env = try Env.init(std.heap.c_allocator);
+    var txn = try env.begin_write();
+    defer txn.deinit();
+    var tree = try txn.open("test");
+    defer tree.deinit();
+
+    const value = mem.zeroes([MAX_VALUE_SIZE]u8);
+    for (0..100) |i| {
+        const key: [1]u8 = .{@intCast(i)};
+        try tree.put(&key, &value);
+    }
 }
