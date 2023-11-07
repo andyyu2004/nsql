@@ -1,6 +1,6 @@
- projection (.agg.sum(t.a), .agg.sum(t.a), .agg.sum(t.a))                
-   order by (.agg.sum(t.a))                                              
-     projection (agg.sum(t.a), agg.sum(t.a), agg.sum(t.a), agg.sum(t.a)) 
-       ungrouped aggregate (sum(t.a))                                    
-         scan 3 values                                                   
-                                                                         
+ projection (<compiled expr>, <compiled expr>, <compiled expr>)                      
+   order by (<compiled expr>)                                                        
+     projection (<compiled expr>, <compiled expr>, <compiled expr>, <compiled expr>) 
+       ungrouped aggregate (sum(<compiled expr>))                                    
+         scan 3 values                                                               
+                                                                                     

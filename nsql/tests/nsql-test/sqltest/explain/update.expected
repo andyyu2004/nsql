@@ -1,5 +1,5 @@
- update t                  
-   projection (t.id, true) 
-     filter t.b            
-       scan t (id, b)      
-                           
+ update t                                        
+   projection (<compiled expr>, <compiled expr>) 
+     filter <compiled expr>                      
+       scan t (id, b)                            
+                                                 

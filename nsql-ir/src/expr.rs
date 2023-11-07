@@ -102,7 +102,7 @@ impl fmt::Display for Expr {
 }
 
 // This is just for awareness of the size of the enum
-static_assert_eq!(mem::size_of::<ExprKind>(), 48);
+static_assert_eq!(mem::size_of::<ExprKind>(), 40);
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ExprKind {

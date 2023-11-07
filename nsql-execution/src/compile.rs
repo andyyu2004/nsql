@@ -47,7 +47,7 @@ impl<F> Compiler<F> {
         profiler.profile(profiler.compile_event_id(), || {
             self.build(profiler, catalog, tx, q, &expr)?;
             self.emit(ExprOp::Return);
-            Ok(Expr::new(expr.display(q), mem::take(&mut self.ops)))
+            Ok(Expr::new(mem::take(&mut self.ops)))
         })
     }
 

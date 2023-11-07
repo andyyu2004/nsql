@@ -77,7 +77,6 @@ impl From<TupleExpr> for Value {
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Archive, Serialize, Deserialize)]
 pub struct Expr<F = UntypedOid> {
-    pretty: Box<str>,
     ops: Box<[ExprOp<F>]>,
 }
 
@@ -90,7 +89,8 @@ impl<F> FromStr for Expr<F> {
     }
 }
 
-static_assert_eq!(mem::size_of::<Expr>(), 32);
+// avoid accidental size growth
+static_assert_eq!(mem::size_of::<Expr>(), 16);
 
 impl FromValue for Expr {
     #[inline]
@@ -111,14 +111,15 @@ impl From<Expr> for Value {
 
 impl<F> fmt::Display for Expr<F> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.pretty)
+        // TODO
+        write!(f, "<compiled expr>")
     }
 }
 
 impl<F> Expr<F> {
     #[inline]
     pub fn null() -> Self {
-        Self { pretty: "NULL".into(), ops: Box::new([ExprOp::Push(Value::Null), ExprOp::Return]) }
+        Self { ops: Box::new([ExprOp::Push(Value::Null), ExprOp::Return]) }
     }
 
     #[inline]
@@ -129,23 +130,20 @@ impl<F> Expr<F> {
     #[inline]
     pub fn literal(value: impl Into<Value>) -> Self {
         let value = value.into();
-        Self {
-            pretty: format!("{value}").into(),
-            ops: Box::new([ExprOp::Push(value), ExprOp::Return]),
-        }
+        Self { ops: Box::new([ExprOp::Push(value), ExprOp::Return]) }
     }
 
     pub fn call(function: F, args: impl IntoIterator<Item = Value>) -> Self {
         let mut ops = vec![];
         ops.extend(args.into_iter().map(ExprOp::Push));
         ops.push(ExprOp::Call { function });
-        Self { pretty: "call".into(), ops: ops.into_boxed_slice() }
+        Self { ops: ops.into_boxed_slice() }
     }
 
-    pub fn new(pretty: impl fmt::Display, ops: impl Into<Box<[ExprOp<F>]>>) -> Self {
+    pub fn new(ops: impl Into<Box<[ExprOp<F>]>>) -> Self {
         let ops = ops.into();
         assert!(ops.len() > 1, "should have at least one value and one return");
-        Self { pretty: format!("{pretty}").into(), ops }
+        Self { ops }
     }
 
     #[inline]
@@ -178,7 +176,7 @@ pub enum ExprOp<F = UntypedOid> {
     Return,
 }
 
-static_assert_eq!(mem::size_of::<ExprOp>(), 40);
+static_assert_eq!(mem::size_of::<ExprOp>(), 24);
 
 mod fold;
 

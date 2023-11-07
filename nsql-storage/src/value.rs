@@ -36,6 +36,9 @@ impl fmt::Display for CastError {
 
 impl Error for CastError {}
 
+// Avoid accidental size growth
+static_assert_eq!(mem::size_of::<Value>(), 24);
+
 /// An nsql value
 #[derive(
     Debug,
@@ -174,8 +177,6 @@ where
         Ok(self.as_str().into())
     }
 }
-
-static_assert_eq!(mem::size_of::<Value>(), 40);
 
 #[derive(
     Default,

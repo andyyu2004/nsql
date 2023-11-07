@@ -14,7 +14,6 @@ impl<F> TupleExpr<F> {
 impl<F> Expr<F> {
     pub fn map<G>(self, f: impl Fn(F) -> Result<G> + Copy) -> Result<Expr<G>> {
         Ok(Expr::new(
-            self.pretty,
             self.ops.into_vec().into_iter().map(|op| op.map(f)).collect::<Result<Box<_>, _>>()?,
         ))
     }
