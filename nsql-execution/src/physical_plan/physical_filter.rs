@@ -6,7 +6,7 @@ use super::*;
 pub struct PhysicalFilter<'env, 'txn, S, M> {
     id: PhysicalNodeId,
     child: PhysicalNodeId,
-    predicate: ExecutableExpr<'env, S, M>,
+    predicate: ExecutableExpr<'env, 'txn, S, M>,
     evaluator: Evaluator,
     _marker: PhantomData<dyn PhysicalNode<'env, 'txn, S, M>>,
 }
@@ -16,7 +16,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
 {
     pub(crate) fn plan(
         source: PhysicalNodeId,
-        predicate: ExecutableExpr<'env, S, M>,
+        predicate: ExecutableExpr<'env, 'txn, S, M>,
         arena: &mut PhysicalNodeArena<'env, 'txn, S, M>,
     ) -> PhysicalNodeId {
         arena.alloc_with(|id| {

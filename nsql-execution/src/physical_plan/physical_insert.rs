@@ -15,7 +15,7 @@ pub(crate) struct PhysicalInsert<'env, 'txn, S: StorageEngine> {
     table_oid: Oid<Table>,
     storage: Option<TableStorage<'env, 'txn, S, ReadWriteExecutionMode>>,
     table: OnceLock<Table>,
-    returning: ExecutableTupleExpr<'env, S, ReadWriteExecutionMode>,
+    returning: ExecutableTupleExpr<'env, 'txn, S, ReadWriteExecutionMode>,
     returning_tuples: Vec<Tuple>,
     evaluator: Evaluator,
 }
@@ -24,7 +24,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalInsert<'env, 'txn, S> {
     pub fn plan(
         table_oid: Oid<Table>,
         source: PhysicalNodeId,
-        returning: ExecutableTupleExpr<'env, S, ReadWriteExecutionMode>,
+        returning: ExecutableTupleExpr<'env, 'txn, S, ReadWriteExecutionMode>,
         arena: &mut PhysicalNodeArena<'env, 'txn, S, ReadWriteExecutionMode>,
     ) -> PhysicalNodeId {
         arena.alloc_with(|id| {

@@ -76,7 +76,7 @@ pub trait PlannerProfiler: nsql_core::Profiler {
 pub struct PhysicalPlanner<'env, 'txn, S, M> {
     arena: PhysicalNodeArena<'env, 'txn, S, M>,
     catalog: Catalog<'env, S>,
-    compiler: Compiler<ExecutableFunction<'env, S, M>>,
+    compiler: Compiler<ExecutableFunction<'env, 'txn, S, M>>,
     ctes: HashMap<Name, PhysicalNodeId>,
 }
 
@@ -346,7 +346,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
         tx: &dyn TransactionContext<'env, 'txn, S, M>,
         q: &opt::Query,
         exprs: impl Iterator<Item = ir::OrderExpr<opt::Expr<'_>>>,
-    ) -> Result<Box<[ir::OrderExpr<ExecutableExpr<'env, S, M>>]>> {
+    ) -> Result<Box<[ir::OrderExpr<ExecutableExpr<'env, 'txn, S, M>>]>> {
         exprs.map(|expr| self.compile_order_expr(profiler, tx, q, expr)).collect()
     }
 
@@ -356,7 +356,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
         tx: &dyn TransactionContext<'env, 'txn, S, M>,
         q: &opt::Query,
         expr: ir::OrderExpr<opt::Expr<'_>>,
-    ) -> Result<ir::OrderExpr<ExecutableExpr<'env, S, M>>> {
+    ) -> Result<ir::OrderExpr<ExecutableExpr<'env, 'txn, S, M>>> {
         Ok(ir::OrderExpr { expr: self.compile_expr(profiler, tx, q, expr.expr)?, asc: expr.asc })
     }
 
@@ -366,7 +366,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
         tx: &dyn TransactionContext<'env, 'txn, S, M>,
         q: &opt::Query,
         exprs: impl Iterator<Item = opt::Expr<'_>>,
-    ) -> Result<ExecutableTupleExpr<'env, S, M>> {
+    ) -> Result<ExecutableTupleExpr<'env, 'txn, S, M>> {
         self.compiler.compile_many(profiler, &self.catalog, tx, q, exprs)
     }
 
@@ -376,7 +376,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
         tx: &dyn TransactionContext<'env, 'txn, S, M>,
         q: &opt::Query,
         expr: opt::Expr<'_>,
-    ) -> Result<ExecutableExpr<'env, S, M>> {
+    ) -> Result<ExecutableExpr<'env, 'txn, S, M>> {
         self.compiler.compile(profiler, &self.catalog, tx, q, expr)
     }
 
@@ -387,7 +387,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
         tx: &dyn TransactionContext<'env, 'txn, S, M>,
         q: &opt::Query,
         functions: impl IntoIterator<Item = opt::CallExpr<'_>>,
-    ) -> Result<Box<[(ir::Function, Option<ExecutableExpr<'env, S, M>>)]>> {
+    ) -> Result<Box<[(ir::Function, Option<ExecutableExpr<'env, 'txn, S, M>>)]>> {
         functions
             .into_iter()
             .map(|call| {

@@ -376,10 +376,10 @@ impl<'env, S: StorageEngine> Catalog<'env, S> {
     }
 }
 
-pub trait FunctionCatalog<'env, S, M, F = ExecutableFunction<'env, S, M>> {
+pub trait FunctionCatalog<'env, 'txn, S, M, F = ExecutableFunction<'env, 'txn, S, M>> {
     fn storage(&self) -> &'env S;
 
-    fn get_function<'txn>(
+    fn get_function(
         &self,
         tx: &dyn TransactionContext<'env, 'txn, S, M>,
         oid: Oid<Function>,

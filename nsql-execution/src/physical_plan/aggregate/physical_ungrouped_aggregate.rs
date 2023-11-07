@@ -6,12 +6,13 @@ use nsql_storage_engine::fallible_iterator;
 
 use super::*;
 
-type AggregateFunctionAndArgs<'env, S, M> = (ir::Function, Option<ExecutableExpr<'env, S, M>>);
+type AggregateFunctionAndArgs<'env, 'txn, S, M> =
+    (ir::Function, Option<ExecutableExpr<'env, 'txn, S, M>>);
 
 #[derive(Debug)]
 pub struct PhysicalUngroupedAggregate<'env, 'txn, S, M> {
     id: PhysicalNodeId,
-    functions: Box<[AggregateFunctionAndArgs<'env, S, M>]>,
+    functions: Box<[AggregateFunctionAndArgs<'env, 'txn, S, M>]>,
     aggregate_functions: Vec<Box<dyn AggregateFunctionInstance>>,
     children: [PhysicalNodeId; 1],
     evaluator: Evaluator,
@@ -22,7 +23,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     PhysicalUngroupedAggregate<'env, 'txn, S, M>
 {
     pub(crate) fn plan(
-        functions: Box<[AggregateFunctionAndArgs<'env, S, M>]>,
+        functions: Box<[AggregateFunctionAndArgs<'env, 'txn, S, M>]>,
         source: PhysicalNodeId,
         arena: &mut PhysicalNodeArena<'env, 'txn, S, M>,
     ) -> PhysicalNodeId {

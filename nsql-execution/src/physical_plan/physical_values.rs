@@ -7,7 +7,7 @@ use super::*;
 #[derive(Debug)]
 pub struct PhysicalValues<'env, 'txn, S, M> {
     id: PhysicalNodeId,
-    values: Box<[ExecutableTupleExpr<'env, S, M>]>,
+    values: Box<[ExecutableTupleExpr<'env, 'txn, S, M>]>,
     evaluator: Evaluator,
     _marker: PhantomData<dyn PhysicalNode<'env, 'txn, S, M>>,
 }
@@ -16,7 +16,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     PhysicalValues<'env, 'txn, S, M>
 {
     pub(crate) fn plan(
-        values: Box<[ExecutableTupleExpr<'env, S, M>]>,
+        values: Box<[ExecutableTupleExpr<'env, 'txn, S, M>]>,
         arena: &mut PhysicalNodeArena<'env, 'txn, S, M>,
     ) -> PhysicalNodeId {
         arena.alloc_with(|id| {
@@ -40,7 +40,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
                 return Ok(None);
             }
 
-            let exprs: &ExecutableTupleExpr<'env, S, M> = &self.values[index];
+            let exprs: &ExecutableTupleExpr<'env, 'txn, S, M> = &self.values[index];
             let tuple = exprs.eval(&mut self.evaluator, storage, tx, &Tuple::empty())?;
             index += 1;
 

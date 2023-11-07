@@ -24,7 +24,7 @@ impl<F> Compiler<F> {
     pub fn compile_many<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
         &mut self,
         profiler: &impl PlannerProfiler,
-        catalog: &dyn FunctionCatalog<'env, S, M, F>,
+        catalog: &dyn FunctionCatalog<'env, 'txn, S, M, F>,
         tx: &dyn TransactionContext<'env, 'txn, S, M>,
         q: &opt::Query,
         exprs: impl IntoIterator<Item = opt::Expr<'_>>,
@@ -39,7 +39,7 @@ impl<F> Compiler<F> {
     pub fn compile<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
         &mut self,
         profiler: &impl PlannerProfiler,
-        catalog: &dyn FunctionCatalog<'env, S, M, F>,
+        catalog: &dyn FunctionCatalog<'env, 'txn, S, M, F>,
         tx: &dyn TransactionContext<'env, 'txn, S, M>,
         q: &opt::Query,
         expr: opt::Expr<'_>,
@@ -54,7 +54,7 @@ impl<F> Compiler<F> {
     fn build<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
         &mut self,
         profiler: &impl PlannerProfiler,
-        catalog: &dyn FunctionCatalog<'env, S, M, F>,
+        catalog: &dyn FunctionCatalog<'env, 'txn, S, M, F>,
         tx: &dyn TransactionContext<'env, 'txn, S, M>,
         q: &opt::Query,
         expr: &opt::Expr<'_>,
@@ -169,12 +169,12 @@ impl<F> Compiler<F> {
                 // When we compile a quoted expression we want it to be in the `storable` state not the `executable` state.
                 struct NoopCatalog<'env, S>(&'env S);
 
-                impl<'env, S, M> FunctionCatalog<'env, S, M, UntypedOid> for NoopCatalog<'env, S> {
+                impl<'env, 'txn, S, M> FunctionCatalog<'env, 'txn, S, M, UntypedOid> for NoopCatalog<'env, S> {
                     fn storage(&self) -> &'env S {
                         self.0
                     }
 
-                    fn get_function<'txn>(
+                    fn get_function(
                         &self,
                         _tx: &dyn TransactionContext<'env, 'txn, S, M>,
                         oid: Oid<Function>,

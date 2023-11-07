@@ -39,19 +39,16 @@ use mk_consts;
 
 struct BootstrapFunctionCatalog;
 
-impl<'env, S, M, F> FunctionCatalog<'env, S, M, F> for BootstrapFunctionCatalog {
+impl<'env: 'txn, 'txn, S, M, F> FunctionCatalog<'env, 'txn, S, M, F> for BootstrapFunctionCatalog {
     fn storage(&self) -> &'env S {
         panic!("cannot get storage during bootstrap")
     }
 
-    fn get_function<'txn>(
+    fn get_function(
         &self,
         _tx: &dyn TransactionContext<'env, 'txn, S, M>,
         _oid: Oid<Function>,
-    ) -> Result<F>
-    where
-        'env: 'txn,
-    {
+    ) -> Result<F> {
         bail!("cannot get function during bootstrap")
     }
 }

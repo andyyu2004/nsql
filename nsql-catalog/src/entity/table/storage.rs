@@ -16,7 +16,7 @@ use nsql_storage_engine::{
 };
 use rkyv::AlignedVec;
 
-use crate::expr::{Evaluator, ExprEvalExt, ScalarFunction, TupleExprResolveExt};
+use crate::expr::{Evaluator, ExecutableTupleExpr, ExprEvalExt, TupleExprResolveExt};
 use crate::{FunctionCatalog, Table, TransactionContext};
 
 #[allow(explicit_outlives_requirements)]
@@ -70,7 +70,7 @@ impl<'env, 'txn, S: StorageEngine> TableStorage<'env, 'txn, S, ReadWriteExecutio
     #[inline]
     pub fn insert(
         &mut self,
-        catalog: &dyn FunctionCatalog<'env, S, ReadWriteExecutionMode>,
+        catalog: &dyn FunctionCatalog<'env, 'txn, S, ReadWriteExecutionMode>,
         tx: &dyn TransactionContext<'env, 'txn, S, ReadWriteExecutionMode>,
         tuple: &Tuple,
     ) -> Result<Result<(), PrimaryKeyConflict>, anyhow::Error> {
@@ -312,7 +312,7 @@ impl ColumnStorageInfo {
 pub(crate) struct IndexStorage<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> {
     storage: TableStorage<'env, 'txn, S, M>,
     index_expr: AtomicTake<TupleExpr>,
-    prepared_expr: OnceLock<TupleExpr<Box<dyn ScalarFunction<'env, S, M>>>>,
+    prepared_expr: OnceLock<ExecutableTupleExpr<'env, 'txn, S, M>>,
     evaluator: Evaluator,
 }
 
@@ -336,7 +336,7 @@ impl<'env, 'txn, S: StorageEngine> IndexStorage<'env, 'txn, S, ReadWriteExecutio
     #[inline]
     pub fn insert(
         &mut self,
-        catalog: &dyn FunctionCatalog<'env, S, ReadWriteExecutionMode>,
+        catalog: &dyn FunctionCatalog<'env, 'txn, S, ReadWriteExecutionMode>,
         tx: &dyn TransactionContext<'env, 'txn, S, ReadWriteExecutionMode>,
         tuple: &Tuple,
     ) -> Result<(), anyhow::Error> {

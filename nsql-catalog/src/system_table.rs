@@ -121,7 +121,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, T: SystemEntity>
     #[inline]
     pub fn insert(
         &mut self,
-        catalog: &dyn FunctionCatalog<'env, S, ReadWriteExecutionMode>,
+        catalog: &dyn FunctionCatalog<'env, 'txn, S, ReadWriteExecutionMode>,
         tx: &dyn TransactionContext<'env, 'txn, S, ReadWriteExecutionMode>,
         value: T,
     ) -> Result<()> {

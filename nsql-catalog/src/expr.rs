@@ -1,46 +1,27 @@
-use std::fmt;
-
 use anyhow::Result;
 use nsql_storage::expr::{Expr, ExprOp, TupleExpr};
 use nsql_storage::tuple::Tuple;
 use nsql_storage::value::Value;
 use nsql_storage_engine::{ExecutionMode, StorageEngine};
 
-use crate::{FunctionCatalog, TransactionContext};
+use crate::{Catalog, FunctionCatalog, ScalarFunctionPtr, TransactionContext};
 
-// Using the exact type to avoid an allocation
-pub type FunctionArgs<'a> = std::vec::Drain<'a, Value>; // also `impl ExactSizeIterator + 'a` doesn't work
+pub type FunctionArgs<'a> = &'a mut Vec<Value>;
 
-pub type ExecutableTupleExpr<'env, S, M> = TupleExpr<ExecutableFunction<'env, S, M>>;
+pub type ExecutableTupleExpr<'env, 'txn, S, M> = TupleExpr<ExecutableFunction<'env, 'txn, S, M>>;
 
-pub type ExecutableExpr<'env, S, M> = Expr<ExecutableFunction<'env, S, M>>;
+pub type ExecutableExpr<'env, 'txn, S, M> = Expr<ExecutableFunction<'env, 'txn, S, M>>;
 
-pub type ExecutableFunction<'env, S, M> = Box<dyn ScalarFunction<'env, S, M>>;
+pub type ExecutableFunction<'env, 'txn, S, M> = ScalarFunctionPtr<'env, 'txn, S, M>;
 
-pub type ExecutableExprOp<'env, S, M> = ExprOp<ExecutableFunction<'env, S, M>>;
-
-pub trait ScalarFunction<'env, S: StorageEngine, M: ExecutionMode<'env, S>>:
-    fmt::Debug + Send + Sync
-{
-    fn invoke<'txn>(
-        &self,
-        storage: &'env S,
-        tx: &dyn TransactionContext<'env, 'txn, S, M>,
-        args: FunctionArgs<'_>,
-    ) -> Result<Value>
-    where
-        'env: 'txn;
-
-    /// The number f arguments this function takes.
-    fn arity(&self) -> usize;
-}
+pub type ExecutableExprOp<'env, 'txn, S, M> = ExprOp<ExecutableFunction<'env, 'txn, S, M>>;
 
 pub trait TupleExprResolveExt {
     /// Prepare this tuple expression for evaluation.
     // This resolves any function oids and replaces them with the actual function.
     fn resolve<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, F>(
         self,
-        catalog: &dyn FunctionCatalog<'env, S, M, F>,
+        catalog: &dyn FunctionCatalog<'env, 'txn, S, M, F>,
         tx: &dyn TransactionContext<'env, 'txn, S, M>,
     ) -> Result<TupleExpr<F>>;
 }
@@ -49,7 +30,7 @@ impl TupleExprResolveExt for TupleExpr {
     #[inline]
     fn resolve<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, F>(
         self,
-        catalog: &dyn FunctionCatalog<'env, S, M, F>,
+        catalog: &dyn FunctionCatalog<'env, 'txn, S, M, F>,
         tx: &dyn TransactionContext<'env, 'txn, S, M>,
     ) -> Result<TupleExpr<F>> {
         self.map(|oid| catalog.get_function(tx, oid.cast()))
@@ -61,7 +42,7 @@ pub trait ExprResolveExt {
     // This resolves any function oids and replaces them with what the catalog returns
     fn resolve<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, F>(
         self,
-        catalog: &dyn FunctionCatalog<'env, S, M, F>,
+        catalog: &dyn FunctionCatalog<'env, 'txn, S, M, F>,
         tx: &dyn TransactionContext<'env, 'txn, S, M>,
     ) -> Result<Expr<F>>
     where
@@ -72,7 +53,7 @@ impl ExprResolveExt for Expr {
     #[inline]
     fn resolve<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, F>(
         self,
-        catalog: &dyn FunctionCatalog<'env, S, M, F>,
+        catalog: &dyn FunctionCatalog<'env, 'txn, S, M, F>,
         tx: &dyn TransactionContext<'env, 'txn, S, M>,
     ) -> Result<Expr<F>>
     where
@@ -82,56 +63,48 @@ impl ExprResolveExt for Expr {
     }
 }
 
-pub trait ExprEvalExt<'env, S: StorageEngine, M: ExecutionMode<'env, S>> {
+pub trait ExprEvalExt<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> {
     type Output;
 
-    fn eval<'txn>(
+    fn eval(
         &self,
         evaluator: &mut Evaluator,
         storage: &'env S,
         tx: &dyn TransactionContext<'env, 'txn, S, M>,
         tuple: &Tuple,
-    ) -> Result<Self::Output>
-    where
-        'env: 'txn;
+    ) -> Result<Self::Output>;
 }
 
-impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> ExprEvalExt<'env, S, M>
-    for ExecutableTupleExpr<'env, S, M>
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> ExprEvalExt<'env, 'txn, S, M>
+    for ExecutableTupleExpr<'env, 'txn, S, M>
 {
     type Output = Tuple;
 
     #[inline]
-    fn eval<'txn>(
+    fn eval(
         &self,
         evaluator: &mut Evaluator,
         storage: &'env S,
         tx: &dyn TransactionContext<'env, 'txn, S, M>,
         tuple: &Tuple,
-    ) -> Result<Tuple>
-    where
-        'env: 'txn,
-    {
+    ) -> Result<Tuple> {
         self.exprs().iter().map(|expr| expr.eval(evaluator, storage, tx, tuple)).collect()
     }
 }
 
-impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> ExprEvalExt<'env, S, M>
-    for ExecutableExpr<'env, S, M>
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> ExprEvalExt<'env, 'txn, S, M>
+    for ExecutableExpr<'env, 'txn, S, M>
 {
     type Output = Value;
 
     #[inline]
-    fn eval<'txn>(
+    fn eval(
         &self,
         evaluator: &mut Evaluator,
         storage: &'env S,
         tx: &dyn TransactionContext<'env, 'txn, S, M>,
         tuple: &Tuple,
-    ) -> Result<Value>
-    where
-        'env: 'txn,
-    {
+    ) -> Result<Value> {
         evaluator.eval_expr(storage, tx, tuple, self)
     }
 }
@@ -148,7 +121,7 @@ impl Evaluator {
         storage: &'env S,
         tx: &dyn TransactionContext<'env, 'txn, S, M>,
         tuple: &Tuple,
-        expr: &ExecutableExpr<'env, S, M>,
+        expr: &ExecutableExpr<'env, 'txn, S, M>,
     ) -> Result<Value> {
         self.ip = 0;
         self.stack.clear();
@@ -160,7 +133,7 @@ impl Evaluator {
             self.execute_op(storage, tx, tuple, op)?;
         }
 
-        assert_eq!(
+        debug_assert_eq!(
             self.stack.len(),
             1,
             "stack should have exactly one value after execution, had {}",
@@ -175,7 +148,7 @@ impl Evaluator {
         storage: &'env S,
         tx: &dyn TransactionContext<'env, 'txn, S, M>,
         tuple: &Tuple,
-        op: &ExecutableExprOp<'env, S, M>,
+        op: &ExecutableExprOp<'env, 'txn, S, M>,
     ) -> Result<()> {
         let value = match op {
             ExprOp::Project { index } => tuple[*index].clone(),
@@ -184,10 +157,7 @@ impl Evaluator {
                 let array = self.stack.drain(self.stack.len() - *len..).collect::<Box<[Value]>>();
                 Value::Array(array)
             }
-            ExprOp::Call { function } => {
-                let args = self.stack.drain(self.stack.len() - function.arity()..);
-                function.invoke(storage, tx, args)?
-            }
+            ExprOp::Call { function } => function(Catalog::new(storage), tx, &mut self.stack)?,
             ExprOp::IfNeJmp(offset) => {
                 let rhs = self.stack.pop().unwrap();
                 let lhs = self.stack.pop().unwrap();

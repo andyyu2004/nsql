@@ -7,14 +7,15 @@ use rustc_hash::FxHashMap;
 
 use super::*;
 
-type AggregateFunctionAndArgs<'env, S, M> = (ir::Function, Option<ExecutableExpr<'env, S, M>>);
+type AggregateFunctionAndArgs<'env, 'txn, S, M> =
+    (ir::Function, Option<ExecutableExpr<'env, 'txn, S, M>>);
 
 #[derive(Debug)]
 pub struct PhysicalHashAggregate<'env, 'txn, S, M> {
     id: PhysicalNodeId,
-    aggregates: Box<[AggregateFunctionAndArgs<'env, S, M>]>,
+    aggregates: Box<[AggregateFunctionAndArgs<'env, 'txn, S, M>]>,
     children: [PhysicalNodeId; 1],
-    group_expr: ExecutableTupleExpr<'env, S, M>,
+    group_expr: ExecutableTupleExpr<'env, 'txn, S, M>,
     output_groups: FxHashMap<Tuple, Vec<Box<dyn AggregateFunctionInstance>>>,
     evaluator: Evaluator,
     _marker: PhantomData<dyn PhysicalNode<'env, 'txn, S, M>>,
@@ -24,9 +25,9 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     PhysicalHashAggregate<'env, 'txn, S, M>
 {
     pub(crate) fn plan(
-        aggregates: Box<[AggregateFunctionAndArgs<'env, S, M>]>,
+        aggregates: Box<[AggregateFunctionAndArgs<'env, 'txn, S, M>]>,
         source: PhysicalNodeId,
-        group_expr: ExecutableTupleExpr<'env, S, M>,
+        group_expr: ExecutableTupleExpr<'env, 'txn, S, M>,
         arena: &mut PhysicalNodeArena<'env, 'txn, S, M>,
     ) -> PhysicalNodeId {
         arena.alloc_with(|id| {

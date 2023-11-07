@@ -10,7 +10,7 @@ use super::*;
 pub struct PhysicalOrder<'env, 'txn, S, M> {
     id: PhysicalNodeId,
     child: PhysicalNodeId,
-    ordering: Box<[ir::OrderExpr<ExecutableExpr<'env, S, M>>]>,
+    ordering: Box<[ir::OrderExpr<ExecutableExpr<'env, 'txn, S, M>>]>,
     tuples: Vec<Tuple>,
     evaluator: Evaluator,
     _marker: PhantomData<dyn PhysicalNode<'env, 'txn, S, M>>,
@@ -21,7 +21,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
 {
     pub(crate) fn plan(
         source: PhysicalNodeId,
-        ordering: Box<[ir::OrderExpr<ExecutableExpr<'env, S, M>>]>,
+        ordering: Box<[ir::OrderExpr<ExecutableExpr<'env, 'txn, S, M>>]>,
         arena: &mut PhysicalNodeArena<'env, 'txn, S, M>,
     ) -> PhysicalNodeId {
         arena.alloc_with(|id| {

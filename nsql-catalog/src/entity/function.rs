@@ -5,7 +5,7 @@ use nsql_storage::expr::Expr;
 use nsql_storage_engine::ExecutionMode;
 
 use super::*;
-use crate::expr::{ExecutableFunction, FunctionArgs, ScalarFunction};
+use crate::expr::{ExecutableFunction, FunctionArgs};
 use crate::{ColumnIdentity, FunctionCatalog, SystemEntityPrivate, TransactionContext};
 
 mod builtins;
@@ -53,8 +53,8 @@ impl From<FunctionKind> for Value {
     }
 }
 
-impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> FunctionCatalog<'env, S, M>
-    for Catalog<'env, S>
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
+    FunctionCatalog<'env, 'txn, S, M> for Catalog<'env, S>
 {
     #[inline]
     fn storage(&self) -> &'env S {
@@ -62,36 +62,13 @@ impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> FunctionCatalog<'env, S,
     }
 
     #[inline]
-    fn get_function<'txn>(
+    fn get_function(
         &self,
         tx: &dyn TransactionContext<'env, 'txn, S, M>,
         oid: Oid<Function>,
-    ) -> Result<ExecutableFunction<'env, S, M>>
-    where
-        'env: 'txn,
-    {
+    ) -> Result<ExecutableFunction<'env, 'txn, S, M>> {
         let f = self.get::<M, Function>(tx, oid)?;
-        Ok(Box::new(f))
-    }
-}
-
-impl<'env, S: StorageEngine, M: ExecutionMode<'env, S>> ScalarFunction<'env, S, M> for Function {
-    #[inline]
-    fn invoke<'txn>(
-        &self,
-        storage: &'env S,
-        tx: &dyn TransactionContext<'env, 'txn, S, M>,
-        args: FunctionArgs<'_>,
-    ) -> Result<Value>
-    where
-        'env: 'txn,
-    {
-        self.get_scalar_function::<S, M>()(Catalog::new(storage), tx, args)
-    }
-
-    #[inline]
-    fn arity(&self) -> usize {
-        self.args.len()
+        Ok(f.get_scalar_function())
     }
 }
 
