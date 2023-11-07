@@ -180,15 +180,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d468802bab17cbc0cc575e9b053f41e72aa36bfa6b7f55e3529ffa43161b97fa"
 
 [[package]]
-name = "bincode"
-version = "1.3.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b1f45e9417d87227c7a56d22e471c6206462cba514c7590c09aff4cf6d1ddcad"
-dependencies = [
- "serde",
-]
-
-[[package]]
 name = "bit-set"
 version = "0.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -619,9 +610,9 @@ checksum = "675e35c02a51bb4d4618cb4885b3839ce6d1787c97b664474d9208d074742e20"
 
 [[package]]
 name = "doxygen-rs"
-version = "0.2.2"
+version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bff670ea0c9bbb8414e7efa6e23ebde2b8f520a7eef78273a3918cf1903e7505"
+checksum = "415b6ec780d34dcf624666747194393603d0373b7141eef01d12ee58881507d9"
 dependencies = [
  "phf",
 ]
@@ -934,9 +925,10 @@ checksum = "95505c38b4572b2d910cecb0281560f54b440a19336cbbcb27bf6ce6adc6f5a8"
 
 [[package]]
 name = "heed"
-version = "0.20.0-alpha.1"
-source = "git+https://github.com/andyyu2004/heed?branch=main#c6d5b390be45107b5a3f260084994f3a5616acc5"
+version = "0.20.0-alpha.5"
+source = "git+https://github.com/andyyu2004/heed?branch=main#9b3d16a66fa3ebe64852c077414cc401b1eb4ba6"
 dependencies = [
+ "bitflags 2.4.1",
  "bytemuck",
  "byteorder",
  "heed-traits",
@@ -951,20 +943,17 @@ dependencies = [
 
 [[package]]
 name = "heed-traits"
-version = "0.20.0-alpha.1"
-source = "git+https://github.com/andyyu2004/heed?branch=main#c6d5b390be45107b5a3f260084994f3a5616acc5"
+version = "0.20.0-alpha.5"
+source = "git+https://github.com/andyyu2004/heed?branch=main#9b3d16a66fa3ebe64852c077414cc401b1eb4ba6"
 
 [[package]]
 name = "heed-types"
-version = "0.20.0-alpha.1"
-source = "git+https://github.com/andyyu2004/heed?branch=main#c6d5b390be45107b5a3f260084994f3a5616acc5"
+version = "0.20.0-alpha.5"
+source = "git+https://github.com/andyyu2004/heed?branch=main#9b3d16a66fa3ebe64852c077414cc401b1eb4ba6"
 dependencies = [
- "bincode",
  "bytemuck",
  "byteorder",
  "heed-traits",
- "serde",
- "serde_json",
 ]
 
 [[package]]
@@ -1144,12 +1133,11 @@ checksum = "da2479e8c062e40bf0066ffa0bc823de0a9368974af99c9f6df941d2c231e03f"
 [[package]]
 name = "lmdb-master-sys"
 version = "0.1.0"
-source = "git+https://github.com/andyyu2004/heed?branch=main#c6d5b390be45107b5a3f260084994f3a5616acc5"
+source = "git+https://github.com/andyyu2004/heed?branch=main#9b3d16a66fa3ebe64852c077414cc401b1eb4ba6"
 dependencies = [
  "cc",
  "doxygen-rs",
  "libc",
- "pkg-config",
 ]
 
 [[package]]
@@ -1743,12 +1731,6 @@ name = "pin-utils"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8b870d8c151b6f2fb93e84a13146138f05d02ed11c7e7c54f8826aaaf7c9f184"
-
-[[package]]
-name = "pkg-config"
-version = "0.3.27"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "26072860ba924cbfa98ea39c8c19b4dd6a4a25423dbdf219c1eca91aa0cf6964"
 
 [[package]]
 name = "plotters"

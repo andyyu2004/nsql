@@ -4,7 +4,7 @@ use std::ops::{Deref, RangeBounds};
 use std::path::Path;
 
 use heed::types::ByteSlice;
-use heed::Flag;
+use heed::EnvFlags;
 use nsql_storage_engine::{
     fallible_iterator, KeyExists, Range, ReadOrWriteTransactionRef, ReadTree, StorageEngine,
     Transaction, TransactionRef, WriteTree,
@@ -67,10 +67,11 @@ impl StorageEngine for LmdbStorageEngine {
     {
         // large value `max_readers` has a performance issues so I don't think having a lmdb database per table is practical.
         // Perhaps we can do a lmdb database per schema and have a reasonable limit on it (say ~100)
-        let env = unsafe { heed::EnvOpenOptions::new().flag(Flag::NoSubDir).flag(Flag::NoTls) }
-            .map_size(2 * 1024 * 1024 * 1024) // 2 GiB
-            .max_dbs(2000)
-            .open(path)?;
+        let env =
+            unsafe { heed::EnvOpenOptions::new().flags(EnvFlags::NO_SUB_DIR | EnvFlags::NO_TLS) }
+                .map_size(2 * 1024 * 1024 * 1024) // 2 GiB
+                .max_dbs(2000)
+                .open(path)?;
         Ok(Self { env })
     }
 
