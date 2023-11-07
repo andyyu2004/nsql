@@ -47,6 +47,8 @@ impl Profiler {
     }
 
     fn is_enabled(&self) -> bool {
+        // FIXME this is actually pretty slow and can take up a decent amount of runtime even when disabled which sucks
+        // Consider using enum dispatch enum { EnabledProfilerImpl | TrivialDisabledProfiledImpl } to avoid having the keep reading the cell.
         self.mode.get() > ProfileMode::Disabled
     }
 
