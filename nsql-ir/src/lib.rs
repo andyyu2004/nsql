@@ -701,7 +701,7 @@ impl QueryPlan {
     }
 
     pub fn union(self: Box<Self>, schema: Schema, rhs: Box<Self>) -> Box<Self> {
-        assert_eq!(self.schema(), rhs.schema());
+        debug_assert_eq!(self.schema(), rhs.schema());
         Box::new(Self::Union { schema, lhs: self, rhs })
     }
 }

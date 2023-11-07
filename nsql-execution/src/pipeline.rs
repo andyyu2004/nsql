@@ -182,8 +182,8 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
         meta_pipeline: Idx<MetaPipelineBuilder<'env, 'txn, S, M>>,
         node: PhysicalNodeId,
     ) {
-        assert_eq!(self[meta_pipeline].pipelines.len(), 1);
-        assert!(self[meta_pipeline].children.is_empty());
+        debug_assert_eq!(self[meta_pipeline].pipelines.len(), 1);
+        debug_assert!(self[meta_pipeline].children.is_empty());
         nodes[node].build_pipelines(nodes, self, meta_pipeline, self[meta_pipeline].pipelines[0])
     }
 }

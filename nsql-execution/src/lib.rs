@@ -257,7 +257,7 @@ trait PhysicalNode<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>
                     let operator =
                         operator.as_operator().expect("node is not a source, sink, or operator");
                     let children = operator.children();
-                    assert_eq!(
+                    debug_assert_eq!(
                         children.len(),
                         1,
                         "default `build_pipelines` implementation only supports unary operators"

@@ -26,7 +26,11 @@ impl Query {
     pub(crate) fn new(egraph: EGraph, root: Id) -> Self {
         assert!(egraph.clean);
         for eclass in egraph.classes() {
-            assert_eq!(eclass.nodes.len(), 1, "expected eclass to have exactly one unique node");
+            debug_assert_eq!(
+                eclass.nodes.len(),
+                1,
+                "expected eclass to have exactly one unique node"
+            );
         }
 
         Self { egraph, root }
