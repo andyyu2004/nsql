@@ -43,7 +43,6 @@ static_assert_eq!(mem::size_of::<Value>(), 24);
 #[derive(
     Debug,
     Default,
-    Clone,
     PartialEq,
     Eq,
     // deriving this as implementing manually is a pain,
@@ -73,6 +72,30 @@ pub enum Value {
     TupleExpr(TupleExpr),
     #[default]
     Null, // put this variant here so NULL sorts last
+}
+
+// manual implementation of clone as we get more control:
+// - can use * instead of .clone when we know better
+// - can control inlining
+impl Clone for Value {
+    #[inline]
+    fn clone(&self) -> Self {
+        match self {
+            Value::Byte(b) => Value::Byte(*b),
+            Value::Int64(i) => Value::Int64(*i),
+            Value::Float64(f) => Value::Float64(*f),
+            Value::Oid(o) => Value::Oid(*o),
+            Value::Bool(b) => Value::Bool(*b),
+            Value::Decimal(d) => Value::Decimal(*d),
+            Value::Text(t) => Value::Text(t.clone()),
+            Value::Bytea(b) => Value::Bytea(b.clone()),
+            Value::Array(a) => Value::Array(a.clone()),
+            Value::Type(ty) => Value::Type(ty.clone()),
+            Value::Expr(expr) => Value::Expr(expr.clone()),
+            Value::TupleExpr(expr) => Value::TupleExpr(expr.clone()),
+            Value::Null => Value::Null,
+        }
+    }
 }
 
 /// very limited implementation of `FromStr` for literal values (used for egg)
@@ -431,8 +454,14 @@ impl FromValue for u64 {
     #[inline]
     fn from_value(value: Value) -> Result<Self, CastError> {
         match value {
-            Value::Bool(b) => Ok(b as u64),
-            Value::Int64(i) => Ok(i as u64),
+            Value::Bool(b) => Ok(u64::from(b)),
+            Value::Int64(i) => {
+                if i.is_negative() {
+                    Err(CastError::new(value, LogicalType::Int64))
+                } else {
+                    Ok(i as u64)
+                }
+            }
             Value::Decimal(d) => {
                 d.to_u64().ok_or_else(|| CastError::new(value, LogicalType::Int64))
             }
