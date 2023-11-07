@@ -1708,7 +1708,7 @@ impl<'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
                     .expect("this should be a parse error if the decimal is not valid");
                 ir::Value::Decimal(decimal)
             }
-            ast::Value::SingleQuotedString(s) => ir::Value::Text(s.into()),
+            ast::Value::SingleQuotedString(s) => ir::Value::Text(s.as_str().into()),
             ast::Value::DollarQuotedString(_) => todo!(),
             ast::Value::EscapedStringLiteral(_) => todo!(),
             ast::Value::NationalStringLiteral(_) => todo!(),

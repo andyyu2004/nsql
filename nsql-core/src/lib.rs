@@ -11,7 +11,7 @@ use std::str::FromStr;
 
 pub use anyhow;
 pub use oid::{Oid, UntypedOid};
-use smol_str::SmolStr;
+pub use smol_str::SmolStr;
 pub use ty::{LogicalType, Schema};
 
 pub trait Profiler {
@@ -65,9 +65,15 @@ impl Name {
     pub fn as_str(&self) -> &str {
         self.name.as_str()
     }
+
+    #[inline]
+    pub fn into_inner(self) -> SmolStr {
+        self.name
+    }
 }
 
 impl From<Name> for String {
+    #[inline]
     fn from(value: Name) -> Self {
         value.name.into()
     }

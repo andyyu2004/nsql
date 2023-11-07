@@ -4,7 +4,7 @@ use std::str::FromStr;
 use std::{fmt, mem};
 
 use itertools::Itertools;
-use nsql_core::{LogicalType, Name, Oid, UntypedOid};
+use nsql_core::{LogicalType, Name, Oid, SmolStr, UntypedOid};
 use nsql_util::static_assert_eq;
 use rust_decimal::prelude::ToPrimitive;
 pub use rust_decimal::Decimal;
@@ -61,7 +61,7 @@ pub enum Value {
     Oid(UntypedOid),
     Bool(bool),
     Decimal(Decimal),
-    Text(String),
+    Text(#[omit_bounds] Text),
     Bytea(Bytea),
     Array(#[omit_bounds] Box<[Value]>),
     // experiment adding this as a value for serialiazation purposes
@@ -78,6 +78,100 @@ impl FromStr for Value {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         Ok(Self::Text(s.into()))
+    }
+}
+
+#[derive(
+    Debug,
+    Default,
+    Clone,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    // rkyv::Archive,
+    // rkyv::Serialize,
+    // rkyv::Deserialize,
+)]
+pub struct Text(SmolStr);
+
+impl Deref for Text {
+    type Target = str;
+
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        self.0.as_str()
+    }
+}
+
+impl Text {
+    #[inline]
+    pub fn as_str(&self) -> &str {
+        self.0.as_str()
+    }
+
+    #[inline]
+    pub fn into_inner(self) -> SmolStr {
+        self.0
+    }
+}
+
+impl From<SmolStr> for Text {
+    #[inline]
+    fn from(s: SmolStr) -> Self {
+        Self(s)
+    }
+}
+
+impl From<&str> for Text {
+    #[inline]
+    fn from(s: &str) -> Self {
+        Self(s.into())
+    }
+}
+
+impl From<Name> for Text {
+    #[inline]
+    fn from(name: Name) -> Self {
+        Self(name.into_inner())
+    }
+}
+
+impl fmt::Display for Text {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0.as_str())
+    }
+}
+
+impl rkyv::Archive for Text {
+    type Archived = <String as rkyv::Archive>::Archived;
+
+    type Resolver = <String as rkyv::Archive>::Resolver;
+
+    #[inline]
+    unsafe fn resolve(&self, pos: usize, resolver: Self::Resolver, out: *mut Self::Archived) {
+        rkyv::string::ArchivedString::resolve_from_str(self.as_str(), pos, resolver, out);
+    }
+}
+
+impl<S: rkyv::Fallible + ?Sized> rkyv::Serialize<S> for Text
+where
+    str: rkyv::SerializeUnsized<S>,
+{
+    #[inline]
+    fn serialize(&self, serializer: &mut S) -> Result<Self::Resolver, S::Error> {
+        rkyv::string::ArchivedString::serialize_from_str(self.as_str(), serializer)
+    }
+}
+
+impl<D: rkyv::Fallible + ?Sized> rkyv::Deserialize<Text, D> for rkyv::string::ArchivedString
+where
+    str: rkyv::DeserializeUnsized<str, D>,
+{
+    #[inline]
+    fn deserialize(&self, _deserializer: &mut D) -> Result<Text, D::Error> {
+        Ok(self.as_str().into())
     }
 }
 
@@ -178,17 +272,10 @@ impl From<Box<[u8]>> for Value {
     }
 }
 
-impl From<String> for Value {
-    #[inline]
-    fn from(v: String) -> Self {
-        Self::Text(v)
-    }
-}
-
 impl From<Name> for Value {
     #[inline]
     fn from(v: Name) -> Self {
-        Self::Text(v.into())
+        Self::Text(v.into_inner().into())
     }
 }
 
@@ -444,7 +531,7 @@ impl FromValue for u8 {
     }
 }
 
-impl FromValue for String {
+impl FromValue for Text {
     #[inline]
     fn from_value(value: Value) -> Result<Self, CastError> {
         match value {
@@ -467,6 +554,6 @@ impl FromValue for Bytea {
 impl FromValue for Name {
     #[inline]
     fn from_value(value: Value) -> Result<Self, CastError> {
-        value.cast::<String>().map(Into::into)
+        value.cast::<Text>().map(Text::into_inner).map(Into::into)
     }
 }

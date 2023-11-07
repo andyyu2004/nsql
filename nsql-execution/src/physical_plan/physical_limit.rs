@@ -1,6 +1,7 @@
 use std::marker::PhantomData;
 
 use anyhow::bail;
+use nsql_storage::value::Text;
 
 use super::*;
 
@@ -10,7 +11,7 @@ pub struct PhysicalLimit<'env, 'txn, S, M> {
     child: PhysicalNodeId,
     yielded: u64,
     limit: u64,
-    exceeded_message: Option<String>,
+    exceeded_message: Option<Text>,
     _marker: PhantomData<dyn PhysicalNode<'env, 'txn, S, M>>,
 }
 
@@ -20,7 +21,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     pub(crate) fn plan(
         source: PhysicalNodeId,
         limit: u64,
-        exceeded_message: Option<String>,
+        exceeded_message: Option<Text>,
         arena: &mut PhysicalNodeArena<'env, 'txn, S, M>,
     ) -> PhysicalNodeId {
         arena.alloc_with(|id| {

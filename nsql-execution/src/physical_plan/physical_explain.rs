@@ -155,7 +155,9 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
             }
         };
 
-        Ok(Box::new(fallible_iterator::once(Tuple::from(vec![Value::Text(stringified)]))))
+        Ok(Box::new(fallible_iterator::once(Tuple::from(vec![Value::Text(
+            stringified.as_str().into(),
+        )]))))
     }
 }
 

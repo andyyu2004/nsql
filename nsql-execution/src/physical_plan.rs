@@ -267,7 +267,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
                 PhysicalLimit::plan(
                     source,
                     limit.limit(q),
-                    limit.limit_exceeded_message(q),
+                    limit.limit_exceeded_message(q).cloned(),
                     &mut self.arena,
                 )
             }

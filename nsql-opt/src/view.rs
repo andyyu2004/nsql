@@ -4,6 +4,7 @@ use egg::Id;
 use itertools::Itertools;
 use nsql_core::{Name, Oid};
 use nsql_storage::expr;
+use nsql_storage::value::Text;
 
 use crate::node::{EGraph, Node};
 
@@ -298,9 +299,9 @@ impl Limit {
     }
 
     #[inline]
-    pub fn limit_exceeded_message(self, q: &Query) -> Option<String> {
+    pub fn limit_exceeded_message(self, q: &Query) -> Option<&Text> {
         match q.expr(self.msg?) {
-            Expr::Literal(lit) if let ir::Value::Text(msg) = lit.value(q) => Some(msg.clone()),
+            Expr::Literal(lit) if let ir::Value::Text(msg) = lit.value(q) => Some(msg),
             _ => panic!("expected `Literal` text node"),
         }
     }

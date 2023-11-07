@@ -144,11 +144,11 @@ impl Builder {
             ir::QueryPlan::Limit { source, limit, exceeded_message } => {
                 let source = self.build_query(source);
                 let limit = self.add_value(Value::Int64(*limit as i64));
-                match exceeded_message {
-                    Some(message) => Node::StrictLimit([
+                match exceeded_message.as_ref() {
+                    Some(&message) => Node::StrictLimit([
                         source,
                         limit,
-                        self.add_value(Value::Text(message.to_string())),
+                        self.add_value(Value::Text(message.into())),
                     ]),
                     None => Node::Limit([source, limit]),
                 }
