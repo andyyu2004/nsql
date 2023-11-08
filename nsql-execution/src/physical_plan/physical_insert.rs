@@ -1,6 +1,6 @@
 use std::sync::OnceLock;
 
-use nsql_catalog::{PrimaryKeyConflict, Table, TableStorage};
+use nsql_catalog::{PrimaryKeyConflict, Table};
 use nsql_core::Oid;
 use nsql_storage::tuple::FromTuple;
 use nsql_storage_engine::fallible_iterator;
@@ -13,7 +13,6 @@ pub(crate) struct PhysicalInsert<'env, 'txn, S: StorageEngine> {
     id: PhysicalNodeId,
     children: [PhysicalNodeId; 1],
     table_oid: Oid<Table>,
-    storage: Option<TableStorage<'env, 'txn, S, ReadWriteExecutionMode>>,
     table: OnceLock<Table>,
     returning: ExecutableTupleExpr<'env, 'txn, S, ReadWriteExecutionMode>,
     returning_tuples: Vec<Tuple>,
@@ -33,7 +32,6 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalInsert<'env, 'txn, S> {
                 table_oid,
                 returning,
                 children: [source],
-                storage: Default::default(),
                 table: Default::default(),
                 returning_tuples: Default::default(),
                 evaluator: Default::default(),
@@ -70,18 +68,8 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSink<'env, 'txn, S, ReadWriteEx
     ) -> ExecutionResult<()> {
         let catalog = ecx.catalog();
         let tx = ecx.tcx();
-
         let table = self.table.get_or_try_init(|| catalog.get(tx, self.table_oid))?;
-
-        let storage = match &mut self.storage {
-            Some(storage) => storage,
-            None => {
-                let storage = table.get_or_create_storage(catalog, tx)?;
-                self.storage = Some(storage);
-                self.storage.as_mut().unwrap()
-            }
-        };
-
+        let storage = table.storage(catalog, tx)?;
         storage.insert(&catalog, tx, &tuple)?.map_err(|PrimaryKeyConflict { key }| {
             anyhow::anyhow!(
                 "duplicate key `{key}` violates unique constraint in table `{}`",
@@ -103,17 +91,6 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSink<'env, 'txn, S, ReadWriteEx
             let table = Table::from_tuple(tuple).expect("should be a compatible tuple");
             table.create_storage(catalog.storage(), tx.transaction())?;
         }
-
-        Ok(())
-    }
-
-    fn finalize(
-        &mut self,
-        _ecx: &ExecutionContext<'_, 'env, 'txn, S, ReadWriteExecutionMode>,
-    ) -> ExecutionResult<()> {
-        // drop the storage on finalization as it is no longer needed by this node
-        // this helps avoids redb errors when the same table is opened by multiple nodes
-        self.storage.take();
 
         Ok(())
     }

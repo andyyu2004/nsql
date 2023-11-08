@@ -10,7 +10,6 @@ use nsql_storage_engine::{ExecutionMode, FallibleIterator, ReadWriteExecutionMod
 pub use self::storage::{
     ColumnStorageInfo, IndexStorageInfo, PrimaryKeyConflict, TableStorage, TableStorageInfo,
 };
-use super::*;
 use crate::bootstrap::{BootstrapColumn, BootstrapSequence};
 use crate::{
     Catalog, Column, ColumnIdentity, Function, Index, Name, Namespace, Oid, SystemEntity,
@@ -36,32 +35,19 @@ impl Table {
         catalog: Catalog<'env, S>,
         tcx: &'a dyn TransactionContext<'env, 'txn, S, M>,
     ) -> Result<&'a TableStorage<'env, 'txn, S, M>> {
-        tcx.catalog_caches()
-            .table_storages
-            .get_or_try_insert(&self.oid, || self.owned_storage(catalog, tcx))
-    }
-
-    // FIXME This is only used for system tables, should try and remove this special case.
-    // We could probably remove the system table cache and cache only the storages?
-    #[track_caller]
-    pub fn owned_storage<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
-        &self,
-        catalog: Catalog<'env, S>,
-        tx: &dyn TransactionContext<'env, 'txn, S, M>,
-    ) -> Result<TableStorage<'env, 'txn, S, M>> {
         Ok(TableStorage::open(
             catalog.storage,
-            tx,
-            self.table_storage_info(catalog, tx)?,
-            self.index_storage_infos(catalog, tx)?,
+            tcx,
+            self.table_storage_info(catalog, tcx)?,
+            self.index_storage_infos(catalog, tcx)?,
         )?)
     }
 
-    pub fn get_or_create_storage<'env, 'txn, S: StorageEngine>(
+    pub fn get_or_create_storage<'a, 'env, 'txn, S: StorageEngine>(
         &self,
         catalog: Catalog<'env, S>,
-        tx: &dyn TransactionContext<'env, 'txn, S, ReadWriteExecutionMode>,
-    ) -> Result<TableStorage<'env, 'txn, S, ReadWriteExecutionMode>> {
+        tx: &'a dyn TransactionContext<'env, 'txn, S, ReadWriteExecutionMode>,
+    ) -> Result<&'a TableStorage<'env, 'txn, S, ReadWriteExecutionMode>> {
         let storage = catalog.storage();
         Ok(TableStorage::create(
             storage,
@@ -95,7 +81,6 @@ impl Table {
         let mk_columns = || {
             let mut columns = catalog
                 .columns(tx)?
-                .as_ref()
                 .scan(..)?
                 .filter(|col| Ok(col.table == self.oid))
                 .collect::<Vec<_>>()?;
@@ -134,12 +119,7 @@ impl Table {
         catalog: Catalog<'env, S>,
         tx: &dyn TransactionContext<'env, 'txn, S, M>,
     ) -> Result<Vec<Index>> {
-        catalog
-            .indexes(tx)?
-            .as_ref()
-            .scan(..)?
-            .filter(|index| Ok(index.target == self.oid))
-            .collect()
+        catalog.indexes(tx)?.scan(..)?.filter(|index| Ok(index.target == self.oid)).collect()
     }
 
     fn index_storage_infos<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
@@ -202,12 +182,6 @@ impl SystemEntity for Table {
     ) -> Result<Option<Oid<Self::Parent>>> {
         Ok(Some(self.namespace))
     }
-
-    fn extract_cache<'a, 'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
-        caches: &'a TransactionLocalCatalogCaches<'env, 'txn, S, M>,
-    ) -> &'a OnceLock<SystemTableView<'env, 'txn, S, M, Self>> {
-        &caches.tables
-    }
 }
 
 impl SystemEntityPrivate for Table {
@@ -247,8 +221,5 @@ impl SystemEntityPrivate for Table {
         ]
     }
 
-    #[inline]
-    fn table() -> Oid<Table> {
-        Table::TABLE
-    }
+    const TABLE: Oid<Table> = Table::TABLE;
 }

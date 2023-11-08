@@ -1,5 +1,5 @@
 #![deny(rust_2018_idioms)]
-#![feature(never_type, once_cell_try, min_specialization, type_alias_impl_trait)]
+#![feature(never_type, once_cell_try, min_specialization, type_alias_impl_trait, lazy_cell)]
 
 mod bootstrap;
 mod entity;
@@ -8,8 +8,6 @@ mod system_table;
 
 use std::fmt;
 use std::hash::{BuildHasherDefault, Hash};
-use std::ops::Deref;
-use std::sync::OnceLock;
 
 pub use anyhow::Error;
 use dashmap::DashMap;
@@ -42,44 +40,12 @@ pub trait TransactionContext<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env
     fn catalog_caches(&self) -> &TransactionLocalCatalogCaches<'env, 'txn, S, M>;
 }
 
-/// Borrowed or owned.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Copy, PartialOrd, Ord)]
-pub enum Bow<'a, T> {
-    Borrowed(&'a T),
-    Owned(T),
-}
-
-impl<'a, T> AsRef<T> for Bow<'a, T> {
-    #[inline]
-    fn as_ref(&self) -> &T {
-        self
-    }
-}
-
-impl<'a, T> Deref for Bow<'a, T> {
-    type Target = T;
-
-    #[inline]
-    fn deref(&self) -> &Self::Target {
-        match self {
-            Bow::Borrowed(t) => t,
-            Bow::Owned(t) => t,
-        }
-    }
-}
-
 /// A cache containing all the system tables used within the scope of a transaction.
 /// It is important to cache these as opening the table is expensive.
 pub struct TransactionLocalCatalogCaches<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> {
-    namespaces: OnceLock<SystemTableView<'env, 'txn, S, M, Namespace>>,
-    tables: OnceLock<SystemTableView<'env, 'txn, S, M, Table>>,
-    functions: OnceLock<SystemTableView<'env, 'txn, S, M, Function>>,
-    operators: OnceLock<SystemTableView<'env, 'txn, S, M, Operator>>,
-    columns: OnceLock<SystemTableView<'env, 'txn, S, M, Column>>,
-    indexes: OnceLock<SystemTableView<'env, 'txn, S, M, Index>>,
-    sequences: OnceLock<SystemTableView<'env, 'txn, S, M, Sequence>>,
     table_columns: DashMap<Oid<Table>, Box<[Column]>, BuildHasherDefault<FxHasher>>,
-    table_storages: MemoMap<Oid<Table>, TableStorage<'env, 'txn, S, M>>,
+    table_storages:
+        MemoMap<Oid<Table>, TableStorage<'env, 'txn, S, M>, BuildHasherDefault<FxHasher>>,
 }
 
 impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Default
@@ -87,32 +53,23 @@ impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Default
 {
     #[inline]
     fn default() -> Self {
-        Self {
-            namespaces: Default::default(),
-            tables: Default::default(),
-            functions: Default::default(),
-            operators: Default::default(),
-            columns: Default::default(),
-            indexes: Default::default(),
-            sequences: Default::default(),
-            table_columns: Default::default(),
-            table_storages: Default::default(),
-        }
+        Self { table_columns: Default::default(), table_storages: Default::default() }
     }
 }
 
 mod private {
+
     use super::*;
     use crate::entity::table::TableStorageInfo;
     pub trait SystemEntityPrivate {
-        fn table() -> Oid<Table>;
+        const TABLE: Oid<Table>;
 
         /// Returns the storage info for the table that is used to build the table during catalog bootstrap.
         fn bootstrap_column_info() -> Vec<BootstrapColumn>;
 
         fn bootstrap_table_storage_info() -> TableStorageInfo {
             TableStorageInfo::new(
-                Self::table(),
+                Self::TABLE,
                 Self::bootstrap_column_info().into_iter().map(|c| c.into()).collect(),
             )
         }
@@ -147,10 +104,6 @@ pub trait SystemEntity:
         catalog: Catalog<'env, S>,
         tx: &dyn TransactionContext<'env, 'txn, S, M>,
     ) -> Result<Option<Oid<Self::Parent>>>;
-
-    fn extract_cache<'a, 'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
-        caches: &'a TransactionLocalCatalogCaches<'env, 'txn, S, M>,
-    ) -> &'a OnceLock<SystemTableView<'env, 'txn, S, M, Self>>;
 }
 
 impl SystemEntity for () {
@@ -183,12 +136,6 @@ impl SystemEntity for () {
     ) -> Result<Option<Oid<Self::Parent>>> {
         unreachable!()
     }
-
-    fn extract_cache<'a, 'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
-        _caches: &'a TransactionLocalCatalogCaches<'env, 'txn, S, M>,
-    ) -> &'a OnceLock<SystemTableView<'env, 'txn, S, M, Self>> {
-        unreachable!()
-    }
 }
 
 impl SystemEntityPrivate for () {
@@ -196,9 +143,7 @@ impl SystemEntityPrivate for () {
         todo!()
     }
 
-    fn table() -> Oid<Table> {
-        todo!()
-    }
+    const TABLE: Oid<Table> = panic!();
 }
 
 pub struct Catalog<'env, S> {
@@ -224,7 +169,7 @@ impl<'env, S: StorageEngine> Catalog<'env, S> {
     where
         'env: 'txn,
     {
-        self.system_table(tx)?.as_ref().get(oid)
+        self.system_table(tx)?.get(oid)
     }
 
     #[inline]
@@ -243,7 +188,7 @@ impl<'env, S: StorageEngine> Catalog<'env, S> {
     pub fn namespaces<'a, 'txn, M: ExecutionMode<'env, S>>(
         self,
         tx: &'a dyn TransactionContext<'env, 'txn, S, M>,
-    ) -> Result<Bow<'a, SystemTableView<'env, 'txn, S, M, Namespace>>, S::Error> {
+    ) -> Result<SystemTableView<'a, 'env, 'txn, S, M, Namespace>, S::Error> {
         self.system_table(tx)
     }
 
@@ -251,7 +196,7 @@ impl<'env, S: StorageEngine> Catalog<'env, S> {
     pub fn tables<'a, 'txn, M: ExecutionMode<'env, S>>(
         self,
         tx: &'a dyn TransactionContext<'env, 'txn, S, M>,
-    ) -> Result<Bow<'a, SystemTableView<'env, 'txn, S, M, Table>>, S::Error> {
+    ) -> Result<SystemTableView<'a, 'env, 'txn, S, M, Table>, S::Error> {
         self.system_table(tx)
     }
 
@@ -259,7 +204,7 @@ impl<'env, S: StorageEngine> Catalog<'env, S> {
     pub fn indexes<'a, 'txn, M: ExecutionMode<'env, S>>(
         self,
         tx: &'a dyn TransactionContext<'env, 'txn, S, M>,
-    ) -> Result<Bow<'a, SystemTableView<'env, 'txn, S, M, Index>>, S::Error> {
+    ) -> Result<SystemTableView<'a, 'env, 'txn, S, M, Index>, S::Error> {
         self.system_table(tx)
     }
 
@@ -267,7 +212,7 @@ impl<'env, S: StorageEngine> Catalog<'env, S> {
     pub fn functions<'a, 'txn, M: ExecutionMode<'env, S>>(
         self,
         tx: &'a dyn TransactionContext<'env, 'txn, S, M>,
-    ) -> Result<Bow<'a, SystemTableView<'env, 'txn, S, M, Function>>, S::Error> {
+    ) -> Result<SystemTableView<'a, 'env, 'txn, S, M, Function>, S::Error> {
         self.system_table(tx)
     }
 
@@ -275,7 +220,7 @@ impl<'env, S: StorageEngine> Catalog<'env, S> {
     pub fn operators<'a, 'txn, M: ExecutionMode<'env, S>>(
         self,
         tx: &'a dyn TransactionContext<'env, 'txn, S, M>,
-    ) -> Result<Bow<'a, SystemTableView<'env, 'txn, S, M, Operator>>, S::Error> {
+    ) -> Result<SystemTableView<'a, 'env, 'txn, S, M, Operator>, S::Error> {
         self.system_table(tx)
     }
 
@@ -283,7 +228,7 @@ impl<'env, S: StorageEngine> Catalog<'env, S> {
     pub fn sequences<'a, 'txn, M: ExecutionMode<'env, S>>(
         self,
         tx: &'a dyn TransactionContext<'env, 'txn, S, M>,
-    ) -> Result<Bow<'a, SystemTableView<'env, 'txn, S, M, Sequence>>, S::Error> {
+    ) -> Result<SystemTableView<'a, 'env, 'txn, S, M, Sequence>, S::Error> {
         self.system_table(tx)
     }
 
@@ -291,7 +236,7 @@ impl<'env, S: StorageEngine> Catalog<'env, S> {
     pub fn columns<'a, 'txn, M: ExecutionMode<'env, S>>(
         self,
         tx: &'a dyn TransactionContext<'env, 'txn, S, M>,
-    ) -> Result<Bow<'a, SystemTableView<'env, 'txn, S, M, Column>>, S::Error>
+    ) -> Result<SystemTableView<'a, 'env, 'txn, S, M, Column>, S::Error>
     where
         'env: 'txn,
     {
@@ -303,27 +248,10 @@ impl<'env, S: StorageEngine> Catalog<'env, S> {
     pub fn system_table<'a, 'txn, M: ExecutionMode<'env, S>, T: SystemEntity>(
         self,
         tx: &'a dyn TransactionContext<'env, 'txn, S, M>,
-    ) -> Result<Bow<'a, SystemTableView<'env, 'txn, S, M, T>>, S::Error> {
-        // When opening in read-only mode, we still open the table in bootstrap mode to avoid loading cyclic dependencies.
+    ) -> Result<SystemTableView<'a, 'env, 'txn, S, M, T>, S::Error> {
+        // We still need to open the table in bootstrap mode to avoid loading cyclic dependencies.
         // We currently only use indexes to check uniqueness not for lookups, so this isn't an issue yet.
-        if M::READONLY {
-            // we can't enable the cache for write operations as is because system table write operations will
-            // fail as it won't be able to open the table for insertion as it will be cached.
-            // (and the cache only provides a shared reference where we need a unique one)
-            T::extract_cache(tx.catalog_caches())
-                .get_or_try_init(|| SystemTableView::new_bootstrap(self.storage(), tx))
-                .map(Bow::Borrowed)
-        } else {
-            SystemTableView::new_bootstrap(self.storage(), tx).map(Bow::Owned)
-        }
-    }
-
-    #[inline]
-    pub fn system_table_write<'txn, T: SystemEntity>(
-        self,
-        tx: &dyn TransactionContext<'env, 'txn, S, ReadWriteExecutionMode>,
-    ) -> Result<SystemTableView<'env, 'txn, S, ReadWriteExecutionMode, T>> {
-        Ok(SystemTableView::new_bootstrap(self.storage(), tx)?)
+        SystemTableView::new_bootstrap(self.storage(), tx)
     }
 
     pub fn drop_table<'txn>(
@@ -339,7 +267,8 @@ impl<'env, S: StorageEngine> Catalog<'env, S> {
         // delete entry in `nsql_catalog.nsql_table`
         // FIXME need to cleanup columns and any referencing data
         assert!(
-            self.system_table_write::<Table>(tx)?.delete(Value::Oid(oid.untyped()))?,
+            self.system_table::<ReadWriteExecutionMode, Table>(tx)?
+                .delete(Value::Oid(oid.untyped()))?,
             "attempted to drop non-existent table, this should fail earlier"
         );
 

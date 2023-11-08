@@ -40,11 +40,7 @@ pub struct BootstrapColumn {
 impl From<BootstrapColumn> for ColumnStorageInfo {
     #[inline]
     fn from(col: BootstrapColumn) -> Self {
-        ColumnStorageInfo {
-            name: col.name.into(),
-            logical_type: col.ty.clone(),
-            is_primary_key: col.is_primary_key,
-        }
+        ColumnStorageInfo { is_primary_key: col.is_primary_key }
     }
 }
 

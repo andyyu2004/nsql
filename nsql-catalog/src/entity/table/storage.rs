@@ -6,7 +6,7 @@ use atomic_take::AtomicTake;
 use fix_hidden_lifetime_bug::fix_hidden_lifetime_bug;
 use next_gen::generator_fn::GeneratorFn;
 use next_gen::prelude::*;
-use nsql_core::{LogicalType, Name, Oid};
+use nsql_core::{Name, Oid};
 use nsql_storage::expr::TupleExpr;
 use nsql_storage::tuple::{IntoTuple, Tuple, TupleIndex};
 use nsql_storage::value::Value;
@@ -39,14 +39,14 @@ pub struct PrimaryKeyConflict {
     pub key: Tuple,
 }
 
-impl<'env, 'txn, S: StorageEngine> TableStorage<'env, 'txn, S, ReadWriteExecutionMode> {
+impl<'a, 'env, 'txn, S: StorageEngine> TableStorage<'env, 'txn, S, ReadWriteExecutionMode> {
     #[inline]
     pub fn create(
         storage: &S,
-        tx: &dyn TransactionContext<'env, 'txn, S, ReadWriteExecutionMode>,
+        tx: &'a dyn TransactionContext<'env, 'txn, S, ReadWriteExecutionMode>,
         info: TableStorageInfo,
         indexes: Vec<IndexStorageInfo>,
-    ) -> Result<Self, S::Error> {
+    ) -> Result<&'a Self, S::Error> {
         // create the tree
         storage.open_write_tree(tx.transaction(), &info.oid.to_string())?;
         Self::open(storage, tx, info, indexes)
@@ -123,19 +123,31 @@ impl<'env, 'txn, S: StorageEngine> TableStorage<'env, 'txn, S, ReadWriteExecutio
 #[fix_hidden_lifetime_bug]
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> TableStorage<'env, 'txn, S, M> {
     #[track_caller]
-    pub fn open(
+    pub fn open<'a>(
         storage: &S,
-        tx: &dyn TransactionContext<'env, 'txn, S, M>,
+        tcx: &'a dyn TransactionContext<'env, 'txn, S, M>,
         info: TableStorageInfo,
-        indexes: Vec<IndexStorageInfo>,
+        indexes: impl IntoIterator<Item = IndexStorageInfo>,
+    ) -> Result<&'a Self, S::Error> {
+        let oid = info.oid;
+        tcx.catalog_caches()
+            .table_storages
+            .get_or_try_insert(&oid, || Self::open_uncached(storage, tcx, info, indexes))
+    }
+
+    pub fn open_uncached(
+        storage: &S,
+        tcx: &dyn TransactionContext<'env, 'txn, S, M>,
+        info: TableStorageInfo,
+        indexes: impl IntoIterator<Item = IndexStorageInfo>,
     ) -> Result<Self, S::Error> {
-        let tree = M::open_tree(storage, tx.transaction(), &info.oid.to_string())
-            .unwrap_or_else(|err| panic!("failed to open table storage for `{}` {err}", info.oid));
+        let tree = M::open_tree(storage, tcx.transaction(), &info.oid.to_string())?;
 
         let indexes = indexes
             .into_iter()
-            .map(|info| IndexStorage::open(storage, tx, info))
-            .collect::<Result<_, _>>()?;
+            .map(|info| IndexStorage::open(storage, tcx, info))
+            .collect::<Result<Box<_>, _>>()?;
+
         Ok(Self { info, tree, indexes })
     }
 
@@ -149,11 +161,11 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> TableStorage
 
     #[inline]
     #[fix_hidden_lifetime_bug]
-    pub fn scan<'a>(
-        &'a self,
-        bounds: impl RangeBounds<[u8]> + 'a,
+    pub fn scan<'b>(
+        &'b self,
+        bounds: impl RangeBounds<[u8]> + 'b,
         projection: Option<Box<[TupleIndex]>>,
-    ) -> Result<impl FallibleIterator<Item = Tuple, Error = S::Error> + 'a, S::Error> {
+    ) -> Result<impl FallibleIterator<Item = Tuple, Error = S::Error> + 'b, S::Error> {
         let mut gen = Box::pin(GeneratorFn::empty());
         gen.as_mut().init(range_gen::<S, M>, (self, projection, bounds));
         Ok(fallible_iterator::convert(gen))
@@ -298,14 +310,14 @@ impl TableStorageInfo {
 
 #[derive(Debug, Clone)]
 pub struct ColumnStorageInfo {
-    pub name: Name,
-    pub logical_type: LogicalType,
+    // pub name: Name,
+    // pub logical_type: LogicalType,
     pub is_primary_key: bool,
 }
 
 impl ColumnStorageInfo {
-    pub fn new(name: impl Into<Name>, logical_type: LogicalType, is_primary_key: bool) -> Self {
-        Self { name: name.into(), logical_type, is_primary_key }
+    pub fn new(is_primary_key: bool) -> Self {
+        Self { is_primary_key }
     }
 }
 
@@ -321,7 +333,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> IndexStorage
         tx: &dyn TransactionContext<'env, 'txn, S, M>,
         info: IndexStorageInfo,
     ) -> Result<Self, S::Error> {
-        let storage = TableStorage::open(storage, tx, info.table, vec![])?;
+        let storage = TableStorage::open_uncached(storage, tx, info.table, vec![])?;
         Ok(Self {
             storage,
             index_expr: AtomicTake::new(info.index_expr),

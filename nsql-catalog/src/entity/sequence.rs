@@ -79,12 +79,6 @@ impl SystemEntity for Sequence {
     ) -> Result<Option<Oid<Self::Parent>>> {
         catalog.get::<M, Table>(tx, self.oid)?.parent_oid(catalog, tx)
     }
-
-    fn extract_cache<'a, 'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
-        caches: &'a TransactionLocalCatalogCaches<'env, 'txn, S, M>,
-    ) -> &'a OnceLock<SystemTableView<'env, 'txn, S, M, Self>> {
-        &caches.sequences
-    }
 }
 
 impl SystemEntityPrivate for Sequence {
@@ -118,8 +112,5 @@ impl SystemEntityPrivate for Sequence {
         ]
     }
 
-    #[inline]
-    fn table() -> Oid<Table> {
-        Table::SEQUENCE
-    }
+    const TABLE: Oid<Table> = Table::SEQUENCE;
 }

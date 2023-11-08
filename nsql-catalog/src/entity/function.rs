@@ -163,15 +163,11 @@ impl SystemEntity for Function {
     ) -> Result<Option<Oid<Self::Parent>>> {
         Ok(Some(self.namespace))
     }
-
-    fn extract_cache<'a, 'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
-        caches: &'a TransactionLocalCatalogCaches<'env, 'txn, S, M>,
-    ) -> &'a OnceLock<SystemTableView<'env, 'txn, S, M, Self>> {
-        &caches.functions
-    }
 }
 
 impl SystemEntityPrivate for Function {
+    const TABLE: Oid<Table> = Table::FUNCTION;
+
     fn bootstrap_column_info() -> Vec<BootstrapColumn> {
         vec![
             BootstrapColumn {
@@ -223,10 +219,5 @@ impl SystemEntityPrivate for Function {
                 seq: None,
             },
         ]
-    }
-
-    #[inline]
-    fn table() -> Oid<Table> {
-        Table::FUNCTION
     }
 }

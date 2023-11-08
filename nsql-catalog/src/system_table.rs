@@ -14,25 +14,31 @@ use rustc_hash::FxHasher;
 use crate::entity::table::{PrimaryKeyConflict, TableStorage};
 use crate::{Catalog, FunctionCatalog, Result, SystemEntity, Table, TransactionContext};
 
-pub struct SystemTableView<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: SystemEntity>
-{
-    storage: TableStorage<'env, 'txn, S, M>,
+pub struct SystemTableView<
+    'a,
+    'env,
+    'txn,
+    S: StorageEngine,
+    M: ExecutionMode<'env, S>,
+    T: SystemEntity,
+> {
+    storage: &'a TableStorage<'env, 'txn, S, M>,
     cache: DashMap<T::Key, T, BuildHasherDefault<FxHasher>>,
     phantom: PhantomData<T>,
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: SystemEntity>
-    SystemTableView<'env, 'txn, S, M, T>
+impl<'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: SystemEntity>
+    SystemTableView<'a, 'env, 'txn, S, M, T>
 {
     pub fn new(
         catalog: Catalog<'env, S>,
-        tx: &dyn TransactionContext<'env, 'txn, S, M>,
+        tx: &'a dyn TransactionContext<'env, 'txn, S, M>,
     ) -> Result<Self> {
         // we need to view the tables in bootstrap mode to avoid a cycle
         let table =
-            SystemTableView::<S, M, Table>::new_bootstrap(catalog.storage(), tx)?.get(T::table())?;
+            SystemTableView::<S, M, Table>::new_bootstrap(catalog.storage(), tx)?.get(T::TABLE)?;
         Ok(Self {
-            storage: table.owned_storage(catalog, tx)?,
+            storage: table.storage(catalog, tx)?,
             cache: Default::default(),
             phantom: PhantomData,
         })
@@ -41,7 +47,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: SystemEnt
     #[track_caller]
     pub(crate) fn new_bootstrap(
         storage: &'env S,
-        tx: &dyn TransactionContext<'env, 'txn, S, M>,
+        tx: &'a dyn TransactionContext<'env, 'txn, S, M>,
     ) -> Result<Self, S::Error> {
         // todo indexes
         let storage = TableStorage::<'env, 'txn, S, M>::open(
@@ -58,7 +64,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: SystemEnt
 
 #[fix_hidden_lifetime_bug]
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: SystemEntity>
-    SystemTableView<'env, 'txn, S, M, T>
+    SystemTableView<'_, 'env, 'txn, S, M, T>
 {
     #[inline]
     pub fn get(&self, key: T::Key) -> Result<T> {
@@ -68,6 +74,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: SystemEnt
                 .ok_or_else(|| anyhow!("got invalid key for {}: `{:?}", T::desc(), key))
         };
 
+        // only cache in readonly since we're not invalidating the cache
         if M::READONLY {
             self.cache.entry(key).or_try_insert_with(|| f(key)).map(|v| v.value().clone())
         } else {
@@ -116,7 +123,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: SystemEnt
 }
 
 impl<'env: 'txn, 'txn, S: StorageEngine, T: SystemEntity>
-    SystemTableView<'env, 'txn, S, ReadWriteExecutionMode, T>
+    SystemTableView<'_, 'env, 'txn, S, ReadWriteExecutionMode, T>
 {
     #[inline]
     pub fn insert(

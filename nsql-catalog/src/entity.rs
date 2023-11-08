@@ -1,5 +1,3 @@
-use std::sync::OnceLock;
-
 use anyhow::Result;
 use nsql_core::LogicalType;
 use nsql_derive::{FromTuple, IntoTuple};
@@ -9,7 +7,7 @@ use nsql_storage_engine::StorageEngine;
 
 use crate::{
     BootstrapColumn, BootstrapSequence, Catalog, ExecutionMode, Name, Namespace, Oid, SystemEntity,
-    SystemTableView, Table, TransactionContext, TransactionLocalCatalogCaches,
+    Table, TransactionContext,
 };
 
 pub(crate) mod column;

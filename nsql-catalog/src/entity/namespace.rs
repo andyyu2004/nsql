@@ -60,13 +60,6 @@ impl SystemEntity for Namespace {
     ) -> Result<Option<Oid<Self::Parent>>> {
         Ok(None)
     }
-
-    #[inline]
-    fn extract_cache<'a, 'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
-        caches: &'a TransactionLocalCatalogCaches<'env, 'txn, S, M>,
-    ) -> &'a OnceLock<SystemTableView<'env, 'txn, S, M, Self>> {
-        &caches.namespaces
-    }
 }
 
 impl SystemEntityPrivate for Namespace {
@@ -97,8 +90,5 @@ impl SystemEntityPrivate for Namespace {
         ]
     }
 
-    #[inline]
-    fn table() -> Oid<Table> {
-        Table::NAMESPACE
-    }
+    const TABLE: Oid<Table> = Table::NAMESPACE;
 }
