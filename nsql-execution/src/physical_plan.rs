@@ -68,6 +68,8 @@ use crate::{
 };
 
 pub trait PlannerProfiler: nsql_core::Profiler {
+    fn catalog_function_lookup_event_id(&self) -> Self::EventId;
+
     fn compile_event_id(&self) -> Self::EventId;
 
     fn explain_event_id(&self) -> Self::EventId;

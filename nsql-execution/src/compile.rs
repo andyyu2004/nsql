@@ -85,7 +85,10 @@ impl<F> Compiler<F> {
                 self.emit(ExprOp::MkArray { len });
             }
             opt::Expr::Call(call) => {
-                let function = catalog.get_function(tx, call.function())?;
+                let function = profiler
+                    .profile(profiler.catalog_function_lookup_event_id(), || {
+                        catalog.get_function(tx, call.function())
+                    })?;
                 let args = call.args(q);
                 for arg in args {
                     self.build(profiler, catalog, tx, q, &arg)?;

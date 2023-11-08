@@ -136,6 +136,7 @@ struct NsqlProfiler {
 
     physical_plan_event_id: EventId,
     physical_plan_compile_event_id: EventId,
+    physical_plan_compile_function_lookup_event_id: EventId,
     physical_plan_explain_event_id: EventId,
 
     execute_event_id: EventId,
@@ -177,6 +178,10 @@ impl nsql_execution::PlannerProfiler for NsqlProfiler {
     fn explain_event_id(&self) -> Self::EventId {
         self.physical_plan_explain_event_id
     }
+
+    fn catalog_function_lookup_event_id(&self) -> Self::EventId {
+        self.physical_plan_compile_function_lookup_event_id
+    }
 }
 
 impl NsqlProfiler {
@@ -192,6 +197,7 @@ impl NsqlProfiler {
             opt_build_egraph_event_id: mk_id("opt-egraph-optimize"),
             physical_plan_event_id: mk_id("physical-plan"),
             physical_plan_compile_event_id: mk_id("compile"),
+            physical_plan_compile_function_lookup_event_id: mk_id("compile-function-lookup"),
             physical_plan_explain_event_id: mk_id("explain"),
             execute_event_id: mk_id("execute"),
             generic_event_kind: profiler.alloc_string("generic"),
