@@ -81,7 +81,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSink<'env, 'txn, S, ReadWriteEx
         let tx = ecx.tcx();
         let catalog = ecx.catalog();
         let table = catalog.table(tx, self.table)?;
-        let mut storage = table.storage::<S, ReadWriteExecutionMode>(catalog, tx)?;
+        let storage = table.storage::<S, ReadWriteExecutionMode>(catalog, tx)?;
 
         for tuple in &self.tuples {
             // FIXME we need to detect whether or not we actually updated something before adding it

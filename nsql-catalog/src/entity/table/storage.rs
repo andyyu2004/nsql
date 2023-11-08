@@ -53,7 +53,7 @@ impl<'env, 'txn, S: StorageEngine> TableStorage<'env, 'txn, S, ReadWriteExecutio
     }
 
     #[inline]
-    pub fn update(&mut self, tuple: &Tuple) -> Result<(), S::Error> {
+    pub fn update(&self, tuple: &Tuple) -> Result<(), S::Error> {
         let (k, v) = self.split_tuple(tuple);
         debug_assert!(self.tree.delete(&k)?, "updating a tuple that didn't exist");
         self.tree.update(&k, &v)?;
@@ -61,7 +61,7 @@ impl<'env, 'txn, S: StorageEngine> TableStorage<'env, 'txn, S, ReadWriteExecutio
         Ok(())
     }
 
-    pub fn delete(&mut self, key: impl IntoTuple) -> Result<bool, S::Error> {
+    pub fn delete(&self, key: impl IntoTuple) -> Result<bool, S::Error> {
         let k = key.into_tuple();
         let k = nsql_rkyv::to_bytes(&k);
         self.tree.delete(&k)
@@ -69,12 +69,12 @@ impl<'env, 'txn, S: StorageEngine> TableStorage<'env, 'txn, S, ReadWriteExecutio
 
     #[inline]
     pub fn insert(
-        &mut self,
+        &self,
         catalog: &dyn FunctionCatalog<'env, 'txn, S, ReadWriteExecutionMode>,
         tx: &dyn TransactionContext<'env, 'txn, S, ReadWriteExecutionMode>,
         tuple: &Tuple,
     ) -> Result<Result<(), PrimaryKeyConflict>, anyhow::Error> {
-        for index in self.indexes.iter_mut() {
+        for index in &self.indexes[..] {
             index.insert(catalog, tx, tuple)?;
         }
 
@@ -313,7 +313,6 @@ pub(crate) struct IndexStorage<'env, 'txn, S: StorageEngine, M: ExecutionMode<'e
     storage: TableStorage<'env, 'txn, S, M>,
     index_expr: AtomicTake<TupleExpr>,
     prepared_expr: OnceLock<ExecutableTupleExpr<'env, 'txn, S, M>>,
-    evaluator: Evaluator,
 }
 
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> IndexStorage<'env, 'txn, S, M> {
@@ -327,7 +326,6 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> IndexStorage
             storage,
             index_expr: AtomicTake::new(info.index_expr),
             prepared_expr: OnceLock::new(),
-            evaluator: Default::default(),
         })
     }
 }
@@ -335,7 +333,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> IndexStorage
 impl<'env, 'txn, S: StorageEngine> IndexStorage<'env, 'txn, S, ReadWriteExecutionMode> {
     #[inline]
     pub fn insert(
-        &mut self,
+        &self,
         catalog: &dyn FunctionCatalog<'env, 'txn, S, ReadWriteExecutionMode>,
         tx: &dyn TransactionContext<'env, 'txn, S, ReadWriteExecutionMode>,
         tuple: &Tuple,
@@ -344,7 +342,8 @@ impl<'env, 'txn, S: StorageEngine> IndexStorage<'env, 'txn, S, ReadWriteExecutio
             .prepared_expr
             .get_or_try_init(|| self.index_expr.take().unwrap().resolve(catalog, tx))?;
 
-        let tuple = expr.eval(&mut self.evaluator, catalog.storage(), tx, tuple)?;
+        let mut evaluator = Evaluator::default();
+        let tuple = expr.eval(&mut evaluator, catalog.storage(), tx, tuple)?;
         self.storage
             .insert(catalog, tx, &tuple)?
             .map_err(|PrimaryKeyConflict { key }| anyhow::anyhow!("unique index conflict: {key}"))

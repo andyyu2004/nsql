@@ -5,7 +5,7 @@ fn example_usage<S: StorageEngine>() -> Result<(), S::Error> {
     let s = S::open("path")?;
     let txn = s.begin_write()?;
     {
-        let mut tree = s.open_write_tree(&txn, "tree")?;
+        let tree = s.open_write_tree(&txn, "tree")?;
         tree.insert(b"hello", b"world")?.unwrap();
         tree.insert(b"hello2", b"world2")?.unwrap();
     }

@@ -176,7 +176,7 @@ impl<'env, 'txn> nsql_storage_engine::WriteTree<'env, 'txn, RedbStorageEngine>
     for redb::Table<'env, 'txn, &[u8], &[u8]>
 {
     #[inline]
-    fn insert(&mut self, key: &[u8], value: &[u8]) -> Result<Result<(), KeyExists>, redb::Error> {
+    fn insert(&self, key: &[u8], value: &[u8]) -> Result<Result<(), KeyExists>, redb::Error> {
         // can return a bool if we need to know if the key was already present
         match self.insert(key, value)? {
             Some(_) => Ok(Err(KeyExists)),
@@ -185,13 +185,13 @@ impl<'env, 'txn> nsql_storage_engine::WriteTree<'env, 'txn, RedbStorageEngine>
     }
 
     #[inline]
-    fn update(&mut self, key: &[u8], value: &[u8]) -> Result<(), redb::Error> {
+    fn update(&self, key: &[u8], value: &[u8]) -> Result<(), redb::Error> {
         self.insert(key, value)?;
         Ok(())
     }
 
     #[inline]
-    fn delete(&mut self, key: &[u8]) -> Result<bool, redb::Error> {
+    fn delete(&self, key: &[u8]) -> Result<bool, redb::Error> {
         Ok(self.remove(key)?.is_some())
     }
 }

@@ -31,7 +31,20 @@ impl Table {
     }
 
     #[track_caller]
-    pub fn storage<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
+    pub fn storage<'a, 'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
+        &self,
+        catalog: Catalog<'env, S>,
+        tcx: &'a dyn TransactionContext<'env, 'txn, S, M>,
+    ) -> Result<&'a TableStorage<'env, 'txn, S, M>> {
+        tcx.catalog_caches()
+            .table_storages
+            .get_or_try_insert(&self.oid, || self.owned_storage(catalog, tcx))
+    }
+
+    // FIXME This is only used for system tables, should try and remove this special case.
+    // We could probably remove the system table cache and cache only the storages?
+    #[track_caller]
+    pub fn owned_storage<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
         &self,
         catalog: Catalog<'env, S>,
         tx: &dyn TransactionContext<'env, 'txn, S, M>,

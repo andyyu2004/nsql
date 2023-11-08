@@ -49,14 +49,14 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
     ) -> ExecutionResult<TupleStream<'s>> {
         let tx = ecx.tcx();
         let catalog = ecx.catalog();
-        let storage = Arc::new(self.table.storage::<S, M>(catalog, tx)?);
+        let storage = self.table.storage::<S, M>(catalog, tx)?;
 
         let projection = self
             .projection
             .as_ref()
             .map(|p| p.iter().map(|&idx| TupleIndex::new(idx.as_usize())).collect());
 
-        let stream = storage.scan_arc(projection)?.map_err(Into::into);
+        let stream = storage.scan(.., projection)?.map_err(Into::into);
         Ok(Box::new(stream) as _)
     }
 }

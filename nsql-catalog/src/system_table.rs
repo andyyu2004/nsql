@@ -32,7 +32,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: SystemEnt
         let table =
             SystemTableView::<S, M, Table>::new_bootstrap(catalog.storage(), tx)?.get(T::table())?;
         Ok(Self {
-            storage: table.storage(catalog, tx)?,
+            storage: table.owned_storage(catalog, tx)?,
             cache: Default::default(),
             phantom: PhantomData,
         })

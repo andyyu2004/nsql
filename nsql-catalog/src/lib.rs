@@ -14,6 +14,7 @@ use std::sync::OnceLock;
 pub use anyhow::Error;
 use dashmap::DashMap;
 use expr::ExecutableFunction;
+use memo_map::MemoMap;
 use nsql_core::{Name, Oid};
 use nsql_storage::tuple::{FromTuple, IntoTuple};
 use nsql_storage::value::Value;
@@ -78,6 +79,7 @@ pub struct TransactionLocalCatalogCaches<'env, 'txn, S: StorageEngine, M: Execut
     indexes: OnceLock<SystemTableView<'env, 'txn, S, M, Index>>,
     sequences: OnceLock<SystemTableView<'env, 'txn, S, M, Sequence>>,
     table_columns: DashMap<Oid<Table>, Box<[Column]>, BuildHasherDefault<FxHasher>>,
+    table_storages: MemoMap<Oid<Table>, TableStorage<'env, 'txn, S, M>>,
 }
 
 impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Default
@@ -94,6 +96,7 @@ impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Default
             indexes: Default::default(),
             sequences: Default::default(),
             table_columns: Default::default(),
+            table_storages: Default::default(),
         }
     }
 }

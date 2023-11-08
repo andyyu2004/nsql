@@ -208,7 +208,7 @@ impl<'env, 'txn> ReadTree<'env, 'txn, LmdbStorageEngine> for LmdbWriteTree<'env,
 
 impl<'env, 'txn> WriteTree<'env, 'txn, LmdbStorageEngine> for LmdbWriteTree<'env, 'txn> {
     #[inline]
-    fn insert(&mut self, key: &[u8], value: &[u8]) -> Result<Result<(), KeyExists>, heed::Error> {
+    fn insert(&self, key: &[u8], value: &[u8]) -> Result<Result<(), KeyExists>, heed::Error> {
         match self.db.put(&self.txn.0, key, value) {
             Ok(()) => Ok(Ok(())),
             Err(err) => match err {
@@ -219,12 +219,12 @@ impl<'env, 'txn> WriteTree<'env, 'txn, LmdbStorageEngine> for LmdbWriteTree<'env
     }
 
     #[inline]
-    fn update(&mut self, key: &[u8], value: &[u8]) -> Result<(), heed::Error> {
+    fn update(&self, key: &[u8], value: &[u8]) -> Result<(), heed::Error> {
         self.db.update(&self.txn.0, key, value)
     }
 
     #[inline]
-    fn delete(&mut self, key: &[u8]) -> Result<bool, heed::Error> {
+    fn delete(&self, key: &[u8]) -> Result<bool, heed::Error> {
         self.db.delete(&self.txn.0, key)
     }
 }
