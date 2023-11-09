@@ -1,6 +1,6 @@
 #![deny(rust_2018_idioms)]
 
-use std::ops::{Deref, RangeBounds};
+use std::ops::RangeBounds;
 use std::path::Path;
 
 use heed::types::ByteSlice;
@@ -19,24 +19,7 @@ pub struct LmdbStorageEngine {
     env: heed::Env,
 }
 
-pub struct ReadonlyTx<'env>(SendRoTxnWrapper<'env>);
-
-struct SendRoTxnWrapper<'env>(heed::RoTxn<'env>);
-
-impl<'env> Deref for SendRoTxnWrapper<'env> {
-    type Target = heed::RoTxn<'env>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-// This type is apparently safe to send across threads but heed doesn't have the implementation
-// The `sync-read-txn` enables `Sync` but not `Send` currently.
-// https://github.com/meilisearch/heed/issues/149
-// FIXME judging by `lmdb.h` comments I don't think it is `Sync` (but it is `Send`)
-unsafe impl Send for SendRoTxnWrapper<'_> {}
-unsafe impl Sync for SendRoTxnWrapper<'_> {}
+pub struct ReadonlyTx<'env>(heed::RoTxn<'env>);
 
 pub struct ReadWriteTx<'env>(heed::RwTxn<'env>);
 
@@ -67,6 +50,7 @@ impl StorageEngine for LmdbStorageEngine {
     {
         // large value `max_readers` has a performance issues so I don't think having a lmdb database per table is practical.
         // Perhaps we can do a lmdb database per schema and have a reasonable limit on it (say ~100)
+        // TODO have a look at EnvFlags::WRITE_MAP
         let env =
             unsafe { heed::EnvOpenOptions::new().flags(EnvFlags::NO_SUB_DIR | EnvFlags::NO_TLS) }
                 .map_size(2 * 1024 * 1024 * 1024) // 2 GiB
@@ -78,7 +62,7 @@ impl StorageEngine for LmdbStorageEngine {
     #[inline]
     fn begin(&self) -> Result<Self::Transaction<'_>, Self::Error> {
         let tx = self.env.read_txn()?;
-        Ok(ReadonlyTx(SendRoTxnWrapper(tx)))
+        Ok(ReadonlyTx(tx))
     }
 
     #[inline]
@@ -97,8 +81,8 @@ impl StorageEngine for LmdbStorageEngine {
         'env: 'txn,
     {
         let txn = match txn.as_read_or_write_ref() {
-            ReadOrWriteTransactionRef::Read(txn) => &*txn.0,
-            ReadOrWriteTransactionRef::Write(txn) => &*txn.0,
+            ReadOrWriteTransactionRef::Read(txn) => &txn.0,
+            ReadOrWriteTransactionRef::Write(txn) => &txn.0,
         };
         Ok(self.env.open_database(txn, Some(name))?.map(|db| LmdbReadTree { db, txn }))
     }

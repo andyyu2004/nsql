@@ -16,7 +16,7 @@ pub trait StorageEngine: Send + Sync + Sized + fmt::Debug + 'static {
 
     type Bytes<'txn>: Deref<Target = [u8]>;
 
-    type Transaction<'env>: Transaction<'env, Self> + Send + Sync
+    type Transaction<'env>: Transaction<'env, Self> + Send
     where
         Self: 'env;
 
