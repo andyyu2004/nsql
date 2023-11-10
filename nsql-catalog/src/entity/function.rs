@@ -195,7 +195,7 @@ impl SystemEntityPrivate for Function {
             BootstrapColumn {
                 ty: LogicalType::Oid,
                 name: "namespace",
-                is_primary_key: true,
+                is_primary_key: false,
                 identity: ColumnIdentity::None,
                 default_expr: Expr::null(),
                 seq: None,
@@ -211,7 +211,7 @@ impl SystemEntityPrivate for Function {
             BootstrapColumn {
                 ty: LogicalType::array(LogicalType::Type),
                 name: "args",
-                is_primary_key: true,
+                is_primary_key: false,
                 identity: ColumnIdentity::None,
                 default_expr: Expr::null(),
                 seq: None,

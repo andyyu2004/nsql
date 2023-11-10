@@ -62,10 +62,11 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: SystemEnt
 {
     #[inline]
     pub fn get(&self, key: T::Key) -> Result<T> {
-        let f = |key| {
-            self.scan(..)?
-                .find(|entry| Ok(entry.key() == key))?
+        let f = |key: T::Key| -> Result<T> {
+            self.storage
+                .get(key)?
                 .ok_or_else(|| anyhow!("got invalid key for {}: `{:?}", T::desc(), key))
+                .and_then(|tuple| Ok(T::from_tuple(tuple)?))
         };
 
         if M::READONLY {
@@ -125,17 +126,16 @@ impl<'env: 'txn, 'txn, S: StorageEngine, T: SystemEntity>
         tx: &dyn TransactionContext<'env, 'txn, S, ReadWriteExecutionMode>,
         value: T,
     ) -> Result<()> {
-        self.storage.insert(catalog, tx, &value.into_tuple())?.map_err(
-            |PrimaryKeyConflict { key }| {
-                let typed_key = T::Key::from_tuple(key)
-                    .expect("this shouldn't fail as we know the expected shape");
-                anyhow::anyhow!(
-                    "primary key conflict for {}: {:?} already exists",
-                    T::desc(),
-                    typed_key
-                )
-            },
-        )
+        let tuple = value.into_tuple();
+        self.storage.insert(catalog, tx, &tuple)?.map_err(|PrimaryKeyConflict { key }| {
+            let typed_key =
+                T::Key::from_tuple(key).expect("this shouldn't fail as we know the expected shape");
+            anyhow::anyhow!(
+                "primary key conflict for {}: {:?} already exists",
+                T::desc(),
+                typed_key
+            )
+        })
     }
 
     #[inline]

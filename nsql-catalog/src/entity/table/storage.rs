@@ -359,3 +359,6 @@ impl IndexStorageInfo {
         Self { table, index_expr }
     }
 }
+
+#[cfg(test)]
+mod tests;

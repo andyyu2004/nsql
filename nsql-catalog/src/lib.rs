@@ -121,7 +121,7 @@ pub trait SystemEntity:
 {
     type Parent: SystemEntity;
 
-    type Key: FromTuple + Eq + Hash + Copy + fmt::Debug;
+    type Key: IntoTuple + FromTuple + Eq + Hash + Copy + fmt::Debug;
 
     type SearchKey: Eq + Hash + fmt::Debug;
 

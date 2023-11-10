@@ -284,10 +284,10 @@ pub trait IntoTuple {
     fn into_tuple(self) -> Tuple;
 }
 
-impl IntoTuple for Value {
+impl<V: Into<Value>> IntoTuple for V {
     #[inline]
     fn into_tuple(self) -> Tuple {
-        Tuple::new([self])
+        Tuple::new([self.into()])
     }
 }
 
@@ -302,5 +302,16 @@ impl IntoTuple for () {
     #[inline]
     fn into_tuple(self) -> Tuple {
         Tuple::empty()
+    }
+}
+
+impl<T, U> IntoTuple for (T, U)
+where
+    T: Into<Value>,
+    U: Into<Value>,
+{
+    #[inline]
+    fn into_tuple(self) -> Tuple {
+        Tuple::new([self.0.into(), self.1.into()])
     }
 }

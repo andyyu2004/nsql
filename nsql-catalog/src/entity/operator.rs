@@ -125,7 +125,7 @@ impl SystemEntityPrivate for Operator {
             BootstrapColumn {
                 ty: LogicalType::Oid,
                 name: "namespace",
-                is_primary_key: true,
+                is_primary_key: false,
                 identity: ColumnIdentity::None,
                 default_expr: Expr::null(),
                 seq: None,
