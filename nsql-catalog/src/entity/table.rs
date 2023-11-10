@@ -198,6 +198,8 @@ impl SystemEntity for Table {
 }
 
 impl SystemEntityPrivate for Table {
+    const TABLE: Oid<Table> = Table::TABLE;
+
     #[inline]
     fn bootstrap_column_info() -> Vec<BootstrapColumn> {
         vec![
@@ -232,10 +234,5 @@ impl SystemEntityPrivate for Table {
                 seq: None,
             },
         ]
-    }
-
-    #[inline]
-    fn table() -> Oid<Table> {
-        Table::TABLE
     }
 }

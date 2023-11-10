@@ -98,7 +98,6 @@ impl SystemEntity for Index {
     ) -> Result<Option<Oid<Self::Parent>>> {
         catalog.get::<M, Table>(tx, self.table)?.parent_oid(catalog, tx)
     }
-
     fn extract_cache<'a, 'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
         caches: &'a TransactionLocalCatalogCaches<'env, 'txn, S, M>,
     ) -> &'a OnceLock<SystemTableView<'env, 'txn, S, M, Self>> {
@@ -144,8 +143,5 @@ impl SystemEntityPrivate for Index {
         ]
     }
 
-    #[inline]
-    fn table() -> Oid<Table> {
-        Table::INDEX
-    }
+    const TABLE: Oid<Table> = Table::INDEX;
 }

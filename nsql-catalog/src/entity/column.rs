@@ -20,17 +20,13 @@ pub struct Column {
 impl From<Column> for ColumnStorageInfo {
     #[inline]
     fn from(col: Column) -> Self {
-        ColumnStorageInfo {
-            name: col.name.clone(),
-            logical_type: col.logical_type(),
-            is_primary_key: col.is_primary_key(),
-        }
+        ColumnStorageInfo { is_primary_key: col.is_primary_key() }
     }
 }
 
 impl From<&Column> for ColumnStorageInfo {
     fn from(col: &Column) -> Self {
-        ColumnStorageInfo::new(col.name.clone(), col.ty.clone(), col.is_primary_key)
+        ColumnStorageInfo::new(col.is_primary_key)
     }
 }
 
@@ -183,7 +179,6 @@ impl SystemEntity for Column {
         Ok(Some(self.table))
     }
 
-    #[inline]
     fn extract_cache<'a, 'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
         caches: &'a TransactionLocalCatalogCaches<'env, 'txn, S, M>,
     ) -> &'a OnceLock<SystemTableView<'env, 'txn, S, M, Self>> {
@@ -192,6 +187,8 @@ impl SystemEntity for Column {
 }
 
 impl SystemEntityPrivate for Column {
+    const TABLE: Oid<Table> = Table::ATTRIBUTE;
+
     fn bootstrap_column_info() -> Vec<BootstrapColumn> {
         vec![
             BootstrapColumn {
@@ -251,10 +248,5 @@ impl SystemEntityPrivate for Column {
                 seq: None,
             },
         ]
-    }
-
-    #[inline]
-    fn table() -> Oid<Table> {
-        Table::ATTRIBUTE
     }
 }

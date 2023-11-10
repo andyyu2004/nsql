@@ -30,7 +30,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: SystemEnt
     ) -> Result<Self> {
         // we need to view the tables in bootstrap mode to avoid a cycle
         let table =
-            SystemTableView::<S, M, Table>::new_bootstrap(catalog.storage(), tx)?.get(T::table())?;
+            SystemTableView::<S, M, Table>::new_bootstrap(catalog.storage(), tx)?.get(T::TABLE)?;
         Ok(Self {
             storage: table.storage(catalog, tx)?,
             cache: Default::default(),

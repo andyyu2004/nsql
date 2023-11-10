@@ -97,8 +97,5 @@ impl SystemEntityPrivate for Namespace {
         ]
     }
 
-    #[inline]
-    fn table() -> Oid<Table> {
-        Table::NAMESPACE
-    }
+    const TABLE: Oid<Table> = Table::NAMESPACE;
 }

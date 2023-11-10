@@ -149,8 +149,5 @@ impl SystemEntityPrivate for Operator {
         ]
     }
 
-    #[inline]
-    fn table() -> Oid<Table> {
-        Table::OPERATOR
-    }
+    const TABLE: Oid<Table> = Table::OPERATOR;
 }

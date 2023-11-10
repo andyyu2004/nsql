@@ -63,7 +63,7 @@ pub(crate) fn bootstrap<'env: 'txn, 'txn, S: StorageEngine>(
 
     let (
         mut namespaces,
-        mut tables,
+        tables,
         mut columns,
         mut indexes,
         mut functions,
@@ -71,6 +71,12 @@ pub(crate) fn bootstrap<'env: 'txn, 'txn, S: StorageEngine>(
         mut sequences,
     ) = bootstrap_info().desugar();
 
+    let tables = tables.collect::<Vec<_>>();
+    // Create the backing storage for every table
+    // This is necessary to create storages for index/sequence tables etc that are not included in the system tables below.
+    tables.iter().try_for_each(|table| table.create_storage::<S>(storage, tx.transaction()))?;
+
+    tracing::debug!("bootstrapping namespaces");
     let mut namespace_table =
         SystemTableView::<S, ReadWriteExecutionMode, Namespace>::new_bootstrap(storage, tx)?;
     namespaces.try_for_each(|namespace| namespace_table.insert(catalog, tx, namespace))?;
@@ -79,13 +85,7 @@ pub(crate) fn bootstrap<'env: 'txn, 'txn, S: StorageEngine>(
     tracing::debug!("bootstrapping tables");
     let mut table_table =
         SystemTableView::<S, ReadWriteExecutionMode, Table>::new_bootstrap(storage, tx)?;
-    tables.try_for_each(|table| {
-        if table.oid != Table::TABLE {
-            // can't do this as this table is currently open
-            table.create_storage::<S>(storage, tx.transaction())?;
-        }
-        table_table.insert(catalog, tx, table)
-    })?;
+    tables.into_iter().try_for_each(|table| table_table.insert(catalog, tx, table))?;
     drop(table_table);
 
     tracing::debug!("bootstrapping sequences");

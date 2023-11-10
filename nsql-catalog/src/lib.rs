@@ -102,14 +102,14 @@ mod private {
     use super::*;
     use crate::entity::table::TableStorageInfo;
     pub trait SystemEntityPrivate {
-        fn table() -> Oid<Table>;
+        const TABLE: Oid<Table>;
 
         /// Returns the storage info for the table that is used to build the table during catalog bootstrap.
         fn bootstrap_column_info() -> Vec<BootstrapColumn>;
 
         fn bootstrap_table_storage_info() -> TableStorageInfo {
             TableStorageInfo::new(
-                Self::table(),
+                Self::TABLE,
                 Self::bootstrap_column_info().into_iter().map(|c| c.into()).collect(),
             )
         }
@@ -189,11 +189,9 @@ impl SystemEntity for () {
 }
 
 impl SystemEntityPrivate for () {
-    fn bootstrap_column_info() -> Vec<BootstrapColumn> {
-        todo!()
-    }
+    const TABLE: Oid<Table> = unreachable!();
 
-    fn table() -> Oid<Table> {
+    fn bootstrap_column_info() -> Vec<BootstrapColumn> {
         todo!()
     }
 }

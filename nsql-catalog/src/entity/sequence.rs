@@ -118,8 +118,5 @@ impl SystemEntityPrivate for Sequence {
         ]
     }
 
-    #[inline]
-    fn table() -> Oid<Table> {
-        Table::SEQUENCE
-    }
+    const TABLE: Oid<Table> = Table::SEQUENCE;
 }

@@ -172,6 +172,8 @@ impl SystemEntity for Function {
 }
 
 impl SystemEntityPrivate for Function {
+    const TABLE: Oid<Table> = Table::FUNCTION;
+
     fn bootstrap_column_info() -> Vec<BootstrapColumn> {
         vec![
             BootstrapColumn {
@@ -223,10 +225,5 @@ impl SystemEntityPrivate for Function {
                 seq: None,
             },
         ]
-    }
-
-    #[inline]
-    fn table() -> Oid<Table> {
-        Table::FUNCTION
     }
 }

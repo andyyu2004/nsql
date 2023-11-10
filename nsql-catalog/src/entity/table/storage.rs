@@ -6,7 +6,7 @@ use atomic_take::AtomicTake;
 use fix_hidden_lifetime_bug::fix_hidden_lifetime_bug;
 use next_gen::generator_fn::GeneratorFn;
 use next_gen::prelude::*;
-use nsql_core::{LogicalType, Name, Oid};
+use nsql_core::{Name, Oid};
 use nsql_storage::expr::TupleExpr;
 use nsql_storage::tuple::{IntoTuple, Tuple, TupleIndex};
 use nsql_storage::value::Value;
@@ -298,14 +298,12 @@ impl TableStorageInfo {
 
 #[derive(Debug, Clone)]
 pub struct ColumnStorageInfo {
-    pub name: Name,
-    pub logical_type: LogicalType,
     pub is_primary_key: bool,
 }
 
 impl ColumnStorageInfo {
-    pub fn new(name: impl Into<Name>, logical_type: LogicalType, is_primary_key: bool) -> Self {
-        Self { name: name.into(), logical_type, is_primary_key }
+    pub fn new(is_primary_key: bool) -> Self {
+        Self { is_primary_key }
     }
 }
 
