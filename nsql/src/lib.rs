@@ -19,7 +19,6 @@ pub use nsql_core::LogicalType;
 use nsql_core::Schema;
 use nsql_execution::config::SessionConfig;
 use nsql_execution::{ExecutionContext, PhysicalPlan, PhysicalPlanner, TransactionState};
-pub use nsql_lmdb::LmdbStorageEngine;
 use nsql_opt::optimize;
 use nsql_parse::ast;
 pub use nsql_parse::parse;

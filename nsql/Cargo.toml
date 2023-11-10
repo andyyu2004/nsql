@@ -11,7 +11,6 @@ nsql-catalog = { path = "../nsql-catalog" }
 nsql-core = { path = "../nsql-core" }
 nsql-execution = { path = "../nsql-execution" }
 nsql-redb = { path = "../nsql-redb" }
-nsql-lmdb = { path = "../nsql-lmdb" }
 ir = {path = "../nsql-ir", package = "nsql-ir" }
 nsql-opt = { path = "../nsql-opt" }
 nsql-parse = { path = "../nsql-parse" }

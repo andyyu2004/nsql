@@ -2,8 +2,7 @@ use std::error::Error;
 use std::fs::File;
 use std::path::Path;
 
-use nsql::{MaterializedQueryOutput, Nsql};
-use nsql_lmdb::LmdbStorageEngine;
+use nsql::{MaterializedQueryOutput, Nsql, RedbStorageEngine};
 use nsql_storage_engine::StorageEngine;
 use tracing_subscriber::EnvFilter;
 
@@ -19,7 +18,7 @@ fn nsql_sqltest(path: &Path) -> nsql::Result<(), Box<dyn Error>> {
         EnvFilter::try_from_env("NSQL_LOG").unwrap_or_else(|_| EnvFilter::new("nsql=INFO"));
     let _ = tracing_subscriber::fmt::fmt().with_env_filter(filter).try_init();
     let sql = std::fs::read_to_string(path)?;
-    let output = run_sql::<LmdbStorageEngine>(&sql)?;
+    let output = run_sql::<RedbStorageEngine>(&sql)?;
     let expected_path = path.with_extension("expected");
     File::options().create(true).write(true).truncate(false).open(&expected_path)?;
     expect_test::expect_file![expected_path].assert_eq(&output.to_string());

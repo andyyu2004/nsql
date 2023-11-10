@@ -16,7 +16,7 @@ pub trait StorageEngine: Send + Sync + Sized + fmt::Debug + 'static {
 
     type Bytes<'txn>: Deref<Target = [u8]>;
 
-    type Transaction<'env>: Transaction<'env, Self> + Send
+    type Transaction<'env>: Transaction<'env, Self> + Send + Sync
     where
         Self: 'env;
 
@@ -26,12 +26,12 @@ pub trait StorageEngine: Send + Sync + Sized + fmt::Debug + 'static {
 
     type ReadTree<'env, 'txn>: ReadTree<'env, 'txn, Self> + Send + Sync
     where
-        Self: 'env + 'txn,
+        Self: 'env,
         'env: 'txn;
 
     type WriteTree<'env, 'txn>: WriteTree<'env, 'txn, Self>
     where
-        Self: 'env + 'txn,
+        Self: 'env,
         'env: 'txn;
 
     fn create(path: impl AsRef<Path>) -> Result<Self, Self::Error>

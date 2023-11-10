@@ -5,7 +5,7 @@ use std::iter;
 
 use criterion::{BenchmarkId, Criterion, Throughput};
 use criterion_macro::criterion;
-use nsql::{LmdbStorageEngine, Nsql};
+use nsql::{Nsql, RedbStorageEngine};
 
 #[criterion]
 pub fn bench_insert(c: &mut Criterion) {
@@ -67,7 +67,7 @@ fn run<const N: usize>(
             b.iter_batched(
                 || {
                     let db_path = tempfile::NamedTempFile::new().unwrap().into_temp_path();
-                    let nsql = Nsql::<LmdbStorageEngine>::create(db_path).unwrap();
+                    let nsql = Nsql::<RedbStorageEngine>::create(db_path).unwrap();
                     let conn = nsql.connect();
 
                     for setup in setup(size) {

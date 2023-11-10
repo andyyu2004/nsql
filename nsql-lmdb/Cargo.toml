@@ -1,9 +1,0 @@
-[package]
-name = "nsql-lmdb"
-version = "0.1.0"
-edition = "2021"
-
-[dependencies]
-heed = { git = "https://github.com/andyyu2004/heed", branch = "main", default-features = false, features = ["read-txn-no-tls"] }
-nsql-storage-engine = { path = "../nsql-storage-engine" }
-

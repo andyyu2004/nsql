@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
 use argh::FromArgs;
-use nsql::{LmdbStorageEngine, Nsql, RedbStorageEngine, StorageEngine};
+use nsql::{Nsql, RedbStorageEngine, StorageEngine};
 use nu_ansi_term::{Color, Style};
 use reedline::{
     default_vi_insert_keybindings, default_vi_normal_keybindings, DefaultHinter, DefaultValidator,
@@ -44,7 +44,6 @@ struct Args {
 #[derive(Debug, Default)]
 enum StorageEngineName {
     #[default]
-    Lmdb,
     Redb,
 }
 
@@ -54,8 +53,7 @@ impl FromStr for StorageEngineName {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "redb" => Ok(StorageEngineName::Redb),
-            "lmdb" => Ok(StorageEngineName::Lmdb),
-            _ => Err(format!("unknown storage engine: {s} (lmdb, redb)")),
+            _ => Err(format!("unknown storage engine: {s} (redb)")),
         }
     }
 }
@@ -86,7 +84,6 @@ fn main() -> nsql::Result<()> {
     let args: Args = argh::from_env();
     match &args.engine {
         StorageEngineName::Redb => run::<RedbStorageEngine>(args),
-        StorageEngineName::Lmdb => run::<LmdbStorageEngine>(args),
     }
 }
 

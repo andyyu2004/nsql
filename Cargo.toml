@@ -16,7 +16,6 @@ members = [
     "nsql-storage",
     "nsql-storage-engine",
     "nsql-util",
-    "nsql-lmdb",
     "nsql-redb",
 ]
 

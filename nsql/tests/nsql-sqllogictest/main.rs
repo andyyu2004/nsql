@@ -4,7 +4,6 @@ use std::path::Path;
 use ir::Value;
 use nsql::{Connection, Nsql};
 use nsql_core::LogicalType;
-use nsql_lmdb::LmdbStorageEngine;
 use nsql_redb::RedbStorageEngine;
 use nsql_storage_engine::StorageEngine;
 use sqllogictest::{AsyncDB, ColumnType, DBOutput, Runner};
@@ -32,7 +31,6 @@ fn nsql_sqllogictest(path: &Path) -> nsql::Result<(), Box<dyn Error>> {
         Ok(())
     }
 
-    test::<LmdbStorageEngine>(path)?;
     test::<RedbStorageEngine>(path)?;
     Ok(())
 }
