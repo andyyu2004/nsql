@@ -131,8 +131,16 @@ impl Flattener {
             ir::SubqueryKind::Scalar => ir::JoinKind::Single,
         };
 
+        // FIXME FIXME be smarter than passing an arbitrary expression here
         *plan = *correlated_plan
-            .join(join_kind, magic, join_predicate)
+            .join(
+                join_kind,
+                magic,
+                ir::JoinPredicate {
+                    conditions: Default::default(),
+                    arbitrary_expr: Some(join_predicate),
+                },
+            )
             .with_cte(ir::Cte { name: delim_scan_name, plan: delim_correlated_plan });
 
         // TODO is the last column always the correct one?

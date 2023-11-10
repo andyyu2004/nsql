@@ -37,7 +37,7 @@ use nsql_storage_engine::StorageEngine;
 
 use self::aggregate::{PhysicalHashAggregate, PhysicalUngroupedAggregate};
 pub use self::explain::Explain;
-use self::join::PhysicalNestedLoopJoin;
+use self::join::{PhysicalHashJoin, PhysicalNestedLoopJoin};
 use self::physical_copy_to::PhysicalCopyTo;
 use self::physical_cte::PhysicalCte;
 use self::physical_cte_scan::PhysicalCteScan;
@@ -239,31 +239,47 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
                 )
             }
             opt::Plan::Filter(filter) => match filter.source(q) {
-                // we expect a join node to be followed by a filter
-                opt::Plan::Join(join) => PhysicalNestedLoopJoin::plan(
-                    join.kind(),
-                    self.compile_expr(profiler, tx, q, filter.predicate(q))?,
-                    f(self, join.lhs(q))?,
-                    f(self, join.rhs(q))?,
-                    &mut self.arena,
-                ),
+                // push the filter into NLP joins if possible
+                opt::Plan::Join(join) if join.conditions(q).is_empty() => {
+                    PhysicalNestedLoopJoin::plan(
+                        join.kind(),
+                        self.compile_expr(profiler, tx, q, filter.predicate(q))?,
+                        f(self, join.lhs(q))?,
+                        f(self, join.rhs(q))?,
+                        &mut self.arena,
+                    )
+                }
                 _ => {
                     let source = f(self, filter.source(q))?;
                     let predicate = self.compile_expr(profiler, tx, q, filter.predicate(q))?;
                     PhysicalFilter::plan(source, predicate, &mut self.arena)
                 }
             },
-            opt::Plan::Join(join) => match join.kind() {
-                // cross-join
-                ir::JoinKind::Inner => PhysicalNestedLoopJoin::plan(
-                    ir::JoinKind::Inner,
-                    expr::Expr::literal(true),
-                    f(self, join.lhs(q))?,
-                    f(self, join.rhs(q))?,
-                    &mut self.arena,
-                ),
-                _ => unreachable!("expected non-dependent join to be the child of a filter"),
-            },
+            opt::Plan::Join(join) => {
+                let lhs = f(self, join.lhs(q))?;
+                let rhs = f(self, join.rhs(q))?;
+
+                match join.kind() {
+                    // cross-join
+                    ir::JoinKind::Inner if join.conditions(q).is_empty() => {
+                        PhysicalNestedLoopJoin::plan(
+                            ir::JoinKind::Inner,
+                            expr::Expr::literal(true),
+                            lhs,
+                            rhs,
+                            &mut self.arena,
+                        )
+                    }
+                    // currently if we arrive here then it's computable via a hash-join
+                    kind => PhysicalHashJoin::plan(
+                        kind,
+                        self.compile_join_conditions(profiler, tx, q, join.conditions(q))?,
+                        lhs,
+                        rhs,
+                        &mut self.arena,
+                    ),
+                }
+            }
             opt::Plan::Limit(limit) => {
                 let source = f(self, limit.source(q))?;
                 PhysicalLimit::plan(
@@ -339,6 +355,33 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
         };
 
         Ok(plan)
+    }
+
+    #[allow(clippy::type_complexity)]
+    fn compile_join_conditions(
+        &mut self,
+        profiler: &impl PlannerProfiler,
+        tx: &dyn TransactionContext<'env, 'txn, S, M>,
+        q: &opt::Query,
+        conditions: impl Iterator<Item = ir::JoinCondition<opt::Expr<'_>>>,
+    ) -> Result<Box<[ir::JoinCondition<ExecutableExpr<'env, 'txn, S, M>>]>> {
+        conditions
+            .map(|condition| self.compile_join_condition(profiler, tx, q, condition))
+            .collect()
+    }
+
+    fn compile_join_condition(
+        &mut self,
+        profiler: &impl PlannerProfiler,
+        tx: &dyn TransactionContext<'env, 'txn, S, M>,
+        q: &opt::Query,
+        condition: ir::JoinCondition<opt::Expr<'_>>,
+    ) -> Result<ir::JoinCondition<ExecutableExpr<'env, 'txn, S, M>>> {
+        Ok(ir::JoinCondition {
+            op: condition.op,
+            lhs: self.compile_expr(profiler, tx, q, condition.lhs)?,
+            rhs: self.compile_expr(profiler, tx, q, condition.rhs)?,
+        })
     }
 
     #[allow(clippy::type_complexity)]

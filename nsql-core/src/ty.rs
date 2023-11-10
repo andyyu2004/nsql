@@ -62,6 +62,11 @@ impl LogicalType {
     }
 
     #[inline]
+    pub fn is_compat_with(&self, other: &Self) -> bool {
+        self.is_subtype_of(other) || other.is_subtype_of(self)
+    }
+
+    #[inline]
     pub fn common_supertype(&self, other: &Self) -> Option<Self> {
         match (self, other) {
             (LogicalType::Null, b) => Some(b.clone()),

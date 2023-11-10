@@ -32,7 +32,7 @@ define_language! {
         "dummy" = DummyScan,
         "project" = Project([Id; 2]),            // (project <source> (<exprs> ...))
         "filter" = Filter([Id; 2]),              // (filter <source> <predicate>)
-        Join(ir::JoinKind, [Id; 2]),             // (join <join-kind> <lhs> <rhs>)
+        Join(ir::JoinKind, [Id; 3]),             // (join <join-kind> <conditions> <lhs> <rhs>)
         EmptyPlan(usize),                        // (empty <width>)
         "unnest" = Unnest(Id),                   // (unnest <array-expr>)
         "order" = Order([Id; 2]),                // (order <source> (<order-exprs>...))
@@ -49,6 +49,7 @@ define_language! {
         "desc" = Desc(Id),
         Table(Oid<ir::Table>),
         Function(Oid<ir::Function>),
+        JoinCondition(Oid<ir::Operator>, [Id; 2]), // (join-condition <operator> <lhs> <rhs>)
         "call" = Call([Id; 2]), // (call f (args...))
     }
 }
@@ -136,10 +137,20 @@ impl Builder {
                 let dummy = self.dummy();
                 Node::Values(values.iter().map(|exprs| self.build_exprs(dummy, exprs)).collect())
             }
-            ir::QueryPlan::Join { schema: _, join, lhs, rhs } => {
+            ir::QueryPlan::Join { schema: _, kind, lhs, rhs, conditions } => {
                 let lhs = self.build_query(lhs);
                 let rhs = self.build_query(rhs);
-                Node::Join(*join, [lhs, rhs])
+                let conditions = conditions
+                    .iter()
+                    .map(|cond| {
+                        let lhs = self.build_expr(lhs, &cond.lhs);
+                        let rhs = self.build_expr(rhs, &cond.rhs);
+                        self.add(Node::JoinCondition(cond.op, [lhs, rhs]))
+                    })
+                    .collect::<Box<_>>();
+
+                let conditions = self.add(Node::Nodes(conditions));
+                Node::Join(*kind, [conditions, lhs, rhs])
             }
             ir::QueryPlan::Limit { source, limit, exceeded_message } => {
                 let source = self.build_query(source);

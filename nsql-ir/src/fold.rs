@@ -145,12 +145,20 @@ impl PlanFold for QueryPlan {
                 schema,
             },
             QueryPlan::Values { values, schema } => QueryPlan::Values { values, schema },
-            QueryPlan::Join { schema, join, lhs, rhs } => QueryPlan::Join {
-                schema,
-                join,
-                lhs: folder.fold_boxed_query_plan(lhs),
-                rhs: folder.fold_boxed_query_plan(rhs),
-            },
+            QueryPlan::Join { schema, kind, lhs, rhs, conditions } => {
+                let mut lhs = folder.fold_boxed_query_plan(lhs);
+                let mut rhs = folder.fold_boxed_query_plan(rhs);
+                let conditions = conditions
+                    .into_vec()
+                    .into_iter()
+                    .map(|condition| JoinCondition {
+                        op: condition.op,
+                        lhs: folder.fold_expr(&mut lhs, condition.lhs),
+                        rhs: folder.fold_expr(&mut rhs, condition.rhs),
+                    })
+                    .collect();
+                QueryPlan::Join { schema, kind, lhs, rhs, conditions }
+            }
             QueryPlan::Limit { source, limit, exceeded_message } => QueryPlan::Limit {
                 source: folder.fold_boxed_query_plan(source),
                 limit,
@@ -220,6 +228,13 @@ pub trait ExprFold: Sized {
 
     fn super_fold_with(self, folder: &mut dyn Folder, plan: &mut QueryPlan) -> Self {
         self.fold_with(folder, plan)
+    }
+}
+
+impl<E: ExprFold> ExprFold for Box<[E]> {
+    #[inline]
+    fn fold_with(self, folder: &mut dyn Folder, plan: &mut QueryPlan) -> Self {
+        self.into_vec().into_iter().map(|e| e.fold_with(folder, plan)).collect()
     }
 }
 

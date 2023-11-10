@@ -160,9 +160,10 @@ pub enum QueryPlan {
     },
     Join {
         schema: Schema,
-        join: JoinKind,
+        kind: JoinKind,
         lhs: Box<QueryPlan>,
         rhs: Box<QueryPlan>,
+        conditions: Box<[JoinCondition]>,
     },
     Limit {
         source: Box<QueryPlan>,
@@ -310,8 +311,21 @@ impl fmt::Display for PlanFormatter<'_> {
             }
             QueryPlan::Unnest { schema: _, expr } => write!(f, "UNNEST ({})", expr),
             QueryPlan::Values { values: _, schema: _ } => writeln!(f, "VALUES"),
-            QueryPlan::Join { schema, join, lhs, rhs } => {
-                write!(f, "join ({join})")?;
+            QueryPlan::Join { schema, kind, lhs, rhs, conditions } => {
+                write!(f, "join ({kind})")?;
+                if !conditions.is_empty() {
+                    write!(f, " on (")?;
+                    for (i, condition) in conditions.iter().enumerate() {
+                        if i > 0 {
+                            write!(f, ", ")?;
+                        }
+
+                        condition.lhs.fmt(f)?;
+                        write!(f, " {} ", condition.op)?;
+                        condition.rhs.fmt(f)?;
+                    }
+                    write!(f, ")")?;
+                }
                 if f.alternate() {
                     write!(f, " :: {schema}")?;
                 }
@@ -410,6 +424,20 @@ pub enum JoinKind {
     Left,
     Right,
     Full,
+}
+
+#[derive(Debug, Default, Clone, PartialEq, Eq, Hash)]
+pub struct JoinPredicate {
+    pub conditions: Box<[JoinCondition]>,
+    /// expressions that reference both sides of the join
+    pub arbitrary_expr: Option<Expr>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct JoinCondition<E = Expr> {
+    pub op: Oid<Operator>,
+    pub lhs: E,
+    pub rhs: E,
 }
 
 impl FromStr for JoinKind {
@@ -592,25 +620,29 @@ impl QueryPlan {
     }
 
     #[inline]
-    fn unconditional_join(self: Box<Self>, join: JoinKind, rhs: Box<Self>) -> Box<Self> {
-        let schema = match join {
+    pub fn cross_join(self: Box<Self>, rhs: Box<Self>) -> Box<Self> {
+        self.join(JoinKind::Inner, rhs, JoinPredicate::default())
+    }
+
+    #[inline]
+    pub fn join(
+        self: Box<Self>,
+        kind: JoinKind,
+        rhs: Box<Self>,
+        predicate: JoinPredicate,
+    ) -> Box<Self> {
+        let schema = match kind {
             JoinKind::Mark => {
                 self.schema().iter().cloned().chain(std::iter::once(LogicalType::Bool)).collect()
             }
             _ => self.schema().iter().chain(rhs.schema().iter()).cloned().collect(),
         };
-        Box::new(Self::Join { schema, join, lhs: self, rhs })
-    }
-
-    #[inline]
-    pub fn cross_join(self: Box<Self>, rhs: Box<Self>) -> Box<Self> {
-        let schema = self.schema().iter().chain(rhs.schema().iter()).cloned().collect();
-        Box::new(Self::Join { schema, join: JoinKind::Inner, lhs: self, rhs })
-    }
-
-    #[inline]
-    pub fn join(self: Box<Self>, join: JoinKind, rhs: Box<Self>, predicate: Expr) -> Box<Self> {
-        self.unconditional_join(join, rhs).filter(predicate)
+        let mut join =
+            Box::new(Self::Join { schema, kind, lhs: self, rhs, conditions: predicate.conditions });
+        if let Some(expr) = predicate.arbitrary_expr {
+            join = join.filter(expr);
+        }
+        join
     }
 
     #[inline]

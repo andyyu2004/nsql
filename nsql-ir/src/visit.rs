@@ -54,7 +54,11 @@ pub trait Visitor {
             // FIXME where is the child of unnest try unnesting a column in a test before continuing with this change
             QueryPlan::Unnest { expr, schema: _ } => self.visit_expr(&QueryPlan::DummyScan, expr),
             QueryPlan::Values { values: _, schema: _ } => ControlFlow::Continue(()),
-            QueryPlan::Join { schema: _, join: _, lhs, rhs } => {
+            QueryPlan::Join { schema: _, kind: _, lhs, rhs, conditions } => {
+                for condition in &conditions[..] {
+                    self.visit_expr(plan, &condition.lhs)?;
+                    self.visit_expr(plan, &condition.rhs)?;
+                }
                 self.visit_query_plan(lhs)?;
                 self.visit_query_plan(rhs)
             }

@@ -1,7 +1,3 @@
-use std::cell::OnceCell;
-use std::marker::PhantomData;
-use std::mem;
-
 use nsql_arena::Idx;
 use nsql_catalog::expr::Evaluator;
 
@@ -14,15 +10,11 @@ pub(crate) struct PhysicalNestedLoopJoin<'env, 'txn, S, M> {
     children: [PhysicalNodeId; 2],
     join_kind: ir::JoinKind,
     join_predicate: ExecutableExpr<'env, 'txn, S, M>,
-    // mutex is only used during build phase
-    rhs_tuples_build: Vec<Tuple>,
-    // tuples are moved into this vector during finalization (to avoid unnecessary locks)
-    rhs_tuples: OnceCell<Vec<Tuple>>,
+    rhs_tuples: Vec<Tuple>,
     rhs_index: usize,
     rhs_width: usize,
     found_match_for_lhs_tuple: bool,
     evaluator: Evaluator,
-    _marker: PhantomData<dyn PhysicalNode<'env, 'txn, S, M>>,
 }
 
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
@@ -51,10 +43,8 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
                 children: [lhs_node, rhs_node],
                 found_match_for_lhs_tuple: false,
                 rhs_index: 0,
-                rhs_tuples_build: Default::default(),
                 rhs_tuples: Default::default(),
                 evaluator: Default::default(),
-                _marker: PhantomData,
             })
         })
     }
@@ -105,8 +95,8 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode
     }
 }
 
-impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalOperator<'env, 'txn, S, M>
-    for PhysicalNestedLoopJoin<'env, 'txn, S, M>
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
+    PhysicalOperator<'env, 'txn, S, M> for PhysicalNestedLoopJoin<'env, 'txn, S, M>
 {
     #[tracing::instrument(level = "debug", skip(self, ecx))]
     fn execute(
@@ -118,7 +108,7 @@ impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalOperator<'
 
         let storage = ecx.storage();
         let tx = ecx.tcx();
-        let rhs_tuples = self.rhs_tuples.get().expect("probing before build is finished");
+        let rhs_tuples = &self.rhs_tuples;
 
         let rhs_index = match self.rhs_index {
             index if index < rhs_tuples.len() => {
@@ -187,27 +177,26 @@ impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalOperator<'
     }
 }
 
-impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSink<'env, 'txn, S, M>
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSink<'env, 'txn, S, M>
     for PhysicalNestedLoopJoin<'env, 'txn, S, M>
 {
     fn sink(
         &mut self,
         _ecx: &ExecutionContext<'_, 'env, 'txn, S, M>,
-        tuple: Tuple,
+        rhs_tuple: Tuple,
     ) -> ExecutionResult<()> {
-        tracing::debug!(%tuple, "building nested loop join");
-        self.rhs_tuples_build.push(tuple);
+        tracing::debug!(%rhs_tuple, "building nested loop join");
+        self.rhs_tuples.push(rhs_tuple);
         Ok(())
     }
 
     fn finalize(&mut self, _ecx: &ExecutionContext<'_, 'env, 'txn, S, M>) -> ExecutionResult<()> {
-        self.rhs_tuples_build.shrink_to_fit();
-        self.rhs_tuples.set(mem::take(&mut self.rhs_tuples_build)).expect("finalize called twice");
+        self.rhs_tuples.shrink_to_fit();
         Ok(())
     }
 }
 
-impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSource<'env, 'txn, S, M>
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSource<'env, 'txn, S, M>
     for PhysicalNestedLoopJoin<'env, 'txn, S, M>
 {
     fn source(
