@@ -84,44 +84,29 @@ impl Folder for PushdownDependentJoin {
                 if requires_left_join {
                     // Left join the delim lhs with the aggregate to get the lost groups back.
                     // Join on the correlated columns as usual
-                    let join_predicate = correlated_columns
+
+                    let conditions = correlated_columns
                         .iter()
                         .enumerate()
                         .map(|(idx, cor)| {
-                            ir::Expr::call(
-                                ir::MonoFunction::new(
-                                    ir::Function::is_not_distinct_from(),
-                                    nsql_core::LogicalType::Bool,
-                                ),
-                                [
-                                    // the lhs of the join
-                                    ir::Expr::column_ref(
-                                        cor.ty.clone(),
-                                        cor.col.qpath.clone(),
-                                        // the first n columns post-join are the correlated columns, so `idx` is the one we want
-                                        ir::TupleIndex::new(idx),
-                                    ),
-                                    // the rhs of the join
-                                    ir::Expr::column_ref(
-                                        cor.ty.clone(),
-                                        cor.col.qpath.clone(),
-                                        // The first n columns of the rhs pre-join are the correlated columns of the aggregate plan.
-                                        // Post join we need to just shift it.
-                                        ir::TupleIndex::new(idx + correlated_columns.len()),
-                                    ),
-                                ],
-                            )
+                            // the lhs of the join
+                            let lhs = ir::Expr::column_ref(
+                                cor.ty.clone(),
+                                cor.col.qpath.clone(),
+                                // the first n columns post-join are the correlated columns, so `idx` is the one we want
+                                ir::TupleIndex::new(idx),
+                            );
+
+                            // the rhs of the join
+                            let rhs = ir::Expr::column_ref(
+                                cor.ty.clone(),
+                                cor.col.qpath.clone(),
+                                ir::TupleIndex::new(idx),
+                            );
+
+                            ir::JoinCondition { op: ir::JoinOperator::IsNotDistinctFrom, lhs, rhs }
                         })
-                        .reduce(|a, b| {
-                            ir::Expr::call(
-                                ir::MonoFunction::new(
-                                    ir::Function::and(),
-                                    nsql_core::LogicalType::Bool,
-                                ),
-                                [a, b],
-                            )
-                        })
-                        .expect("there is at least one correlated column");
+                        .collect();
 
                     let k = plan.schema().width();
                     plan = self
@@ -131,11 +116,7 @@ impl Folder for PushdownDependentJoin {
                         .join(
                             ir::JoinKind::Left,
                             plan,
-                            // FIXME FIXME be smarter than passing as an arbitrary expr
-                            ir::JoinPredicate {
-                                conditions: Default::default(),
-                                arbitrary_expr: Some(join_predicate),
-                            },
+                            ir::JoinPredicate { conditions, arbitrary_expr: None },
                         );
 
                     // project away all the extra lhs join columns, we just needed it to pad nulls for the missing groups.

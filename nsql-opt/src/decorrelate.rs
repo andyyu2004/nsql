@@ -52,7 +52,7 @@ impl Flattener {
     // https://btw-2015.informatik.uni-hamburg.de/res/proceedings/Hauptband/Wiss/Neumann-Unnesting_Arbitrary_Querie.pdf
     // Complementary slides from duckdb: https://drive.google.com/file/d/17_sVIwwxFM5RZB5McQZ8dzT8JvOHZuAq/view?pli=1
     // The gist is that a correlated subquery can be initially represented as a dependent join `<plan> dependent-join <subquery-plan>`.
-    // Then we can push this dependent join down until there are no more correlated/dependent columns and then we can turn it into an equivalent cross product.
+    // Then we can push this dependent join down into the subquery plan until there are no more correlated/dependent columns and then we can turn it into an equivalent cross product.
     // This is what the `PushdownDependentJoin` transform implements. We never explicitly create the dependent join node, but only create the cross product.
     fn flatten_correlated_subquery(
         &mut self,
@@ -98,49 +98,30 @@ impl Flattener {
         let magic = PushdownDependentJoin::new(delim_scan, correlated_map.clone())
             .fold_boxed_query_plan(subquery_plan);
 
-        let shift = correlated_plan.schema().width();
-        // join the delim rhs back with the original plan on the correlated columns (see the slides for details)
-        let join_predicate = correlated_columns
+        let conditions = correlated_columns
             .iter()
             .map(|cor| {
-                ir::Expr::call(
-                    // we need an `is not distinct from` join, (then we can add the distinct up top back)
-                    ir::MonoFunction::new(ir::Function::is_not_distinct_from(), LogicalType::Bool),
-                    [
-                        // the column in the lhs of the join
-                        ir::Expr::column_ref(cor.ty.clone(), cor.col.qpath.clone(), cor.col.index),
-                        // the column belonging on the rhs of the join
-                        ir::Expr::column_ref(
-                            cor.ty.clone(),
-                            cor.col.qpath.clone(),
-                            correlated_map[&cor.col.index] + shift,
-                        ),
-                    ],
-                )
+                // we need an `is not distinct from` join, (then we can add the distinct up top back)
+                // the column in the lhs of the join
+                let lhs =
+                    ir::Expr::column_ref(cor.ty.clone(), cor.col.qpath.clone(), cor.col.index);
+                // the column belonging on the rhs of the join
+                let rhs = ir::Expr::column_ref(
+                    cor.ty.clone(),
+                    cor.col.qpath.clone(),
+                    correlated_map[&cor.col.index],
+                );
+                ir::JoinCondition { op: ir::JoinOperator::IsNotDistinctFrom, lhs, rhs }
             })
-            .reduce(|a, b| {
-                ir::Expr::call(
-                    ir::MonoFunction::new(ir::Function::and(), LogicalType::Bool),
-                    [a, b],
-                )
-            })
-            .expect("there is at least one correlated column");
+            .collect();
 
         let join_kind = match kind {
             ir::SubqueryKind::Exists => ir::JoinKind::Mark,
             ir::SubqueryKind::Scalar => ir::JoinKind::Single,
         };
 
-        // FIXME FIXME be smarter than passing an arbitrary expression here
         *plan = *correlated_plan
-            .join(
-                join_kind,
-                magic,
-                ir::JoinPredicate {
-                    conditions: Default::default(),
-                    arbitrary_expr: Some(join_predicate),
-                },
-            )
+            .join(join_kind, magic, ir::JoinPredicate { conditions, arbitrary_expr: None })
             .with_cte(ir::Cte { name: delim_scan_name, plan: delim_correlated_plan });
 
         // TODO is the last column always the correct one?

@@ -126,14 +126,25 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
                     // FIXME this implements nulls not distinct, we need to implement null distinct too
                     // Could probably have a wrapper type for tuples that implements Eq and Hash but considers nulls not eq
                     match self.hash_table.get(&key) {
-                        Some(tuples) => {
-                            self.probe_state =
-                                ProbeState::Probing { rhs_tuples: tuples.clone().into_iter() }
-                        }
+                        Some(tuples) => match self.join_kind {
+                            ir::JoinKind::Mark => {
+                                break OperatorState::Yield(lhs_tuple.pad_right_with(1, || true));
+                            }
+                            ir::JoinKind::Single => {
+                                break OperatorState::Yield(lhs_tuple.join(&tuples[0]));
+                            }
+                            _ => {
+                                self.probe_state =
+                                    ProbeState::Probing { rhs_tuples: tuples.clone().into_iter() }
+                            }
+                        },
                         None => {
                             self.probe_state = ProbeState::Next;
                             break if self.join_kind.is_left() {
-                                OperatorState::Yield(lhs_tuple.pad_right(self.rhs_width))
+                                OperatorState::Yield(match self.join_kind {
+                                    ir::JoinKind::Mark => lhs_tuple.pad_right_with(1, || false),
+                                    _ => lhs_tuple.pad_right(self.rhs_width),
+                                })
                             } else {
                                 OperatorState::Continue
                             };
