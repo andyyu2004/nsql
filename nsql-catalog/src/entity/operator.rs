@@ -24,6 +24,11 @@ impl Operator {
     pub fn function(&self) -> Oid<Function> {
         self.function
     }
+
+    #[inline]
+    pub fn kind(&self) -> OperatorKind {
+        self.kind
+    }
 }
 
 impl fmt::Display for Operator {

@@ -2,6 +2,7 @@
 #![feature(try_blocks, if_let_guard, trait_upcasting)]
 
 mod function;
+mod join;
 mod scope;
 mod select;
 
@@ -1296,51 +1297,6 @@ impl<'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
         for join in &tables.joins {
             (scope, plan) = self.bind_join(&scope, plan, join)?;
         }
-
-        Ok((scope, plan))
-    }
-
-    fn bind_join(
-        &mut self,
-        lhs_scope: &Scope,
-        lhs: Box<ir::QueryPlan>,
-        join: &ast::Join,
-    ) -> Result<(Scope, Box<ir::QueryPlan>)> {
-        let (rhs_scope, rhs) = self.bind_table_factor(&Scope::default(), &join.relation)?;
-
-        let scope = lhs_scope.join(&rhs_scope);
-        let kind = match join.join_operator {
-            ast::JoinOperator::Inner(_) | ast::JoinOperator::CrossJoin => ir::JoinKind::Inner,
-            ast::JoinOperator::LeftOuter(_) => ir::JoinKind::Left,
-            ast::JoinOperator::RightOuter(_) => ir::JoinKind::Right,
-            _ => not_implemented!("{kind}"),
-        };
-
-        let plan = match &join.join_operator {
-            ast::JoinOperator::CrossJoin | ast::JoinOperator::Inner(ast::JoinConstraint::None) => {
-                lhs.cross_join(rhs)
-            }
-            ast::JoinOperator::Inner(constraint)
-            | ast::JoinOperator::LeftOuter(constraint)
-            | ast::JoinOperator::RightOuter(constraint)
-            | ast::JoinOperator::FullOuter(constraint) => match constraint {
-                ast::JoinConstraint::On(predicate) => {
-                    let predicate = self.bind_predicate(&scope, predicate)?;
-                    lhs.join(kind, rhs, predicate)
-                }
-                ast::JoinConstraint::Using(_) => not_implemented!("using join"),
-                ast::JoinConstraint::Natural => not_implemented!("natural join"),
-                ast::JoinConstraint::None => {
-                    bail!("must provide a join constraint for non-inner joins")
-                }
-            },
-            ast::JoinOperator::LeftSemi(_)
-            | ast::JoinOperator::RightSemi(_)
-            | ast::JoinOperator::LeftAnti(_)
-            | ast::JoinOperator::RightAnti(_)
-            | ast::JoinOperator::CrossApply
-            | ast::JoinOperator::OuterApply => not_implemented!("unsupported join type"),
-        };
 
         Ok((scope, plan))
     }

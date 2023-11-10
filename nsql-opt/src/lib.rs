@@ -150,7 +150,7 @@ impl Folder for EmptyPlanElimination {
                     ir::QueryPlan::Projection { source, projection, projected_schema }
                 }
             }
-            ir::QueryPlan::Join { join, lhs, rhs, schema } => {
+            ir::QueryPlan::Join { kind: join, lhs, rhs, schema, conditions } => {
                 let lhs = self.fold_boxed_query_plan(lhs);
                 let rhs = self.fold_boxed_query_plan(rhs);
 
@@ -158,7 +158,7 @@ impl Folder for EmptyPlanElimination {
                 if (lhs.is_empty() || rhs.is_empty()) && matches!(join, ir::JoinKind::Inner) {
                     ir::QueryPlan::Empty { schema }
                 } else {
-                    ir::QueryPlan::Join { join, lhs, rhs, schema }
+                    ir::QueryPlan::Join { kind: join, lhs, rhs, schema, conditions }
                 }
             }
             _ => plan.fold_with(self),

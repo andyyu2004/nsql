@@ -110,6 +110,7 @@ impl Query {
             | Node::Function(_)
             | Node::CteScan(..)
             | Node::Cte(..)
+            | Node::JoinCondition(..)
             | Node::Union(..)) => panic!("expected `Expr` node, got `{node}`"),
         }
     }
@@ -122,7 +123,9 @@ impl Query {
                 Plan::Projection(Projection { projection, source })
             }
             Node::Filter([source, predicate]) => Plan::Filter(Filter { source, predicate }),
-            Node::Join(join_kind, [lhs, rhs]) => Plan::Join(Join { kind: join_kind, lhs, rhs }),
+            Node::Join(kind, [conditions, lhs, rhs]) => {
+                Plan::Join(Join { kind, conditions, lhs, rhs })
+            }
             Node::Unnest(expr) => Plan::Unnest(Unnest { expr }),
             Node::Order([source, order_exprs]) => Plan::Order(Order { source, order_exprs }),
             Node::Limit([source, limit]) => Plan::Limit(Limit { source, limit, msg: None }),
@@ -156,6 +159,7 @@ impl Query {
             | Node::ColumnRef(..)
             | Node::Array(_)
             | Node::Case(_)
+            | Node::JoinCondition(..)
             | Node::CompiledExpr(..) => unreachable!("not a plan node"),
         }
     }
@@ -477,6 +481,7 @@ impl Union {
 #[derive(Debug, Copy, Clone)]
 pub struct Join {
     kind: ir::JoinKind,
+    conditions: Id,
     lhs: Id,
     rhs: Id,
 }
@@ -485,6 +490,19 @@ impl Join {
     #[inline]
     pub fn kind(self) -> ir::JoinKind {
         self.kind
+    }
+
+    #[inline]
+    pub fn conditions(
+        self,
+        q: &Query,
+    ) -> impl ExactSizeIterator<Item = ir::JoinCondition<Expr<'_>>> + '_ {
+        q.nodes(self.conditions).iter().map(|&id| match q.node(id) {
+            &Node::JoinCondition(op, [lhs, rhs]) => {
+                ir::JoinCondition { op, lhs: q.expr(lhs), rhs: q.expr(rhs) }
+            }
+            _ => panic!("expected `JoinCondition` node"),
+        })
     }
 
     #[inline]

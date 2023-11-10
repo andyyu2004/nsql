@@ -128,7 +128,15 @@ impl Folder for PushdownDependentJoin {
                         // should probably use a CTE instead of recomputing the correlated plan
                         .correlated_plan
                         .clone()
-                        .join(ir::JoinKind::Left, plan, join_predicate);
+                        .join(
+                            ir::JoinKind::Left,
+                            plan,
+                            // FIXME FIXME be smarter than passing as an arbitrary expr
+                            ir::JoinPredicate {
+                                conditions: Default::default(),
+                                arbitrary_expr: Some(join_predicate),
+                            },
+                        );
 
                     // project away all the extra lhs join columns, we just needed it to pad nulls for the missing groups.
                     let mut projection = plan.build_rightmost_k_projection(k);
@@ -174,7 +182,7 @@ impl Folder for PushdownDependentJoin {
             ir::QueryPlan::Filter { .. } => plan.fold_with(self),
             ir::QueryPlan::Limit { .. } => unimplemented!("limit within correlated subquery"),
             ir::QueryPlan::Union { schema: _, lhs: _, rhs: _ } => todo!(),
-            ir::QueryPlan::Join { schema: _, join: _, lhs: _, rhs: _ } => todo!(),
+            ir::QueryPlan::Join { schema: _, kind: _, lhs: _, rhs: _, conditions: _ } => todo!(),
             ir::QueryPlan::Order { source: _, order: _ } => todo!(),
             ir::QueryPlan::Insert { table: _, source: _, returning: _, schema: _ } => todo!(),
             ir::QueryPlan::Update { table: _, source: _, returning: _, schema: _ } => todo!(),

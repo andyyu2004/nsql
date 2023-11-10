@@ -7,7 +7,7 @@ use std::{fmt, mem};
 use anyhow::ensure;
 pub use const_eval::EvalNotConst;
 use itertools::Itertools;
-use nsql_catalog::{Function, Operator};
+use nsql_catalog::{Function, Operator, OperatorKind};
 use nsql_core::{LogicalType, Name};
 use nsql_storage::expr;
 use nsql_storage::tuple::TupleIndex;
@@ -58,6 +58,12 @@ impl Expr {
         let args = args.into();
         let ty = function.return_type();
         Expr { ty, kind: ExprKind::FunctionCall { function, args } }
+    }
+
+    #[inline]
+    pub fn binop(operator: MonoOperator, lhs: Box<Expr>, rhs: Box<Expr>) -> Expr {
+        assert_eq!(operator.operator().kind(), OperatorKind::Binary);
+        Expr { ty: operator.return_type(), kind: ExprKind::BinaryOperator { operator, lhs, rhs } }
     }
 
     pub fn scalar_subquery(plan: Box<QueryPlan>) -> anyhow::Result<Expr> {

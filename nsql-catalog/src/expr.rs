@@ -119,7 +119,7 @@ impl Evaluator {
     pub fn eval_expr<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
         &mut self,
         storage: &'env S,
-        tx: &dyn TransactionContext<'env, 'txn, S, M>,
+        tcx: &dyn TransactionContext<'env, 'txn, S, M>,
         tuple: &Tuple,
         expr: &ExecutableExpr<'env, 'txn, S, M>,
     ) -> Result<Value> {
@@ -130,7 +130,7 @@ impl Evaluator {
             if matches!(op, ExprOp::Return) {
                 break;
             }
-            self.execute_op(storage, tx, tuple, op)?;
+            self.execute_op(storage, tcx, tuple, op)?;
         }
 
         debug_assert_eq!(
