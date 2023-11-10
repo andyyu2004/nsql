@@ -128,8 +128,12 @@ impl<'env: 'txn, 'txn, S: StorageEngine, T: SystemEntity>
     ) -> Result<()> {
         let tuple = value.into_tuple();
         self.storage.insert(catalog, tx, &tuple)?.map_err(|PrimaryKeyConflict { key }| {
-            let typed_key =
-                T::Key::from_tuple(key).expect("this shouldn't fail as we know the expected shape");
+            let typed_key = T::Key::from_tuple(key).unwrap_or_else(|err| {
+                panic!(
+                    "this shouldn't fail as we know the expected shape {}: {err}",
+                    std::any::type_name::<T>()
+                )
+            });
             anyhow::anyhow!(
                 "primary key conflict for {}: {:?} already exists",
                 T::desc(),

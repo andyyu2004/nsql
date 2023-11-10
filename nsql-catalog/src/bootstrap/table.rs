@@ -37,6 +37,20 @@ pub struct BootstrapColumn {
     pub(crate) seq: Option<BootstrapSequence>,
 }
 
+impl Default for BootstrapColumn {
+    /// Provides some useful defaults but caller must set `ty` and `name` explicitly
+    fn default() -> Self {
+        Self {
+            ty: LogicalType::Null,
+            name: "missing",
+            is_primary_key: false,
+            identity: ColumnIdentity::None,
+            default_expr: Expr::null(),
+            seq: None,
+        }
+    }
+}
+
 impl From<BootstrapColumn> for ColumnStorageInfo {
     #[inline]
     fn from(col: BootstrapColumn) -> Self {

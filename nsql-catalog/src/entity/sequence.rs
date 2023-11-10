@@ -1,7 +1,7 @@
 use nsql_storage::expr::Expr;
 
 use super::*;
-use crate::{ColumnIdentity, SystemEntityPrivate};
+use crate::SystemEntityPrivate;
 
 /// Model of a row that lives in `nsql_catalog.nsql_sequence`
 #[derive(Debug, Clone, PartialEq, Eq, Hash, FromTuple, IntoTuple)]
@@ -95,25 +95,19 @@ impl SystemEntityPrivate for Sequence {
                 ty: LogicalType::Oid,
                 name: "oid",
                 is_primary_key: true,
-                identity: ColumnIdentity::None,
-                default_expr: Expr::null(),
-                seq: None,
+                ..Default::default()
             },
             BootstrapColumn {
                 ty: LogicalType::Int64,
                 name: "start",
-                is_primary_key: false,
-                identity: ColumnIdentity::None,
                 default_expr: Expr::literal(1),
-                seq: None,
+                ..Default::default()
             },
             BootstrapColumn {
                 ty: LogicalType::Int64,
                 name: "step",
-                is_primary_key: false,
-                identity: ColumnIdentity::None,
                 default_expr: Expr::literal(1),
-                seq: None,
+                ..Default::default()
             },
         ]
     }

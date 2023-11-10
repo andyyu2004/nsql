@@ -217,22 +217,8 @@ impl SystemEntityPrivate for Table {
                     name: "nsql_table_oid_seq",
                 }),
             },
-            BootstrapColumn {
-                ty: LogicalType::Oid,
-                name: "namespace",
-                is_primary_key: false,
-                identity: ColumnIdentity::None,
-                default_expr: Expr::null(),
-                seq: None,
-            },
-            BootstrapColumn {
-                ty: LogicalType::Text,
-                name: "name",
-                is_primary_key: false,
-                identity: ColumnIdentity::None,
-                default_expr: Expr::null(),
-                seq: None,
-            },
+            BootstrapColumn { ty: LogicalType::Oid, name: "namespace", ..Default::default() },
+            BootstrapColumn { ty: LogicalType::Text, name: "name", ..Default::default() },
         ]
     }
 }

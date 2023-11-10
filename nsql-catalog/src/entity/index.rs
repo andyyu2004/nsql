@@ -1,8 +1,8 @@
-use nsql_storage::expr::{Expr, TupleExpr};
+use nsql_storage::expr::{TupleExpr};
 
 use super::table::IndexStorageInfo;
 use super::*;
-use crate::{ColumnIdentity, Namespace, SystemEntityPrivate, TransactionContext};
+use crate::{Namespace, SystemEntityPrivate, TransactionContext};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, FromTuple)]
 pub struct Index {
@@ -112,33 +112,14 @@ impl SystemEntityPrivate for Index {
                 ty: LogicalType::Oid,
                 name: "table",
                 is_primary_key: true,
-                identity: ColumnIdentity::None,
-                default_expr: Expr::null(),
-                seq: None,
+                ..Default::default()
             },
-            BootstrapColumn {
-                ty: LogicalType::Oid,
-                name: "target",
-                is_primary_key: false,
-                identity: ColumnIdentity::None,
-                default_expr: Expr::null(),
-                seq: None,
-            },
-            BootstrapColumn {
-                ty: LogicalType::Int64,
-                name: "kind",
-                is_primary_key: false,
-                identity: ColumnIdentity::None,
-                default_expr: Expr::null(),
-                seq: None,
-            },
+            BootstrapColumn { ty: LogicalType::Oid, name: "target", ..Default::default() },
+            BootstrapColumn { ty: LogicalType::Int64, name: "kind", ..Default::default() },
             BootstrapColumn {
                 ty: LogicalType::TupleExpr,
                 name: "index_expr",
-                is_primary_key: false,
-                identity: ColumnIdentity::None,
-                default_expr: Expr::null(),
-                seq: None,
+                ..Default::default()
             },
         ]
     }

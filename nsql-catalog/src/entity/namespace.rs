@@ -86,14 +86,7 @@ impl SystemEntityPrivate for Namespace {
                     name: "nsql_namespace_oid_seq",
                 }),
             },
-            BootstrapColumn {
-                ty: LogicalType::Text,
-                name: "name",
-                is_primary_key: false,
-                identity: ColumnIdentity::None,
-                default_expr: Expr::null(),
-                seq: None,
-            },
+            BootstrapColumn { ty: LogicalType::Text, name: "name", ..Default::default() },
         ]
     }
 

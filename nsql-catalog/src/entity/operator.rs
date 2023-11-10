@@ -1,10 +1,8 @@
 use core::fmt;
 use std::mem;
 
-use nsql_storage::expr::Expr;
-
 use super::*;
-use crate::{ColumnIdentity, Function, SystemEntityPrivate};
+use crate::{Function, SystemEntityPrivate};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, FromTuple, IntoTuple)]
 pub struct Operator {
@@ -110,42 +108,12 @@ impl SystemEntityPrivate for Operator {
                 ty: LogicalType::Oid,
                 name: "oid",
                 is_primary_key: true,
-                identity: ColumnIdentity::None,
-                default_expr: Expr::null(),
-                seq: None,
+                ..Default::default()
             },
-            BootstrapColumn {
-                ty: LogicalType::Byte,
-                name: "kind",
-                is_primary_key: false,
-                identity: ColumnIdentity::None,
-                default_expr: Expr::null(),
-                seq: None,
-            },
-            BootstrapColumn {
-                ty: LogicalType::Oid,
-                name: "namespace",
-                is_primary_key: false,
-                identity: ColumnIdentity::None,
-                default_expr: Expr::null(),
-                seq: None,
-            },
-            BootstrapColumn {
-                ty: LogicalType::Oid,
-                name: "function",
-                is_primary_key: false,
-                identity: ColumnIdentity::None,
-                default_expr: Expr::null(),
-                seq: None,
-            },
-            BootstrapColumn {
-                ty: LogicalType::Text,
-                name: "name",
-                is_primary_key: false,
-                identity: ColumnIdentity::None,
-                default_expr: Expr::null(),
-                seq: None,
-            },
+            BootstrapColumn { ty: LogicalType::Byte, name: "kind", ..Default::default() },
+            BootstrapColumn { ty: LogicalType::Oid, name: "namespace", ..Default::default() },
+            BootstrapColumn { ty: LogicalType::Oid, name: "function", ..Default::default() },
+            BootstrapColumn { ty: LogicalType::Text, name: "name", ..Default::default() },
         ]
     }
 
