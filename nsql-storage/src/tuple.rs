@@ -1,7 +1,8 @@
 use std::error::Error;
 use std::fmt;
 use std::hash::Hash;
-use std::ops::{Add, Index, IndexMut};
+use std::ops::{Add, Index, IndexMut, Sub};
+use std::rc::Rc;
 use std::str::FromStr;
 
 use anyhow::bail;
@@ -21,9 +22,7 @@ pub trait Tuple:
     + FromIterator<Value>
     + IntoIterator<Item = Value>
     + Index<TupleIndex, Output = Value>
-    + AsRef<FlatTuple> // tmp trait to make it work for now, maybe an asref<[value]> would be better
     + From<FlatTuple>
-    + Into<FlatTuple>
     + 'static
 {
     fn width(&self) -> usize;
@@ -241,6 +240,15 @@ impl Add<usize> for TupleIndex {
     }
 }
 
+impl Sub<usize> for TupleIndex {
+    type Output = Self;
+
+    #[inline]
+    fn sub(self, rhs: usize) -> Self::Output {
+        Self::new(self.as_usize() - rhs)
+    }
+}
+
 impl FromStr for TupleIndex {
     type Err = anyhow::Error;
 
@@ -357,5 +365,144 @@ where
     #[inline]
     fn into_tuple(self) -> FlatTuple {
         FlatTuple::new([self.0.into(), self.1.into()])
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct TupleTree(Rc<TupleTreeRepr>);
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+enum TupleTreeRepr {
+    Flat(Rc<[Value]>),
+    Tree(TupleTree, TupleTree),
+}
+
+impl TupleTree {
+    fn new(repr: TupleTreeRepr) -> Self {
+        Self(Rc::new(repr))
+    }
+}
+
+impl From<FlatTuple> for TupleTree {
+    #[inline]
+    fn from(values: FlatTuple) -> Self {
+        Self::new(TupleTreeRepr::Flat(values.into_values().into()))
+    }
+}
+
+pub struct TupleTreeIterator {
+    stack: Vec<TupleTree>,
+    values: Option<(Rc<[Value]>, usize)>,
+}
+
+impl Iterator for TupleTreeIterator {
+    type Item = Value;
+
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        loop {
+            if let Some((values, idx)) = self.values.as_mut() {
+                if *idx < values.len() {
+                    let value = values[*idx].clone();
+                    *idx += 1;
+                    return Some(value);
+                }
+                self.values.take();
+            }
+
+            match self.stack.pop()?.0.as_ref() {
+                TupleTreeRepr::Flat(flat) => {
+                    self.values = Some((Rc::clone(flat), 0));
+                }
+                TupleTreeRepr::Tree(_lhs, _rhs) => {
+                    todo!("needs a test case");
+                    // self.stack.push(TupleTree::clone(rhs));
+                    // self.stack.push(TupleTree::clone(lhs));
+                }
+            }
+        }
+    }
+}
+
+impl IntoIterator for TupleTree {
+    type Item = Value;
+
+    type IntoIter = TupleTreeIterator;
+
+    #[inline]
+    fn into_iter(self) -> Self::IntoIter {
+        TupleTreeIterator { stack: vec![(self)], values: None }
+    }
+}
+
+impl FromIterator<Value> for TupleTree {
+    #[inline]
+    fn from_iter<T: IntoIterator<Item = Value>>(iter: T) -> Self {
+        Self::new(TupleTreeRepr::Flat(iter.into_iter().collect::<Rc<_>>()))
+    }
+}
+
+impl Index<TupleIndex> for TupleTree {
+    type Output = Value;
+
+    #[inline]
+    fn index(&self, index: TupleIndex) -> &Self::Output {
+        match self.0.as_ref() {
+            TupleTreeRepr::Flat(vs) => &vs[index.as_usize()],
+            TupleTreeRepr::Tree(lhs, rhs) => {
+                if index.as_usize() < lhs.width() {
+                    &lhs[index]
+                } else {
+                    &rhs[index - lhs.width()]
+                }
+            }
+        }
+    }
+}
+
+impl fmt::Display for TupleTree {
+    fn fmt(&self, _f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        todo!()
+    }
+}
+
+impl Tuple for TupleTree {
+    #[inline]
+    fn width(&self) -> usize {
+        match self.0.as_ref() {
+            TupleTreeRepr::Flat(vs) => vs.len(),
+            TupleTreeRepr::Tree(lhs, rhs) => lhs.width() + rhs.width(),
+        }
+    }
+
+    #[inline]
+    fn values(&self) -> impl Iterator<Item = &Value> {
+        // FIXME there might be a clever way to avoid boxing here
+        // if not, then write a manual iterator
+        match self.0.as_ref() {
+            TupleTreeRepr::Flat(vs) => Box::new(vs.iter()) as Box<dyn Iterator<Item = &Value>>,
+            TupleTreeRepr::Tree(lhs, rhs) => Box::new(lhs.values().chain(rhs.values())),
+        }
+    }
+
+    #[inline]
+    fn join(self, other: &Self) -> Self {
+        Self::new(TupleTreeRepr::Tree(self, TupleTree::clone(other)))
+    }
+
+    #[inline]
+    fn pad_right(self, n: usize) -> Self {
+        Self::new(TupleTreeRepr::Tree(
+            self,
+            TupleTree::new(TupleTreeRepr::Flat(vec![Value::Null; n].into())),
+        ))
+    }
+
+    #[inline]
+    fn pad_right_with<V: Into<Value>>(self, n: usize, f: impl Fn() -> V) -> Self {
+        Self::new(TupleTreeRepr::Tree(
+            self,
+            TupleTree::new(TupleTreeRepr::Flat(vec![f().into(); n].into())),
+        ))
     }
 }

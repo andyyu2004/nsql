@@ -22,7 +22,8 @@ use nsql_opt::optimize;
 use nsql_parse::ast;
 pub use nsql_parse::parse;
 pub use nsql_redb::RedbStorageEngine;
-pub use nsql_storage::tuple::{FlatTuple, Tuple};
+pub use nsql_storage::tuple::Tuple;
+use nsql_storage::tuple::TupleTree;
 use nsql_storage::Storage;
 pub use nsql_storage_engine::StorageEngine;
 use nsql_storage_engine::{
@@ -45,14 +46,16 @@ impl<S> Clone for Nsql<S> {
     }
 }
 
+type TupleType = TupleTree;
+
 #[derive(Debug)]
 pub struct MaterializedQueryOutput {
     pub schema: Schema,
-    pub tuples: Vec<FlatTuple>,
+    pub tuples: Vec<TupleType>,
 }
 
 impl MaterializedQueryOutput {
-    fn new(schema: Schema, mut tuples: Vec<FlatTuple>) -> Self {
+    fn new(schema: Schema, mut tuples: Vec<TupleType>) -> Self {
         if !tuples.is_empty() {
             assert_eq!(tuples[0].width(), schema.width());
         }
@@ -451,11 +454,11 @@ impl<S: StorageEngine> Shared<S> {
         tcx: TransactionContext<'env, S, M>,
         plan: Box<ir::Plan>,
         do_physical_plan: impl for<'txn> FnOnce(
-            PhysicalPlanner<'env, 'txn, S, M, FlatTuple>,
+            PhysicalPlanner<'env, 'txn, S, M, TupleType>,
             &dyn nsql_execution::TransactionContext<'env, 'txn, S, M>,
             Box<ir::Plan<nsql_opt::Query>>,
         )
-            -> Result<PhysicalPlan<'env, 'txn, S, M, FlatTuple>>,
+            -> Result<PhysicalPlan<'env, 'txn, S, M, TupleType>>,
     ) -> Result<(Option<TransactionContext<'env, S, M>>, MaterializedQueryOutput)> {
         let (auto_commit, state, output) = tcx.with::<Result<_>>(|tcx| {
             let catalog = Catalog::new(self.storage.storage());
@@ -471,7 +474,7 @@ impl<S: StorageEngine> Shared<S> {
                     do_physical_plan(physical_planner, &tcx, plan)
                 })?;
 
-            let ecx = ExecutionContext::<S, M, FlatTuple>::new(catalog, &tcx, ctx);
+            let ecx = ExecutionContext::<S, M, TupleType>::new(catalog, &tcx, ctx);
             let tuples = self.profiler.try_profile(self.profiler.execute_event_id, || {
                 nsql_execution::execute(&ecx, physical_plan)
             })?;
