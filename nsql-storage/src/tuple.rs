@@ -257,6 +257,7 @@ pub trait FromTuple: Sized {
 }
 
 impl FromTuple for () {
+    #[inline]
     fn from_values(_: impl Iterator<Item = Value>) -> Result<Self, FromTupleError> {
         Ok(())
     }
@@ -267,6 +268,7 @@ where
     T: FromValue + 'static,
     U: FromValue + 'static,
 {
+    #[inline]
     fn from_values(mut values: impl Iterator<Item = Value>) -> Result<Self, FromTupleError> {
         let fst = values.next().ok_or(FromTupleError::NotEnoughValues)?.cast()?;
         let snd = values.next().ok_or(FromTupleError::NotEnoughValues)?.cast()?;
@@ -275,6 +277,7 @@ where
 }
 
 impl<T: FromValue + 'static> FromTuple for T {
+    #[inline]
     fn from_values(mut values: impl Iterator<Item = Value>) -> Result<Self, FromTupleError> {
         Ok(T::from_value(values.next().ok_or(FromTupleError::NotEnoughValues)?)?)
     }

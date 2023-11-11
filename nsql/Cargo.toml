@@ -19,7 +19,7 @@ nsql-opt = { path = "../nsql-opt" }
 nsql-parse = { path = "../nsql-parse" }
 nsql-storage = { path = "../nsql-storage" }
 nsql-storage-engine = { path = "../nsql-storage-engine" }
-tracing = "0.1.37"
+tracing = { version = "0.1.37", features = ["release_max_level_info"] }
 nsql-util = { path = "../nsql-util" }
 mimalloc = { version = "*", default-features = false }
 tracing-tree = "0.2.4"
