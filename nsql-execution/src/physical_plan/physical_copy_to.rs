@@ -7,31 +7,37 @@ use nsql_storage_engine::fallible_iterator;
 
 use super::*;
 
-pub(crate) struct PhysicalCopyTo<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> {
+pub(crate) struct PhysicalCopyTo<
+    'env,
+    'txn,
+    S: StorageEngine,
+    M: ExecutionMode<'env, S>,
+    T: TupleTrait,
+> {
     id: PhysicalNodeId,
     children: PhysicalNodeId,
     output_writer: OnceLock<File>,
     // particularly convenient to store a file for now as you can write with an `&File`
     // now that we have mutable access we can hold a `Box<dyn Write>` or something
     dst: ir::CopyDestination,
-    _marker: PhantomData<dyn PhysicalNode<'env, 'txn, S, M>>,
+    _marker: PhantomData<dyn PhysicalNode<'env, 'txn, S, M, T>>,
 }
 
-impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> fmt::Debug
-    for PhysicalCopyTo<'env, 'txn, S, M>
+impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait> fmt::Debug
+    for PhysicalCopyTo<'env, 'txn, S, M, T>
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "PhysicalCopyTo")
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
-    PhysicalCopyTo<'env, 'txn, S, M>
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>
+    PhysicalCopyTo<'env, 'txn, S, M, T>
 {
     pub fn plan(
         source: PhysicalNodeId,
         dst: ir::CopyDestination,
-        arena: &mut PhysicalNodeArena<'env, 'txn, S, M>,
+        arena: &mut PhysicalNodeArena<'env, 'txn, S, M, T>,
     ) -> PhysicalNodeId {
         arena.alloc_with(|id| {
             Box::new(Self {
@@ -45,8 +51,8 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     }
 }
 
-impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode<'env, 'txn, S, M>
-    for PhysicalCopyTo<'env, 'txn, S, M>
+impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>
+    PhysicalNode<'env, 'txn, S, M, T> for PhysicalCopyTo<'env, 'txn, S, M, T>
 {
     impl_physical_node_conversions!(M; source, sink; not operator);
 
@@ -54,7 +60,7 @@ impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode<'env,
         self.id
     }
 
-    fn width(&self, _nodes: &PhysicalNodeArena<'env, 'txn, S, M>) -> usize {
+    fn width(&self, _nodes: &PhysicalNodeArena<'env, 'txn, S, M, T>) -> usize {
         0
     }
 
@@ -63,24 +69,24 @@ impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode<'env,
     }
 }
 
-impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSource<'env, 'txn, S, M>
-    for PhysicalCopyTo<'env, 'txn, S, M>
+impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>
+    PhysicalSource<'env, 'txn, S, M, T> for PhysicalCopyTo<'env, 'txn, S, M, T>
 {
     fn source(
         &mut self,
-        _ecx: &ExecutionContext<'_, 'env, 'txn, S, M>,
-    ) -> ExecutionResult<TupleStream<'_>> {
+        _ecx: &ExecutionContext<'_, 'env, 'txn, S, M, T>,
+    ) -> ExecutionResult<TupleStream<'_, T>> {
         Ok(Box::new(fallible_iterator::empty()))
     }
 }
 
-impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSink<'env, 'txn, S, M>
-    for PhysicalCopyTo<'env, 'txn, S, M>
+impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>
+    PhysicalSink<'env, 'txn, S, M, T> for PhysicalCopyTo<'env, 'txn, S, M, T>
 {
     fn sink(
         &mut self,
-        _ecx: &ExecutionContext<'_, 'env, 'txn, S, M>,
-        tuple: Tuple,
+        _ecx: &ExecutionContext<'_, 'env, 'txn, S, M, T>,
+        tuple: T,
     ) -> ExecutionResult<()> {
         let out = self.output_writer.get_or_try_init::<_, io::Error>(|| {
             Ok(match &self.dst {
@@ -89,16 +95,16 @@ impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSink<'env,
         })?;
 
         let mut writer = csv::WriterBuilder::new().from_writer(out);
-        writer.write_record(tuple.values().map(|tuple| match tuple {
+        writer.write_record(tuple.values().map(|value| match value {
             ir::Value::Null => "".into(),
-            _ => tuple.to_string(),
+            _ => value.to_string(),
         }))?;
         Ok(())
     }
 }
 
-impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Explain<'env, 'txn, S, M>
-    for PhysicalCopyTo<'env, 'txn, S, M>
+impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>
+    Explain<'env, 'txn, S, M> for PhysicalCopyTo<'env, 'txn, S, M, T>
 {
     fn as_dyn(&self) -> &dyn Explain<'env, 'txn, S, M> {
         self

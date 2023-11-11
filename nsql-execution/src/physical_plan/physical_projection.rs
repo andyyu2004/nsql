@@ -3,21 +3,21 @@ use std::marker::PhantomData;
 use super::*;
 
 #[derive(Debug)]
-pub struct PhysicalProjection<'env, 'txn, S, M> {
+pub struct PhysicalProjection<'env, 'txn, S, M, T> {
     id: PhysicalNodeId,
     child: PhysicalNodeId,
     projection: ExecutableTupleExpr<'env, 'txn, S, M>,
     evaluator: Evaluator,
-    _marker: PhantomData<dyn PhysicalNode<'env, 'txn, S, M>>,
+    _marker: PhantomData<dyn PhysicalNode<'env, 'txn, S, M, T>>,
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
-    PhysicalProjection<'env, 'txn, S, M>
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>
+    PhysicalProjection<'env, 'txn, S, M, T>
 {
     pub(crate) fn plan(
         source: PhysicalNodeId,
         projection: ExecutableTupleExpr<'env, 'txn, S, M>,
-        arena: &mut PhysicalNodeArena<'env, 'txn, S, M>,
+        arena: &mut PhysicalNodeArena<'env, 'txn, S, M, T>,
     ) -> PhysicalNodeId {
         arena.alloc_with(|id| {
             Box::new(Self {
@@ -31,15 +31,15 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
-    PhysicalOperator<'env, 'txn, S, M> for PhysicalProjection<'env, 'txn, S, M>
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>
+    PhysicalOperator<'env, 'txn, S, M, T> for PhysicalProjection<'env, 'txn, S, M, T>
 {
     #[tracing::instrument(level = "debug", skip(self, ecx, input))]
     fn execute(
         &mut self,
-        ecx: &ExecutionContext<'_, 'env, 'txn, S, M>,
-        input: Tuple,
-    ) -> ExecutionResult<OperatorState<Tuple>> {
+        ecx: &ExecutionContext<'_, 'env, 'txn, S, M, T>,
+        input: T,
+    ) -> ExecutionResult<OperatorState<T>> {
         let storage = ecx.storage();
         let tx = ecx.tcx();
         let output = self.projection.eval(&mut self.evaluator, storage, tx, &input)?;
@@ -48,8 +48,8 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode<'env, 'txn, S, M>
-    for PhysicalProjection<'env, 'txn, S, M>
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>
+    PhysicalNode<'env, 'txn, S, M, T> for PhysicalProjection<'env, 'txn, S, M, T>
 {
     impl_physical_node_conversions!(M; operator; not source, sink);
 
@@ -57,7 +57,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode
         self.id
     }
 
-    fn width(&self, _nodes: &PhysicalNodeArena<'env, 'txn, S, M>) -> usize {
+    fn width(&self, _nodes: &PhysicalNodeArena<'env, 'txn, S, M, T>) -> usize {
         self.projection.width()
     }
 
@@ -66,8 +66,8 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Explain<'env, 'txn, S, M>
-    for PhysicalProjection<'env, 'txn, S, M>
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>
+    Explain<'env, 'txn, S, M> for PhysicalProjection<'env, 'txn, S, M, T>
 {
     fn as_dyn(&self) -> &dyn Explain<'env, 'txn, S, M> {
         self

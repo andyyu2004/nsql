@@ -6,20 +6,22 @@ use nsql_core::Name;
 use super::*;
 
 #[derive(Debug)]
-pub struct PhysicalCte<'env, 'txn, S, M> {
+pub struct PhysicalCte<'env, 'txn, S, M, T> {
     id: PhysicalNodeId,
     name: Name,
     children: [PhysicalNodeId; 2],
-    materialized_data: Vec<Tuple>,
-    _marker: PhantomData<dyn PhysicalNode<'env, 'txn, S, M>>,
+    materialized_data: Vec<T>,
+    _marker: PhantomData<dyn PhysicalNode<'env, 'txn, S, M, T>>,
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalCte<'env, 'txn, S, M> {
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>
+    PhysicalCte<'env, 'txn, S, M, T>
+{
     pub(crate) fn plan(
         name: Name,
         cte: PhysicalNodeId,
         child: PhysicalNodeId,
-        arena: &mut PhysicalNodeArena<'env, 'txn, S, M>,
+        arena: &mut PhysicalNodeArena<'env, 'txn, S, M, T>,
     ) -> PhysicalNodeId {
         arena.alloc_with(|id| {
             Box::new(Self {
@@ -33,14 +35,14 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalCte<
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode<'env, 'txn, S, M>
-    for PhysicalCte<'env, 'txn, S, M>
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>
+    PhysicalNode<'env, 'txn, S, M, T> for PhysicalCte<'env, 'txn, S, M, T>
 {
     fn id(&self) -> PhysicalNodeId {
         self.id
     }
 
-    fn width(&self, nodes: &PhysicalNodeArena<'env, 'txn, S, M>) -> usize {
+    fn width(&self, nodes: &PhysicalNodeArena<'env, 'txn, S, M, T>) -> usize {
         nodes[self.children[1]].width(nodes)
     }
 
@@ -52,55 +54,64 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode
     #[inline]
     fn as_sink(
         &self,
-    ) -> Result<&dyn PhysicalSink<'env, 'txn, S, M>, &dyn PhysicalNode<'env, 'txn, S, M>> {
+    ) -> Result<&dyn PhysicalSink<'env, 'txn, S, M, T>, &dyn PhysicalNode<'env, 'txn, S, M, T>>
+    {
         Ok(self)
     }
 
     #[inline]
     fn as_sink_mut(
         &mut self,
-    ) -> Result<&mut dyn PhysicalSink<'env, 'txn, S, M>, &mut dyn PhysicalNode<'env, 'txn, S, M>>
-    {
+    ) -> Result<
+        &mut dyn PhysicalSink<'env, 'txn, S, M, T>,
+        &mut dyn PhysicalNode<'env, 'txn, S, M, T>,
+    > {
         Ok(self)
     }
 
     #[inline]
     fn as_source(
         &self,
-    ) -> Result<&dyn PhysicalSource<'env, 'txn, S, M>, &dyn PhysicalNode<'env, 'txn, S, M>> {
+    ) -> Result<&dyn PhysicalSource<'env, 'txn, S, M, T>, &dyn PhysicalNode<'env, 'txn, S, M, T>>
+    {
         Ok(self)
     }
 
     #[inline]
     fn as_source_mut(
         &mut self,
-    ) -> Result<&mut dyn PhysicalSource<'env, 'txn, S, M>, &mut dyn PhysicalNode<'env, 'txn, S, M>>
-    {
+    ) -> Result<
+        &mut dyn PhysicalSource<'env, 'txn, S, M, T>,
+        &mut dyn PhysicalNode<'env, 'txn, S, M, T>,
+    > {
         todo!()
         // Arc::clone(&self.children[1]).as_source()
     }
 
     fn as_operator(
         &self,
-    ) -> Result<&dyn PhysicalOperator<'env, 'txn, S, M>, &dyn PhysicalNode<'env, 'txn, S, M>> {
+    ) -> Result<&dyn PhysicalOperator<'env, 'txn, S, M, T>, &dyn PhysicalNode<'env, 'txn, S, M, T>>
+    {
         todo!()
     }
 
     #[inline]
     fn as_operator_mut(
         &mut self,
-    ) -> Result<&mut dyn PhysicalOperator<'env, 'txn, S, M>, &mut dyn PhysicalNode<'env, 'txn, S, M>>
-    {
+    ) -> Result<
+        &mut dyn PhysicalOperator<'env, 'txn, S, M, T>,
+        &mut dyn PhysicalNode<'env, 'txn, S, M, T>,
+    > {
         todo!()
         // Arc::clone(&self.children[1]).as_operator()
     }
 
     fn build_pipelines(
         &self,
-        nodes: &PhysicalNodeArena<'env, 'txn, S, M>,
-        pipelines: &mut PipelineBuilderArena<'env, 'txn, S, M>,
-        meta_builder: Idx<MetaPipelineBuilder<'env, 'txn, S, M>>,
-        current: Idx<PipelineBuilder<'env, 'txn, S, M>>,
+        nodes: &PhysicalNodeArena<'env, 'txn, S, M, T>,
+        pipelines: &mut PipelineBuilderArena<'env, 'txn, S, M, T>,
+        meta_builder: Idx<MetaPipelineBuilder<'env, 'txn, S, M, T>>,
+        current: Idx<PipelineBuilder<'env, 'txn, S, M, T>>,
     ) {
         // push data from the cte plan into ourselves
         let cte_builder = pipelines.new_child_meta_pipeline(meta_builder, self);
@@ -112,20 +123,20 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSink<'env, 'txn, S, M>
-    for PhysicalCte<'env, 'txn, S, M>
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>
+    PhysicalSink<'env, 'txn, S, M, T> for PhysicalCte<'env, 'txn, S, M, T>
 {
     fn sink(
         &mut self,
-        _ecx: &ExecutionContext<'_, 'env, 'txn, S, M>,
-        tuple: Tuple,
+        _ecx: &ExecutionContext<'_, 'env, 'txn, S, M, T>,
+        tuple: T,
     ) -> ExecutionResult<()> {
         // collect the data from the cte plan
         self.materialized_data.push(tuple);
         Ok(())
     }
 
-    fn finalize(&mut self, ecx: &ExecutionContext<'_, 'env, 'txn, S, M>) -> ExecutionResult<()> {
+    fn finalize(&mut self, ecx: &ExecutionContext<'_, 'env, 'txn, S, M, T>) -> ExecutionResult<()> {
         // when finished execution the materialized cte, store the tuples in context for cte scan nodes to consume
         let tuples = mem::take(&mut self.materialized_data);
         ecx.instantiate_materialized_cte(Name::clone(&self.name), tuples);
@@ -133,19 +144,19 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSink
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSource<'env, 'txn, S, M>
-    for PhysicalCte<'env, 'txn, S, M>
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>
+    PhysicalSource<'env, 'txn, S, M, T> for PhysicalCte<'env, 'txn, S, M, T>
 {
     fn source(
         &mut self,
-        _ecx: &ExecutionContext<'_, 'env, 'txn, S, M>,
-    ) -> ExecutionResult<TupleStream<'_>> {
+        _ecx: &ExecutionContext<'_, 'env, 'txn, S, M, T>,
+    ) -> ExecutionResult<TupleStream<'_, T>> {
         unreachable!()
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Explain<'env, 'txn, S, M>
-    for PhysicalCte<'env, 'txn, S, M>
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>
+    Explain<'env, 'txn, S, M> for PhysicalCte<'env, 'txn, S, M, T>
 {
     fn as_dyn(&self) -> &dyn Explain<'env, 'txn, S, M> {
         self

@@ -2,7 +2,7 @@ use std::error::Error;
 use std::path::Path;
 
 use ir::Value;
-use nsql::{Connection, Nsql};
+use nsql::{Connection, Nsql, TupleTrait};
 use nsql_core::LogicalType;
 use nsql_redb::RedbStorageEngine;
 use nsql_storage_engine::StorageEngine;

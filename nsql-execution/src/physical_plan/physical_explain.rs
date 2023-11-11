@@ -9,24 +9,24 @@ use super::*;
 use crate::config::ExplainOutput;
 use crate::profiler::ProfileMode;
 
-pub struct PhysicalExplain<'env, 'txn, S, M> {
+pub struct PhysicalExplain<'env, 'txn, S, M, T> {
     id: PhysicalNodeId,
     opts: ir::ExplainOptions,
     child: PhysicalNodeId,
     logical_explain: Arc<str>,
     physical_explain: ExplainTree,
     pipeline_explain: Arc<str>,
-    _marker: PhantomData<dyn PhysicalNode<'env, 'txn, S, M>>,
+    _marker: PhantomData<dyn PhysicalNode<'env, 'txn, S, M, T>>,
 }
 
-impl<S, M> fmt::Debug for PhysicalExplain<'_, '_, S, M> {
+impl<S, M, T> fmt::Debug for PhysicalExplain<'_, '_, S, M, T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("PhysicalExplain").finish_non_exhaustive()
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
-    PhysicalExplain<'env, 'txn, S, M>
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>
+    PhysicalExplain<'env, 'txn, S, M, T>
 {
     #[inline]
     pub(crate) fn plan(
@@ -35,7 +35,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
         logical_explain: impl Into<Arc<str>>,
         physical_explain: ExplainTree,
         pipeline_explain: impl Into<Arc<str>>,
-        arena: &mut PhysicalNodeArena<'env, 'txn, S, M>,
+        arena: &mut PhysicalNodeArena<'env, 'txn, S, M, T>,
     ) -> PhysicalNodeId {
         arena.alloc_with(|id| {
             Box::new(Self {
@@ -51,8 +51,8 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode<'env, 'txn, S, M>
-    for PhysicalExplain<'env, 'txn, S, M>
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>
+    PhysicalNode<'env, 'txn, S, M, T> for PhysicalExplain<'env, 'txn, S, M, T>
 {
     impl_physical_node_conversions!(M; source, sink; not operator);
 
@@ -60,7 +60,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode
         self.id
     }
 
-    fn width(&self, _nodes: &PhysicalNodeArena<'env, 'txn, S, M>) -> usize {
+    fn width(&self, _nodes: &PhysicalNodeArena<'env, 'txn, S, M, T>) -> usize {
         1
     }
 
@@ -69,10 +69,13 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSink<'env, 'txn, S, M>
-    for PhysicalExplain<'env, 'txn, S, M>
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>
+    PhysicalSink<'env, 'txn, S, M, T> for PhysicalExplain<'env, 'txn, S, M, T>
 {
-    fn initialize(&mut self, ecx: &ExecutionContext<'_, 'env, 'txn, S, M>) -> ExecutionResult<()> {
+    fn initialize(
+        &mut self,
+        ecx: &ExecutionContext<'_, 'env, 'txn, S, M, T>,
+    ) -> ExecutionResult<()> {
         if self.opts.analyze {
             if self.opts.timing {
                 ecx.profiler().set_mode(ProfileMode::Timing);
@@ -86,21 +89,21 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSink
 
     fn sink(
         &mut self,
-        _ecx: &ExecutionContext<'_, 'env, 'txn, S, M>,
-        _tuple: Tuple,
+        _ecx: &ExecutionContext<'_, 'env, 'txn, S, M, T>,
+        _tuple: T,
     ) -> ExecutionResult<()> {
         // drop any tuples as we don't really care
         Ok(())
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSource<'env, 'txn, S, M>
-    for PhysicalExplain<'env, 'txn, S, M>
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>
+    PhysicalSource<'env, 'txn, S, M, T> for PhysicalExplain<'env, 'txn, S, M, T>
 {
     fn source(
         &mut self,
-        ecx: &ExecutionContext<'_, 'env, 'txn, S, M>,
-    ) -> ExecutionResult<TupleStream<'_>> {
+        ecx: &ExecutionContext<'_, 'env, 'txn, S, M, T>,
+    ) -> ExecutionResult<TupleStream<'_, T>> {
         let scx = ecx.scx();
 
         if self.opts.analyze {
@@ -155,14 +158,14 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
             }
         };
 
-        Ok(Box::new(fallible_iterator::once(Tuple::from(vec![Value::Text(
+        Ok(Box::new(fallible_iterator::once(T::from_iter([Value::Text(
             stringified.as_str().into(),
         )]))))
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Explain<'env, 'txn, S, M>
-    for PhysicalExplain<'env, 'txn, S, M>
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>
+    Explain<'env, 'txn, S, M> for PhysicalExplain<'env, 'txn, S, M, T>
 {
     fn as_dyn(&self) -> &dyn Explain<'env, 'txn, S, M> {
         self

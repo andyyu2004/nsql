@@ -11,12 +11,86 @@ use rkyv::{Archive, Archived, Deserialize, Serialize};
 
 use crate::value::{CastError, FromValue, Value};
 
+pub trait TupleTrait:
+    fmt::Debug
+    + fmt::Display
+    + Hash
+    + Eq
+    + Ord
+    + Clone
+    + FromIterator<Value>
+    + IntoIterator<Item = Value>
+    + Index<TupleIndex, Output = Value>
+    + AsRef<Tuple> // tmp trait to make it work for now, maybe an asref<[value]> would be better
+    + From<Tuple>
+    + Into<Tuple>
+    + 'static
+{
+    fn width(&self) -> usize;
+
+    fn values(&self) -> impl Iterator<Item = &Value>;
+
+    fn join(self, other: &Self) -> Self;
+
+    fn pad_right(self, n: usize) -> Self;
+
+    fn pad_right_with<V: Into<Value>>(self, n: usize, f: impl Fn() -> V) -> Self;
+
+    #[inline]
+    fn empty() -> Self {
+        Self::from_iter([])
+    }
+}
+
 // FIXME make this cheap to clone
 #[derive(
     Clone, PartialOrd, Ord, PartialEq, Eq, Hash, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
 )]
 pub struct Tuple {
     values: Box<[Value]>,
+}
+
+impl AsRef<Self> for Tuple {
+    #[inline]
+    fn as_ref(&self) -> &Self {
+        self
+    }
+}
+
+impl TupleTrait for Tuple {
+    #[inline]
+    fn width(&self) -> usize {
+        self.values.len()
+    }
+
+    #[inline]
+    fn join(self, other: &Self) -> Self {
+        let mut values = self.values.into_vec();
+        values.reserve_exact(other.values.len());
+        values.extend_from_slice(&other.values);
+        Self::new(values.into_boxed_slice())
+    }
+
+    #[inline]
+    fn pad_right(self, n: usize) -> Tuple {
+        self.pad_right_with(n, || Value::Null)
+    }
+
+    #[inline]
+    fn pad_right_with<V: Into<Value>>(self, n: usize, f: impl Fn() -> V) -> Tuple {
+        let mut values = self.values.into_vec();
+        let new_len = values.len() + n;
+        values.reserve_exact(n);
+        values.resize_with(new_len, || f().into());
+        debug_assert_eq!(values.len(), new_len);
+        debug_assert_eq!(values.capacity(), new_len);
+        Self::new(values.into_boxed_slice())
+    }
+
+    #[inline]
+    fn values(&self) -> impl Iterator<Item = &Value> {
+        self.values.iter()
+    }
 }
 
 impl fmt::Debug for Tuple {
@@ -46,11 +120,6 @@ impl Tuple {
     }
 
     #[inline]
-    pub fn width(&self) -> usize {
-        self.values.len()
-    }
-
-    #[inline]
     pub fn is_empty(&self) -> bool {
         self.width() == 0
     }
@@ -61,41 +130,13 @@ impl Tuple {
     }
 
     #[inline]
-    pub fn values(&self) -> impl Iterator<Item = &Value> {
-        self.values.iter()
-    }
-
-    #[inline]
     pub fn into_values(self) -> Box<[Value]> {
         self.values
     }
 
     #[inline]
-    pub fn join(self, other: &Self) -> Self {
-        let mut values = self.values.into_vec();
-        values.reserve_exact(other.values.len());
-        values.extend_from_slice(&other.values);
-        Self::new(values.into_boxed_slice())
-    }
-
-    #[inline]
     pub fn project_archived(values: &[&Archived<Value>], projection: &[TupleIndex]) -> Tuple {
         projection.iter().map(|&idx| nsql_rkyv::deserialize(values[idx.as_usize()])).collect()
-    }
-
-    #[inline]
-    pub fn pad_right(self, n: usize) -> Tuple {
-        self.pad_right_with(n, || Value::Null)
-    }
-
-    pub fn pad_right_with<V: Into<Value>>(self, n: usize, f: impl Fn() -> V) -> Tuple {
-        let mut values = self.values.into_vec();
-        let new_len = values.len() + n;
-        values.reserve_exact(n);
-        values.resize_with(new_len, || f().into());
-        debug_assert_eq!(values.len(), new_len);
-        debug_assert_eq!(values.capacity(), new_len);
-        Self::new(values.into_boxed_slice())
     }
 }
 

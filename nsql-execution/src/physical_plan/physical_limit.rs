@@ -6,23 +6,23 @@ use nsql_storage::value::Text;
 use super::*;
 
 #[derive(Debug)]
-pub struct PhysicalLimit<'env, 'txn, S, M> {
+pub struct PhysicalLimit<'env, 'txn, S, M, T> {
     id: PhysicalNodeId,
     child: PhysicalNodeId,
     yielded: u64,
     limit: u64,
     exceeded_message: Option<Text>,
-    _marker: PhantomData<dyn PhysicalNode<'env, 'txn, S, M>>,
+    _marker: PhantomData<dyn PhysicalNode<'env, 'txn, S, M, T>>,
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
-    PhysicalLimit<'env, 'txn, S, M>
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>
+    PhysicalLimit<'env, 'txn, S, M, T>
 {
     pub(crate) fn plan(
         source: PhysicalNodeId,
         limit: u64,
         exceeded_message: Option<Text>,
-        arena: &mut PhysicalNodeArena<'env, 'txn, S, M>,
+        arena: &mut PhysicalNodeArena<'env, 'txn, S, M, T>,
     ) -> PhysicalNodeId {
         arena.alloc_with(|id| {
             Box::new(Self {
@@ -37,14 +37,14 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
-    PhysicalOperator<'env, 'txn, S, M> for PhysicalLimit<'env, 'txn, S, M>
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>
+    PhysicalOperator<'env, 'txn, S, M, T> for PhysicalLimit<'env, 'txn, S, M, T>
 {
     fn execute(
         &mut self,
-        _ecx: &ExecutionContext<'_, 'env, 'txn, S, M>,
-        input: Tuple,
-    ) -> ExecutionResult<OperatorState<Tuple>> {
+        _ecx: &ExecutionContext<'_, 'env, 'txn, S, M, T>,
+        input: T,
+    ) -> ExecutionResult<OperatorState<T>> {
         self.yielded += 1;
 
         if self.yielded > self.limit {
@@ -59,8 +59,8 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode<'env, 'txn, S, M>
-    for PhysicalLimit<'env, 'txn, S, M>
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>
+    PhysicalNode<'env, 'txn, S, M, T> for PhysicalLimit<'env, 'txn, S, M, T>
 {
     impl_physical_node_conversions!(M; operator; not source, sink);
 
@@ -68,7 +68,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode
         self.id
     }
 
-    fn width(&self, nodes: &PhysicalNodeArena<'env, 'txn, S, M>) -> usize {
+    fn width(&self, nodes: &PhysicalNodeArena<'env, 'txn, S, M, T>) -> usize {
         nodes[self.child].width(nodes)
     }
 
@@ -77,8 +77,8 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Explain<'env, 'txn, S, M>
-    for PhysicalLimit<'env, 'txn, S, M>
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>
+    Explain<'env, 'txn, S, M> for PhysicalLimit<'env, 'txn, S, M, T>
 {
     fn as_dyn(&self) -> &dyn Explain<'env, 'txn, S, M> {
         self

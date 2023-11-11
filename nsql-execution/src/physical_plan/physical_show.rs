@@ -7,23 +7,25 @@ use nsql_storage_engine::{fallible_iterator, FallibleIterator};
 use super::*;
 
 #[derive(Debug)]
-pub struct PhysicalShow<'env, 'txn, S, M> {
+pub struct PhysicalShow<'env, 'txn, S, M, T> {
     id: PhysicalNodeId,
     object_type: ir::ObjectType,
-    _marker: PhantomData<dyn PhysicalNode<'env, 'txn, S, M>>,
+    _marker: PhantomData<dyn PhysicalNode<'env, 'txn, S, M, T>>,
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalShow<'env, 'txn, S, M> {
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>
+    PhysicalShow<'env, 'txn, S, M, T>
+{
     pub(crate) fn plan(
         object_type: ir::ObjectType,
-        arena: &mut PhysicalNodeArena<'env, 'txn, S, M>,
+        arena: &mut PhysicalNodeArena<'env, 'txn, S, M, T>,
     ) -> PhysicalNodeId {
         arena.alloc_with(|id| Box::new(Self { id, object_type, _marker: PhantomData }))
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode<'env, 'txn, S, M>
-    for PhysicalShow<'env, 'txn, S, M>
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>
+    PhysicalNode<'env, 'txn, S, M, T> for PhysicalShow<'env, 'txn, S, M, T>
 {
     impl_physical_node_conversions!(M; source; not operator, sink);
 
@@ -31,7 +33,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode
         self.id
     }
 
-    fn width(&self, _nodes: &PhysicalNodeArena<'env, 'txn, S, M>) -> usize {
+    fn width(&self, _nodes: &PhysicalNodeArena<'env, 'txn, S, M, T>) -> usize {
         1
     }
 
@@ -40,22 +42,23 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSource<'env, 'txn, S, M>
-    for PhysicalShow<'env, 'txn, S, M>
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>
+    PhysicalSource<'env, 'txn, S, M, T> for PhysicalShow<'env, 'txn, S, M, T>
 {
     fn source(
         &mut self,
-        ecx: &ExecutionContext<'_, 'env, 'txn, S, M>,
-    ) -> ExecutionResult<TupleStream<'_>> {
+        ecx: &ExecutionContext<'_, 'env, 'txn, S, M, T>,
+    ) -> ExecutionResult<TupleStream<'_, T>> {
         let tx = ecx.tcx();
         let catalog = ecx.catalog();
 
         let rows = match self.object_type {
             ir::ObjectType::Table => catalog
                 .tables(tx)?
+                .as_ref()
                 .scan(..)?
                 .filter(|table| Ok(table.namespace() == Namespace::MAIN))
-                .map(move |table| Ok(Tuple::from(vec![Value::Text(table.name().into())])))
+                .map(move |table| Ok(T::from_iter([Value::Text(table.name().into())])))
                 .collect::<Vec<_>>()?,
         };
 
@@ -63,8 +66,8 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Explain<'env, 'txn, S, M>
-    for PhysicalShow<'env, 'txn, S, M>
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>
+    Explain<'env, 'txn, S, M> for PhysicalShow<'env, 'txn, S, M, T>
 {
     fn as_dyn(&self) -> &dyn Explain<'env, 'txn, S, M> {
         self

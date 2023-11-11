@@ -9,23 +9,23 @@ use super::*;
 use crate::ReadWriteExecutionMode;
 
 #[derive(Debug)]
-pub(crate) struct PhysicalInsert<'env, 'txn, S: StorageEngine> {
+pub(crate) struct PhysicalInsert<'env, 'txn, S: StorageEngine, T: TupleTrait> {
     id: PhysicalNodeId,
     children: [PhysicalNodeId; 1],
     table_oid: Oid<Table>,
     storage: Option<TableStorage<'env, 'txn, S, ReadWriteExecutionMode>>,
     table: OnceLock<Table>,
     returning: ExecutableTupleExpr<'env, 'txn, S, ReadWriteExecutionMode>,
-    returning_tuples: Vec<Tuple>,
+    returning_tuples: Vec<T>,
     evaluator: Evaluator,
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalInsert<'env, 'txn, S> {
+impl<'env: 'txn, 'txn, S: StorageEngine, T: TupleTrait> PhysicalInsert<'env, 'txn, S, T> {
     pub fn plan(
         table_oid: Oid<Table>,
         source: PhysicalNodeId,
         returning: ExecutableTupleExpr<'env, 'txn, S, ReadWriteExecutionMode>,
-        arena: &mut PhysicalNodeArena<'env, 'txn, S, ReadWriteExecutionMode>,
+        arena: &mut PhysicalNodeArena<'env, 'txn, S, ReadWriteExecutionMode, T>,
     ) -> PhysicalNodeId {
         arena.alloc_with(|id| {
             Box::new(Self {
@@ -42,8 +42,8 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalInsert<'env, 'txn, S> {
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode>
-    for PhysicalInsert<'env, 'txn, S>
+impl<'env: 'txn, 'txn, S: StorageEngine, T: TupleTrait>
+    PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode, T> for PhysicalInsert<'env, 'txn, S, T>
 {
     impl_physical_node_conversions!(ReadWriteExecutionMode; source, sink; not operator);
 
@@ -51,7 +51,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalNode<'env, 'txn, S, ReadWriteEx
         self.id
     }
 
-    fn width(&self, _nodes: &PhysicalNodeArena<'env, 'txn, S, ReadWriteExecutionMode>) -> usize {
+    fn width(&self, _nodes: &PhysicalNodeArena<'env, 'txn, S, ReadWriteExecutionMode, T>) -> usize {
         self.returning.width()
     }
 
@@ -60,13 +60,13 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalNode<'env, 'txn, S, ReadWriteEx
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSink<'env, 'txn, S, ReadWriteExecutionMode>
-    for PhysicalInsert<'env, 'txn, S>
+impl<'env: 'txn, 'txn, S: StorageEngine, T: TupleTrait>
+    PhysicalSink<'env, 'txn, S, ReadWriteExecutionMode, T> for PhysicalInsert<'env, 'txn, S, T>
 {
     fn sink(
         &mut self,
-        ecx: &ExecutionContext<'_, 'env, 'txn, S, ReadWriteExecutionMode>,
-        tuple: Tuple,
+        ecx: &ExecutionContext<'_, 'env, 'txn, S, ReadWriteExecutionMode, T>,
+        tuple: T,
     ) -> ExecutionResult<()> {
         let catalog = ecx.catalog();
         let tx = ecx.tcx();
@@ -82,7 +82,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSink<'env, 'txn, S, ReadWriteEx
             }
         };
 
-        storage.insert(&catalog, tx, &tuple)?.map_err(|PrimaryKeyConflict { key }| {
+        storage.insert(&catalog, tx, tuple.as_ref())?.map_err(|PrimaryKeyConflict { key }| {
             anyhow::anyhow!(
                 "duplicate key `{key}` violates unique constraint in table `{}`",
                 table.name(),
@@ -100,7 +100,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSink<'env, 'txn, S, ReadWriteEx
 
         // hack, if this is the insert of a `CREATE TABLE` we need to create the table storage
         if self.table_oid == Table::TABLE {
-            let table = Table::from_tuple(tuple).expect("should be a compatible tuple");
+            let table = Table::from_tuple(tuple.into()).expect("should be a compatible tuple");
             table.create_storage(catalog.storage(), tx.transaction())?;
         }
 
@@ -109,7 +109,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSink<'env, 'txn, S, ReadWriteEx
 
     fn finalize(
         &mut self,
-        _ecx: &ExecutionContext<'_, 'env, 'txn, S, ReadWriteExecutionMode>,
+        _ecx: &ExecutionContext<'_, 'env, 'txn, S, ReadWriteExecutionMode, T>,
     ) -> ExecutionResult<()> {
         // drop the storage on finalization as it is no longer needed by this node
         // this helps avoids redb errors when the same table is opened by multiple nodes
@@ -119,20 +119,20 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSink<'env, 'txn, S, ReadWriteEx
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSource<'env, 'txn, S, ReadWriteExecutionMode>
-    for PhysicalInsert<'env, 'txn, S>
+impl<'env: 'txn, 'txn, S: StorageEngine, T: TupleTrait>
+    PhysicalSource<'env, 'txn, S, ReadWriteExecutionMode, T> for PhysicalInsert<'env, 'txn, S, T>
 {
     fn source(
         &mut self,
-        _ecx: &ExecutionContext<'_, 'env, 'txn, S, ReadWriteExecutionMode>,
-    ) -> ExecutionResult<TupleStream<'_>> {
+        _ecx: &ExecutionContext<'_, 'env, 'txn, S, ReadWriteExecutionMode, T>,
+    ) -> ExecutionResult<TupleStream<'_, T>> {
         let returning = std::mem::take(&mut self.returning_tuples);
         Ok(Box::new(fallible_iterator::convert(returning.into_iter().map(Ok))))
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine> Explain<'env, 'txn, S, ReadWriteExecutionMode>
-    for PhysicalInsert<'env, 'txn, S>
+impl<'env: 'txn, 'txn, S: StorageEngine, T: TupleTrait>
+    Explain<'env, 'txn, S, ReadWriteExecutionMode> for PhysicalInsert<'env, 'txn, S, T>
 {
     fn as_dyn(&self) -> &dyn Explain<'env, 'txn, S, ReadWriteExecutionMode> {
         self

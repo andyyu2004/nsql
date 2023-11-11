@@ -11,24 +11,24 @@ type AggregateFunctionAndArgs<'env, 'txn, S, M> =
     (ir::Function, Option<ExecutableExpr<'env, 'txn, S, M>>);
 
 #[derive(Debug)]
-pub struct PhysicalHashAggregate<'env, 'txn, S, M> {
+pub struct PhysicalHashAggregate<'env, 'txn, S, M, T> {
     id: PhysicalNodeId,
     aggregates: Box<[AggregateFunctionAndArgs<'env, 'txn, S, M>]>,
     children: [PhysicalNodeId; 1],
     group_expr: ExecutableTupleExpr<'env, 'txn, S, M>,
-    output_groups: FxHashMap<Tuple, Vec<Box<dyn AggregateFunctionInstance>>>,
+    output_groups: FxHashMap<T, Vec<Box<dyn AggregateFunctionInstance>>>,
     evaluator: Evaluator,
-    _marker: PhantomData<dyn PhysicalNode<'env, 'txn, S, M>>,
+    _marker: PhantomData<dyn PhysicalNode<'env, 'txn, S, M, T>>,
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
-    PhysicalHashAggregate<'env, 'txn, S, M>
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>
+    PhysicalHashAggregate<'env, 'txn, S, M, T>
 {
     pub(crate) fn plan(
         aggregates: Box<[AggregateFunctionAndArgs<'env, 'txn, S, M>]>,
         source: PhysicalNodeId,
         group_expr: ExecutableTupleExpr<'env, 'txn, S, M>,
-        arena: &mut PhysicalNodeArena<'env, 'txn, S, M>,
+        arena: &mut PhysicalNodeArena<'env, 'txn, S, M, T>,
     ) -> PhysicalNodeId {
         arena.alloc_with(|id| {
             Box::new(Self {
@@ -44,30 +44,30 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSource<'env, 'txn, S, M>
-    for PhysicalHashAggregate<'env, 'txn, S, M>
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>
+    PhysicalSource<'env, 'txn, S, M, T> for PhysicalHashAggregate<'env, 'txn, S, M, T>
 {
     fn source(
         &mut self,
-        _ecx: &ExecutionContext<'_, 'env, 'txn, S, M>,
-    ) -> ExecutionResult<TupleStream<'_>> {
+        _ecx: &ExecutionContext<'_, 'env, 'txn, S, M, T>,
+    ) -> ExecutionResult<TupleStream<'_, T>> {
         let mut output = vec![];
-        for (group, functions) in self.output_groups.iter_mut() {
-            let values = mem::take(&mut *functions).into_iter().map(|f| f.finalize());
-            output.push(Tuple::from_iter(group.clone().into_iter().chain(values)));
+        for (group, functions) in mem::take(&mut self.output_groups) {
+            let values = functions.into_iter().map(|f| f.finalize());
+            output.push(T::from_iter(group.clone().into_iter().chain(values)));
         }
 
         Ok(Box::new(fallible_iterator::convert(output.into_iter().map(Ok))))
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSink<'env, 'txn, S, M>
-    for PhysicalHashAggregate<'env, 'txn, S, M>
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>
+    PhysicalSink<'env, 'txn, S, M, T> for PhysicalHashAggregate<'env, 'txn, S, M, T>
 {
     fn sink(
         &mut self,
-        ecx: &ExecutionContext<'_, 'env, 'txn, S, M>,
-        tuple: Tuple,
+        ecx: &ExecutionContext<'_, 'env, 'txn, S, M, T>,
+        tuple: T,
     ) -> ExecutionResult<()> {
         let storage = ecx.storage();
         let tx = ecx.tcx();
@@ -88,14 +88,14 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSink
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode<'env, 'txn, S, M>
-    for PhysicalHashAggregate<'env, 'txn, S, M>
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>
+    PhysicalNode<'env, 'txn, S, M, T> for PhysicalHashAggregate<'env, 'txn, S, M, T>
 {
     fn id(&self) -> PhysicalNodeId {
         self.id
     }
 
-    fn width(&self, _nodes: &PhysicalNodeArena<'env, 'txn, S, M>) -> usize {
+    fn width(&self, _nodes: &PhysicalNodeArena<'env, 'txn, S, M, T>) -> usize {
         self.aggregates.len() + self.group_expr.width()
     }
 
@@ -106,8 +106,8 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode
     impl_physical_node_conversions!(M; source, sink; not operator);
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Explain<'env, 'txn, S, M>
-    for PhysicalHashAggregate<'env, 'txn, S, M>
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>
+    Explain<'env, 'txn, S, M> for PhysicalHashAggregate<'env, 'txn, S, M, T>
 {
     fn as_dyn(&self) -> &dyn Explain<'env, 'txn, S, M> {
         self

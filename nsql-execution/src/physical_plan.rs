@@ -65,7 +65,7 @@ use crate::pipeline::*;
 use crate::{
     impl_physical_node_conversions, ExecutionContext, ExecutionMode, ExecutionResult,
     OperatorState, PhysicalNode, PhysicalNodeArena, PhysicalNodeId, PhysicalOperator, PhysicalSink,
-    PhysicalSource, ReadWriteExecutionMode, Tuple, TupleStream,
+    PhysicalSource, ReadWriteExecutionMode, Tuple, TupleStream, TupleTrait,
 };
 
 pub trait PlannerProfiler: nsql_core::Profiler {
@@ -76,39 +76,39 @@ pub trait PlannerProfiler: nsql_core::Profiler {
     fn explain_event_id(&self) -> Self::EventId;
 }
 
-pub struct PhysicalPlanner<'env, 'txn, S, M> {
-    arena: PhysicalNodeArena<'env, 'txn, S, M>,
+pub struct PhysicalPlanner<'env, 'txn, S, M, T> {
+    arena: PhysicalNodeArena<'env, 'txn, S, M, T>,
     catalog: Catalog<'env, S>,
     compiler: Compiler<ExecutableFunction<'env, 'txn, S, M>>,
     ctes: HashMap<Name, PhysicalNodeId>,
 }
 
 /// Opaque physical plan that is ready to be executed
-pub struct PhysicalPlan<'env, 'txn, S, M> {
-    nodes: PhysicalNodeArena<'env, 'txn, S, M>,
+pub struct PhysicalPlan<'env, 'txn, S, M, T> {
+    nodes: PhysicalNodeArena<'env, 'txn, S, M, T>,
     root: PhysicalNodeId,
 }
 
-impl<'env, 'txn, S, M> PhysicalPlan<'env, 'txn, S, M> {
+impl<'env, 'txn, S, M, T> PhysicalPlan<'env, 'txn, S, M, T> {
     pub(crate) fn root(&self) -> PhysicalNodeId {
         self.root
     }
 
-    pub(crate) fn arena(&self) -> &PhysicalNodeArena<'env, 'txn, S, M> {
+    pub(crate) fn arena(&self) -> &PhysicalNodeArena<'env, 'txn, S, M, T> {
         &self.nodes
     }
 
-    pub(crate) fn arena_mut(&mut self) -> &mut PhysicalNodeArena<'env, 'txn, S, M> {
+    pub(crate) fn arena_mut(&mut self) -> &mut PhysicalNodeArena<'env, 'txn, S, M, T> {
         &mut self.nodes
     }
 
-    pub(crate) fn into_arena(self) -> PhysicalNodeArena<'env, 'txn, S, M> {
+    pub(crate) fn into_arena(self) -> PhysicalNodeArena<'env, 'txn, S, M, T> {
         self.nodes
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
-    PhysicalPlanner<'env, 'txn, S, M>
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>
+    PhysicalPlanner<'env, 'txn, S, M, T>
 {
     pub fn new(catalog: Catalog<'env, S>) -> Self {
         Self {
@@ -125,7 +125,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
         profiler: &impl PlannerProfiler,
         tx: &dyn TransactionContext<'env, 'txn, S, M>,
         plan: Box<ir::Plan<opt::Query>>,
-    ) -> Result<PhysicalPlan<'env, 'txn, S, M>> {
+    ) -> Result<PhysicalPlan<'env, 'txn, S, M, T>> {
         self.do_plan(profiler, tx, plan).map(|root| PhysicalPlan { nodes: self.arena, root })
     }
 
@@ -450,13 +450,15 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalPlanner<'env, 'txn, S, ReadWriteExecutionMode> {
+impl<'env: 'txn, 'txn, S: StorageEngine, T: TupleTrait>
+    PhysicalPlanner<'env, 'txn, S, ReadWriteExecutionMode, T>
+{
     pub fn plan_write(
         mut self,
         profiler: &impl PlannerProfiler,
         tx: &dyn TransactionContext<'env, 'txn, S, ReadWriteExecutionMode>,
         plan: Box<ir::Plan<opt::Query>>,
-    ) -> Result<PhysicalPlan<'env, 'txn, S, ReadWriteExecutionMode>> {
+    ) -> Result<PhysicalPlan<'env, 'txn, S, ReadWriteExecutionMode, T>> {
         self.do_plan_write(profiler, tx, plan).map(|root| PhysicalPlan { nodes: self.arena, root })
     }
 

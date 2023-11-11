@@ -1,3 +1,5 @@
+use std::marker::PhantomData;
+
 use nsql_arena::Idx;
 use nsql_catalog::expr::Evaluator;
 
@@ -5,27 +7,28 @@ use super::*;
 use crate::pipeline::{MetaPipelineBuilder, PipelineBuilder, PipelineBuilderArena};
 
 #[derive(Debug)]
-pub(crate) struct PhysicalNestedLoopJoin<'env, 'txn, S, M> {
+pub(crate) struct PhysicalNestedLoopJoin<'env, 'txn, S, M, T> {
     id: PhysicalNodeId,
     children: [PhysicalNodeId; 2],
     join_kind: ir::JoinKind,
     join_predicate: ExecutableExpr<'env, 'txn, S, M>,
-    rhs_tuples: Vec<Tuple>,
+    rhs_tuples: Vec<T>,
     rhs_index: usize,
     rhs_width: usize,
     found_match_for_lhs_tuple: bool,
     evaluator: Evaluator,
+    _marker: PhantomData<dyn PhysicalNode<'env, 'txn, S, M, T>>,
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
-    PhysicalNestedLoopJoin<'env, 'txn, S, M>
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>
+    PhysicalNestedLoopJoin<'env, 'txn, S, M, T>
 {
     pub fn plan(
         join_kind: ir::JoinKind,
         join_predicate: ExecutableExpr<'env, 'txn, S, M>,
         lhs_node: PhysicalNodeId,
         rhs_node: PhysicalNodeId,
-        arena: &mut PhysicalNodeArena<'env, 'txn, S, M>,
+        arena: &mut PhysicalNodeArena<'env, 'txn, S, M, T>,
     ) -> PhysicalNodeId {
         assert!(!join_kind.is_right(), "right joins are not supported by nested-loop join");
 
@@ -45,6 +48,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
                 rhs_index: 0,
                 rhs_tuples: Default::default(),
                 evaluator: Default::default(),
+                _marker: PhantomData,
             })
         })
     }
@@ -58,8 +62,8 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode<'env, 'txn, S, M>
-    for PhysicalNestedLoopJoin<'env, 'txn, S, M>
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>
+    PhysicalNode<'env, 'txn, S, M, T> for PhysicalNestedLoopJoin<'env, 'txn, S, M, T>
 {
     impl_physical_node_conversions!(M; source, sink, operator);
 
@@ -67,7 +71,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode
         self.id
     }
 
-    fn width(&self, nodes: &PhysicalNodeArena<'env, 'txn, S, M>) -> usize {
+    fn width(&self, nodes: &PhysicalNodeArena<'env, 'txn, S, M, T>) -> usize {
         nodes[self.lhs_node()].width(nodes) + self.rhs_width
     }
 
@@ -77,10 +81,10 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode
 
     fn build_pipelines(
         &self,
-        nodes: &PhysicalNodeArena<'env, 'txn, S, M>,
-        arena: &mut PipelineBuilderArena<'env, 'txn, S, M>,
-        meta_builder: Idx<MetaPipelineBuilder<'env, 'txn, S, M>>,
-        current: Idx<PipelineBuilder<'env, 'txn, S, M>>,
+        nodes: &PhysicalNodeArena<'env, 'txn, S, M, T>,
+        arena: &mut PipelineBuilderArena<'env, 'txn, S, M, T>,
+        meta_builder: Idx<MetaPipelineBuilder<'env, 'txn, S, M, T>>,
+        current: Idx<PipelineBuilder<'env, 'txn, S, M, T>>,
     ) {
         // `current` is the probe pipeline of the join
         arena[current].add_operator(self);
@@ -95,15 +99,15 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
-    PhysicalOperator<'env, 'txn, S, M> for PhysicalNestedLoopJoin<'env, 'txn, S, M>
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>
+    PhysicalOperator<'env, 'txn, S, M, T> for PhysicalNestedLoopJoin<'env, 'txn, S, M, T>
 {
     #[tracing::instrument(level = "debug", skip(self, ecx))]
     fn execute(
         &mut self,
-        ecx: &ExecutionContext<'_, 'env, 'txn, S, M>,
-        lhs_tuple: Tuple,
-    ) -> ExecutionResult<OperatorState<Tuple>> {
+        ecx: &ExecutionContext<'_, 'env, 'txn, S, M, T>,
+        lhs_tuple: T,
+    ) -> ExecutionResult<OperatorState<T>> {
         let lhs_width = lhs_tuple.width();
 
         let storage = ecx.storage();
@@ -162,7 +166,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
                 // If this is a mark join, we only want to emit the lhs tuple.
                 // Reset the rhs and continue to the next lhs tuple.
                 self.rhs_index = 0;
-                let lhs_tuple = Tuple::from_iter(
+                let lhs_tuple = T::from_iter(
                     joint_tuple.into_iter().take(lhs_width).chain(std::iter::once(true.into())),
                 );
                 Ok(OperatorState::Yield(lhs_tuple))
@@ -177,38 +181,41 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSink<'env, 'txn, S, M>
-    for PhysicalNestedLoopJoin<'env, 'txn, S, M>
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>
+    PhysicalSink<'env, 'txn, S, M, T> for PhysicalNestedLoopJoin<'env, 'txn, S, M, T>
 {
     fn sink(
         &mut self,
-        _ecx: &ExecutionContext<'_, 'env, 'txn, S, M>,
-        rhs_tuple: Tuple,
+        _ecx: &ExecutionContext<'_, 'env, 'txn, S, M, T>,
+        rhs_tuple: T,
     ) -> ExecutionResult<()> {
         tracing::debug!(%rhs_tuple, "building nested loop join");
         self.rhs_tuples.push(rhs_tuple);
         Ok(())
     }
 
-    fn finalize(&mut self, _ecx: &ExecutionContext<'_, 'env, 'txn, S, M>) -> ExecutionResult<()> {
+    fn finalize(
+        &mut self,
+        _ecx: &ExecutionContext<'_, 'env, 'txn, S, M, T>,
+    ) -> ExecutionResult<()> {
         self.rhs_tuples.shrink_to_fit();
         Ok(())
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSource<'env, 'txn, S, M>
-    for PhysicalNestedLoopJoin<'env, 'txn, S, M>
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>
+    PhysicalSource<'env, 'txn, S, M, T> for PhysicalNestedLoopJoin<'env, 'txn, S, M, T>
 {
     fn source(
         &mut self,
-        _ecx: &ExecutionContext<'_, 'env, 'txn, S, M>,
-    ) -> ExecutionResult<TupleStream<'_>> {
+        _ecx: &ExecutionContext<'_, 'env, 'txn, S, M, T>,
+    ) -> ExecutionResult<TupleStream<'_, T>> {
         todo!()
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Explain<'env, 'txn, S, M>
-    for PhysicalNestedLoopJoin<'env, 'txn, S, M>
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>
+    Explain<'env, 'txn, S, M> for PhysicalNestedLoopJoin<'env, 'txn, S, M, T>
 {
     fn as_dyn(&self) -> &dyn Explain<'env, 'txn, S, M> {
         self

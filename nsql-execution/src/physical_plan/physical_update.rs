@@ -8,25 +8,25 @@ use super::*;
 use crate::ReadWriteExecutionMode;
 
 #[derive(Debug)]
-pub(crate) struct PhysicalUpdate<'env, 'txn, S> {
+pub(crate) struct PhysicalUpdate<'env, 'txn, S, T> {
     id: PhysicalNodeId,
     children: [PhysicalNodeId; 1],
     table: Oid<Table>,
-    tuples: Vec<Tuple>,
+    tuples: Vec<T>,
     returning: ExecutableTupleExpr<'env, 'txn, S, ReadWriteExecutionMode>,
-    returning_tuples: Vec<Tuple>,
+    returning_tuples: Vec<T>,
     evaluator: Evaluator,
-    _marker: PhantomData<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode>>,
+    _marker: PhantomData<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode, T>>,
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalUpdate<'env, 'txn, S> {
+impl<'env: 'txn, 'txn, S: StorageEngine, T: TupleTrait> PhysicalUpdate<'env, 'txn, S, T> {
     pub fn plan(
         table: Oid<Table>,
         // This is the source of the updates.
         // The schema should be that of the table being updated + the `tid` in the rightmost column
         source: PhysicalNodeId,
         returning: ExecutableTupleExpr<'env, 'txn, S, ReadWriteExecutionMode>,
-        arena: &mut PhysicalNodeArena<'env, 'txn, S, ReadWriteExecutionMode>,
+        arena: &mut PhysicalNodeArena<'env, 'txn, S, ReadWriteExecutionMode, T>,
     ) -> PhysicalNodeId {
         arena.alloc_with(|id| {
             Box::new(Self {
@@ -43,8 +43,8 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalUpdate<'env, 'txn, S> {
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode>
-    for PhysicalUpdate<'env, 'txn, S>
+impl<'env: 'txn, 'txn, S: StorageEngine, T: TupleTrait>
+    PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode, T> for PhysicalUpdate<'env, 'txn, S, T>
 {
     impl_physical_node_conversions!(ReadWriteExecutionMode; source, sink; not operator);
 
@@ -52,7 +52,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalNode<'env, 'txn, S, ReadWriteEx
         self.id
     }
 
-    fn width(&self, _nodes: &PhysicalNodeArena<'env, 'txn, S, ReadWriteExecutionMode>) -> usize {
+    fn width(&self, _nodes: &PhysicalNodeArena<'env, 'txn, S, ReadWriteExecutionMode, T>) -> usize {
         self.returning.width()
     }
 
@@ -62,13 +62,13 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalNode<'env, 'txn, S, ReadWriteEx
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSink<'env, 'txn, S, ReadWriteExecutionMode>
-    for PhysicalUpdate<'env, 'txn, S>
+impl<'env: 'txn, 'txn, S: StorageEngine, T: TupleTrait>
+    PhysicalSink<'env, 'txn, S, ReadWriteExecutionMode, T> for PhysicalUpdate<'env, 'txn, S, T>
 {
     fn sink(
         &mut self,
-        _ecx: &ExecutionContext<'_, 'env, 'txn, S, ReadWriteExecutionMode>,
-        tuple: Tuple,
+        _ecx: &ExecutionContext<'_, 'env, 'txn, S, ReadWriteExecutionMode, T>,
+        tuple: T,
     ) -> ExecutionResult<()> {
         self.tuples.push(tuple);
         Ok(())
@@ -76,7 +76,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSink<'env, 'txn, S, ReadWriteEx
 
     fn finalize(
         &mut self,
-        ecx: &ExecutionContext<'_, 'env, 'txn, S, ReadWriteExecutionMode>,
+        ecx: &ExecutionContext<'_, 'env, 'txn, S, ReadWriteExecutionMode, T>,
     ) -> ExecutionResult<()> {
         let tx = ecx.tcx();
         let catalog = ecx.catalog();
@@ -86,7 +86,8 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSink<'env, 'txn, S, ReadWriteEx
         for tuple in &self.tuples {
             // FIXME we need to detect whether or not we actually updated something before adding it
             // to the returning set
-            storage.update(tuple)?;
+            // FIXME more efficient conversion
+            storage.update(&tuple.clone().into())?;
 
             if !self.returning.is_empty() {
                 self.returning_tuples.push(self.returning.eval(
@@ -102,20 +103,20 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSink<'env, 'txn, S, ReadWriteEx
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSource<'env, 'txn, S, ReadWriteExecutionMode>
-    for PhysicalUpdate<'env, 'txn, S>
+impl<'env: 'txn, 'txn, S: StorageEngine, T: TupleTrait>
+    PhysicalSource<'env, 'txn, S, ReadWriteExecutionMode, T> for PhysicalUpdate<'env, 'txn, S, T>
 {
     fn source(
         &mut self,
-        _ecx: &ExecutionContext<'_, 'env, 'txn, S, ReadWriteExecutionMode>,
-    ) -> ExecutionResult<TupleStream<'_>> {
+        _ecx: &ExecutionContext<'_, 'env, 'txn, S, ReadWriteExecutionMode, T>,
+    ) -> ExecutionResult<TupleStream<'_, T>> {
         let returning = std::mem::take(&mut self.returning_tuples);
         Ok(Box::new(fallible_iterator::convert(returning.into_iter().map(Ok))))
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine> Explain<'env, 'txn, S, ReadWriteExecutionMode>
-    for PhysicalUpdate<'env, 'txn, S>
+impl<'env: 'txn, 'txn, S: StorageEngine, T: TupleTrait>
+    Explain<'env, 'txn, S, ReadWriteExecutionMode> for PhysicalUpdate<'env, 'txn, S, T>
 {
     fn as_dyn(&self) -> &dyn Explain<'env, 'txn, S, ReadWriteExecutionMode> {
         self

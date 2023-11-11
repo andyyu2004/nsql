@@ -7,15 +7,15 @@ use nsql_storage_engine::FallibleIterator;
 
 use super::*;
 
-pub struct PhysicalTableScan<'env, 'txn, S, M> {
+pub struct PhysicalTableScan<'env, 'txn, S, M, T> {
     id: PhysicalNodeId,
     table: Table,
     columns: Box<[Column]>,
     projection: Option<Box<[ColumnIndex]>>,
-    _marker: PhantomData<dyn PhysicalNode<'env, 'txn, S, M>>,
+    _marker: PhantomData<dyn PhysicalNode<'env, 'txn, S, M, T>>,
 }
 
-impl<'env, 'txn, S, M> fmt::Debug for PhysicalTableScan<'env, 'txn, S, M> {
+impl<'env, 'txn, S, M, T> fmt::Debug for PhysicalTableScan<'env, 'txn, S, M, T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("PhysicalTableScan")
             .field("table", &self.table)
@@ -24,14 +24,14 @@ impl<'env, 'txn, S, M> fmt::Debug for PhysicalTableScan<'env, 'txn, S, M> {
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
-    PhysicalTableScan<'env, 'txn, S, M>
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>
+    PhysicalTableScan<'env, 'txn, S, M, T>
 {
     pub(crate) fn plan(
         table: Table,
         columns: impl Into<Box<[Column]>>,
         projection: Option<Box<[ColumnIndex]>>,
-        arena: &mut PhysicalNodeArena<'env, 'txn, S, M>,
+        arena: &mut PhysicalNodeArena<'env, 'txn, S, M, T>,
     ) -> PhysicalNodeId {
         arena.alloc_with(|id| {
             Box::new(Self { id, table, columns: columns.into(), projection, _marker: PhantomData })
@@ -39,14 +39,14 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSource<'env, 'txn, S, M>
-    for PhysicalTableScan<'env, 'txn, S, M>
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>
+    PhysicalSource<'env, 'txn, S, M, T> for PhysicalTableScan<'env, 'txn, S, M, T>
 {
     #[tracing::instrument(skip(self, ecx))]
     fn source<'s>(
         &'s mut self,
-        ecx: &'s ExecutionContext<'_, 'env, 'txn, S, M>,
-    ) -> ExecutionResult<TupleStream<'s>> {
+        ecx: &'s ExecutionContext<'_, 'env, 'txn, S, M, T>,
+    ) -> ExecutionResult<TupleStream<'s, T>> {
         let tx = ecx.tcx();
         let catalog = ecx.catalog();
         let storage = Arc::new(self.table.storage::<S, M>(catalog, tx)?);
@@ -56,13 +56,16 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
             .as_ref()
             .map(|p| p.iter().map(|&idx| TupleIndex::new(idx.as_usize())).collect());
 
-        let stream = storage.scan_arc(projection)?.map_err(Into::into);
+        let stream = storage
+            .scan_arc(projection)?
+            .map(|tuple: Tuple| Ok(T::from(tuple)))
+            .map_err(Into::into);
         Ok(Box::new(stream) as _)
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode<'env, 'txn, S, M>
-    for PhysicalTableScan<'env, 'txn, S, M>
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>
+    PhysicalNode<'env, 'txn, S, M, T> for PhysicalTableScan<'env, 'txn, S, M, T>
 {
     impl_physical_node_conversions!(M; source; not operator, sink);
 
@@ -70,7 +73,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode
         self.id
     }
 
-    fn width(&self, _nodes: &PhysicalNodeArena<'env, 'txn, S, M>) -> usize {
+    fn width(&self, _nodes: &PhysicalNodeArena<'env, 'txn, S, M, T>) -> usize {
         self.projection.as_ref().map_or_else(|| self.columns.len(), |p| p.len())
     }
 
@@ -79,8 +82,8 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Explain<'env, 'txn, S, M>
-    for PhysicalTableScan<'env, 'txn, S, M>
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>
+    Explain<'env, 'txn, S, M> for PhysicalTableScan<'env, 'txn, S, M, T>
 {
     fn as_dyn(&self) -> &dyn Explain<'env, 'txn, S, M> {
         self

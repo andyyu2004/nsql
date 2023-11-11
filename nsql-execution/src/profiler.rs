@@ -4,7 +4,7 @@ use std::time::{Duration, Instant};
 
 use nsql_arena::{ArenaMap, Idx};
 use nsql_catalog::{Catalog, TransactionContext};
-use nsql_storage::tuple::Tuple;
+use nsql_storage::tuple::TupleTrait;
 use nsql_storage_engine::{ExecutionMode, FallibleIterator, StorageEngine};
 
 use crate::physical_plan::{explain, Explain};
@@ -111,14 +111,14 @@ impl<'p> Drop for ProfilerGuard<'p> {
     }
 }
 
-pub(crate) trait PhysicalNodeProfileExt<'env, 'txn, S, M>: Sized {
+pub(crate) trait PhysicalNodeProfileExt<'env, 'txn, S, M, T>: Sized {
     fn profiled(self, profiler: &Profiler) -> ProfiledPhysicalNode<'_, Self>;
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, N>
-    PhysicalNodeProfileExt<'env, 'txn, S, M> for N
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait, N>
+    PhysicalNodeProfileExt<'env, 'txn, S, M, T> for N
 where
-    N: PhysicalNode<'env, 'txn, S, M>,
+    N: PhysicalNode<'env, 'txn, S, M, T>,
 {
     fn profiled(self, profiler: &Profiler) -> ProfiledPhysicalNode<'_, Self> {
         // ensure the node has an entry in the metrics map even if it never runs
@@ -160,16 +160,16 @@ where
     }
 }
 
-impl<'p, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, N>
-    PhysicalNode<'env, 'txn, S, M> for ProfiledPhysicalNode<'p, N>
+impl<'p, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait, N>
+    PhysicalNode<'env, 'txn, S, M, T> for ProfiledPhysicalNode<'p, N>
 where
-    N: PhysicalNode<'env, 'txn, S, M>,
+    N: PhysicalNode<'env, 'txn, S, M, T>,
 {
     fn id(&self) -> PhysicalNodeId {
         self.node.id()
     }
 
-    fn width(&self, nodes: &PhysicalNodeArena<'env, 'txn, S, M>) -> usize {
+    fn width(&self, nodes: &PhysicalNodeArena<'env, 'txn, S, M, T>) -> usize {
         self.node.width(nodes)
     }
 
@@ -179,53 +179,62 @@ where
 
     fn as_source(
         &self,
-    ) -> Result<&dyn PhysicalSource<'env, 'txn, S, M>, &dyn PhysicalNode<'env, 'txn, S, M>> {
+    ) -> Result<&dyn PhysicalSource<'env, 'txn, S, M, T>, &dyn PhysicalNode<'env, 'txn, S, M, T>>
+    {
         self.node.as_source()
     }
 
     fn as_source_mut(
         &mut self,
-    ) -> Result<&mut dyn PhysicalSource<'env, 'txn, S, M>, &mut dyn PhysicalNode<'env, 'txn, S, M>>
-    {
+    ) -> Result<
+        &mut dyn PhysicalSource<'env, 'txn, S, M, T>,
+        &mut dyn PhysicalNode<'env, 'txn, S, M, T>,
+    > {
         self.node.as_source_mut()
     }
 
     fn as_sink(
         &self,
-    ) -> Result<&dyn PhysicalSink<'env, 'txn, S, M>, &dyn PhysicalNode<'env, 'txn, S, M>> {
+    ) -> Result<&dyn PhysicalSink<'env, 'txn, S, M, T>, &dyn PhysicalNode<'env, 'txn, S, M, T>>
+    {
         self.node.as_sink()
     }
 
     fn as_sink_mut(
         &mut self,
-    ) -> Result<&mut dyn PhysicalSink<'env, 'txn, S, M>, &mut dyn PhysicalNode<'env, 'txn, S, M>>
-    {
+    ) -> Result<
+        &mut dyn PhysicalSink<'env, 'txn, S, M, T>,
+        &mut dyn PhysicalNode<'env, 'txn, S, M, T>,
+    > {
         self.node.as_sink_mut()
     }
 
     fn as_operator(
         &self,
-    ) -> Result<&dyn PhysicalOperator<'env, 'txn, S, M>, &dyn PhysicalNode<'env, 'txn, S, M>> {
+    ) -> Result<&dyn PhysicalOperator<'env, 'txn, S, M, T>, &dyn PhysicalNode<'env, 'txn, S, M, T>>
+    {
         self.node.as_operator()
     }
 
     fn as_operator_mut(
         &mut self,
-    ) -> Result<&mut dyn PhysicalOperator<'env, 'txn, S, M>, &mut dyn PhysicalNode<'env, 'txn, S, M>>
-    {
+    ) -> Result<
+        &mut dyn PhysicalOperator<'env, 'txn, S, M, T>,
+        &mut dyn PhysicalNode<'env, 'txn, S, M, T>,
+    > {
         self.node.as_operator_mut()
     }
 }
 
-impl<'p, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, N>
-    PhysicalSource<'env, 'txn, S, M> for ProfiledPhysicalNode<'p, N>
+impl<'p, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait, N>
+    PhysicalSource<'env, 'txn, S, M, T> for ProfiledPhysicalNode<'p, N>
 where
-    N: PhysicalSource<'env, 'txn, S, M>,
+    N: PhysicalSource<'env, 'txn, S, M, T>,
 {
     fn source<'s>(
         &'s mut self,
-        ecx: &'s ExecutionContext<'_, 'env, 'txn, S, M>,
-    ) -> ExecutionResult<TupleStream<'s>> {
+        ecx: &'s ExecutionContext<'_, 'env, 'txn, S, M, T>,
+    ) -> ExecutionResult<TupleStream<'s, T>> {
         let id = self.id();
         let _guard = self.profiler.start(id, NodeType::Misc);
         let iter = self.node.source(ecx)?;
@@ -256,16 +265,16 @@ impl<'p, I: FallibleIterator> FallibleIterator for ProfiledIterator<'p, I> {
     }
 }
 
-impl<'p, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, N>
-    PhysicalOperator<'env, 'txn, S, M> for ProfiledPhysicalNode<'p, N>
+impl<'p, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait, N>
+    PhysicalOperator<'env, 'txn, S, M, T> for ProfiledPhysicalNode<'p, N>
 where
-    N: PhysicalOperator<'env, 'txn, S, M>,
+    N: PhysicalOperator<'env, 'txn, S, M, T>,
 {
     fn execute(
         &mut self,
-        ecx: &ExecutionContext<'_, 'env, 'txn, S, M>,
-        input: Tuple,
-    ) -> ExecutionResult<OperatorState<Tuple>> {
+        ecx: &ExecutionContext<'_, 'env, 'txn, S, M, T>,
+        input: T,
+    ) -> ExecutionResult<OperatorState<T>> {
         let mut guard = self.profiler.start(self.id(), NodeType::Operator);
         match self.node.execute(ecx, input)? {
             OperatorState::Again(t) => {
@@ -291,26 +300,29 @@ where
         }
     }
 }
-impl<'p, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, N>
-    PhysicalSink<'env, 'txn, S, M> for ProfiledPhysicalNode<'p, N>
+impl<'p, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait, N>
+    PhysicalSink<'env, 'txn, S, M, T> for ProfiledPhysicalNode<'p, N>
 where
-    N: PhysicalSink<'env, 'txn, S, M>,
+    N: PhysicalSink<'env, 'txn, S, M, T>,
 {
-    fn initialize(&mut self, ecx: &ExecutionContext<'_, 'env, 'txn, S, M>) -> ExecutionResult<()> {
+    fn initialize(
+        &mut self,
+        ecx: &ExecutionContext<'_, 'env, 'txn, S, M, T>,
+    ) -> ExecutionResult<()> {
         let _guard = self.profiler.start(self.id(), NodeType::Misc);
         self.node.initialize(ecx)
     }
 
     fn sink(
         &mut self,
-        ecx: &ExecutionContext<'_, 'env, 'txn, S, M>,
-        tuple: Tuple,
+        ecx: &ExecutionContext<'_, 'env, 'txn, S, M, T>,
+        tuple: T,
     ) -> ExecutionResult<()> {
         let _guard = self.profiler.start(self.id(), NodeType::Sink);
         self.node.sink(ecx, tuple)
     }
 
-    fn finalize(&mut self, ecx: &ExecutionContext<'_, 'env, 'txn, S, M>) -> ExecutionResult<()> {
+    fn finalize(&mut self, ecx: &ExecutionContext<'_, 'env, 'txn, S, M, T>) -> ExecutionResult<()> {
         let _guard = self.profiler.start(self.id(), NodeType::Misc);
         self.node.finalize(ecx)
     }

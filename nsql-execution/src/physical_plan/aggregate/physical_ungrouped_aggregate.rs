@@ -10,22 +10,22 @@ type AggregateFunctionAndArgs<'env, 'txn, S, M> =
     (ir::Function, Option<ExecutableExpr<'env, 'txn, S, M>>);
 
 #[derive(Debug)]
-pub struct PhysicalUngroupedAggregate<'env, 'txn, S, M> {
+pub struct PhysicalUngroupedAggregate<'env, 'txn, S, M, T> {
     id: PhysicalNodeId,
     functions: Box<[AggregateFunctionAndArgs<'env, 'txn, S, M>]>,
     aggregate_functions: Vec<Box<dyn AggregateFunctionInstance>>,
     children: [PhysicalNodeId; 1],
     evaluator: Evaluator,
-    _marker: PhantomData<dyn PhysicalNode<'env, 'txn, S, M>>,
+    _marker: PhantomData<dyn PhysicalNode<'env, 'txn, S, M, T>>,
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
-    PhysicalUngroupedAggregate<'env, 'txn, S, M>
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>
+    PhysicalUngroupedAggregate<'env, 'txn, S, M, T>
 {
     pub(crate) fn plan(
         functions: Box<[AggregateFunctionAndArgs<'env, 'txn, S, M>]>,
         source: PhysicalNodeId,
-        arena: &mut PhysicalNodeArena<'env, 'txn, S, M>,
+        arena: &mut PhysicalNodeArena<'env, 'txn, S, M, T>,
     ) -> PhysicalNodeId {
         arena.alloc_with(|id| {
             Box::new(Self {
@@ -43,25 +43,25 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSource<'env, 'txn, S, M>
-    for PhysicalUngroupedAggregate<'env, 'txn, S, M>
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>
+    PhysicalSource<'env, 'txn, S, M, T> for PhysicalUngroupedAggregate<'env, 'txn, S, M, T>
 {
     fn source(
         &mut self,
-        _ecx: &ExecutionContext<'_, 'env, 'txn, S, M>,
-    ) -> ExecutionResult<TupleStream<'_>> {
+        _ecx: &ExecutionContext<'_, 'env, 'txn, S, M, T>,
+    ) -> ExecutionResult<TupleStream<'_, T>> {
         let values = mem::take(&mut self.aggregate_functions).into_iter().map(|f| f.finalize());
-        Ok(Box::new(fallible_iterator::once(Tuple::from_iter(values))))
+        Ok(Box::new(fallible_iterator::once(T::from_iter(values))))
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSink<'env, 'txn, S, M>
-    for PhysicalUngroupedAggregate<'env, 'txn, S, M>
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>
+    PhysicalSink<'env, 'txn, S, M, T> for PhysicalUngroupedAggregate<'env, 'txn, S, M, T>
 {
     fn sink(
         &mut self,
-        ecx: &ExecutionContext<'_, 'env, 'txn, S, M>,
-        tuple: Tuple,
+        ecx: &ExecutionContext<'_, 'env, 'txn, S, M, T>,
+        tuple: T,
     ) -> ExecutionResult<()> {
         let storage = ecx.storage();
         let tx = ecx.tcx();
@@ -78,14 +78,14 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSink
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode<'env, 'txn, S, M>
-    for PhysicalUngroupedAggregate<'env, 'txn, S, M>
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>
+    PhysicalNode<'env, 'txn, S, M, T> for PhysicalUngroupedAggregate<'env, 'txn, S, M, T>
 {
     fn id(&self) -> PhysicalNodeId {
         self.id
     }
 
-    fn width(&self, _nodes: &PhysicalNodeArena<'env, 'txn, S, M>) -> usize {
+    fn width(&self, _nodes: &PhysicalNodeArena<'env, 'txn, S, M, T>) -> usize {
         self.functions.len()
     }
 
@@ -96,8 +96,8 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode
     impl_physical_node_conversions!(M; source, sink; not operator);
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Explain<'env, 'txn, S, M>
-    for PhysicalUngroupedAggregate<'env, 'txn, S, M>
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>
+    Explain<'env, 'txn, S, M> for PhysicalUngroupedAggregate<'env, 'txn, S, M, T>
 {
     fn as_dyn(&self) -> &dyn Explain<'env, 'txn, S, M> {
         self

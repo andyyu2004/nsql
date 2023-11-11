@@ -8,20 +8,20 @@ use super::*;
 use crate::pipeline::{MetaPipelineBuilder, PipelineBuilder, PipelineBuilderArena};
 
 #[derive(Debug)]
-pub(crate) struct PhysicalUnion<'env, 'txn, S, M> {
+pub(crate) struct PhysicalUnion<'env, 'txn, S, M, T> {
     id: PhysicalNodeId,
     children: [PhysicalNodeId; 2],
-    buffer: Vec<Tuple>,
-    _marker: PhantomData<dyn PhysicalNode<'env, 'txn, S, M>>,
+    buffer: Vec<T>,
+    _marker: PhantomData<dyn PhysicalNode<'env, 'txn, S, M, T>>,
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
-    PhysicalUnion<'env, 'txn, S, M>
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>
+    PhysicalUnion<'env, 'txn, S, M, T>
 {
     pub fn plan(
         lhs: PhysicalNodeId,
         rhs: PhysicalNodeId,
-        arena: &mut PhysicalNodeArena<'env, 'txn, S, M>,
+        arena: &mut PhysicalNodeArena<'env, 'txn, S, M, T>,
     ) -> PhysicalNodeId {
         arena.alloc_with(|id| {
             Box::new(Self {
@@ -34,8 +34,8 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode<'env, 'txn, S, M>
-    for PhysicalUnion<'env, 'txn, S, M>
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>
+    PhysicalNode<'env, 'txn, S, M, T> for PhysicalUnion<'env, 'txn, S, M, T>
 {
     impl_physical_node_conversions!(M; source, sink; not operator);
 
@@ -43,7 +43,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode
         self.id
     }
 
-    fn width(&self, nodes: &PhysicalNodeArena<'env, 'txn, S, M>) -> usize {
+    fn width(&self, nodes: &PhysicalNodeArena<'env, 'txn, S, M, T>) -> usize {
         debug_assert_eq!(
             nodes[self.children[0]].width(nodes),
             nodes[self.children[1]].width(nodes)
@@ -57,10 +57,10 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode
 
     fn build_pipelines(
         &self,
-        nodes: &PhysicalNodeArena<'env, 'txn, S, M>,
-        arena: &mut PipelineBuilderArena<'env, 'txn, S, M>,
-        meta_builder: Idx<MetaPipelineBuilder<'env, 'txn, S, M>>,
-        current: Idx<PipelineBuilder<'env, 'txn, S, M>>,
+        nodes: &PhysicalNodeArena<'env, 'txn, S, M, T>,
+        arena: &mut PipelineBuilderArena<'env, 'txn, S, M, T>,
+        meta_builder: Idx<MetaPipelineBuilder<'env, 'txn, S, M, T>>,
+        current: Idx<PipelineBuilder<'env, 'txn, S, M, T>>,
     ) {
         // FIXME it's dumb to need to buffer the full output of both outputs.
         // We could make the union a sort of pseudo operator which does not implement any of the operator traits.
@@ -86,33 +86,33 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSource<'env, 'txn, S, M>
-    for PhysicalUnion<'env, 'txn, S, M>
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>
+    PhysicalSource<'env, 'txn, S, M, T> for PhysicalUnion<'env, 'txn, S, M, T>
 {
     fn source(
         &mut self,
-        _ecx: &ExecutionContext<'_, 'env, 'txn, S, M>,
-    ) -> ExecutionResult<TupleStream<'_>> {
+        _ecx: &ExecutionContext<'_, 'env, 'txn, S, M, T>,
+    ) -> ExecutionResult<TupleStream<'_, T>> {
         let buffer = mem::take(&mut self.buffer);
         Ok(Box::new(fallible_iterator::convert(buffer.into_iter().map(Ok))))
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSink<'env, 'txn, S, M>
-    for PhysicalUnion<'env, 'txn, S, M>
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>
+    PhysicalSink<'env, 'txn, S, M, T> for PhysicalUnion<'env, 'txn, S, M, T>
 {
     fn sink(
         &mut self,
-        _ecx: &ExecutionContext<'_, 'env, 'txn, S, M>,
-        tuple: Tuple,
+        _ecx: &ExecutionContext<'_, 'env, 'txn, S, M, T>,
+        tuple: T,
     ) -> ExecutionResult<()> {
         self.buffer.push(tuple);
         Ok(())
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Explain<'env, 'txn, S, M>
-    for PhysicalUnion<'env, 'txn, S, M>
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>
+    Explain<'env, 'txn, S, M> for PhysicalUnion<'env, 'txn, S, M, T>
 {
     fn as_dyn(&self) -> &dyn Explain<'env, 'txn, S, M> {
         self

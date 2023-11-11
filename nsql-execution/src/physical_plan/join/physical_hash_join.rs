@@ -6,36 +6,36 @@ use super::*;
 use crate::pipeline::{MetaPipelineBuilder, PipelineBuilder, PipelineBuilderArena};
 
 #[derive(Debug)]
-pub(crate) struct PhysicalHashJoin<'env, 'txn, S, M> {
+pub(crate) struct PhysicalHashJoin<'env, 'txn, S, M, T: 'static> {
     id: PhysicalNodeId,
     children: [PhysicalNodeId; 2],
     join_kind: ir::JoinKind,
     conditions: Box<[ir::JoinCondition<ExecutableExpr<'env, 'txn, S, M>>]>,
     evaluator: Evaluator,
     rhs_width: usize,
-    hash_table: FxHashMap<Tuple, Vec<Tuple>>,
-    probe_state: ProbeState,
+    hash_table: FxHashMap<T, Vec<T>>,
+    probe_state: ProbeState<T>,
 }
 
 #[derive(Debug, Default)]
-enum ProbeState {
+enum ProbeState<T: 'static> {
     #[default]
     Next,
     Probing {
         // points into the hashtable
-        rhs_tuples: std::slice::Iter<'static, Tuple>,
+        rhs_tuples: std::slice::Iter<'static, T>,
     },
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
-    PhysicalHashJoin<'env, 'txn, S, M>
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>
+    PhysicalHashJoin<'env, 'txn, S, M, T>
 {
     pub fn plan(
         join_kind: ir::JoinKind,
         conditions: Box<[ir::JoinCondition<ExecutableExpr<'env, 'txn, S, M>>]>,
         lhs_node: PhysicalNodeId,
         rhs_node: PhysicalNodeId,
-        arena: &mut PhysicalNodeArena<'env, 'txn, S, M>,
+        arena: &mut PhysicalNodeArena<'env, 'txn, S, M, T>,
     ) -> PhysicalNodeId {
         assert!(!join_kind.is_right(), "right hashjoins not implemented");
 
@@ -67,8 +67,8 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode<'env, 'txn, S, M>
-    for PhysicalHashJoin<'env, 'txn, S, M>
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>
+    PhysicalNode<'env, 'txn, S, M, T> for PhysicalHashJoin<'env, 'txn, S, M, T>
 {
     impl_physical_node_conversions!(M; source, sink, operator);
 
@@ -76,7 +76,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode
         self.id
     }
 
-    fn width(&self, nodes: &PhysicalNodeArena<'env, 'txn, S, M>) -> usize {
+    fn width(&self, nodes: &PhysicalNodeArena<'env, 'txn, S, M, T>) -> usize {
         nodes[self.lhs_node()].width(nodes) + self.rhs_width
     }
 
@@ -86,10 +86,10 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode
 
     fn build_pipelines(
         &self,
-        nodes: &PhysicalNodeArena<'env, 'txn, S, M>,
-        arena: &mut PipelineBuilderArena<'env, 'txn, S, M>,
-        meta_builder: Idx<MetaPipelineBuilder<'env, 'txn, S, M>>,
-        current: Idx<PipelineBuilder<'env, 'txn, S, M>>,
+        nodes: &PhysicalNodeArena<'env, 'txn, S, M, T>,
+        arena: &mut PipelineBuilderArena<'env, 'txn, S, M, T>,
+        meta_builder: Idx<MetaPipelineBuilder<'env, 'txn, S, M, T>>,
+        current: Idx<PipelineBuilder<'env, 'txn, S, M, T>>,
     ) {
         // `current` is the probe pipeline of the join
         arena[current].add_operator(self);
@@ -104,15 +104,15 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
-    PhysicalOperator<'env, 'txn, S, M> for PhysicalHashJoin<'env, 'txn, S, M>
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>
+    PhysicalOperator<'env, 'txn, S, M, T> for PhysicalHashJoin<'env, 'txn, S, M, T>
 {
     #[tracing::instrument(level = "debug", skip(self, ecx))]
     fn execute(
         &mut self,
-        ecx: &ExecutionContext<'_, 'env, 'txn, S, M>,
-        lhs_tuple: Tuple,
-    ) -> ExecutionResult<OperatorState<Tuple>> {
+        ecx: &ExecutionContext<'_, 'env, 'txn, S, M, T>,
+        lhs_tuple: T,
+    ) -> ExecutionResult<OperatorState<T>> {
         let storage = ecx.storage();
         let tcx = ecx.tcx();
 
@@ -123,7 +123,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
                         .conditions
                         .iter()
                         .map(|c| self.evaluator.eval_expr(storage, tcx, &lhs_tuple, &c.lhs))
-                        .collect::<Result<Tuple, _>>()?;
+                        .collect::<Result<T, _>>()?;
 
                     // FIXME this implements nulls not distinct, we need to implement null distinct too
                     // Could probably have a wrapper type for tuples that implements Eq and Hash but considers nulls not eq
@@ -173,13 +173,13 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSink<'env, 'txn, S, M>
-    for PhysicalHashJoin<'env, 'txn, S, M>
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>
+    PhysicalSink<'env, 'txn, S, M, T> for PhysicalHashJoin<'env, 'txn, S, M, T>
 {
     fn sink(
         &mut self,
-        ecx: &ExecutionContext<'_, 'env, 'txn, S, M>,
-        rhs_tuple: Tuple,
+        ecx: &ExecutionContext<'_, 'env, 'txn, S, M, T>,
+        rhs_tuple: T,
     ) -> ExecutionResult<()> {
         tracing::debug!(%rhs_tuple, "building hash join");
         let storage = ecx.storage();
@@ -190,14 +190,17 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSink
             .iter()
             .inspect(|c| assert_eq!(c.op, ir::JoinOperator::IsNotDistinctFrom, "rest not impl"))
             .map(|c| self.evaluator.eval_expr(storage, tcx, &rhs_tuple, &c.rhs))
-            .collect::<Result<Tuple, _>>()?;
+            .collect::<Result<T, _>>()?;
 
         self.hash_table.entry(key).or_default().push(rhs_tuple);
 
         Ok(())
     }
 
-    fn finalize(&mut self, _ecx: &ExecutionContext<'_, 'env, 'txn, S, M>) -> ExecutionResult<()> {
+    fn finalize(
+        &mut self,
+        _ecx: &ExecutionContext<'_, 'env, 'txn, S, M, T>,
+    ) -> ExecutionResult<()> {
         self.hash_table.shrink_to_fit();
         self.hash_table.values_mut().for_each(|v| v.shrink_to_fit());
 
@@ -205,19 +208,19 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSink
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSource<'env, 'txn, S, M>
-    for PhysicalHashJoin<'env, 'txn, S, M>
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>
+    PhysicalSource<'env, 'txn, S, M, T> for PhysicalHashJoin<'env, 'txn, S, M, T>
 {
     fn source(
         &mut self,
-        _ecx: &ExecutionContext<'_, 'env, 'txn, S, M>,
-    ) -> ExecutionResult<TupleStream<'_>> {
+        _ecx: &ExecutionContext<'_, 'env, 'txn, S, M, T>,
+    ) -> ExecutionResult<TupleStream<'_, T>> {
         todo!()
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Explain<'env, 'txn, S, M>
-    for PhysicalHashJoin<'env, 'txn, S, M>
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>
+    Explain<'env, 'txn, S, M> for PhysicalHashJoin<'env, 'txn, S, M, T>
 {
     fn as_dyn(&self) -> &dyn Explain<'env, 'txn, S, M> {
         self

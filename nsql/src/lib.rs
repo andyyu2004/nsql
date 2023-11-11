@@ -22,7 +22,7 @@ use nsql_opt::optimize;
 use nsql_parse::ast;
 pub use nsql_parse::parse;
 pub use nsql_redb::RedbStorageEngine;
-pub use nsql_storage::tuple::Tuple;
+pub use nsql_storage::tuple::{Tuple, TupleTrait};
 use nsql_storage::Storage;
 pub use nsql_storage_engine::StorageEngine;
 use nsql_storage_engine::{
@@ -108,7 +108,7 @@ impl<S: StorageEngine> Nsql<S> {
     fn try_new(storage: S) -> Result<Self> {
         let pid: u32 = process::id();
         let filename = format!("nsql-{pid:07}.profile");
-        let path = env::temp_dir().join(filename);
+        let path = env::temp_dir().as_path().join(filename);
         let profiler = Profiler::new(path).map_err(|err| anyhow!(err))?;
         Ok(Self { shared: Arc::new(Shared::new(Storage::new(storage), profiler)) })
     }
@@ -451,10 +451,11 @@ impl<S: StorageEngine> Shared<S> {
         tcx: TransactionContext<'env, S, M>,
         plan: Box<ir::Plan>,
         do_physical_plan: impl for<'txn> FnOnce(
-            PhysicalPlanner<'env, 'txn, S, M>,
+            PhysicalPlanner<'env, 'txn, S, M, Tuple>,
             &dyn nsql_execution::TransactionContext<'env, 'txn, S, M>,
             Box<ir::Plan<nsql_opt::Query>>,
-        ) -> Result<PhysicalPlan<'env, 'txn, S, M>>,
+        )
+            -> Result<PhysicalPlan<'env, 'txn, S, M, Tuple>>,
     ) -> Result<(Option<TransactionContext<'env, S, M>>, MaterializedQueryOutput)> {
         let (auto_commit, state, output) = tcx.with::<Result<_>>(|tcx| {
             let catalog = Catalog::new(self.storage.storage());
@@ -470,7 +471,7 @@ impl<S: StorageEngine> Shared<S> {
                     do_physical_plan(physical_planner, &tcx, plan)
                 })?;
 
-            let ecx = ExecutionContext::<S, M>::new(catalog, &tcx, ctx);
+            let ecx = ExecutionContext::<S, M, Tuple>::new(catalog, &tcx, ctx);
             let tuples = self.profiler.try_profile(self.profiler.execute_event_id, || {
                 nsql_execution::execute(&ecx, physical_plan)
             })?;

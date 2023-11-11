@@ -8,7 +8,7 @@ use next_gen::generator_fn::GeneratorFn;
 use next_gen::prelude::*;
 use nsql_core::{Name, Oid};
 use nsql_storage::expr::TupleExpr;
-use nsql_storage::tuple::{IntoTuple, Tuple, TupleIndex};
+use nsql_storage::tuple::{IntoTuple, Tuple, TupleIndex, TupleTrait};
 use nsql_storage::value::Value;
 use nsql_storage_engine::{
     fallible_iterator, ExecutionMode, FallibleIterator, KeyExists, ReadTree,

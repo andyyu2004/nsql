@@ -3,21 +3,21 @@ use std::marker::PhantomData;
 use super::*;
 
 #[derive(Debug)]
-pub struct PhysicalFilter<'env, 'txn, S, M> {
+pub struct PhysicalFilter<'env, 'txn, S, M, T> {
     id: PhysicalNodeId,
     child: PhysicalNodeId,
     predicate: ExecutableExpr<'env, 'txn, S, M>,
     evaluator: Evaluator,
-    _marker: PhantomData<dyn PhysicalNode<'env, 'txn, S, M>>,
+    _marker: PhantomData<dyn PhysicalNode<'env, 'txn, S, M, T>>,
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
-    PhysicalFilter<'env, 'txn, S, M>
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>
+    PhysicalFilter<'env, 'txn, S, M, T>
 {
     pub(crate) fn plan(
         source: PhysicalNodeId,
         predicate: ExecutableExpr<'env, 'txn, S, M>,
-        arena: &mut PhysicalNodeArena<'env, 'txn, S, M>,
+        arena: &mut PhysicalNodeArena<'env, 'txn, S, M, T>,
     ) -> PhysicalNodeId {
         arena.alloc_with(|id| {
             Box::new(Self {
@@ -31,15 +31,15 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
-    PhysicalOperator<'env, 'txn, S, M> for PhysicalFilter<'env, 'txn, S, M>
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>
+    PhysicalOperator<'env, 'txn, S, M, T> for PhysicalFilter<'env, 'txn, S, M, T>
 {
     #[tracing::instrument(level = "debug", skip(self, ecx, input))]
     fn execute(
         &mut self,
-        ecx: &ExecutionContext<'_, 'env, 'txn, S, M>,
-        input: Tuple,
-    ) -> ExecutionResult<OperatorState<Tuple>> {
+        ecx: &ExecutionContext<'_, 'env, 'txn, S, M, T>,
+        input: T,
+    ) -> ExecutionResult<OperatorState<T>> {
         let storage = ecx.storage();
         let tx = ecx.tcx();
         let value = self.predicate.eval(&mut self.evaluator, storage, tx, &input)?;
@@ -56,8 +56,8 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode<'env, 'txn, S, M>
-    for PhysicalFilter<'env, 'txn, S, M>
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>
+    PhysicalNode<'env, 'txn, S, M, T> for PhysicalFilter<'env, 'txn, S, M, T>
 {
     impl_physical_node_conversions!(M; operator; not source, sink);
 
@@ -65,7 +65,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode
         self.id
     }
 
-    fn width(&self, nodes: &PhysicalNodeArena<'env, 'txn, S, M>) -> usize {
+    fn width(&self, nodes: &PhysicalNodeArena<'env, 'txn, S, M, T>) -> usize {
         nodes[self.child].width(nodes)
     }
 
@@ -75,8 +75,8 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Explain<'env, 'txn, S, M>
-    for PhysicalFilter<'env, 'txn, S, M>
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>
+    Explain<'env, 'txn, S, M> for PhysicalFilter<'env, 'txn, S, M, T>
 {
     fn as_dyn(&self) -> &dyn Explain<'env, 'txn, S, M> {
         self

@@ -1,6 +1,7 @@
 use std::marker::PhantomData;
 
 pub(crate) use nsql_arena::{Arena, Idx};
+use nsql_storage::tuple::TupleTrait;
 use nsql_storage_engine::StorageEngine;
 
 use crate::{
@@ -8,52 +9,52 @@ use crate::{
     PhysicalSource,
 };
 
-pub(crate) struct RootPipeline<'env, 'txn, S, M> {
-    pub arena: PipelineArena<'env, 'txn, S, M>,
-    pub nodes: PhysicalNodeArena<'env, 'txn, S, M>,
+pub(crate) struct RootPipeline<'env, 'txn, S, M, T> {
+    pub arena: PipelineArena<'env, 'txn, S, M, T>,
+    pub nodes: PhysicalNodeArena<'env, 'txn, S, M, T>,
 }
 
-impl<'env, 'txn, S, M> RootPipeline<'env, 'txn, S, M> {
+impl<'env, 'txn, S, M, T> RootPipeline<'env, 'txn, S, M, T> {
     pub fn new(
-        arena: PipelineArena<'env, 'txn, S, M>,
-        nodes: PhysicalNodeArena<'env, 'txn, S, M>,
+        arena: PipelineArena<'env, 'txn, S, M, T>,
+        nodes: PhysicalNodeArena<'env, 'txn, S, M, T>,
     ) -> Self {
         Self { arena, nodes }
     }
 
     pub fn into_parts(
         self,
-    ) -> (PipelineArena<'env, 'txn, S, M>, PhysicalNodeArena<'env, 'txn, S, M>) {
+    ) -> (PipelineArena<'env, 'txn, S, M, T>, PhysicalNodeArena<'env, 'txn, S, M, T>) {
         (self.arena, self.nodes)
     }
 }
 
-pub(crate) struct MetaPipeline<'env, 'txn, S, M> {
-    pub(crate) pipelines: Vec<Idx<Pipeline<'env, 'txn, S, M>>>,
-    pub(crate) children: Vec<Idx<MetaPipeline<'env, 'txn, S, M>>>,
+pub(crate) struct MetaPipeline<'env, 'txn, S, M, T> {
+    pub(crate) pipelines: Vec<Idx<Pipeline<'env, 'txn, S, M, T>>>,
+    pub(crate) children: Vec<Idx<MetaPipeline<'env, 'txn, S, M, T>>>,
     pub(crate) sink: PhysicalNodeId,
 }
 
 #[derive(Debug)]
-pub(crate) struct MetaPipelineBuilder<'env, 'txn, S, M> {
-    pipelines: Vec<Idx<PipelineBuilder<'env, 'txn, S, M>>>,
-    children: Vec<Idx<MetaPipelineBuilder<'env, 'txn, S, M>>>,
+pub(crate) struct MetaPipelineBuilder<'env, 'txn, S, M, T> {
+    pipelines: Vec<Idx<PipelineBuilder<'env, 'txn, S, M, T>>>,
+    children: Vec<Idx<MetaPipelineBuilder<'env, 'txn, S, M, T>>>,
     sink: PhysicalNodeId,
 }
 
 #[derive(Debug)]
-pub(crate) struct PipelineBuilderArena<'env, 'txn, S, M> {
-    root: Option<Idx<MetaPipelineBuilder<'env, 'txn, S, M>>>,
-    pipelines: Arena<PipelineBuilder<'env, 'txn, S, M>>,
-    meta_pipelines: Arena<MetaPipelineBuilder<'env, 'txn, S, M>>,
+pub(crate) struct PipelineBuilderArena<'env, 'txn, S, M, T> {
+    root: Option<Idx<MetaPipelineBuilder<'env, 'txn, S, M, T>>>,
+    pipelines: Arena<PipelineBuilder<'env, 'txn, S, M, T>>,
+    meta_pipelines: Arena<MetaPipelineBuilder<'env, 'txn, S, M, T>>,
 }
 
-impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
-    PipelineBuilderArena<'env, 'txn, S, M>
+impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>
+    PipelineBuilderArena<'env, 'txn, S, M, T>
 {
     pub(crate) fn new(
-        sink: &dyn PhysicalSink<'env, 'txn, S, M>,
-    ) -> (Self, Idx<MetaPipelineBuilder<'env, 'txn, S, M>>) {
+        sink: &dyn PhysicalSink<'env, 'txn, S, M, T>,
+    ) -> (Self, Idx<MetaPipelineBuilder<'env, 'txn, S, M, T>>) {
         let mut builder =
             Self { pipelines: Default::default(), meta_pipelines: Default::default(), root: None };
         let root = MetaPipelineBuilder::new(&mut builder, sink);
@@ -61,7 +62,7 @@ impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
         (builder, root)
     }
 
-    pub(crate) fn finish(self) -> PipelineArena<'env, 'txn, S, M> {
+    pub(crate) fn finish(self) -> PipelineArena<'env, 'txn, S, M, T> {
         let pipelines = self.pipelines.into_inner().into_iter().map(|p| p.finish()).collect();
         let meta_pipelines =
             self.meta_pipelines.into_inner().into_iter().map(|p| p.finish()).collect();
@@ -72,22 +73,22 @@ impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
 
 macro_rules! impl_index {
     ($name:ident . $field:ident: $idx:ident) => {
-        impl<'env, 'txn, S, M> std::ops::Index<Idx<$idx<'env, 'txn, S, M>>>
-            for $name<'env, 'txn, S, M>
+        impl<'env, 'txn, S, M, T> std::ops::Index<Idx<$idx<'env, 'txn, S, M, T>>>
+            for $name<'env, 'txn, S, M, T>
         {
-            type Output = $idx<'env, 'txn, S, M>;
+            type Output = $idx<'env, 'txn, S, M, T>;
 
             #[inline]
-            fn index(&self, index: Idx<$idx<'env, 'txn, S, M>>) -> &Self::Output {
+            fn index(&self, index: Idx<$idx<'env, 'txn, S, M, T>>) -> &Self::Output {
                 &self.$field[index]
             }
         }
 
-        impl<'env, 'txn, S, M> std::ops::IndexMut<Idx<$idx<'env, 'txn, S, M>>>
-            for $name<'env, 'txn, S, M>
+        impl<'env, 'txn, S, M, T> std::ops::IndexMut<Idx<$idx<'env, 'txn, S, M, T>>>
+            for $name<'env, 'txn, S, M, T>
         {
             #[inline]
-            fn index_mut(&mut self, index: Idx<$idx<'env, 'txn, S, M>>) -> &mut Self::Output {
+            fn index_mut(&mut self, index: Idx<$idx<'env, 'txn, S, M, T>>) -> &mut Self::Output {
                 &mut self.$field[index]
             }
         }
@@ -97,24 +98,24 @@ macro_rules! impl_index {
 impl_index!(PipelineBuilderArena.pipelines: PipelineBuilder);
 impl_index!(PipelineBuilderArena.meta_pipelines: MetaPipelineBuilder);
 
-pub(crate) struct PipelineArena<'env, 'txn, S, M> {
-    root: Idx<MetaPipeline<'env, 'txn, S, M>>,
-    pipelines: Arena<Pipeline<'env, 'txn, S, M>>,
-    meta_pipelines: Arena<MetaPipeline<'env, 'txn, S, M>>,
+pub(crate) struct PipelineArena<'env, 'txn, S, M, T> {
+    root: Idx<MetaPipeline<'env, 'txn, S, M, T>>,
+    pipelines: Arena<Pipeline<'env, 'txn, S, M, T>>,
+    meta_pipelines: Arena<MetaPipeline<'env, 'txn, S, M, T>>,
 }
 
-impl<'env, 'txn, S, M> PipelineArena<'env, 'txn, S, M> {
+impl<'env, 'txn, S, M, T> PipelineArena<'env, 'txn, S, M, T> {
     pub(crate) fn new(
-        root: Idx<MetaPipeline<'env, 'txn, S, M>>,
-        pipelines: Arena<Pipeline<'env, 'txn, S, M>>,
-        meta_pipelines: Arena<MetaPipeline<'env, 'txn, S, M>>,
+        root: Idx<MetaPipeline<'env, 'txn, S, M, T>>,
+        pipelines: Arena<Pipeline<'env, 'txn, S, M, T>>,
+        meta_pipelines: Arena<MetaPipeline<'env, 'txn, S, M, T>>,
     ) -> Self {
         let arena = Self { root, pipelines, meta_pipelines };
         arena.verify();
         arena
     }
 
-    pub(crate) fn root(&self) -> Idx<MetaPipeline<'env, 'txn, S, M>> {
+    pub(crate) fn root(&self) -> Idx<MetaPipeline<'env, 'txn, S, M, T>> {
         self.root
     }
 
@@ -122,7 +123,7 @@ impl<'env, 'txn, S, M> PipelineArena<'env, 'txn, S, M> {
         self.verify_meta_pipeline(self.root);
     }
 
-    fn verify_meta_pipeline(&self, idx: Idx<MetaPipeline<'env, 'txn, S, M>>) {
+    fn verify_meta_pipeline(&self, idx: Idx<MetaPipeline<'env, 'txn, S, M, T>>) {
         // No logic here at the moment
         let meta_pipeline = &self.meta_pipelines[idx];
 
@@ -135,12 +136,12 @@ impl<'env, 'txn, S, M> PipelineArena<'env, 'txn, S, M> {
 impl_index!(PipelineArena.pipelines: Pipeline);
 impl_index!(PipelineArena.meta_pipelines: MetaPipeline);
 
-impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
-    MetaPipelineBuilder<'env, 'txn, S, M>
+impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>
+    MetaPipelineBuilder<'env, 'txn, S, M, T>
 {
     pub(crate) fn new(
-        arena: &mut PipelineBuilderArena<'env, 'txn, S, M>,
-        sink: &dyn PhysicalSink<'env, 'txn, S, M>,
+        arena: &mut PipelineBuilderArena<'env, 'txn, S, M, T>,
+        sink: &dyn PhysicalSink<'env, 'txn, S, M, T>,
     ) -> Idx<Self> {
         arena.meta_pipelines.alloc(Self {
             pipelines: vec![arena.pipelines.alloc(PipelineBuilder::new(sink))],
@@ -149,21 +150,21 @@ impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
         })
     }
 
-    pub fn finish(self) -> MetaPipeline<'env, 'txn, S, M> {
+    pub fn finish(self) -> MetaPipeline<'env, 'txn, S, M, T> {
         let pipelines = self.pipelines.iter().map(|idx| idx.cast()).collect();
         let children = self.children.iter().map(|idx| idx.cast()).collect();
         MetaPipeline { pipelines, children, sink: self.sink }
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
-    PipelineBuilderArena<'env, 'txn, S, M>
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>
+    PipelineBuilderArena<'env, 'txn, S, M, T>
 {
     pub(crate) fn new_child_meta_pipeline(
         &mut self,
-        parent: Idx<MetaPipelineBuilder<'env, 'txn, S, M>>,
-        sink: &dyn PhysicalSink<'env, 'txn, S, M>,
-    ) -> Idx<MetaPipelineBuilder<'env, 'txn, S, M>> {
+        parent: Idx<MetaPipelineBuilder<'env, 'txn, S, M, T>>,
+        sink: &dyn PhysicalSink<'env, 'txn, S, M, T>,
+    ) -> Idx<MetaPipelineBuilder<'env, 'txn, S, M, T>> {
         let child = MetaPipelineBuilder::new(self, sink);
 
         debug_assert!(
@@ -178,8 +179,8 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     #[track_caller]
     pub(crate) fn build(
         &mut self,
-        nodes: &PhysicalNodeArena<'env, 'txn, S, M>,
-        meta_pipeline: Idx<MetaPipelineBuilder<'env, 'txn, S, M>>,
+        nodes: &PhysicalNodeArena<'env, 'txn, S, M, T>,
+        meta_pipeline: Idx<MetaPipelineBuilder<'env, 'txn, S, M, T>>,
         node: PhysicalNodeId,
     ) {
         debug_assert_eq!(self[meta_pipeline].pipelines.len(), 1);
@@ -188,15 +189,15 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
     }
 }
 
-pub struct Pipeline<'env, 'txn, S, M> {
+pub struct Pipeline<'env, 'txn, S, M, T> {
     pub(crate) source: PhysicalNodeId,
     /// The operators in the pipeline, ordered from source to sink.
     pub(crate) operators: Box<[PhysicalNodeId]>,
     pub(crate) sink: PhysicalNodeId,
-    _marker: PhantomData<dyn PhysicalNode<'env, 'txn, S, M>>,
+    _marker: PhantomData<dyn PhysicalNode<'env, 'txn, S, M, T>>,
 }
 
-impl<'env, 'txn, S, M> Pipeline<'env, 'txn, S, M> {
+impl<'env, 'txn, S, M, T> Pipeline<'env, 'txn, S, M, T> {
     /// Returns an iterator over all nodes in the pipeline starting from the source and ending at the sink.
     pub(crate) fn nodes(&self) -> impl DoubleEndedIterator<Item = PhysicalNodeId> + '_ {
         std::iter::once(self.source as _)
@@ -206,31 +207,33 @@ impl<'env, 'txn, S, M> Pipeline<'env, 'txn, S, M> {
 }
 
 #[derive(Debug)]
-pub(crate) struct PipelineBuilder<'env, 'txn, S, M> {
+pub(crate) struct PipelineBuilder<'env, 'txn, S, M, T> {
     source: Option<PhysicalNodeId>,
     operators: Vec<PhysicalNodeId>,
     sink: PhysicalNodeId,
-    _marker: PhantomData<dyn PhysicalNode<'env, 'txn, S, M>>,
+    _marker: PhantomData<dyn PhysicalNode<'env, 'txn, S, M, T>>,
 }
 
-impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PipelineBuilder<'env, 'txn, S, M> {
+impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>
+    PipelineBuilder<'env, 'txn, S, M, T>
+{
     // NOTE: we require these methods to require the trait object even though we only need the id for type safety.
     // The id doesn't tell us which of the 3 traits are implemented.
-    pub(crate) fn new(sink: &dyn PhysicalSink<'env, 'txn, S, M>) -> Self {
+    pub(crate) fn new(sink: &dyn PhysicalSink<'env, 'txn, S, M, T>) -> Self {
         Self { source: None, operators: vec![], sink: sink.id(), _marker: PhantomData }
     }
 
     #[track_caller]
-    pub(crate) fn set_source(&mut self, source: &dyn PhysicalSource<'env, 'txn, S, M>) {
+    pub(crate) fn set_source(&mut self, source: &dyn PhysicalSource<'env, 'txn, S, M, T>) {
         assert!(self.source.is_none(), "pipeline source already set");
         self.source = Some(source.id());
     }
 
-    pub(crate) fn add_operator(&mut self, operator: &dyn PhysicalOperator<'env, 'txn, S, M>) {
+    pub(crate) fn add_operator(&mut self, operator: &dyn PhysicalOperator<'env, 'txn, S, M, T>) {
         self.operators.push(operator.id());
     }
 
-    pub(crate) fn finish(mut self) -> Pipeline<'env, 'txn, S, M> {
+    pub(crate) fn finish(mut self) -> Pipeline<'env, 'txn, S, M, T> {
         // The order in which operators are added to the pipeline builder is the reverse of the execution order.
         // We add operators top down (relative to the physical plan tree) due to the pipeline building algorithm, but we need to execute the operators bottom up.
         self.operators.reverse();

@@ -7,17 +7,19 @@ use super::*;
 use crate::TupleStream;
 
 #[derive(Debug)]
-pub struct PhysicalUnnest<'env, 'txn, S, M> {
+pub struct PhysicalUnnest<'env, 'txn, S, M, T> {
     id: PhysicalNodeId,
     expr: ExecutableExpr<'env, 'txn, S, M>,
     evaluator: Evaluator,
-    _marker: PhantomData<dyn PhysicalNode<'env, 'txn, S, M>>,
+    _marker: PhantomData<dyn PhysicalNode<'env, 'txn, S, M, T>>,
 }
 
-impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalUnnest<'env, 'txn, S, M> {
+impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>
+    PhysicalUnnest<'env, 'txn, S, M, T>
+{
     pub(crate) fn plan(
         expr: ExecutableExpr<'env, 'txn, S, M>,
-        arena: &mut PhysicalNodeArena<'env, 'txn, S, M>,
+        arena: &mut PhysicalNodeArena<'env, 'txn, S, M, T>,
     ) -> PhysicalNodeId {
         arena.alloc_with(|id| {
             Box::new(Self { id, expr, evaluator: Default::default(), _marker: PhantomData })
@@ -25,13 +27,13 @@ impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalUnnest<'en
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSource<'env, 'txn, S, M>
-    for PhysicalUnnest<'env, 'txn, S, M>
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>
+    PhysicalSource<'env, 'txn, S, M, T> for PhysicalUnnest<'env, 'txn, S, M, T>
 {
     fn source(
         &mut self,
-        ecx: &ExecutionContext<'_, 'env, 'txn, S, M>,
-    ) -> ExecutionResult<TupleStream<'_>> {
+        ecx: &ExecutionContext<'_, 'env, 'txn, S, M, T>,
+    ) -> ExecutionResult<TupleStream<'_, T>> {
         let storage = ecx.storage();
         let tx = ecx.tcx();
         let values = match self.expr.eval(&mut self.evaluator, storage, tx, &Tuple::empty())? {
@@ -41,13 +43,13 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
         };
 
         Ok(Box::new(fallible_iterator::convert(
-            values.into_vec().into_iter().map(|value| Tuple::from([value])).map(Ok),
+            values.into_vec().into_iter().map(|value| T::from_iter([value])).map(Ok),
         )))
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode<'env, 'txn, S, M>
-    for PhysicalUnnest<'env, 'txn, S, M>
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>
+    PhysicalNode<'env, 'txn, S, M, T> for PhysicalUnnest<'env, 'txn, S, M, T>
 {
     impl_physical_node_conversions!(M; source; not operator, sink);
 
@@ -55,7 +57,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode
         self.id
     }
 
-    fn width(&self, _nodes: &PhysicalNodeArena<'env, 'txn, S, M>) -> usize {
+    fn width(&self, _nodes: &PhysicalNodeArena<'env, 'txn, S, M, T>) -> usize {
         1
     }
 
@@ -64,8 +66,8 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Explain<'env, 'txn, S, M>
-    for PhysicalUnnest<'env, 'txn, S, M>
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>
+    Explain<'env, 'txn, S, M> for PhysicalUnnest<'env, 'txn, S, M, T>
 {
     fn as_dyn(&self) -> &dyn Explain<'env, 'txn, S, M> {
         self

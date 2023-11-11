@@ -5,29 +5,29 @@ use nsql_storage_engine::fallible_iterator;
 use super::*;
 use crate::{ReadWriteExecutionMode, TupleStream};
 
-pub struct PhysicalDrop<'env, 'txn, S> {
+pub struct PhysicalDrop<'env, 'txn, S, T> {
     id: PhysicalNodeId,
     refs: Vec<ir::EntityRef>,
-    _marker: PhantomData<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode>>,
+    _marker: PhantomData<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode, T>>,
 }
 
-impl<'env, 'txn, S> fmt::Debug for PhysicalDrop<'env, 'txn, S> {
+impl<'env, 'txn, S, T> fmt::Debug for PhysicalDrop<'env, 'txn, S, T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("PhysicalDrop").field("refs", &self.refs).finish()
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalDrop<'env, 'txn, S> {
+impl<'env: 'txn, 'txn, S: StorageEngine, T: TupleTrait> PhysicalDrop<'env, 'txn, S, T> {
     pub(crate) fn plan(
         refs: Vec<ir::EntityRef>,
-        arena: &mut PhysicalNodeArena<'env, 'txn, S, ReadWriteExecutionMode>,
+        arena: &mut PhysicalNodeArena<'env, 'txn, S, ReadWriteExecutionMode, T>,
     ) -> PhysicalNodeId {
         arena.alloc_with(|id| Box::new(Self { id, refs, _marker: PhantomData }))
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode>
-    for PhysicalDrop<'env, 'txn, S>
+impl<'env: 'txn, 'txn, S: StorageEngine, T: TupleTrait>
+    PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode, T> for PhysicalDrop<'env, 'txn, S, T>
 {
     impl_physical_node_conversions!(ReadWriteExecutionMode; source; not sink, operator);
 
@@ -35,7 +35,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalNode<'env, 'txn, S, ReadWriteEx
         self.id
     }
 
-    fn width(&self, _nodes: &PhysicalNodeArena<'env, 'txn, S, ReadWriteExecutionMode>) -> usize {
+    fn width(&self, _nodes: &PhysicalNodeArena<'env, 'txn, S, ReadWriteExecutionMode, T>) -> usize {
         0
     }
 
@@ -44,13 +44,13 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalNode<'env, 'txn, S, ReadWriteEx
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSource<'env, 'txn, S, ReadWriteExecutionMode>
-    for PhysicalDrop<'env, 'txn, S>
+impl<'env: 'txn, 'txn, S: StorageEngine, T: TupleTrait>
+    PhysicalSource<'env, 'txn, S, ReadWriteExecutionMode, T> for PhysicalDrop<'env, 'txn, S, T>
 {
     fn source(
         &mut self,
-        ecx: &ExecutionContext<'_, 'env, 'txn, S, ReadWriteExecutionMode>,
-    ) -> ExecutionResult<TupleStream<'_>> {
+        ecx: &ExecutionContext<'_, 'env, 'txn, S, ReadWriteExecutionMode, T>,
+    ) -> ExecutionResult<TupleStream<'_, T>> {
         tracing::debug!("executing physical drop");
 
         let catalog = ecx.catalog();
@@ -68,8 +68,8 @@ impl<'env: 'txn, 'txn, S: StorageEngine> PhysicalSource<'env, 'txn, S, ReadWrite
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine> Explain<'env, 'txn, S, ReadWriteExecutionMode>
-    for PhysicalDrop<'env, 'txn, S>
+impl<'env: 'txn, 'txn, S: StorageEngine, T: TupleTrait>
+    Explain<'env, 'txn, S, ReadWriteExecutionMode> for PhysicalDrop<'env, 'txn, S, T>
 {
     fn as_dyn(&self) -> &dyn Explain<'env, 'txn, S, ReadWriteExecutionMode> {
         self
