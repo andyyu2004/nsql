@@ -86,8 +86,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, T: TupleTrait>
         for tuple in &self.tuples {
             // FIXME we need to detect whether or not we actually updated something before adding it
             // to the returning set
-            // FIXME more efficient conversion
-            storage.update(&tuple.clone().into())?;
+            storage.update(tuple)?;
 
             if !self.returning.is_empty() {
                 self.returning_tuples.push(self.returning.eval(

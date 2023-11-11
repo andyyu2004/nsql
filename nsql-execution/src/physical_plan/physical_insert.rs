@@ -82,7 +82,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, T: TupleTrait>
             }
         };
 
-        storage.insert(&catalog, tx, tuple.as_ref())?.map_err(|PrimaryKeyConflict { key }| {
+        storage.insert(&catalog, tx, &tuple)?.map_err(|PrimaryKeyConflict { key }| {
             anyhow::anyhow!(
                 "duplicate key `{key}` violates unique constraint in table `{}`",
                 table.name(),

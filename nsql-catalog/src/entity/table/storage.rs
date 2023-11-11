@@ -53,7 +53,7 @@ impl<'env, 'txn, S: StorageEngine> TableStorage<'env, 'txn, S, ReadWriteExecutio
     }
 
     #[inline]
-    pub fn update(&mut self, tuple: &Tuple) -> Result<(), S::Error> {
+    pub fn update(&mut self, tuple: &impl TupleTrait) -> Result<(), S::Error> {
         let (k, v) = self.split_tuple(tuple);
         debug_assert!(self.tree.delete(&k)?, "updating a tuple that didn't exist");
         self.tree.update(&k, &v)?;
@@ -72,7 +72,7 @@ impl<'env, 'txn, S: StorageEngine> TableStorage<'env, 'txn, S, ReadWriteExecutio
         &mut self,
         catalog: &dyn FunctionCatalog<'env, 'txn, S, ReadWriteExecutionMode>,
         tx: &dyn TransactionContext<'env, 'txn, S, ReadWriteExecutionMode>,
-        tuple: &Tuple,
+        tuple: &impl TupleTrait,
     ) -> Result<Result<(), PrimaryKeyConflict>, anyhow::Error> {
         for index in self.indexes.iter_mut() {
             index.insert(catalog, tx, tuple)?;
@@ -89,7 +89,7 @@ impl<'env, 'txn, S: StorageEngine> TableStorage<'env, 'txn, S, ReadWriteExecutio
     }
 
     /// Split tuple into primary key and non-primary key components
-    fn split_tuple(&self, tuple: &Tuple) -> (AlignedVec, AlignedVec) {
+    fn split_tuple(&self, tuple: &impl TupleTrait) -> (AlignedVec, AlignedVec) {
         assert_eq!(
             tuple.width(),
             self.info.columns.len(),
@@ -336,7 +336,7 @@ impl<'env, 'txn, S: StorageEngine> IndexStorage<'env, 'txn, S, ReadWriteExecutio
         &mut self,
         catalog: &dyn FunctionCatalog<'env, 'txn, S, ReadWriteExecutionMode>,
         tx: &dyn TransactionContext<'env, 'txn, S, ReadWriteExecutionMode>,
-        tuple: &Tuple,
+        tuple: &impl TupleTrait,
     ) -> Result<(), anyhow::Error> {
         let expr = self
             .prepared_expr

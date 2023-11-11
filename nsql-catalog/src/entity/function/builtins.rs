@@ -235,8 +235,9 @@ fn nextval<'env: 'txn, 'txn, S: StorageEngine>(
     args: FunctionArgs<'_>,
 ) -> Result<Value> {
     let oid: Oid<Table> = args.pop().unwrap().cast().unwrap();
-    let sequence = catalog.sequences(tcx)?.get(oid)?;
-    let seq_table = catalog.system_table::<ReadWriteExecutionMode, Table>(tcx)?.get(oid)?;
+    let sequence = catalog.sequences(tcx)?.as_ref().get(oid)?;
+    let seq_table =
+        catalog.system_table::<ReadWriteExecutionMode, Table>(tcx)?.as_ref().get(oid)?;
     let mut storage = seq_table.storage::<S, ReadWriteExecutionMode>(catalog, tcx)?;
 
     let current = match storage.get(Value::from(SequenceData::KEY))? {
