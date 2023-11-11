@@ -43,7 +43,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple>
     fn execute(
         &mut self,
         _ecx: &ExecutionContext<'_, 'env, 'txn, S, M, T>,
-        input: T,
+        _input: &mut T,
     ) -> ExecutionResult<OperatorState<T>> {
         self.yielded += 1;
 
@@ -55,7 +55,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple>
             return Ok(OperatorState::Done);
         }
 
-        Ok(OperatorState::Yield(input))
+        Ok(OperatorState::Yield)
     }
 }
 

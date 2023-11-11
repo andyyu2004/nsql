@@ -273,7 +273,7 @@ where
     fn execute(
         &mut self,
         ecx: &ExecutionContext<'_, 'env, 'txn, S, M, T>,
-        input: T,
+        input: &mut T,
     ) -> ExecutionResult<OperatorState<T>> {
         let mut guard = self.profiler.start(self.id(), NodeType::Operator);
         match self.node.execute(ecx, input)? {
@@ -288,7 +288,7 @@ where
                     }
                 }
             }
-            OperatorState::Yield(t) => Ok(OperatorState::Yield(t)),
+            OperatorState::Yield => Ok(OperatorState::Yield),
             OperatorState::Continue => {
                 guard.tuples_out = 0;
                 Ok(OperatorState::Continue)

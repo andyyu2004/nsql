@@ -386,7 +386,7 @@ enum OperatorState<T> {
     /// The operator potentially has more output for the same input
     Again(Option<T>),
     /// The operator has an output and is ready to process the next input
-    Yield(T),
+    Yield,
     /// The operator produced no output for the given input and is ready to process the next input
     Continue,
     /// The operator is done processing input tuples and will never produce more output
@@ -396,10 +396,13 @@ enum OperatorState<T> {
 trait PhysicalOperator<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple>:
     PhysicalNode<'env, 'txn, S, M, T>
 {
+    /// Execute the operator on the given input tuple. The input tuple should be modified in place
+    /// unless `OperatorState::Again` is returned in which the tuple parameter must remain unchanged.
+    /// This is to minimize clones and allocations.
     fn execute(
         &mut self,
         ecx: &ExecutionContext<'_, 'env, 'txn, S, M, T>,
-        input: T,
+        input: &mut T,
     ) -> ExecutionResult<OperatorState<T>>;
 }
 
@@ -409,7 +412,7 @@ impl<'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple
     fn execute(
         &mut self,
         ecx: &ExecutionContext<'_, 'env, 'txn, S, M, T>,
-        input: T,
+        input: &mut T,
     ) -> ExecutionResult<OperatorState<T>> {
         (**self).execute(ecx, input)
     }

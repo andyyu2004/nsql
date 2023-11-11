@@ -86,7 +86,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple>
     fn execute(
         &mut self,
         _ecx: &ExecutionContext<'_, 'env, 'txn, S, M, T>,
-        lhs_tuple: T,
+        tuple: &mut T,
     ) -> ExecutionResult<OperatorState<T>> {
         let rhs_tuples = &self.rhs_tuples;
 
@@ -103,7 +103,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple>
         };
 
         let rhs_tuple = &rhs_tuples[rhs_index];
-        let joint_tuple = lhs_tuple.join(rhs_tuple);
+        let joint_tuple = tuple.clone().join(rhs_tuple);
 
         Ok(OperatorState::Again(Some(joint_tuple)))
     }

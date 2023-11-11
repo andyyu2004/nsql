@@ -106,9 +106,9 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple>
     fn execute(
         &mut self,
         ecx: &ExecutionContext<'_, 'env, 'txn, S, M, T>,
-        lhs_tuple: T,
+        tuple: &mut T,
     ) -> ExecutionResult<OperatorState<T>> {
-        let lhs_width = lhs_tuple.width();
+        let lhs_width = tuple.width();
 
         let storage = ecx.storage();
         let tx = ecx.tcx();
@@ -130,12 +130,11 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple>
                     tracing::trace!(
                         "no match found, emitting tuple padded with nulls for left join"
                     );
-                    return match self.join_kind {
-                        ir::JoinKind::Mark => {
-                            Ok(OperatorState::Yield(lhs_tuple.pad_right_with(1, || false)))
-                        }
-                        _ => Ok(OperatorState::Yield(lhs_tuple.pad_right(self.rhs_width))),
+                    *tuple = match self.join_kind {
+                        ir::JoinKind::Mark => tuple.take().pad_right_with(1, || false),
+                        _ => tuple.take().pad_right(self.rhs_width),
                     };
+                    return Ok(OperatorState::Yield);
                 }
 
                 tracing::trace!("completed loop, continuing with next lhs tuple");
@@ -144,7 +143,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple>
         };
 
         let rhs_tuple = &rhs_tuples[rhs_index];
-        let joint_tuple = lhs_tuple.join(rhs_tuple);
+        let joint_tuple = tuple.clone().join(rhs_tuple);
 
         let keep = self
             .join_predicate
@@ -161,7 +160,9 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple>
                 // If this is a single join, we only want to emit one matching tuple.
                 // Reset the rhs and continue to the next lhs tuple.
                 self.rhs_index = 0;
-                Ok(OperatorState::Yield(joint_tuple))
+
+                *tuple = joint_tuple;
+                Ok(OperatorState::Yield)
             } else if matches!(self.join_kind, ir::JoinKind::Mark) {
                 // If this is a mark join, we only want to emit the lhs tuple.
                 // Reset the rhs and continue to the next lhs tuple.
@@ -169,7 +170,8 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple>
                 let lhs_tuple = T::from_iter(
                     joint_tuple.into_iter().take(lhs_width).chain(std::iter::once(true.into())),
                 );
-                Ok(OperatorState::Yield(lhs_tuple))
+                *tuple = lhs_tuple;
+                Ok(OperatorState::Yield)
             } else {
                 self.found_match_for_lhs_tuple = true;
                 Ok(OperatorState::Again(Some(joint_tuple)))

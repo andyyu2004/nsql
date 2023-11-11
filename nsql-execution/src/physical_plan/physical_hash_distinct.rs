@@ -32,14 +32,14 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple>
     fn execute(
         &mut self,
         _ecx: &ExecutionContext<'_, 'env, 'txn, S, M, T>,
-        tuple: T,
+        tuple: &mut T,
     ) -> ExecutionResult<OperatorState<T>> {
         // FIXME can avoid unnecessary tuple clones using `DashMap` raw-api
         let keep = self.seen.insert(tuple.clone());
         tracing::debug!(%keep, %tuple, "deduping tuple");
         match keep {
             false => Ok(OperatorState::Continue),
-            true => Ok(OperatorState::Yield(tuple)),
+            true => Ok(OperatorState::Yield),
         }
     }
 }

@@ -24,6 +24,7 @@ pub trait Tuple:
     + AsRef<FlatTuple> // tmp trait to make it work for now, maybe an asref<[value]> would be better
     + From<FlatTuple>
     + Into<FlatTuple>
+    + Default
     + 'static
 {
     fn width(&self) -> usize;
@@ -37,6 +38,11 @@ pub trait Tuple:
     fn pad_right_with<V: Into<Value>>(self, n: usize, f: impl Fn() -> V) -> Self;
 
     #[inline]
+    fn take(&mut self) -> Self {
+        std::mem::take(self)
+    }
+
+    #[inline]
     fn empty() -> Self {
         Self::from_iter([])
     }
@@ -44,7 +50,16 @@ pub trait Tuple:
 
 // FIXME make this cheap to clone
 #[derive(
-    Clone, PartialOrd, Ord, PartialEq, Eq, Hash, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
+    Clone,
+    PartialOrd,
+    Ord,
+    PartialEq,
+    Eq,
+    Hash,
+    rkyv::Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
+    Default,
 )]
 pub struct FlatTuple {
     values: Box<[Value]>,

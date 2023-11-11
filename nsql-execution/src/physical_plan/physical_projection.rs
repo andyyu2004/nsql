@@ -34,17 +34,17 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple>
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple>
     PhysicalOperator<'env, 'txn, S, M, T> for PhysicalProjection<'env, 'txn, S, M, T>
 {
-    #[tracing::instrument(level = "debug", skip(self, ecx, input))]
+    #[tracing::instrument(level = "debug", skip(self, ecx, tuple))]
     fn execute(
         &mut self,
         ecx: &ExecutionContext<'_, 'env, 'txn, S, M, T>,
-        input: T,
+        tuple: &mut T,
     ) -> ExecutionResult<OperatorState<T>> {
         let storage = ecx.storage();
         let tx = ecx.tcx();
-        let output = self.projection.eval(&mut self.evaluator, storage, tx, &input)?;
-        tracing::debug!(%input, %output, "evaluating projection");
-        Ok(OperatorState::Yield(output))
+        *tuple = self.projection.eval(&mut self.evaluator, storage, tx, tuple)?;
+        tracing::debug!(%tuple, "evaluating projection");
+        Ok(OperatorState::Yield)
     }
 }
 

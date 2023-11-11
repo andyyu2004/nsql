@@ -111,7 +111,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple>
     fn execute(
         &mut self,
         ecx: &ExecutionContext<'_, 'env, 'txn, S, M, T>,
-        lhs_tuple: T,
+        tuple: &mut T,
     ) -> ExecutionResult<OperatorState<T>> {
         let storage = ecx.storage();
         let tcx = ecx.tcx();
@@ -122,7 +122,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple>
                     let key = self
                         .conditions
                         .iter()
-                        .map(|c| self.evaluator.eval_expr(storage, tcx, &lhs_tuple, &c.lhs))
+                        .map(|c| self.evaluator.eval_expr(storage, tcx, tuple, &c.lhs))
                         .collect::<Result<T, _>>()?;
 
                     // FIXME this implements nulls not distinct, we need to implement null distinct too
@@ -130,10 +130,12 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple>
                     match self.hash_table.get(&key) {
                         Some(tuples) => match self.join_kind {
                             ir::JoinKind::Mark => {
-                                break OperatorState::Yield(lhs_tuple.pad_right_with(1, || true));
+                                *tuple = tuple.take().pad_right_with(1, || true);
+                                break OperatorState::Yield;
                             }
                             ir::JoinKind::Single => {
-                                break OperatorState::Yield(lhs_tuple.join(&tuples[0]));
+                                *tuple = tuple.take().join(&tuples[0]);
+                                break OperatorState::Yield;
                             }
                             _ => {
                                 self.probe_state = ProbeState::Probing {
@@ -146,10 +148,12 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple>
                         None => {
                             self.probe_state = ProbeState::Next;
                             break if self.join_kind.is_left() {
-                                OperatorState::Yield(match self.join_kind {
-                                    ir::JoinKind::Mark => lhs_tuple.pad_right_with(1, || false),
-                                    _ => lhs_tuple.pad_right(self.rhs_width),
-                                })
+                                *tuple = match self.join_kind {
+                                    ir::JoinKind::Mark => tuple.take().pad_right_with(1, || false),
+                                    _ => tuple.take().pad_right(self.rhs_width),
+                                };
+
+                                OperatorState::Yield
                             } else {
                                 OperatorState::Continue
                             };
@@ -158,7 +162,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple>
                 }
                 ProbeState::Probing { rhs_tuples } => match rhs_tuples.next() {
                     Some(rhs_tuple) => {
-                        let joint_tuple = lhs_tuple.join(rhs_tuple);
+                        let joint_tuple = tuple.clone().join(rhs_tuple);
                         break OperatorState::Again(Some(joint_tuple));
                     }
                     None => {

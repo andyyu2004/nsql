@@ -38,11 +38,11 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple>
     fn execute(
         &mut self,
         ecx: &ExecutionContext<'_, 'env, 'txn, S, M, T>,
-        input: T,
+        input: &mut T,
     ) -> ExecutionResult<OperatorState<T>> {
         let storage = ecx.storage();
         let tx = ecx.tcx();
-        let value = self.predicate.eval(&mut self.evaluator, storage, tx, &input)?;
+        let value = self.predicate.eval(&mut self.evaluator, storage, tx, input)?;
         let keep = value
             .cast::<Option<bool>>()
             .expect("this should have failed during planning")
@@ -51,7 +51,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple>
         // A null predicate is treated as false.
         match keep {
             false => Ok(OperatorState::Continue),
-            true => Ok(OperatorState::Yield(input)),
+            true => Ok(OperatorState::Yield),
         }
     }
 }

@@ -98,15 +98,14 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple>
                     );
 
                     let _entered = span.enter();
-                    let input_tuple = tuple;
-                    // FIXME avoid clones
-                    tuple = match op.execute(ecx, input_tuple.clone())? {
-                        OperatorState::Again(tuple) => {
-                            incomplete_operator_indexes.push((idx, input_tuple));
-                            match tuple {
-                                Some(tuple) => {
+                    match op.execute(ecx, &mut tuple)? {
+                        OperatorState::Again(output_tuple) => {
+                            // The operator is not allowed to mutate the tuple if it returns `Again` so this is ok assuming the operator is correct.
+                            incomplete_operator_indexes.push((idx, tuple));
+                            match output_tuple {
+                                Some(output_tuple) => {
+                                    tuple = output_tuple;
                                     tracing::trace!(%tuple, "operator state again");
-                                    tuple
                                 }
                                 None => {
                                     tracing::trace!(
@@ -116,10 +115,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple>
                                 }
                             }
                         }
-                        OperatorState::Yield(tuple) => {
-                            tracing::debug!(%tuple, "operator state yield");
-                            tuple
-                        }
+                        OperatorState::Yield => tracing::debug!(%tuple, "operator state yield"),
                         OperatorState::Continue => {
                             tracing::debug!("operator state continue");
                             continue 'operator_loop;
