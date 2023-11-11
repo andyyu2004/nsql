@@ -4,7 +4,7 @@ use super::*;
 use crate::SystemEntityPrivate;
 
 /// Model of a row that lives in `nsql_catalog.nsql_sequence`
-#[derive(Debug, Clone, PartialEq, Eq, Hash, FromFlatTuple, IntoFlatTuple)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, FromTuple, IntoTuple)]
 pub struct Sequence {
     pub(crate) oid: Oid<Table>,
     pub(crate) start: i64,
@@ -24,7 +24,7 @@ impl Sequence {
 
 /// Model of the data that lives in the backing table of a particular sequence
 // This needs to match the column definitions in bootstrap
-#[derive(Debug, Clone, PartialEq, Eq, Hash, FromFlatTuple, IntoFlatTuple)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, FromTuple, IntoTuple)]
 pub struct SequenceData {
     pub key: Oid<SequenceData>,
     pub(crate) value: i64,

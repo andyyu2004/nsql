@@ -288,23 +288,23 @@ impl From<CastError> for FromFlatTupleError {
     }
 }
 
-pub trait FromFlatTuple: Sized {
+pub trait FromTuple: Sized {
     fn from_values(values: impl Iterator<Item = Value>) -> Result<Self, FromFlatTupleError>;
 
     #[inline]
-    fn from_tuple(tuple: FlatTuple) -> Result<Self, FromFlatTupleError> {
-        Self::from_values(tuple.into_values().into_vec().into_iter())
+    fn from_tuple(tuple: impl Tuple) -> Result<Self, FromFlatTupleError> {
+        Self::from_values(tuple.into_iter())
     }
 }
 
-impl FromFlatTuple for () {
+impl FromTuple for () {
     #[inline]
     fn from_values(_: impl Iterator<Item = Value>) -> Result<Self, FromFlatTupleError> {
         Ok(())
     }
 }
 
-impl<T, U> FromFlatTuple for (T, U)
+impl<T, U> FromTuple for (T, U)
 where
     T: FromValue + 'static,
     U: FromValue + 'static,
@@ -317,7 +317,7 @@ where
     }
 }
 
-impl<T: FromValue + 'static> FromFlatTuple for T {
+impl<T: FromValue + 'static> FromTuple for T {
     #[inline]
     fn from_values(mut values: impl Iterator<Item = Value>) -> Result<Self, FromFlatTupleError> {
         Ok(T::from_value(values.next().ok_or(FromFlatTupleError::NotEnoughValues)?)?)

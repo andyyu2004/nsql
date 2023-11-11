@@ -4,7 +4,7 @@ use super::table::IndexStorageInfo;
 use super::*;
 use crate::{Namespace, SystemEntityPrivate, TransactionContext};
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, FromFlatTuple)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, FromTuple)]
 pub struct Index {
     pub(crate) table: Oid<Table>,
     pub(crate) target: Oid<Table>,

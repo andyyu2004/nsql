@@ -2,7 +2,7 @@ use std::sync::OnceLock;
 
 use anyhow::Result;
 use nsql_core::LogicalType;
-use nsql_derive::{FromFlatTuple, IntoFlatTuple};
+use nsql_derive::{FromTuple, IntoTuple};
 use nsql_storage::tuple::{FlatTuple, IntoFlatTuple};
 use nsql_storage::value::{CastError, FromValue, Value};
 use nsql_storage_engine::StorageEngine;

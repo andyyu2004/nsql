@@ -21,7 +21,7 @@ pub trait AggregateFunctionInstance: fmt::Debug {
     fn finalize(self: Box<Self>) -> Value;
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, FromFlatTuple, IntoFlatTuple)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, FromTuple, IntoTuple)]
 pub struct Function {
     pub(crate) oid: Oid<Self>,
     pub(crate) kind: FunctionKind,

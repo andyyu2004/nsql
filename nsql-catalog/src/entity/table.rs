@@ -2,7 +2,7 @@ mod storage;
 
 use anyhow::Result;
 use nsql_core::LogicalType;
-use nsql_derive::{FromFlatTuple, IntoFlatTuple};
+use nsql_derive::{FromTuple, IntoTuple};
 use nsql_storage::expr::Expr;
 use nsql_storage::value::Value;
 use nsql_storage_engine::{ExecutionMode, FallibleIterator, ReadWriteExecutionMode, StorageEngine};
@@ -17,7 +17,7 @@ use crate::{
     SystemEntityPrivate, TransactionContext,
 };
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, FromFlatTuple, IntoFlatTuple)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, FromTuple, IntoTuple)]
 pub struct Table {
     pub(crate) oid: Oid<Self>,
     pub(crate) namespace: Oid<Namespace>,

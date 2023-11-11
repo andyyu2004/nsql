@@ -2,7 +2,7 @@ use std::sync::OnceLock;
 
 use nsql_catalog::{PrimaryKeyConflict, Table, TableStorage};
 use nsql_core::Oid;
-use nsql_storage::tuple::FromFlatTuple;
+use nsql_storage::tuple::FromTuple;
 use nsql_storage_engine::fallible_iterator;
 
 use super::*;
@@ -100,7 +100,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, T: Tuple>
 
         // hack, if this is the insert of a `CREATE TABLE` we need to create the table storage
         if self.table_oid == Table::TABLE {
-            let table = Table::from_tuple(tuple.into()).expect("should be a compatible tuple");
+            let table = Table::from_tuple(tuple).expect("should be a compatible tuple");
             table.create_storage(catalog.storage(), tx.transaction())?;
         }
 

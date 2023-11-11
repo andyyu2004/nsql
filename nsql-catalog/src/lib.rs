@@ -14,7 +14,7 @@ pub use anyhow::Error;
 use dashmap::DashMap;
 use expr::ExecutableFunction;
 use nsql_core::{Name, Oid};
-use nsql_storage::tuple::{FromFlatTuple, IntoFlatTuple};
+use nsql_storage::tuple::{FromTuple, IntoFlatTuple};
 use nsql_storage::value::Value;
 use nsql_storage_engine::{ExecutionMode, ReadWriteExecutionMode, StorageEngine};
 use rustc_hash::FxHasher;
@@ -116,11 +116,11 @@ mod private {
 }
 
 pub trait SystemEntity:
-    SystemEntityPrivate + FromFlatTuple + IntoFlatTuple + Eq + Clone + fmt::Debug
+    SystemEntityPrivate + FromTuple + IntoFlatTuple + Eq + Clone + fmt::Debug
 {
     type Parent: SystemEntity;
 
-    type Key: IntoFlatTuple + FromFlatTuple + Eq + Hash + Copy + fmt::Debug;
+    type Key: IntoFlatTuple + FromTuple + Eq + Hash + Copy + fmt::Debug;
 
     type SearchKey: Eq + Hash + fmt::Debug;
 

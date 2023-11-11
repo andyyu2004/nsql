@@ -7,7 +7,7 @@ use anyhow::anyhow;
 use dashmap::DashMap;
 use fix_hidden_lifetime_bug::fix_hidden_lifetime_bug;
 use nsql_core::Oid;
-use nsql_storage::tuple::{FromFlatTuple, IntoFlatTuple};
+use nsql_storage::tuple::{FromTuple, IntoFlatTuple};
 use nsql_storage_engine::{ExecutionMode, FallibleIterator, ReadWriteExecutionMode, StorageEngine};
 use rustc_hash::FxHasher;
 
