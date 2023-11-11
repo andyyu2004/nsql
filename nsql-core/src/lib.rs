@@ -1,4 +1,3 @@
-#![deny(rust_2018_idioms)]
 #![feature(lazy_cell, structural_match)]
 
 mod oid;

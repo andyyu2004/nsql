@@ -1,4 +1,3 @@
-#![deny(rust_2018_idioms)]
 #![feature(thread_id_value, trait_upcasting)]
 
 use core::fmt;
@@ -42,7 +41,7 @@ static GLOBAL: MiMalloc = MiMalloc;
 
 impl<S> Clone for Nsql<S> {
     fn clone(&self) -> Self {
-        Self { shared: self.shared.clone() }
+        Self { shared: Arc::clone(&self.shared) }
     }
 }
 

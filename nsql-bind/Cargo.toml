@@ -3,6 +3,9 @@ name = "nsql-bind"
 version = "0.1.0"
 edition = "2021"
 
+[lints]
+workspace = true
+
 [dependencies]
 nsql-catalog = { path = "../nsql-catalog" }
 nsql-core = { path = "../nsql-core" }

@@ -3,6 +3,9 @@ name = "nsql-storage"
 version = "0.1.0"
 edition = "2021"
 
+[lints]
+workspace = true
+
 [dependencies]
 rust_decimal = { version = "1.28.1", default-features = false, features = [
     "rkyv",

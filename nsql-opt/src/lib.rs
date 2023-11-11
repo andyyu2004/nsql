@@ -1,4 +1,3 @@
-#![deny(rust_2018_idioms)]
 #![feature(iter_array_chunks, if_let_guard, lazy_cell)]
 
 mod decorrelate;

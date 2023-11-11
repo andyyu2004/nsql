@@ -1,4 +1,3 @@
-#![deny(rust_2018_idioms)]
 
 pub use sqlparser::ast;
 use sqlparser::dialect::{self, Dialect};

@@ -3,6 +3,9 @@ name = "nsql"
 version = "0.1.0"
 edition = "2021"
 
+[lints]
+workspace = true
+
 [dependencies]
 anyhow = "1.0.71"
 arc-swap = "1.6.0"

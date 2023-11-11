@@ -1,5 +1,3 @@
-#![deny(rust_2018_idioms)]
-
 use std::ops::{Bound, Deref, RangeBounds};
 use std::path::Path;
 

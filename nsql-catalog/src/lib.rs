@@ -1,4 +1,3 @@
-#![deny(rust_2018_idioms)]
 #![feature(never_type, once_cell_try, min_specialization, type_alias_impl_trait)]
 
 mod bootstrap;

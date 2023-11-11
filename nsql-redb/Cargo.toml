@@ -3,6 +3,9 @@ name = "nsql-redb"
 version = "0.1.0"
 edition = "2021"
 
+[lints]
+workspace = true
+
 [dependencies]
 nsql-storage-engine = { path = "../nsql-storage-engine" }
 redb = "1.3.0"

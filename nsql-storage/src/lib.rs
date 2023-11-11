@@ -1,4 +1,3 @@
-#![deny(rust_2018_idioms)]
 #![feature(trivial_bounds)]
 #![feature(once_cell_try)]
 

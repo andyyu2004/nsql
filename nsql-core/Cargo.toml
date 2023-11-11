@@ -3,6 +3,9 @@ name = "nsql-core"
 version = "0.1.0"
 edition = "2021"
 
+[lints]
+workspace = true
+
 [dependencies]
 anyhow = "1.0.71"
 smol_str = { version = "0.2", default-features = false }

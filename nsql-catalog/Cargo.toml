@@ -3,6 +3,9 @@ name = "nsql-catalog"
 version = "0.1.0"
 edition = "2021"
 
+[lints]
+workspace = true
+
 [dependencies]
 anyhow = "1.0.70"
 fix-hidden-lifetime-bug = "0.2.5"

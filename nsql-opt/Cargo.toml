@@ -3,6 +3,9 @@ name = "nsql-opt"
 version = "0.1.0"
 edition = "2021"
 
+[lints]
+workspace = true
+
 [dependencies]
 egg = "0.9.5"
 ir = { path = "../nsql-ir", package = "nsql-ir" }

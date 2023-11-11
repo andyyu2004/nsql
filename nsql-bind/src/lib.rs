@@ -1,4 +1,3 @@
-#![deny(rust_2018_idioms)]
 #![feature(try_blocks, if_let_guard, trait_upcasting)]
 
 mod function;

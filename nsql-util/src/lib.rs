@@ -1,5 +1,3 @@
-#![deny(rust_2018_idioms)]
-
 pub mod atomic;
 
 #[macro_export]

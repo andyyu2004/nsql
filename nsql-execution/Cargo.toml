@@ -3,6 +3,9 @@ name = "nsql-execution"
 version = "0.1.0"
 edition = "2021"
 
+[lints]
+workspace = true
+
 [dependencies]
 nsql-arena = { path = "../nsql-arena" }
 opt = { path = "../nsql-opt", package = "nsql-opt" }

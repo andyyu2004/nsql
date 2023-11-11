@@ -3,6 +3,9 @@ name = "nsql-rkyv"
 version = "0.1.0"
 edition = "2021"
 
+[lints]
+workspace = true
+
 [dependencies]
 rkyv = { version = "0.7.40", default-features = false, features = ["archive_be", "size_32", "std", "strict"] }
 

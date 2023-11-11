@@ -3,5 +3,8 @@ name = "nsql-parse"
 version = "0.1.0"
 edition = "2021"
 
+[lints]
+workspace = true
+
 [dependencies]
 sqlparser = { git = "https://github.com/andyyu2004/sqlparser-rs", features = ["visitor"] }

@@ -84,7 +84,7 @@ impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSink<'env,
     ) -> ExecutionResult<()> {
         let out = self.output_writer.get_or_try_init::<_, io::Error>(|| {
             Ok(match &self.dst {
-                ir::CopyDestination::File(path) => File::create(dbg!(path))?,
+                ir::CopyDestination::File(path) => File::create(path)?,
             })
         })?;
 

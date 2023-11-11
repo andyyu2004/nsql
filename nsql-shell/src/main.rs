@@ -168,15 +168,15 @@ pub static DEFAULT_MULTILINE_INDICATOR: &str = "::: ";
 pub struct NsqlPrompt;
 
 impl reedline::Prompt for NsqlPrompt {
-    fn render_prompt_left(&self) -> Cow<str> {
+    fn render_prompt_left(&self) -> Cow<'_, str> {
         Cow::Borrowed("nsql")
     }
 
-    fn render_prompt_right(&self) -> Cow<str> {
+    fn render_prompt_right(&self) -> Cow<'_, str> {
         Cow::Borrowed("")
     }
 
-    fn render_prompt_indicator(&self, edit_mode: PromptEditMode) -> Cow<str> {
+    fn render_prompt_indicator(&self, edit_mode: PromptEditMode) -> Cow<'_, str> {
         match edit_mode {
             PromptEditMode::Default | PromptEditMode::Emacs => {
                 DEFAULT_VI_NORMAL_PROMPT_INDICATOR.into()
@@ -189,14 +189,14 @@ impl reedline::Prompt for NsqlPrompt {
         }
     }
 
-    fn render_prompt_multiline_indicator(&self) -> Cow<str> {
+    fn render_prompt_multiline_indicator(&self) -> Cow<'_, str> {
         Cow::Borrowed(DEFAULT_MULTILINE_INDICATOR)
     }
 
     fn render_prompt_history_search_indicator(
         &self,
         history_search: PromptHistorySearch,
-    ) -> Cow<str> {
+    ) -> Cow<'_, str> {
         let prefix = match history_search.status {
             PromptHistorySearchStatus::Passing => "",
             PromptHistorySearchStatus::Failing => "failing ",
