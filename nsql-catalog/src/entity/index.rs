@@ -4,7 +4,7 @@ use super::table::IndexStorageInfo;
 use super::*;
 use crate::{Namespace, SystemEntityPrivate, TransactionContext};
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, FromTuple)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, FromFlatTuple)]
 pub struct Index {
     pub(crate) table: Oid<Table>,
     pub(crate) target: Oid<Table>,
@@ -47,10 +47,10 @@ impl FromValue for IndexKind {
     }
 }
 
-impl IntoTuple for Index {
+impl IntoFlatTuple for Index {
     #[inline]
-    fn into_tuple(self) -> Tuple {
-        Tuple::from([
+    fn into_tuple(self) -> FlatTuple {
+        FlatTuple::from([
             Value::Oid(self.table.untyped()),
             Value::Oid(self.target.untyped()),
             Value::Int64(self.kind as i64),

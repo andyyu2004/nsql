@@ -14,7 +14,7 @@ pub struct PhysicalUnnest<'env, 'txn, S, M, T> {
     _marker: PhantomData<dyn PhysicalNode<'env, 'txn, S, M, T>>,
 }
 
-impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>
+impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple>
     PhysicalUnnest<'env, 'txn, S, M, T>
 {
     pub(crate) fn plan(
@@ -27,7 +27,7 @@ impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple>
     PhysicalSource<'env, 'txn, S, M, T> for PhysicalUnnest<'env, 'txn, S, M, T>
 {
     fn source(
@@ -36,7 +36,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrai
     ) -> ExecutionResult<TupleStream<'_, T>> {
         let storage = ecx.storage();
         let tx = ecx.tcx();
-        let values = match self.expr.eval(&mut self.evaluator, storage, tx, &Tuple::empty())? {
+        let values = match self.expr.eval(&mut self.evaluator, storage, tx, &FlatTuple::empty())? {
             Value::Array(values) => values,
             Value::Null => Box::new([]),
             _ => panic!("unnest expression should evaluate to an array"),
@@ -48,7 +48,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrai
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple>
     PhysicalNode<'env, 'txn, S, M, T> for PhysicalUnnest<'env, 'txn, S, M, T>
 {
     impl_physical_node_conversions!(M; source; not operator, sink);
@@ -66,7 +66,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrai
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple>
     Explain<'env, 'txn, S, M> for PhysicalUnnest<'env, 'txn, S, M, T>
 {
     fn as_dyn(&self) -> &dyn Explain<'env, 'txn, S, M> {

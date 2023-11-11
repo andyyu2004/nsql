@@ -25,7 +25,7 @@ impl<S, M, T> fmt::Debug for PhysicalExplain<'_, '_, S, M, T> {
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple>
     PhysicalExplain<'env, 'txn, S, M, T>
 {
     #[inline]
@@ -51,7 +51,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrai
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple>
     PhysicalNode<'env, 'txn, S, M, T> for PhysicalExplain<'env, 'txn, S, M, T>
 {
     impl_physical_node_conversions!(M; source, sink; not operator);
@@ -69,7 +69,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrai
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple>
     PhysicalSink<'env, 'txn, S, M, T> for PhysicalExplain<'env, 'txn, S, M, T>
 {
     fn initialize(
@@ -97,7 +97,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrai
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple>
     PhysicalSource<'env, 'txn, S, M, T> for PhysicalExplain<'env, 'txn, S, M, T>
 {
     fn source(
@@ -164,7 +164,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrai
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple>
     Explain<'env, 'txn, S, M> for PhysicalExplain<'env, 'txn, S, M, T>
 {
     fn as_dyn(&self) -> &dyn Explain<'env, 'txn, S, M> {

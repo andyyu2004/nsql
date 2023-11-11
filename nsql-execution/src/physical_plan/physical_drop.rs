@@ -17,7 +17,7 @@ impl<'env, 'txn, S, T> fmt::Debug for PhysicalDrop<'env, 'txn, S, T> {
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine, T: TupleTrait> PhysicalDrop<'env, 'txn, S, T> {
+impl<'env: 'txn, 'txn, S: StorageEngine, T: Tuple> PhysicalDrop<'env, 'txn, S, T> {
     pub(crate) fn plan(
         refs: Vec<ir::EntityRef>,
         arena: &mut PhysicalNodeArena<'env, 'txn, S, ReadWriteExecutionMode, T>,
@@ -26,7 +26,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, T: TupleTrait> PhysicalDrop<'env, 'txn,
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine, T: TupleTrait>
+impl<'env: 'txn, 'txn, S: StorageEngine, T: Tuple>
     PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode, T> for PhysicalDrop<'env, 'txn, S, T>
 {
     impl_physical_node_conversions!(ReadWriteExecutionMode; source; not sink, operator);
@@ -44,7 +44,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, T: TupleTrait>
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine, T: TupleTrait>
+impl<'env: 'txn, 'txn, S: StorageEngine, T: Tuple>
     PhysicalSource<'env, 'txn, S, ReadWriteExecutionMode, T> for PhysicalDrop<'env, 'txn, S, T>
 {
     fn source(
@@ -68,8 +68,8 @@ impl<'env: 'txn, 'txn, S: StorageEngine, T: TupleTrait>
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine, T: TupleTrait>
-    Explain<'env, 'txn, S, ReadWriteExecutionMode> for PhysicalDrop<'env, 'txn, S, T>
+impl<'env: 'txn, 'txn, S: StorageEngine, T: Tuple> Explain<'env, 'txn, S, ReadWriteExecutionMode>
+    for PhysicalDrop<'env, 'txn, S, T>
 {
     fn as_dyn(&self) -> &dyn Explain<'env, 'txn, S, ReadWriteExecutionMode> {
         self

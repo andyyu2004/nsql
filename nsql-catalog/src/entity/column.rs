@@ -6,7 +6,7 @@ use super::table::ColumnStorageInfo;
 use super::*;
 use crate::SystemEntityPrivate;
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, FromTuple, IntoTuple)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, FromFlatTuple, IntoFlatTuple)]
 pub struct Column {
     pub(crate) table: Oid<Table>,
     pub(crate) index: ColumnIndex,

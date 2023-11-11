@@ -11,7 +11,7 @@ pub(crate) struct Executor<'env, 'txn, S, M, T> {
     pipelines: PipelineArena<'env, 'txn, S, M, T>,
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple>
     Executor<'env, 'txn, S, M, T>
 {
     pub(crate) fn new(pipeline: RootPipeline<'env, 'txn, S, M, T>) -> Self {
@@ -151,7 +151,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrai
     }
 }
 
-fn execute_root_pipeline<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>(
+fn execute_root_pipeline<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple>(
     ecx: &ExecutionContext<'_, 'env, 'txn, S, M, T>,
     pipeline: RootPipeline<'env, 'txn, S, M, T>,
 ) -> ExecutionResult<RootPipeline<'env, 'txn, S, M, T>> {
@@ -161,7 +161,7 @@ fn execute_root_pipeline<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>
     Ok(executor.into_pipeline())
 }
 
-pub fn execute<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>(
+pub fn execute<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple>(
     ecx: &ExecutionContext<'_, 'env, 'txn, S, M, T>,
     mut plan: PhysicalPlan<'env, 'txn, S, M, T>,
 ) -> ExecutionResult<Vec<T>> {
@@ -182,7 +182,7 @@ pub(crate) struct OutputSink<'env, 'txn, S, M, T> {
     _marker: PhantomData<dyn PhysicalNode<'env, 'txn, S, M, T>>,
 }
 
-impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>
+impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple>
     OutputSink<'env, 'txn, S, M, T>
 {
     pub(crate) fn plan(arena: &mut PhysicalNodeArena<'env, 'txn, S, M, T>) -> PhysicalNodeId {
@@ -192,7 +192,7 @@ impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple>
     PhysicalNode<'env, 'txn, S, M, T> for OutputSink<'env, 'txn, S, M, T>
 {
     fn id(&self) -> PhysicalNodeId {
@@ -218,7 +218,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrai
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple>
     PhysicalSource<'env, 'txn, S, M, T> for OutputSink<'env, 'txn, S, M, T>
 {
     fn source(
@@ -229,7 +229,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrai
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple>
     PhysicalSink<'env, 'txn, S, M, T> for OutputSink<'env, 'txn, S, M, T>
 {
     fn sink(
@@ -242,8 +242,8 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrai
     }
 }
 
-impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>
-    Explain<'env, 'txn, S, M> for OutputSink<'env, 'txn, S, M, T>
+impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple> Explain<'env, 'txn, S, M>
+    for OutputSink<'env, 'txn, S, M, T>
 {
     fn as_dyn(&self) -> &dyn Explain<'env, 'txn, S, M> {
         self

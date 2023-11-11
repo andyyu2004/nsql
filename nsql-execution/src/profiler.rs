@@ -4,7 +4,7 @@ use std::time::{Duration, Instant};
 
 use nsql_arena::{ArenaMap, Idx};
 use nsql_catalog::{Catalog, TransactionContext};
-use nsql_storage::tuple::TupleTrait;
+use nsql_storage::tuple::Tuple;
 use nsql_storage_engine::{ExecutionMode, FallibleIterator, StorageEngine};
 
 use crate::physical_plan::{explain, Explain};
@@ -115,7 +115,7 @@ pub(crate) trait PhysicalNodeProfileExt<'env, 'txn, S, M, T>: Sized {
     fn profiled(self, profiler: &Profiler) -> ProfiledPhysicalNode<'_, Self>;
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait, N>
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple, N>
     PhysicalNodeProfileExt<'env, 'txn, S, M, T> for N
 where
     N: PhysicalNode<'env, 'txn, S, M, T>,
@@ -160,7 +160,7 @@ where
     }
 }
 
-impl<'p, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait, N>
+impl<'p, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple, N>
     PhysicalNode<'env, 'txn, S, M, T> for ProfiledPhysicalNode<'p, N>
 where
     N: PhysicalNode<'env, 'txn, S, M, T>,
@@ -226,7 +226,7 @@ where
     }
 }
 
-impl<'p, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait, N>
+impl<'p, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple, N>
     PhysicalSource<'env, 'txn, S, M, T> for ProfiledPhysicalNode<'p, N>
 where
     N: PhysicalSource<'env, 'txn, S, M, T>,
@@ -265,7 +265,7 @@ impl<'p, I: FallibleIterator> FallibleIterator for ProfiledIterator<'p, I> {
     }
 }
 
-impl<'p, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait, N>
+impl<'p, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple, N>
     PhysicalOperator<'env, 'txn, S, M, T> for ProfiledPhysicalNode<'p, N>
 where
     N: PhysicalOperator<'env, 'txn, S, M, T>,
@@ -300,7 +300,7 @@ where
         }
     }
 }
-impl<'p, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait, N>
+impl<'p, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple, N>
     PhysicalSink<'env, 'txn, S, M, T> for ProfiledPhysicalNode<'p, N>
 where
     N: PhysicalSink<'env, 'txn, S, M, T>,

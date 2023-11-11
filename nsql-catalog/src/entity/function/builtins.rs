@@ -1,7 +1,7 @@
 mod aggregates;
 
 use nsql_core::Oid;
-use nsql_storage::tuple::FromTuple;
+use nsql_storage::tuple::FromFlatTuple;
 use nsql_storage::value::{Decimal, Value};
 use nsql_storage_engine::ReadWriteExecutionMode;
 

@@ -19,7 +19,7 @@ use executor::OutputSink;
 use nsql_arena::{Arena, Idx};
 use nsql_catalog::Catalog;
 use nsql_core::Name;
-use nsql_storage::tuple::{Tuple, TupleTrait};
+use nsql_storage::tuple::{FlatTuple, Tuple};
 use nsql_storage_engine::{ExecutionMode, FallibleIterator, ReadWriteExecutionMode, StorageEngine};
 use nsql_util::atomic::AtomicEnum;
 pub use physical_plan::{PhysicalPlanner, PlannerProfiler};
@@ -38,7 +38,7 @@ use self::pipeline::{
 
 pub type ExecutionResult<T, E = Error> = std::result::Result<T, E>;
 
-fn build_pipelines<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>(
+fn build_pipelines<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple>(
     sink: PhysicalNodeId,
     plan: PhysicalPlan<'env, 'txn, S, M, T>,
 ) -> RootPipeline<'env, 'txn, S, M, T> {
@@ -186,7 +186,7 @@ use impl_physical_node_conversions;
 
 // keep this trait crate-private
 #[allow(clippy::type_complexity)]
-trait PhysicalNode<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>:
+trait PhysicalNode<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple>:
     Explain<'env, 'txn, S, M> + fmt::Debug
 {
     fn id(&self) -> PhysicalNodeId;
@@ -287,7 +287,7 @@ trait PhysicalNode<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>
 // generate boilerplate impls of `Explain` and `PhysicalNode` for `&'a mut Trait<'env, 'txn, S, M, T>`
 macro_rules! delegate_physical_node_impl_of_dyn {
     ($ty:ident) => {
-        impl<'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>
+        impl<'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple>
             Explain<'env, 'txn, S, M> for &'a mut dyn $ty<'env, 'txn, S, M, T>
         {
             fn as_dyn(&self) -> &dyn Explain<'env, 'txn, S, M> {
@@ -304,7 +304,7 @@ macro_rules! delegate_physical_node_impl_of_dyn {
             }
         }
 
-        impl<'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>
+        impl<'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple>
             PhysicalNode<'env, 'txn, S, M, T> for &'a mut dyn $ty<'env, 'txn, S, M, T>
         {
             fn id(&self) -> PhysicalNodeId {
@@ -393,7 +393,7 @@ enum OperatorState<T> {
     Done,
 }
 
-trait PhysicalOperator<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>:
+trait PhysicalOperator<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple>:
     PhysicalNode<'env, 'txn, S, M, T>
 {
     fn execute(
@@ -403,7 +403,7 @@ trait PhysicalOperator<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env
     ) -> ExecutionResult<OperatorState<T>>;
 }
 
-impl<'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>
+impl<'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple>
     PhysicalOperator<'env, 'txn, S, M, T> for &'a mut dyn PhysicalOperator<'env, 'txn, S, M, T>
 {
     fn execute(
@@ -417,7 +417,7 @@ impl<'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple
 
 type TupleStream<'a, T> = Box<dyn FallibleIterator<Item = T, Error = anyhow::Error> + 'a>;
 
-trait PhysicalSource<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>:
+trait PhysicalSource<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple>:
     PhysicalNode<'env, 'txn, S, M, T>
 {
     /// Return the next chunk from the source. An empty chunk indicates that the source is exhausted.
@@ -427,7 +427,7 @@ trait PhysicalSource<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, 
     ) -> ExecutionResult<TupleStream<'s, T>>;
 }
 
-impl<'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>
+impl<'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple>
     PhysicalSource<'env, 'txn, S, M, T> for &'a mut dyn PhysicalSource<'env, 'txn, S, M, T>
 {
     fn source<'s>(
@@ -438,7 +438,7 @@ impl<'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple
     }
 }
 
-trait PhysicalSink<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>:
+trait PhysicalSink<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple>:
     PhysicalSource<'env, 'txn, S, M, T>
 {
     /// Called before any input is sent to the sink. This is called on the sink of metapipeline
@@ -465,7 +465,7 @@ trait PhysicalSink<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>
     }
 }
 
-impl<'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>
+impl<'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple>
     PhysicalSource<'env, 'txn, S, M, T> for &'a mut dyn PhysicalSink<'env, 'txn, S, M, T>
 {
     fn source<'s>(
@@ -476,7 +476,7 @@ impl<'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple
     }
 }
 
-impl<'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>
+impl<'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple>
     PhysicalSink<'env, 'txn, S, M, T> for &'a mut dyn PhysicalSink<'env, 'txn, S, M, T>
 {
     fn sink(

@@ -24,7 +24,7 @@ impl<'env, 'txn, S, M, T> fmt::Debug for PhysicalTableScan<'env, 'txn, S, M, T> 
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple>
     PhysicalTableScan<'env, 'txn, S, M, T>
 {
     pub(crate) fn plan(
@@ -39,7 +39,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrai
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple>
     PhysicalSource<'env, 'txn, S, M, T> for PhysicalTableScan<'env, 'txn, S, M, T>
 {
     #[tracing::instrument(skip(self, ecx))]
@@ -58,13 +58,13 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrai
 
         let stream = storage
             .scan_arc(projection)?
-            .map(|tuple: Tuple| Ok(T::from(tuple)))
+            .map(|tuple: FlatTuple| Ok(T::from(tuple)))
             .map_err(Into::into);
         Ok(Box::new(stream) as _)
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple>
     PhysicalNode<'env, 'txn, S, M, T> for PhysicalTableScan<'env, 'txn, S, M, T>
 {
     impl_physical_node_conversions!(M; source; not operator, sink);
@@ -82,7 +82,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrai
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple>
     Explain<'env, 'txn, S, M> for PhysicalTableScan<'env, 'txn, S, M, T>
 {
     fn as_dyn(&self) -> &dyn Explain<'env, 'txn, S, M> {

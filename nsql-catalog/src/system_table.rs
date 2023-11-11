@@ -7,7 +7,7 @@ use anyhow::anyhow;
 use dashmap::DashMap;
 use fix_hidden_lifetime_bug::fix_hidden_lifetime_bug;
 use nsql_core::Oid;
-use nsql_storage::tuple::{FromTuple, IntoTuple};
+use nsql_storage::tuple::{FromFlatTuple, IntoFlatTuple};
 use nsql_storage_engine::{ExecutionMode, FallibleIterator, ReadWriteExecutionMode, StorageEngine};
 use rustc_hash::FxHasher;
 
@@ -143,7 +143,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, T: SystemEntity>
     }
 
     #[inline]
-    pub fn delete(&mut self, key: impl IntoTuple) -> Result<bool> {
+    pub fn delete(&mut self, key: impl IntoFlatTuple) -> Result<bool> {
         Ok(self.storage.delete(key)?)
     }
 }

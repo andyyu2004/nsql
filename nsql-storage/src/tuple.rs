@@ -11,7 +11,7 @@ use rkyv::{Archive, Archived, Deserialize, Serialize};
 
 use crate::value::{CastError, FromValue, Value};
 
-pub trait TupleTrait:
+pub trait Tuple:
     fmt::Debug
     + fmt::Display
     + Hash
@@ -21,9 +21,9 @@ pub trait TupleTrait:
     + FromIterator<Value>
     + IntoIterator<Item = Value>
     + Index<TupleIndex, Output = Value>
-    + AsRef<Tuple> // tmp trait to make it work for now, maybe an asref<[value]> would be better
-    + From<Tuple>
-    + Into<Tuple>
+    + AsRef<FlatTuple> // tmp trait to make it work for now, maybe an asref<[value]> would be better
+    + From<FlatTuple>
+    + Into<FlatTuple>
     + 'static
 {
     fn width(&self) -> usize;
@@ -46,18 +46,18 @@ pub trait TupleTrait:
 #[derive(
     Clone, PartialOrd, Ord, PartialEq, Eq, Hash, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
 )]
-pub struct Tuple {
+pub struct FlatTuple {
     values: Box<[Value]>,
 }
 
-impl AsRef<Self> for Tuple {
+impl AsRef<Self> for FlatTuple {
     #[inline]
     fn as_ref(&self) -> &Self {
         self
     }
 }
 
-impl TupleTrait for Tuple {
+impl Tuple for FlatTuple {
     #[inline]
     fn width(&self) -> usize {
         self.values.len()
@@ -72,12 +72,12 @@ impl TupleTrait for Tuple {
     }
 
     #[inline]
-    fn pad_right(self, n: usize) -> Tuple {
+    fn pad_right(self, n: usize) -> FlatTuple {
         self.pad_right_with(n, || Value::Null)
     }
 
     #[inline]
-    fn pad_right_with<V: Into<Value>>(self, n: usize, f: impl Fn() -> V) -> Tuple {
+    fn pad_right_with<V: Into<Value>>(self, n: usize, f: impl Fn() -> V) -> FlatTuple {
         let mut values = self.values.into_vec();
         let new_len = values.len() + n;
         values.reserve_exact(n);
@@ -93,13 +93,13 @@ impl TupleTrait for Tuple {
     }
 }
 
-impl fmt::Debug for Tuple {
+impl fmt::Debug for FlatTuple {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "({})", self.values.iter().format(", "))
     }
 }
 
-impl IntoIterator for Tuple {
+impl IntoIterator for FlatTuple {
     type Item = Value;
     type IntoIter = std::vec::IntoIter<Self::Item>;
 
@@ -113,7 +113,7 @@ impl IntoIterator for Tuple {
 #[repr(transparent)]
 pub struct TupleRef<'a>(#[with(RefAsBox)] &'a [Value]);
 
-impl Tuple {
+impl FlatTuple {
     #[inline]
     pub fn new(values: impl Into<Box<[Value]>>) -> Self {
         Self { values: values.into() }
@@ -135,19 +135,19 @@ impl Tuple {
     }
 
     #[inline]
-    pub fn project_archived(values: &[&Archived<Value>], projection: &[TupleIndex]) -> Tuple {
+    pub fn project_archived(values: &[&Archived<Value>], projection: &[TupleIndex]) -> FlatTuple {
         projection.iter().map(|&idx| nsql_rkyv::deserialize(values[idx.as_usize()])).collect()
     }
 }
 
-impl ArchivedTuple {
+impl ArchivedFlatTuple {
     #[inline]
-    pub fn project(&self, projection: &[TupleIndex]) -> Tuple {
+    pub fn project(&self, projection: &[TupleIndex]) -> FlatTuple {
         projection.iter().map(|&idx| nsql_rkyv::deserialize(&self.values[idx.as_usize()])).collect()
     }
 }
 
-impl fmt::Display for Tuple {
+impl fmt::Display for FlatTuple {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "(")?;
         let mut iter = self.values();
@@ -161,35 +161,35 @@ impl fmt::Display for Tuple {
     }
 }
 
-impl From<Vec<Value>> for Tuple {
+impl From<Vec<Value>> for FlatTuple {
     #[inline]
     fn from(values: Vec<Value>) -> Self {
         Self::new(values.into_boxed_slice())
     }
 }
 
-impl<const N: usize> From<[Value; N]> for Tuple {
+impl<const N: usize> From<[Value; N]> for FlatTuple {
     #[inline]
     fn from(values: [Value; N]) -> Self {
         Self::new(values)
     }
 }
 
-impl From<Box<[Value]>> for Tuple {
+impl From<Box<[Value]>> for FlatTuple {
     #[inline]
     fn from(values: Box<[Value]>) -> Self {
         Self::new(values)
     }
 }
 
-impl FromIterator<Value> for Tuple {
+impl FromIterator<Value> for FlatTuple {
     #[inline]
     fn from_iter<I: IntoIterator<Item = Value>>(iter: I) -> Self {
         Self::new(iter.into_iter().collect::<Box<[_]>>())
     }
 }
 
-impl Index<TupleIndex> for Tuple {
+impl Index<TupleIndex> for FlatTuple {
     type Output = Value;
 
     #[inline]
@@ -198,7 +198,7 @@ impl Index<TupleIndex> for Tuple {
     }
 }
 
-impl Index<usize> for Tuple {
+impl Index<usize> for FlatTuple {
     type Output = Value;
 
     #[inline]
@@ -207,7 +207,7 @@ impl Index<usize> for Tuple {
     }
 }
 
-impl IndexMut<usize> for Tuple {
+impl IndexMut<usize> for FlatTuple {
     #[inline]
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
         &mut self.values[index]
@@ -264,13 +264,13 @@ impl fmt::Display for TupleIndex {
 }
 
 #[derive(Debug)]
-pub enum FromTupleError {
+pub enum FromFlatTupleError {
     TooManyValues,
     NotEnoughValues,
     InvalidCast(Box<dyn Error + Send + Sync>),
 }
 
-impl fmt::Display for FromTupleError {
+impl fmt::Display for FromFlatTupleError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::TooManyValues => write!(f, "too many values"),
@@ -280,82 +280,82 @@ impl fmt::Display for FromTupleError {
     }
 }
 
-impl Error for FromTupleError {}
+impl Error for FromFlatTupleError {}
 
-impl From<CastError> for FromTupleError {
+impl From<CastError> for FromFlatTupleError {
     fn from(err: CastError) -> Self {
         Self::InvalidCast(Box::new(err))
     }
 }
 
-pub trait FromTuple: Sized {
-    fn from_values(values: impl Iterator<Item = Value>) -> Result<Self, FromTupleError>;
+pub trait FromFlatTuple: Sized {
+    fn from_values(values: impl Iterator<Item = Value>) -> Result<Self, FromFlatTupleError>;
 
     #[inline]
-    fn from_tuple(tuple: Tuple) -> Result<Self, FromTupleError> {
+    fn from_tuple(tuple: FlatTuple) -> Result<Self, FromFlatTupleError> {
         Self::from_values(tuple.into_values().into_vec().into_iter())
     }
 }
 
-impl FromTuple for () {
+impl FromFlatTuple for () {
     #[inline]
-    fn from_values(_: impl Iterator<Item = Value>) -> Result<Self, FromTupleError> {
+    fn from_values(_: impl Iterator<Item = Value>) -> Result<Self, FromFlatTupleError> {
         Ok(())
     }
 }
 
-impl<T, U> FromTuple for (T, U)
+impl<T, U> FromFlatTuple for (T, U)
 where
     T: FromValue + 'static,
     U: FromValue + 'static,
 {
     #[inline]
-    fn from_values(mut values: impl Iterator<Item = Value>) -> Result<Self, FromTupleError> {
-        let fst = values.next().ok_or(FromTupleError::NotEnoughValues)?.cast()?;
-        let snd = values.next().ok_or(FromTupleError::NotEnoughValues)?.cast()?;
+    fn from_values(mut values: impl Iterator<Item = Value>) -> Result<Self, FromFlatTupleError> {
+        let fst = values.next().ok_or(FromFlatTupleError::NotEnoughValues)?.cast()?;
+        let snd = values.next().ok_or(FromFlatTupleError::NotEnoughValues)?.cast()?;
         Ok((fst, snd))
     }
 }
 
-impl<T: FromValue + 'static> FromTuple for T {
+impl<T: FromValue + 'static> FromFlatTuple for T {
     #[inline]
-    fn from_values(mut values: impl Iterator<Item = Value>) -> Result<Self, FromTupleError> {
-        Ok(T::from_value(values.next().ok_or(FromTupleError::NotEnoughValues)?)?)
+    fn from_values(mut values: impl Iterator<Item = Value>) -> Result<Self, FromFlatTupleError> {
+        Ok(T::from_value(values.next().ok_or(FromFlatTupleError::NotEnoughValues)?)?)
     }
 }
 
-pub trait IntoTuple {
-    fn into_tuple(self) -> Tuple;
+pub trait IntoFlatTuple {
+    fn into_tuple(self) -> FlatTuple;
 }
 
-impl<V: Into<Value>> IntoTuple for V {
+impl<V: Into<Value>> IntoFlatTuple for V {
     #[inline]
-    fn into_tuple(self) -> Tuple {
-        Tuple::new([self.into()])
+    fn into_tuple(self) -> FlatTuple {
+        FlatTuple::new([self.into()])
     }
 }
 
-impl IntoTuple for Tuple {
+impl IntoFlatTuple for FlatTuple {
     #[inline]
-    fn into_tuple(self) -> Tuple {
+    fn into_tuple(self) -> FlatTuple {
         self
     }
 }
 
-impl IntoTuple for () {
+impl IntoFlatTuple for () {
     #[inline]
-    fn into_tuple(self) -> Tuple {
-        Tuple::empty()
+    fn into_tuple(self) -> FlatTuple {
+        FlatTuple::empty()
     }
 }
 
-impl<T, U> IntoTuple for (T, U)
+impl<T, U> IntoFlatTuple for (T, U)
 where
     T: Into<Value>,
     U: Into<Value>,
 {
     #[inline]
-    fn into_tuple(self) -> Tuple {
-        Tuple::new([self.0.into(), self.1.into()])
+    fn into_tuple(self) -> FlatTuple {
+        FlatTuple::new([self.0.into(), self.1.into()])
     }
 }

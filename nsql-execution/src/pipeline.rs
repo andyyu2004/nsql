@@ -1,7 +1,7 @@
 use std::marker::PhantomData;
 
 pub(crate) use nsql_arena::{Arena, Idx};
-use nsql_storage::tuple::TupleTrait;
+use nsql_storage::tuple::Tuple;
 use nsql_storage_engine::StorageEngine;
 
 use crate::{
@@ -49,7 +49,7 @@ pub(crate) struct PipelineBuilderArena<'env, 'txn, S, M, T> {
     meta_pipelines: Arena<MetaPipelineBuilder<'env, 'txn, S, M, T>>,
 }
 
-impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>
+impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple>
     PipelineBuilderArena<'env, 'txn, S, M, T>
 {
     pub(crate) fn new(
@@ -136,7 +136,7 @@ impl<'env, 'txn, S, M, T> PipelineArena<'env, 'txn, S, M, T> {
 impl_index!(PipelineArena.pipelines: Pipeline);
 impl_index!(PipelineArena.meta_pipelines: MetaPipeline);
 
-impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>
+impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple>
     MetaPipelineBuilder<'env, 'txn, S, M, T>
 {
     pub(crate) fn new(
@@ -157,7 +157,7 @@ impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple>
     PipelineBuilderArena<'env, 'txn, S, M, T>
 {
     pub(crate) fn new_child_meta_pipeline(
@@ -214,7 +214,7 @@ pub(crate) struct PipelineBuilder<'env, 'txn, S, M, T> {
     _marker: PhantomData<dyn PhysicalNode<'env, 'txn, S, M, T>>,
 }
 
-impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>
+impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple>
     PipelineBuilder<'env, 'txn, S, M, T>
 {
     // NOTE: we require these methods to require the trait object even though we only need the id for type safety.

@@ -7,13 +7,8 @@ use nsql_storage_engine::fallible_iterator;
 
 use super::*;
 
-pub(crate) struct PhysicalCopyTo<
-    'env,
-    'txn,
-    S: StorageEngine,
-    M: ExecutionMode<'env, S>,
-    T: TupleTrait,
-> {
+pub(crate) struct PhysicalCopyTo<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple>
+{
     id: PhysicalNodeId,
     children: PhysicalNodeId,
     output_writer: OnceLock<File>,
@@ -23,7 +18,7 @@ pub(crate) struct PhysicalCopyTo<
     _marker: PhantomData<dyn PhysicalNode<'env, 'txn, S, M, T>>,
 }
 
-impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait> fmt::Debug
+impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple> fmt::Debug
     for PhysicalCopyTo<'env, 'txn, S, M, T>
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -31,7 +26,7 @@ impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait> fmt
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple>
     PhysicalCopyTo<'env, 'txn, S, M, T>
 {
     pub fn plan(
@@ -51,7 +46,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrai
     }
 }
 
-impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>
+impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple>
     PhysicalNode<'env, 'txn, S, M, T> for PhysicalCopyTo<'env, 'txn, S, M, T>
 {
     impl_physical_node_conversions!(M; source, sink; not operator);
@@ -69,7 +64,7 @@ impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>
     }
 }
 
-impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>
+impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple>
     PhysicalSource<'env, 'txn, S, M, T> for PhysicalCopyTo<'env, 'txn, S, M, T>
 {
     fn source(
@@ -80,7 +75,7 @@ impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>
     }
 }
 
-impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>
+impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple>
     PhysicalSink<'env, 'txn, S, M, T> for PhysicalCopyTo<'env, 'txn, S, M, T>
 {
     fn sink(
@@ -103,8 +98,8 @@ impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>
     }
 }
 
-impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>
-    Explain<'env, 'txn, S, M> for PhysicalCopyTo<'env, 'txn, S, M, T>
+impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple> Explain<'env, 'txn, S, M>
+    for PhysicalCopyTo<'env, 'txn, S, M, T>
 {
     fn as_dyn(&self) -> &dyn Explain<'env, 'txn, S, M> {
         self

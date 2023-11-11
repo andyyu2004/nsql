@@ -63,9 +63,9 @@ use crate::compile::Compiler;
 use crate::executor::OutputSink;
 use crate::pipeline::*;
 use crate::{
-    impl_physical_node_conversions, ExecutionContext, ExecutionMode, ExecutionResult,
+    impl_physical_node_conversions, ExecutionContext, ExecutionMode, ExecutionResult, FlatTuple,
     OperatorState, PhysicalNode, PhysicalNodeArena, PhysicalNodeId, PhysicalOperator, PhysicalSink,
-    PhysicalSource, ReadWriteExecutionMode, Tuple, TupleStream, TupleTrait,
+    PhysicalSource, ReadWriteExecutionMode, Tuple, TupleStream,
 };
 
 pub trait PlannerProfiler: nsql_core::Profiler {
@@ -107,7 +107,7 @@ impl<'env, 'txn, S, M, T> PhysicalPlan<'env, 'txn, S, M, T> {
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple>
     PhysicalPlanner<'env, 'txn, S, M, T>
 {
     pub fn new(catalog: Catalog<'env, S>) -> Self {
@@ -450,7 +450,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrai
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine, T: TupleTrait>
+impl<'env: 'txn, 'txn, S: StorageEngine, T: Tuple>
     PhysicalPlanner<'env, 'txn, S, ReadWriteExecutionMode, T>
 {
     pub fn plan_write(

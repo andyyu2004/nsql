@@ -8,7 +8,7 @@ use next_gen::generator_fn::GeneratorFn;
 use next_gen::prelude::*;
 use nsql_core::{Name, Oid};
 use nsql_storage::expr::TupleExpr;
-use nsql_storage::tuple::{IntoTuple, Tuple, TupleIndex, TupleTrait};
+use nsql_storage::tuple::{FlatTuple, IntoFlatTuple, Tuple, TupleIndex};
 use nsql_storage::value::Value;
 use nsql_storage_engine::{
     fallible_iterator, ExecutionMode, FallibleIterator, KeyExists, ReadTree,
@@ -36,7 +36,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> fmt::Debug
 
 #[derive(Debug)]
 pub struct PrimaryKeyConflict {
-    pub key: Tuple,
+    pub key: FlatTuple,
 }
 
 impl<'env, 'txn, S: StorageEngine> TableStorage<'env, 'txn, S, ReadWriteExecutionMode> {
@@ -53,7 +53,7 @@ impl<'env, 'txn, S: StorageEngine> TableStorage<'env, 'txn, S, ReadWriteExecutio
     }
 
     #[inline]
-    pub fn update(&mut self, tuple: &impl TupleTrait) -> Result<(), S::Error> {
+    pub fn update(&mut self, tuple: &impl Tuple) -> Result<(), S::Error> {
         let (k, v) = self.split_tuple(tuple);
         debug_assert!(self.tree.delete(&k)?, "updating a tuple that didn't exist");
         self.tree.update(&k, &v)?;
@@ -61,7 +61,7 @@ impl<'env, 'txn, S: StorageEngine> TableStorage<'env, 'txn, S, ReadWriteExecutio
         Ok(())
     }
 
-    pub fn delete(&mut self, key: impl IntoTuple) -> Result<bool, S::Error> {
+    pub fn delete(&mut self, key: impl IntoFlatTuple) -> Result<bool, S::Error> {
         let k = key.into_tuple();
         let k = nsql_rkyv::to_bytes(&k);
         self.tree.delete(&k)
@@ -72,7 +72,7 @@ impl<'env, 'txn, S: StorageEngine> TableStorage<'env, 'txn, S, ReadWriteExecutio
         &mut self,
         catalog: &dyn FunctionCatalog<'env, 'txn, S, ReadWriteExecutionMode>,
         tx: &dyn TransactionContext<'env, 'txn, S, ReadWriteExecutionMode>,
-        tuple: &impl TupleTrait,
+        tuple: &impl Tuple,
     ) -> Result<Result<(), PrimaryKeyConflict>, anyhow::Error> {
         for index in self.indexes.iter_mut() {
             index.insert(catalog, tx, tuple)?;
@@ -89,7 +89,7 @@ impl<'env, 'txn, S: StorageEngine> TableStorage<'env, 'txn, S, ReadWriteExecutio
     }
 
     /// Split tuple into primary key and non-primary key components
-    fn split_tuple(&self, tuple: &impl TupleTrait) -> (AlignedVec, AlignedVec) {
+    fn split_tuple(&self, tuple: &impl Tuple) -> (AlignedVec, AlignedVec) {
         assert_eq!(
             tuple.width(),
             self.info.columns.len(),
@@ -140,7 +140,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> TableStorage
     }
 
     #[inline]
-    pub fn get(&self, key: impl IntoTuple) -> Result<Option<Tuple>, S::Error> {
+    pub fn get(&self, key: impl IntoFlatTuple) -> Result<Option<FlatTuple>, S::Error> {
         let k = key.into_tuple();
         let k = nsql_rkyv::to_bytes(&k);
         let v = self.tree.get(&k)?;
@@ -153,7 +153,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> TableStorage
         &'a self,
         bounds: impl RangeBounds<[u8]> + 'a,
         projection: Option<Box<[TupleIndex]>>,
-    ) -> Result<impl FallibleIterator<Item = Tuple, Error = S::Error> + 'a, S::Error> {
+    ) -> Result<impl FallibleIterator<Item = FlatTuple, Error = S::Error> + 'a, S::Error> {
         let mut gen = Box::pin(GeneratorFn::empty());
         gen.as_mut().init(range_gen::<S, M>, (self, projection, bounds));
         Ok(fallible_iterator::convert(gen))
@@ -166,7 +166,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> TableStorage
     pub fn scan_arc(
         self: Arc<Self>,
         projection: Option<Box<[TupleIndex]>>,
-    ) -> Result<impl FallibleIterator<Item = Tuple, Error = S::Error> + 'txn, S::Error> {
+    ) -> Result<impl FallibleIterator<Item = FlatTuple, Error = S::Error> + 'txn, S::Error> {
         let mut gen = Box::pin(GeneratorFn::empty());
         gen.as_mut().init(range_gen_arc::<S, M>, (self, projection));
         Ok(fallible_iterator::convert(gen))
@@ -178,7 +178,7 @@ fn unsplit_tuple(
     projection: Option<&[TupleIndex]>,
     k: &[u8],
     v: &[u8],
-) -> Tuple {
+) -> FlatTuple {
     // FIXME this is a very naive and inefficient algorithm
     let ks = unsafe { rkyv::archived_root::<Vec<Value>>(k) };
     let vs = unsafe { rkyv::archived_root::<Vec<Value>>(v) };
@@ -205,13 +205,13 @@ fn unsplit_tuple(
     }
 
     match &projection {
-        Some(projection) => Tuple::project_archived(tuple.as_slice(), projection),
+        Some(projection) => FlatTuple::project_archived(tuple.as_slice(), projection),
         None => tuple.into_iter().map(nsql_rkyv::deserialize).collect(),
     }
 }
 
 // FIXME dedup the code from below
-#[generator(yield(Result<Tuple, S::Error>))]
+#[generator(yield(Result<FlatTuple, S::Error>))]
 fn range_gen<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
     storage: &TableStorage<'env, 'txn, S, M>,
     projection: Option<Box<[TupleIndex]>>,
@@ -241,7 +241,7 @@ fn range_gen<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
 }
 
 // FIXME dedup the code from above
-#[generator(yield(Result<Tuple, S::Error>))]
+#[generator(yield(Result<FlatTuple, S::Error>))]
 fn range_gen_arc<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
     storage: Arc<TableStorage<'env, 'txn, S, M>>,
     projection: Option<Box<[TupleIndex]>>,
@@ -336,7 +336,7 @@ impl<'env, 'txn, S: StorageEngine> IndexStorage<'env, 'txn, S, ReadWriteExecutio
         &mut self,
         catalog: &dyn FunctionCatalog<'env, 'txn, S, ReadWriteExecutionMode>,
         tx: &dyn TransactionContext<'env, 'txn, S, ReadWriteExecutionMode>,
-        tuple: &impl TupleTrait,
+        tuple: &impl Tuple,
     ) -> Result<(), anyhow::Error> {
         let expr = self
             .prepared_expr

@@ -3,7 +3,7 @@ use nsql_storage::expr::Expr;
 use super::*;
 use crate::{ColumnIdentity, Function, SystemEntityPrivate};
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, FromTuple, IntoTuple)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, FromFlatTuple, IntoFlatTuple)]
 pub struct Namespace {
     pub(crate) oid: Oid<Namespace>,
     pub(crate) name: Name,

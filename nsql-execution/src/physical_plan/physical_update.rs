@@ -19,7 +19,7 @@ pub(crate) struct PhysicalUpdate<'env, 'txn, S, T> {
     _marker: PhantomData<dyn PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode, T>>,
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine, T: TupleTrait> PhysicalUpdate<'env, 'txn, S, T> {
+impl<'env: 'txn, 'txn, S: StorageEngine, T: Tuple> PhysicalUpdate<'env, 'txn, S, T> {
     pub fn plan(
         table: Oid<Table>,
         // This is the source of the updates.
@@ -43,7 +43,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, T: TupleTrait> PhysicalUpdate<'env, 'tx
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine, T: TupleTrait>
+impl<'env: 'txn, 'txn, S: StorageEngine, T: Tuple>
     PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode, T> for PhysicalUpdate<'env, 'txn, S, T>
 {
     impl_physical_node_conversions!(ReadWriteExecutionMode; source, sink; not operator);
@@ -62,7 +62,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, T: TupleTrait>
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine, T: TupleTrait>
+impl<'env: 'txn, 'txn, S: StorageEngine, T: Tuple>
     PhysicalSink<'env, 'txn, S, ReadWriteExecutionMode, T> for PhysicalUpdate<'env, 'txn, S, T>
 {
     fn sink(
@@ -102,7 +102,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, T: TupleTrait>
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine, T: TupleTrait>
+impl<'env: 'txn, 'txn, S: StorageEngine, T: Tuple>
     PhysicalSource<'env, 'txn, S, ReadWriteExecutionMode, T> for PhysicalUpdate<'env, 'txn, S, T>
 {
     fn source(
@@ -114,8 +114,8 @@ impl<'env: 'txn, 'txn, S: StorageEngine, T: TupleTrait>
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine, T: TupleTrait>
-    Explain<'env, 'txn, S, ReadWriteExecutionMode> for PhysicalUpdate<'env, 'txn, S, T>
+impl<'env: 'txn, 'txn, S: StorageEngine, T: Tuple> Explain<'env, 'txn, S, ReadWriteExecutionMode>
+    for PhysicalUpdate<'env, 'txn, S, T>
 {
     fn as_dyn(&self) -> &dyn Explain<'env, 'txn, S, ReadWriteExecutionMode> {
         self

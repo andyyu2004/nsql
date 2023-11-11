@@ -2,14 +2,14 @@ use std::sync::OnceLock;
 
 use nsql_catalog::{PrimaryKeyConflict, Table, TableStorage};
 use nsql_core::Oid;
-use nsql_storage::tuple::FromTuple;
+use nsql_storage::tuple::FromFlatTuple;
 use nsql_storage_engine::fallible_iterator;
 
 use super::*;
 use crate::ReadWriteExecutionMode;
 
 #[derive(Debug)]
-pub(crate) struct PhysicalInsert<'env, 'txn, S: StorageEngine, T: TupleTrait> {
+pub(crate) struct PhysicalInsert<'env, 'txn, S: StorageEngine, T: Tuple> {
     id: PhysicalNodeId,
     children: [PhysicalNodeId; 1],
     table_oid: Oid<Table>,
@@ -20,7 +20,7 @@ pub(crate) struct PhysicalInsert<'env, 'txn, S: StorageEngine, T: TupleTrait> {
     evaluator: Evaluator,
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine, T: TupleTrait> PhysicalInsert<'env, 'txn, S, T> {
+impl<'env: 'txn, 'txn, S: StorageEngine, T: Tuple> PhysicalInsert<'env, 'txn, S, T> {
     pub fn plan(
         table_oid: Oid<Table>,
         source: PhysicalNodeId,
@@ -42,7 +42,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, T: TupleTrait> PhysicalInsert<'env, 'tx
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine, T: TupleTrait>
+impl<'env: 'txn, 'txn, S: StorageEngine, T: Tuple>
     PhysicalNode<'env, 'txn, S, ReadWriteExecutionMode, T> for PhysicalInsert<'env, 'txn, S, T>
 {
     impl_physical_node_conversions!(ReadWriteExecutionMode; source, sink; not operator);
@@ -60,7 +60,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, T: TupleTrait>
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine, T: TupleTrait>
+impl<'env: 'txn, 'txn, S: StorageEngine, T: Tuple>
     PhysicalSink<'env, 'txn, S, ReadWriteExecutionMode, T> for PhysicalInsert<'env, 'txn, S, T>
 {
     fn sink(
@@ -119,7 +119,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, T: TupleTrait>
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine, T: TupleTrait>
+impl<'env: 'txn, 'txn, S: StorageEngine, T: Tuple>
     PhysicalSource<'env, 'txn, S, ReadWriteExecutionMode, T> for PhysicalInsert<'env, 'txn, S, T>
 {
     fn source(
@@ -131,8 +131,8 @@ impl<'env: 'txn, 'txn, S: StorageEngine, T: TupleTrait>
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine, T: TupleTrait>
-    Explain<'env, 'txn, S, ReadWriteExecutionMode> for PhysicalInsert<'env, 'txn, S, T>
+impl<'env: 'txn, 'txn, S: StorageEngine, T: Tuple> Explain<'env, 'txn, S, ReadWriteExecutionMode>
+    for PhysicalInsert<'env, 'txn, S, T>
 {
     fn as_dyn(&self) -> &dyn Explain<'env, 'txn, S, ReadWriteExecutionMode> {
         self

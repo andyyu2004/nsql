@@ -4,7 +4,7 @@ use std::mem;
 use super::*;
 use crate::{Function, SystemEntityPrivate};
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, FromTuple, IntoTuple)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, FromFlatTuple, IntoFlatTuple)]
 pub struct Operator {
     pub(crate) oid: Oid<Self>,
     pub(crate) kind: OperatorKind,

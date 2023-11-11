@@ -2,7 +2,7 @@ use std::fmt;
 
 use nsql_arena::{ArenaMap, Idx};
 use nsql_catalog::{Catalog, TransactionContext};
-use nsql_storage::tuple::TupleTrait;
+use nsql_storage::tuple::Tuple;
 use nsql_storage_engine::StorageEngine;
 
 use super::PhysicalPlan;
@@ -47,8 +47,8 @@ impl<'a, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> fmt::Dis
     }
 }
 
-impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>
-    Explain<'env, 'txn, S, M> for RootPipeline<'env, 'txn, S, M, T>
+impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple> Explain<'env, 'txn, S, M>
+    for RootPipeline<'env, 'txn, S, M, T>
 {
     fn as_dyn(&self) -> &dyn Explain<'env, 'txn, S, M> {
         self
@@ -64,14 +64,8 @@ impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>
     }
 }
 
-struct RootPipelineExplainer<
-    'a,
-    'env,
-    'txn,
-    S: StorageEngine,
-    M: ExecutionMode<'env, S>,
-    T: TupleTrait,
-> {
+struct RootPipelineExplainer<'a, 'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple>
+{
     root_pipeline: &'a RootPipeline<'env, 'txn, S, M, T>,
 }
 
@@ -81,13 +75,13 @@ pub struct MetaPipelineExplainer<
     'txn,
     S: StorageEngine,
     M: ExecutionMode<'env, S>,
-    T: TupleTrait,
+    T: Tuple,
 > {
     root: &'a RootPipelineExplainer<'a, 'env, 'txn, S, M, T>,
     indent: usize,
 }
 
-impl<'a, 'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>
+impl<'a, 'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple>
     MetaPipelineExplainer<'a, 'env, 'txn, S, M, T>
 {
     fn explain_meta_pipeline(
@@ -134,7 +128,7 @@ impl<'a, 'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple>
     Explain<'env, 'txn, S, M> for RootPipelineExplainer<'_, 'env, 'txn, S, M, T>
 {
     fn as_dyn(&self) -> &dyn Explain<'env, 'txn, S, M> {
@@ -156,7 +150,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrai
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple>
     PhysicalPlan<'env, 'txn, S, M, T>
 {
     pub fn explain_tree(
@@ -243,7 +237,7 @@ struct ExplainNode {
     children: Box<[PhysicalNodeId]>,
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple>
     Explain<'env, 'txn, S, M> for PhysicalPlan<'env, 'txn, S, M, T>
 {
     fn as_dyn(&self) -> &dyn Explain<'env, 'txn, S, M> {
@@ -267,14 +261,14 @@ pub struct PhysicalNodeExplainer<
     'txn,
     S: StorageEngine,
     M: ExecutionMode<'env, S>,
-    T: TupleTrait,
+    T: Tuple,
 > {
     nodes: &'a PhysicalNodeArena<'env, 'txn, S, M, T>,
     node: PhysicalNodeId,
     indent: usize,
 }
 
-impl<'a, 'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>
+impl<'a, 'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple>
     PhysicalNodeExplainer<'a, 'env, 'txn, S, M, T>
 {
     fn explain_child(
@@ -285,7 +279,7 @@ impl<'a, 'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>
     }
 }
 
-impl<'a, 'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleTrait>
+impl<'a, 'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple>
     Explain<'env, 'txn, S, M> for PhysicalNodeExplainer<'a, 'env, 'txn, S, M, T>
 {
     fn as_dyn(&self) -> &dyn Explain<'env, 'txn, S, M> {
