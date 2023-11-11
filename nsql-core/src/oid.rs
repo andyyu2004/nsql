@@ -17,6 +17,10 @@ pub struct Oid<T: ?Sized> {
     marker: PhantomData<fn() -> T>,
 }
 
+impl<T: ?Sized> std::marker::StructuralPartialEq for Oid<T> {}
+
+impl<T: ?Sized> std::marker::StructuralEq for Oid<T> {}
+
 impl<T: ?Sized> PartialEq for Oid<T> {
     #[inline]
     fn eq(&self, other: &Self) -> bool {

@@ -20,12 +20,8 @@ members = [
     "nsql-util",
     "nsql-redb",
 ]
-
-[profile.dev]
 # codegen-backend = "cranelift"
 
 [profile.bench]
 debug = true
-
-[profile.release]
 # lto = "thin"

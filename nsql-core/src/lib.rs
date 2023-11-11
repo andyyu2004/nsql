@@ -1,5 +1,5 @@
 #![deny(rust_2018_idioms)]
-#![feature(lazy_cell)]
+#![feature(lazy_cell, structural_match)]
 
 mod oid;
 pub mod ty;
