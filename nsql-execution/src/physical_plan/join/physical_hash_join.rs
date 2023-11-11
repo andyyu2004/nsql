@@ -22,7 +22,8 @@ enum ProbeState {
     #[default]
     Next,
     Probing {
-        rhs_tuples: std::vec::IntoIter<Tuple>,
+        // points into the hashtable
+        rhs_tuples: std::slice::Iter<'static, Tuple>,
     },
 }
 
@@ -135,8 +136,11 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
                                 break OperatorState::Yield(lhs_tuple.join(&tuples[0]));
                             }
                             _ => {
-                                self.probe_state =
-                                    ProbeState::Probing { rhs_tuples: tuples.clone().into_iter() }
+                                self.probe_state = ProbeState::Probing {
+                                    // SAFETY: the hashmap is effectively readonly at this point
+                                    // and so the value will not move.
+                                    rhs_tuples: unsafe { std::mem::transmute(tuples.iter()) },
+                                }
                             }
                         },
                         None => {
@@ -154,7 +158,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
                 }
                 ProbeState::Probing { rhs_tuples } => match rhs_tuples.next() {
                     Some(rhs_tuple) => {
-                        let joint_tuple = lhs_tuple.clone().join(&rhs_tuple);
+                        let joint_tuple = lhs_tuple.join(rhs_tuple);
                         break OperatorState::Again(Some(joint_tuple));
                     }
                     None => {
