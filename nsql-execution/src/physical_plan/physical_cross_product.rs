@@ -1,50 +1,34 @@
+use std::marker::PhantomData;
+
 use nsql_arena::Idx;
-use nsql_catalog::expr::Evaluator;
 
 use super::*;
 use crate::pipeline::{MetaPipelineBuilder, PipelineBuilder, PipelineBuilderArena};
 
 #[derive(Debug)]
-pub(crate) struct PhysicalNestedLoopJoin<'env, 'txn, S, M> {
+pub(crate) struct PhysicalCrossProduct<'env, 'txn, S, M> {
     id: PhysicalNodeId,
     children: [PhysicalNodeId; 2],
-    join_kind: ir::JoinKind,
-    join_predicate: ExecutableExpr<'env, 'txn, S, M>,
     rhs_tuples: Vec<Tuple>,
     rhs_index: usize,
-    rhs_width: usize,
-    found_match_for_lhs_tuple: bool,
-    evaluator: Evaluator,
+    _marker: PhantomData<dyn PhysicalNode<'env, 'txn, S, M>>,
 }
 
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
-    PhysicalNestedLoopJoin<'env, 'txn, S, M>
+    PhysicalCrossProduct<'env, 'txn, S, M>
 {
     pub fn plan(
-        join_kind: ir::JoinKind,
-        join_predicate: ExecutableExpr<'env, 'txn, S, M>,
         lhs_node: PhysicalNodeId,
         rhs_node: PhysicalNodeId,
         arena: &mut PhysicalNodeArena<'env, 'txn, S, M>,
     ) -> PhysicalNodeId {
-        assert!(!join_kind.is_right(), "right joins are not supported by nested-loop join");
-
-        let rhs_width = match join_kind {
-            ir::JoinKind::Mark => 1,
-            _ => arena[rhs_node].width(arena),
-        };
-
         arena.alloc_with(|id| {
             Box::new(Self {
                 id,
-                join_kind,
-                join_predicate,
-                rhs_width,
                 children: [lhs_node, rhs_node],
-                found_match_for_lhs_tuple: false,
                 rhs_index: 0,
                 rhs_tuples: Default::default(),
-                evaluator: Default::default(),
+                _marker: PhantomData,
             })
         })
     }
@@ -59,7 +43,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
 }
 
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode<'env, 'txn, S, M>
-    for PhysicalNestedLoopJoin<'env, 'txn, S, M>
+    for PhysicalCrossProduct<'env, 'txn, S, M>
 {
     impl_physical_node_conversions!(M; source, sink, operator);
 
@@ -68,7 +52,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode
     }
 
     fn width(&self, nodes: &PhysicalNodeArena<'env, 'txn, S, M>) -> usize {
-        nodes[self.lhs_node()].width(nodes) + self.rhs_width
+        nodes[self.lhs_node()].width(nodes) + nodes[self.rhs_node()].width(nodes)
     }
 
     fn children(&self) -> &[PhysicalNodeId] {
@@ -96,18 +80,14 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalNode
 }
 
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
-    PhysicalOperator<'env, 'txn, S, M> for PhysicalNestedLoopJoin<'env, 'txn, S, M>
+    PhysicalOperator<'env, 'txn, S, M> for PhysicalCrossProduct<'env, 'txn, S, M>
 {
-    #[tracing::instrument(level = "debug", skip(self, ecx))]
+    #[tracing::instrument(level = "debug", skip(self, _ecx))]
     fn execute(
         &mut self,
-        ecx: &ExecutionContext<'_, 'env, 'txn, S, M>,
+        _ecx: &ExecutionContext<'_, 'env, 'txn, S, M>,
         lhs_tuple: Tuple,
     ) -> ExecutionResult<OperatorState<Tuple>> {
-        let lhs_width = lhs_tuple.width();
-
-        let storage = ecx.storage();
-        let tx = ecx.tcx();
         let rhs_tuples = &self.rhs_tuples;
 
         let rhs_index = match self.rhs_index {
@@ -118,23 +98,6 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
             last_index => {
                 debug_assert_eq!(last_index, rhs_tuples.len());
                 self.rhs_index = 0;
-
-                let found_match = self.found_match_for_lhs_tuple;
-                self.found_match_for_lhs_tuple = false;
-                // emit the lhs_tuple padded with nulls if no match was found
-                if !found_match && self.join_kind.is_left() {
-                    tracing::trace!(
-                        "no match found, emitting tuple padded with nulls for left join"
-                    );
-                    return match self.join_kind {
-                        ir::JoinKind::Mark => {
-                            Ok(OperatorState::Yield(lhs_tuple.pad_right_with(1, || false)))
-                        }
-                        _ => Ok(OperatorState::Yield(lhs_tuple.pad_right(self.rhs_width))),
-                    };
-                }
-
-                tracing::trace!("completed loop, continuing with next lhs tuple");
                 return Ok(OperatorState::Continue);
             }
         };
@@ -142,50 +105,19 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
         let rhs_tuple = &rhs_tuples[rhs_index];
         let joint_tuple = lhs_tuple.join(rhs_tuple);
 
-        let keep = self
-            .join_predicate
-            .eval(&mut self.evaluator, storage, tx, &joint_tuple)?
-            .cast::<Option<bool>>()?
-            .unwrap_or(false);
-
-        tracing::trace!(%joint_tuple, %keep, "evaluated join predicate");
-
-        if keep {
-            tracing::trace!(output = %joint_tuple, "found match, emitting tuple");
-
-            if matches!(self.join_kind, ir::JoinKind::Single) {
-                // If this is a single join, we only want to emit one matching tuple.
-                // Reset the rhs and continue to the next lhs tuple.
-                self.rhs_index = 0;
-                Ok(OperatorState::Yield(joint_tuple))
-            } else if matches!(self.join_kind, ir::JoinKind::Mark) {
-                // If this is a mark join, we only want to emit the lhs tuple.
-                // Reset the rhs and continue to the next lhs tuple.
-                self.rhs_index = 0;
-                let lhs_tuple = Tuple::from_iter(
-                    joint_tuple.into_iter().take(lhs_width).chain(std::iter::once(true.into())),
-                );
-                Ok(OperatorState::Yield(lhs_tuple))
-            } else {
-                self.found_match_for_lhs_tuple = true;
-                Ok(OperatorState::Again(Some(joint_tuple)))
-            }
-        } else {
-            tracing::debug!("no match found, continuing loop with same lhs tuple");
-            Ok(OperatorState::Again(None))
-        }
+        Ok(OperatorState::Again(Some(joint_tuple)))
     }
 }
 
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSink<'env, 'txn, S, M>
-    for PhysicalNestedLoopJoin<'env, 'txn, S, M>
+    for PhysicalCrossProduct<'env, 'txn, S, M>
 {
     fn sink(
         &mut self,
         _ecx: &ExecutionContext<'_, 'env, 'txn, S, M>,
         rhs_tuple: Tuple,
     ) -> ExecutionResult<()> {
-        tracing::debug!(%rhs_tuple, "building nested loop join");
+        tracing::debug!(%rhs_tuple, "building cross product");
         self.rhs_tuples.push(rhs_tuple);
         Ok(())
     }
@@ -197,7 +129,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSink
 }
 
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSource<'env, 'txn, S, M>
-    for PhysicalNestedLoopJoin<'env, 'txn, S, M>
+    for PhysicalCrossProduct<'env, 'txn, S, M>
 {
     fn source(
         &mut self,
@@ -208,7 +140,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSour
 }
 
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Explain<'env, 'txn, S, M>
-    for PhysicalNestedLoopJoin<'env, 'txn, S, M>
+    for PhysicalCrossProduct<'env, 'txn, S, M>
 {
     fn as_dyn(&self) -> &dyn Explain<'env, 'txn, S, M> {
         self
@@ -220,7 +152,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> Explain<'env
         _tx: &dyn TransactionContext<'env, 'txn, S, M>,
         f: &mut fmt::Formatter<'_>,
     ) -> explain::Result {
-        write!(f, "nested loop join ({}) ON ({})", self.join_kind, self.join_predicate)?;
+        write!(f, "cross product")?;
         Ok(())
     }
 }

@@ -1,4 +1,4 @@
- cross join    
+ cross product 
    scan t (id) 
    scan t (id) 
                

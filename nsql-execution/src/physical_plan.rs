@@ -2,6 +2,7 @@ mod aggregate;
 pub(crate) mod explain;
 mod join;
 mod physical_copy_to;
+mod physical_cross_product;
 mod physical_cte;
 mod physical_cte_scan;
 mod physical_drop;
@@ -32,13 +33,13 @@ use nsql_catalog::expr::{
 };
 use nsql_catalog::{Catalog, TransactionContext};
 use nsql_core::Name;
-use nsql_storage::expr;
 use nsql_storage_engine::StorageEngine;
 
 use self::aggregate::{PhysicalHashAggregate, PhysicalUngroupedAggregate};
 pub use self::explain::Explain;
 use self::join::{PhysicalHashJoin, PhysicalNestedLoopJoin};
 use self::physical_copy_to::PhysicalCopyTo;
+use self::physical_cross_product::PhysicalCrossProduct;
 use self::physical_cte::PhysicalCte;
 use self::physical_cte_scan::PhysicalCteScan;
 use self::physical_drop::PhysicalDrop;
@@ -262,13 +263,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>
                 match join.kind() {
                     // cross-join
                     ir::JoinKind::Inner if join.conditions(q).is_empty() => {
-                        PhysicalNestedLoopJoin::plan(
-                            ir::JoinKind::Inner,
-                            expr::Expr::literal(true),
-                            lhs,
-                            rhs,
-                            &mut self.arena,
-                        )
+                        PhysicalCrossProduct::plan(lhs, rhs, &mut self.arena)
                     }
                     // currently if we arrive here then it's computable via a hash-join
                     kind => PhysicalHashJoin::plan(
