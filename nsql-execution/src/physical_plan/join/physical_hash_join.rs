@@ -195,6 +195,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>> PhysicalSink
 
     fn finalize(&mut self, _ecx: &ExecutionContext<'_, 'env, 'txn, S, M>) -> ExecutionResult<()> {
         self.hash_table.shrink_to_fit();
+        self.hash_table.values_mut().for_each(|v| v.shrink_to_fit());
 
         Ok(())
     }
