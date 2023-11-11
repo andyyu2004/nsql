@@ -1,5 +1,6 @@
 use nsql_arena::Idx;
 use nsql_catalog::expr::Evaluator;
+use rustc_hash::FxHashMap;
 
 use super::*;
 use crate::pipeline::{MetaPipelineBuilder, PipelineBuilder, PipelineBuilderArena};
@@ -12,7 +13,7 @@ pub(crate) struct PhysicalHashJoin<'env, 'txn, S, M> {
     conditions: Box<[ir::JoinCondition<ExecutableExpr<'env, 'txn, S, M>>]>,
     evaluator: Evaluator,
     rhs_width: usize,
-    hash_table: HashMap<Tuple, Vec<Tuple>>,
+    hash_table: FxHashMap<Tuple, Vec<Tuple>>,
     probe_state: ProbeState,
 }
 
