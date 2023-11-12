@@ -35,12 +35,15 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple>
         ecx: &ExecutionContext<'_, 'env, 'txn, S, M, T>,
     ) -> ExecutionResult<TupleStream<'_, T>> {
         let storage = ecx.storage();
-        let tx = ecx.tcx();
-        let values = match self.expr.eval(&mut self.evaluator, storage, tx, &FlatTuple::empty())? {
-            Value::Array(values) => values,
-            Value::Null => Box::new([]),
-            _ => panic!("unnest expression should evaluate to an array"),
-        };
+        let prof = ecx.profiler();
+        let tcx = ecx.tcx();
+
+        let values =
+            match self.expr.eval(&mut self.evaluator, storage, prof, tcx, &FlatTuple::empty())? {
+                Value::Array(values) => values,
+                Value::Null => Box::new([]),
+                _ => panic!("unnest expression should evaluate to an array"),
+            };
 
         Ok(Box::new(fallible_iterator::convert(
             values.into_vec().into_iter().map(|value| T::from_iter([value])).map(Ok),

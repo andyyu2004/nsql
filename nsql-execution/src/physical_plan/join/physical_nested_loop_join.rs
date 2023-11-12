@@ -111,7 +111,8 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple>
         let lhs_width = tuple.width();
 
         let storage = ecx.storage();
-        let tx = ecx.tcx();
+        let prof = ecx.profiler();
+        let tcx = ecx.tcx();
         let rhs_tuples = &self.rhs_tuples;
 
         let rhs_index = match self.rhs_index {
@@ -147,7 +148,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple>
 
         let keep = self
             .join_predicate
-            .eval(&mut self.evaluator, storage, tx, &joint_tuple)?
+            .eval(&mut self.evaluator, storage, prof, tcx, &joint_tuple)?
             .cast::<Option<bool>>()?
             .unwrap_or(false);
 

@@ -1,4 +1,5 @@
 use anyhow::Result;
+use nsql_profile::Profiler;
 use nsql_storage::expr::{Expr, ExprOp, TupleExpr};
 use nsql_storage::tuple::Tuple;
 use nsql_storage::value::Value;
@@ -70,6 +71,7 @@ pub trait ExprEvalExt<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T
         &self,
         evaluator: &mut Evaluator,
         storage: &'env S,
+        prof: &Profiler,
         tx: &dyn TransactionContext<'env, 'txn, S, M>,
         tuple: &T,
     ) -> Result<Self::Output>;
@@ -85,10 +87,11 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple>
         &self,
         evaluator: &mut Evaluator,
         storage: &'env S,
+        prof: &Profiler,
         tx: &dyn TransactionContext<'env, 'txn, S, M>,
         tuple: &T,
     ) -> Result<Self::Output> {
-        self.exprs().iter().map(|expr| expr.eval(evaluator, storage, tx, tuple)).collect()
+        self.exprs().iter().map(|expr| expr.eval(evaluator, storage, prof, tx, tuple)).collect()
     }
 }
 
@@ -102,10 +105,11 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple>
         &self,
         evaluator: &mut Evaluator,
         storage: &'env S,
+        prof: &Profiler,
         tx: &dyn TransactionContext<'env, 'txn, S, M>,
         tuple: &T,
     ) -> Result<Value> {
-        evaluator.eval_expr(storage, tx, tuple, self)
+        evaluator.eval_expr(storage, prof, tx, tuple, self)
     }
 }
 
@@ -119,6 +123,7 @@ impl Evaluator {
     pub fn eval_expr<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple>(
         &mut self,
         storage: &'env S,
+        prof: &Profiler,
         tcx: &dyn TransactionContext<'env, 'txn, S, M>,
         tuple: &T,
         expr: &ExecutableExpr<'env, 'txn, S, M>,
@@ -130,7 +135,7 @@ impl Evaluator {
             if matches!(op, ExprOp::Return) {
                 break;
             }
-            self.execute_op(storage, tcx, tuple, op)?;
+            self.execute_op(storage, prof, tcx, tuple, op)?;
         }
 
         debug_assert_eq!(
@@ -146,7 +151,8 @@ impl Evaluator {
     fn execute_op<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple>(
         &mut self,
         storage: &'env S,
-        tx: &dyn TransactionContext<'env, 'txn, S, M>,
+        prof: &Profiler,
+        tcx: &dyn TransactionContext<'env, 'txn, S, M>,
         tuple: &T,
         op: &ExecutableExprOp<'env, 'txn, S, M>,
     ) -> Result<()> {
@@ -157,7 +163,9 @@ impl Evaluator {
                 let array = self.stack.drain(self.stack.len() - *len..).collect::<Box<[Value]>>();
                 Value::Array(array)
             }
-            ExprOp::Call { function } => function(Catalog::new(storage), tx, &mut self.stack)?,
+            ExprOp::Call { function } => {
+                function(Catalog::new(storage), prof, tcx, &mut self.stack)?
+            }
             ExprOp::IfNeJmp(offset) => {
                 let rhs = self.pop();
                 let lhs = self.pop();

@@ -1237,6 +1237,7 @@ dependencies = [
  "next-gen",
  "nsql-core",
  "nsql-derive",
+ "nsql-profile",
  "nsql-rkyv",
  "nsql-storage",
  "nsql-storage-engine",

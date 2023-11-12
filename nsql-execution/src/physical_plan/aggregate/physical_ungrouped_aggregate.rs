@@ -65,11 +65,13 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple>
     ) -> ExecutionResult<()> {
         let storage = ecx.storage();
         let tx = ecx.tcx();
+        let prof = ecx.profiler();
+
         for (state, (_f, expr)) in self.aggregate_functions[..].iter_mut().zip(&self.functions[..])
         {
             let v = expr
                 .as_ref()
-                .map(|expr| expr.eval(&mut self.evaluator, storage, tx, &tuple))
+                .map(|expr| expr.eval(&mut self.evaluator, storage, prof, tx, &tuple))
                 .transpose()?;
             state.update(v);
         }

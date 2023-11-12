@@ -7,6 +7,7 @@ use std::collections::HashMap;
 
 use anyhow::bail;
 use nsql_core::LogicalType;
+use nsql_profile::Profiler;
 use nsql_storage::expr::{Expr, ExprOp, TupleExpr};
 use nsql_storage::tuple::TupleIndex;
 use nsql_storage::Result;
@@ -55,6 +56,7 @@ impl<'env: 'txn, 'txn, S, M, F> FunctionCatalog<'env, 'txn, S, M, F> for Bootstr
 
 pub(crate) fn bootstrap<'env: 'txn, 'txn, S: StorageEngine>(
     storage: &'env S,
+    prof: &Profiler,
     tx: &dyn TransactionContext<'env, 'txn, S, ReadWriteExecutionMode>,
 ) -> Result<()> {
     tracing::debug!("bootstrapping namespaces");
@@ -79,43 +81,43 @@ pub(crate) fn bootstrap<'env: 'txn, 'txn, S: StorageEngine>(
     tracing::debug!("bootstrapping namespaces");
     let mut namespace_table =
         SystemTableView::<S, ReadWriteExecutionMode, Namespace>::new_bootstrap(storage, tx)?;
-    namespaces.try_for_each(|namespace| namespace_table.insert(catalog, tx, namespace))?;
+    namespaces.try_for_each(|namespace| namespace_table.insert(catalog, prof, tx, namespace))?;
     drop(namespace_table);
 
     tracing::debug!("bootstrapping tables");
     let mut table_table =
         SystemTableView::<S, ReadWriteExecutionMode, Table>::new_bootstrap(storage, tx)?;
-    tables.into_iter().try_for_each(|table| table_table.insert(catalog, tx, table))?;
+    tables.into_iter().try_for_each(|table| table_table.insert(catalog, prof, tx, table))?;
     drop(table_table);
 
     tracing::debug!("bootstrapping sequences");
     let mut sequence_table =
         SystemTableView::<S, ReadWriteExecutionMode, Sequence>::new_bootstrap(storage, tx)?;
-    sequences.try_for_each(|sequence| sequence_table.insert(catalog, tx, sequence))?;
+    sequences.try_for_each(|sequence| sequence_table.insert(catalog, prof, tx, sequence))?;
     drop(sequence_table);
 
     tracing::debug!("bootstrapping columns");
     let mut column_table =
         SystemTableView::<S, ReadWriteExecutionMode, Column>::new_bootstrap(storage, tx)?;
-    columns.try_for_each(|column| column_table.insert(catalog, tx, column))?;
+    columns.try_for_each(|column| column_table.insert(catalog, prof, tx, column))?;
     drop(column_table);
 
     tracing::debug!("bootstrapping indexes");
     let mut index_table =
         SystemTableView::<S, ReadWriteExecutionMode, Index>::new_bootstrap(storage, tx)?;
-    indexes.try_for_each(|index| index_table.insert(catalog, tx, index))?;
+    indexes.try_for_each(|index| index_table.insert(catalog, prof, tx, index))?;
     drop(index_table);
 
     tracing::debug!("bootstrapping functions");
     let mut functions_table =
         SystemTableView::<S, ReadWriteExecutionMode, Function>::new_bootstrap(storage, tx)?;
-    functions.try_for_each(|function| functions_table.insert(catalog, tx, function))?;
+    functions.try_for_each(|function| functions_table.insert(catalog, prof, tx, function))?;
     drop(functions_table);
 
     tracing::debug!("bootstrapping operators");
     let mut operators_table =
         SystemTableView::<S, ReadWriteExecutionMode, Operator>::new_bootstrap(storage, tx)?;
-    operators.try_for_each(|operator| operators_table.insert(catalog, tx, operator))?;
+    operators.try_for_each(|operator| operators_table.insert(catalog, prof, tx, operator))?;
     drop(operators_table);
 
     Ok(())

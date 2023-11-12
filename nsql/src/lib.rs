@@ -83,10 +83,11 @@ impl<S: StorageEngine> Nsql<S> {
         let storage = S::create(path)?;
         let tx = storage.begin_write()?;
         let tcx = TransactionContext::make(tx);
-        tcx.with(|tcx| Catalog::create(&storage, &tcx))?;
+        let prof = new_profiler()?;
+        tcx.with(|tcx| Catalog::create(&storage, &prof, &tcx))?;
         tcx.commit()?;
 
-        Self::try_new(storage)
+        Ok(Self::new(storage, prof))
     }
 
     /// Open an existing database at the given path, creating one if it does not exist.
@@ -96,7 +97,7 @@ impl<S: StorageEngine> Nsql<S> {
             return Self::create(path);
         }
 
-        Self::try_new(S::open(path)?)
+        Ok(Self::new(S::open(path)?, new_profiler()?))
     }
 
     #[inline]
@@ -105,13 +106,16 @@ impl<S: StorageEngine> Nsql<S> {
     }
 
     #[inline]
-    fn try_new(storage: S) -> Result<Self> {
-        let pid: u32 = process::id();
-        let filename = format!("nsql-{pid:07}.profile");
-        let path = env::temp_dir().as_path().join(filename);
-        let profiler = Profiler::new(&path).map_err(|err| anyhow!(err))?;
-        Ok(Self { shared: Arc::new(Shared::new(Storage::new(storage), profiler)) })
+    fn new(storage: S, prof: Profiler) -> Self {
+        Self { shared: Arc::new(Shared::new(Storage::new(storage), prof)) }
     }
+}
+
+fn new_profiler() -> Result<Profiler> {
+    let pid: u32 = process::id();
+    let filename = format!("nsql-{pid:07}.profile");
+    let path = env::temp_dir().as_path().join(filename);
+    Profiler::new(&path).map_err(|err| anyhow!(err))
 }
 
 struct Shared<S> {
@@ -372,7 +376,7 @@ impl<S: StorageEngine> Shared<S> {
                     do_physical_plan(physical_planner, &tcx, plan)
                 })?;
 
-            let ecx = ExecutionContext::<S, M, FlatTuple>::new(catalog, &tcx, scx);
+            let ecx = ExecutionContext::<S, M, FlatTuple>::new(catalog, &self.profiler, &tcx, scx);
             let tuples = self.profiler.profile(self.profiler.execute_event_id, || {
                 nsql_execution::execute(&ecx, physical_plan)
             })?;

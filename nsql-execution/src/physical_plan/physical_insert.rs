@@ -69,6 +69,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, T: Tuple>
         tuple: T,
     ) -> ExecutionResult<()> {
         let catalog = ecx.catalog();
+        let prof = ecx.profiler();
         let tx = ecx.tcx();
 
         let table = self.table.get_or_try_init(|| catalog.get(tx, self.table_oid))?;
@@ -82,7 +83,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, T: Tuple>
             }
         };
 
-        storage.insert(&catalog, tx, &tuple)?.map_err(|PrimaryKeyConflict { key }| {
+        storage.insert(&catalog, prof, tx, &tuple)?.map_err(|PrimaryKeyConflict { key }| {
             anyhow::anyhow!(
                 "duplicate key `{key}` violates unique constraint in table `{}`",
                 table.name(),
@@ -93,6 +94,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, T: Tuple>
             self.returning_tuples.push(self.returning.eval(
                 &mut self.evaluator,
                 catalog.storage(),
+                prof,
                 tx,
                 &tuple,
             )?);

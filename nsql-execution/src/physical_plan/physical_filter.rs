@@ -41,8 +41,10 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple>
         input: &mut T,
     ) -> ExecutionResult<OperatorState<T>> {
         let storage = ecx.storage();
+        let prof = ecx.profiler();
         let tx = ecx.tcx();
-        let value = self.predicate.eval(&mut self.evaluator, storage, tx, input)?;
+
+        let value = self.predicate.eval(&mut self.evaluator, storage, prof, tx, input)?;
         let keep = value
             .cast::<Option<bool>>()
             .expect("this should have failed during planning")

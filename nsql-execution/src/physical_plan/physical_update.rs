@@ -78,10 +78,9 @@ impl<'env: 'txn, 'txn, S: StorageEngine, T: Tuple>
         &mut self,
         ecx: &ExecutionContext<'_, 'env, 'txn, S, ReadWriteExecutionMode, T>,
     ) -> ExecutionResult<()> {
-        let tx = ecx.tcx();
-        let catalog = ecx.catalog();
-        let table = catalog.table(tx, self.table)?;
-        let mut storage = table.storage::<S, ReadWriteExecutionMode>(catalog, tx)?;
+        let (catalog, prof, tcx) = ecx.triple();
+        let table = catalog.table(tcx, self.table)?;
+        let mut storage = table.storage::<S, ReadWriteExecutionMode>(catalog, tcx)?;
 
         for tuple in &self.tuples {
             // FIXME we need to detect whether or not we actually updated something before adding it
@@ -92,7 +91,8 @@ impl<'env: 'txn, 'txn, S: StorageEngine, T: Tuple>
                 self.returning_tuples.push(self.returning.eval(
                     &mut self.evaluator,
                     catalog.storage(),
-                    tx,
+                    prof,
+                    tcx,
                     tuple,
                 )?);
             }

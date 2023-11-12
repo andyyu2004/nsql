@@ -33,7 +33,9 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple>
         ecx: &'s ExecutionContext<'_, 'env, 'txn, S, M, T>,
     ) -> ExecutionResult<TupleStream<'s, T>> {
         let storage = ecx.storage();
-        let tx = ecx.tcx();
+        let prof = ecx.profiler();
+        let tcx = ecx.tcx();
+
         let mut index = 0;
         let iter = fallible_iterator::from_fn(move || {
             if index >= self.values.len() {
@@ -41,7 +43,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple>
             }
 
             let exprs: &ExecutableTupleExpr<'env, 'txn, S, M> = &self.values[index];
-            let tuple = exprs.eval(&mut self.evaluator, storage, tx, &T::empty())?;
+            let tuple = exprs.eval(&mut self.evaluator, storage, prof, tcx, &T::empty())?;
             index += 1;
 
             Ok(Some(tuple))

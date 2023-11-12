@@ -7,6 +7,7 @@ use anyhow::anyhow;
 use dashmap::DashMap;
 use fix_hidden_lifetime_bug::fix_hidden_lifetime_bug;
 use nsql_core::Oid;
+use nsql_profile::Profiler;
 use nsql_storage::tuple::{FromTuple, IntoFlatTuple};
 use nsql_storage_engine::{ExecutionMode, FallibleIterator, ReadWriteExecutionMode, StorageEngine};
 use rustc_hash::FxHasher;
@@ -123,11 +124,12 @@ impl<'env: 'txn, 'txn, S: StorageEngine, T: SystemEntity>
     pub fn insert(
         &mut self,
         catalog: &dyn FunctionCatalog<'env, 'txn, S, ReadWriteExecutionMode>,
+        prof: &Profiler,
         tx: &dyn TransactionContext<'env, 'txn, S, ReadWriteExecutionMode>,
         value: T,
     ) -> Result<()> {
         let tuple = value.into_tuple();
-        self.storage.insert(catalog, tx, &tuple)?.map_err(|PrimaryKeyConflict { key }| {
+        self.storage.insert(catalog, prof, tx, &tuple)?.map_err(|PrimaryKeyConflict { key }| {
             let typed_key = T::Key::from_tuple(key).unwrap_or_else(|err| {
                 panic!(
                     "this shouldn't fail as we know the expected shape {}: {err}",

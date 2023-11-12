@@ -14,6 +14,7 @@ pub use anyhow::Error;
 use dashmap::DashMap;
 use expr::ExecutableFunction;
 use nsql_core::{Name, Oid};
+use nsql_profile::Profiler;
 use nsql_storage::tuple::{FromTuple, IntoFlatTuple};
 use nsql_storage::value::Value;
 use nsql_storage_engine::{ExecutionMode, ReadWriteExecutionMode, StorageEngine};
@@ -356,12 +357,13 @@ impl<'env, S: StorageEngine> Catalog<'env, S> {
     /// Create a blank catalog with the default schema
     pub fn create<'txn>(
         storage: &'env S,
-        tx: &dyn TransactionContext<'env, 'txn, S, ReadWriteExecutionMode>,
+        prof: &Profiler,
+        tcx: &dyn TransactionContext<'env, 'txn, S, ReadWriteExecutionMode>,
     ) -> Result<Self>
     where
         'env: 'txn,
     {
-        bootstrap::bootstrap(storage, tx)?;
+        bootstrap::bootstrap(storage, prof, tcx)?;
 
         let catalog = Self { storage };
         Ok(catalog)

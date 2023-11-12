@@ -114,6 +114,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple>
         tuple: &mut T,
     ) -> ExecutionResult<OperatorState<T>> {
         let storage = ecx.storage();
+        let prof = ecx.profiler();
         let tcx = ecx.tcx();
 
         let output = loop {
@@ -122,7 +123,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple>
                     let key = self
                         .conditions
                         .iter()
-                        .map(|c| self.evaluator.eval_expr(storage, tcx, tuple, &c.lhs))
+                        .map(|c| self.evaluator.eval_expr(storage, prof, tcx, tuple, &c.lhs))
                         .collect::<Result<T, _>>()?;
 
                     // FIXME this implements nulls not distinct, we need to implement null distinct too
@@ -187,13 +188,14 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple>
     ) -> ExecutionResult<()> {
         tracing::debug!(%rhs_tuple, "building hash join");
         let storage = ecx.storage();
+        let prof = ecx.profiler();
         let tcx = ecx.tcx();
 
         let key = self
             .conditions
             .iter()
             .inspect(|c| assert_eq!(c.op, ir::JoinOperator::IsNotDistinctFrom, "rest not impl"))
-            .map(|c| self.evaluator.eval_expr(storage, tcx, &rhs_tuple, &c.rhs))
+            .map(|c| self.evaluator.eval_expr(storage, prof, tcx, &rhs_tuple, &c.rhs))
             .collect::<Result<T, _>>()?;
 
         self.hash_table.entry(key).or_default().push(rhs_tuple);

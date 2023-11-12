@@ -67,6 +67,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple>
         let ordering = &self.ordering;
 
         let storage = ecx.storage();
+        let prof = ecx.profiler();
         let tx = ecx.tcx();
 
         // FIXME can't use rayon's parallel sort as tx is not necessarily Sync
@@ -75,11 +76,11 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple>
                 // todo need a way to propogate error
                 let a = order
                     .expr
-                    .eval(&mut self.evaluator, storage, tx, a)
+                    .eval(&mut self.evaluator, storage, prof, tx, a)
                     .expect("failed to execute order expression");
                 let b = order
                     .expr
-                    .eval(&mut self.evaluator, storage, tx, b)
+                    .eval(&mut self.evaluator, storage, prof, tx, b)
                     .expect("failed to execute order expression");
                 let cmp = a.partial_cmp(&b).unwrap();
                 if cmp != cmp::Ordering::Equal {

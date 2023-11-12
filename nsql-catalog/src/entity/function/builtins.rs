@@ -1,6 +1,7 @@
 mod aggregates;
 
 use nsql_core::Oid;
+use nsql_profile::Profiler;
 use nsql_storage::tuple::FromTuple;
 use nsql_storage::value::{Decimal, Value};
 use nsql_storage_engine::ReadWriteExecutionMode;
@@ -10,7 +11,7 @@ use crate::SequenceData;
 
 macro_rules! cast_to {
     ($to:ty) => {
-        |_catalog, _tcx, args| {
+        |_catalog, _prof, _tcx, args| {
             // ensure the necessary `FromValue` cases are there for this cast to succeed
             // in particular, the rust level `to` type's `FromValue` impl needs a case for the `from` type.
             let dummy: Option<$to> = args.pop().unwrap().cast().unwrap();
@@ -23,7 +24,7 @@ macro_rules! cast_to {
 
 macro_rules! comparison {
     ($op:tt: $ty:ty) => {
-        |_catalog, _tcx, args| {
+        |_catalog, _prof, _tcx, args| {
             let b = args.pop().unwrap();
             let a = args.pop().unwrap();
             debug_assert!(a.is_compat_with(&b), "cannot compare `{a}` and `{b}` (this should have been a type error)");
@@ -41,7 +42,7 @@ macro_rules! comparison {
 
 macro_rules! method {
     ($method:ident: $ty:ty) => {
-        |_catalog, _tcx, args| {
+        |_catalog, _prof, _tcx, args| {
             let x: Option<$ty> = args.pop().unwrap().cast().unwrap();
             match x {
                 Some(x) => Ok(Value::from(x.$method())),
@@ -53,7 +54,7 @@ macro_rules! method {
 
 macro_rules! comparison_include_null {
     ($op:tt: $ty:ty) => {
-        |_catalog, _tcx, args| {
+        |_catalog, _prof, _tcx, args| {
             let b = args.pop().unwrap();
             let a = args.pop().unwrap();
             debug_assert!(a.is_compat_with(&b), "cannot compare `{a}` and `{b}` (this should have been a type error)");
@@ -66,7 +67,7 @@ macro_rules! comparison_include_null {
 
 macro_rules! arbitary_binary_op {
     ($ty:ty, |$x:ident, $y:ident| $expr:expr) => {
-        |_catalog, _tcx, args| {
+        |_catalog, _prof, _tcx, args| {
             let b = args.pop().unwrap();
             let a = args.pop().unwrap();
             debug_assert!(
@@ -84,7 +85,7 @@ macro_rules! arbitary_binary_op {
 
 macro_rules! infix_op {
     ($op:tt: $ty:ty) => {
-        |_catalog, _tcx, args| {
+        |_catalog, _prof, _tcx, args| {
             let b: Option<$ty> = args.pop().unwrap().cast().unwrap();
             let a: Option<$ty> = args.pop().unwrap().cast().unwrap();
             match (a, b) {
@@ -97,7 +98,7 @@ macro_rules! infix_op {
 
 macro_rules! prefix_op {
     ($op:tt: $ty:ty) => {
-        |_catalog, _tcx, args| {
+        |_catalog, _prof, _tcx, args| {
             let x: Option<$ty> = args.pop().unwrap().cast().unwrap();
             match x {
                 Some(x) => Ok(Value::from($op x)),
@@ -114,7 +115,7 @@ pub(crate) fn get_scalar_function<'env: 'txn, 'txn, S: StorageEngine, M>(
 }
 
 fn mk_between<'env, 'txn, S, M>() -> ScalarFunctionPtr<'env, 'txn, S, M> {
-    |_catalog, _tcx, args: FunctionArgs<'_>| {
+    |_catalog, _prof, _tcx, args: FunctionArgs<'_>| {
         let upper = args.pop().unwrap();
         let lower = args.pop().unwrap();
         let target = args.pop().unwrap();
@@ -157,7 +158,7 @@ pub(crate) fn get_aggregate_function(
 }
 
 fn mk_range2<'env, 'txn, S, M>() -> ScalarFunctionPtr<'env, 'txn, S, M> {
-    |_catalog, _tcx, args: FunctionArgs<'_>| {
+    |_catalog, _prof, _tcx, args: FunctionArgs<'_>| {
         assert_eq!(args.len(), 2);
         let end: Option<i64> = args.pop().unwrap().cast().unwrap();
         let start: Option<i64> = args.pop().unwrap().cast().unwrap();
@@ -169,7 +170,7 @@ fn mk_range2<'env, 'txn, S, M>() -> ScalarFunctionPtr<'env, 'txn, S, M> {
 }
 
 fn mk_array_element<'env, 'txn, S, M>() -> ScalarFunctionPtr<'env, 'txn, S, M> {
-    |_catalog, _tcx, args: FunctionArgs<'_>| {
+    |_catalog, _prof, _tcx, args: FunctionArgs<'_>| {
         // one-indexed
         let index: Option<i64> = args.pop().unwrap().cast().unwrap();
 
@@ -192,7 +193,7 @@ fn mk_array_element<'env, 'txn, S, M>() -> ScalarFunctionPtr<'env, 'txn, S, M> {
 }
 
 fn mk_array_position<'env, 'txn, S, M>() -> ScalarFunctionPtr<'env, 'txn, S, M> {
-    |_catalog, _tcx, args: FunctionArgs<'_>| {
+    |_catalog, _prof, _tcx, args: FunctionArgs<'_>| {
         let target = args.pop().unwrap();
         let array = match args.pop().unwrap() {
             Value::Array(xs) => xs,
@@ -209,7 +210,7 @@ fn mk_array_position<'env, 'txn, S, M>() -> ScalarFunctionPtr<'env, 'txn, S, M> 
 }
 
 fn mk_array_contains<'env, 'txn, S, M>() -> ScalarFunctionPtr<'env, 'txn, S, M> {
-    |_catalog, _tcx, args: FunctionArgs<'_>| {
+    |_catalog, _prof, _tcx, args: FunctionArgs<'_>| {
         let target = args.pop().unwrap();
         let array = args.pop().unwrap();
 
@@ -231,6 +232,7 @@ fn mk_array_contains<'env, 'txn, S, M>() -> ScalarFunctionPtr<'env, 'txn, S, M> 
 #[allow(clippy::boxed_local)]
 fn nextval<'env: 'txn, 'txn, S: StorageEngine>(
     catalog: Catalog<'env, S>,
+    profiler: &Profiler,
     tcx: &dyn TransactionContext<'env, 'txn, S, ReadWriteExecutionMode>,
     args: FunctionArgs<'_>,
 ) -> Result<Value> {
@@ -249,7 +251,12 @@ fn nextval<'env: 'txn, 'txn, S: StorageEngine>(
         None => {
             let current = sequence.start;
             storage
-                .insert(&catalog, tcx, &SequenceData::new(current + sequence.step).into_tuple())?
+                .insert(
+                    &catalog,
+                    profiler,
+                    tcx,
+                    &SequenceData::new(current + sequence.step).into_tuple(),
+                )?
                 .expect("insert shouldn't conflict");
             current
         }
@@ -259,15 +266,16 @@ fn nextval<'env: 'txn, 'txn, S: StorageEngine>(
 
 fn nextval_oid<'env: 'txn, 'txn, S: StorageEngine>(
     catalog: Catalog<'env, S>,
+    profiler: &Profiler,
     tcx: &dyn TransactionContext<'env, 'txn, S, ReadWriteExecutionMode>,
     args: FunctionArgs<'_>,
 ) -> Result<Value> {
-    let next = nextval(catalog, tcx, args)?;
+    let next = nextval(catalog, profiler, tcx, args)?;
     Ok(Value::Oid(next.cast().unwrap()))
 }
 
 fn mk_nextval_expr<'env, 'txn, S, M>() -> ScalarFunctionPtr<'env, 'txn, S, M> {
-    |_catalog, _tcx, args: FunctionArgs<'_>| {
+    |_catalog, _prof, _tcx, args: FunctionArgs<'_>| {
         let oid: UntypedOid = args.pop().unwrap().cast().unwrap();
         Ok(Value::Expr(Expr::call(Function::NEXTVAL.untyped(), [oid.into()])))
     }

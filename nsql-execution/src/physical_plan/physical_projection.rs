@@ -41,8 +41,10 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple>
         tuple: &mut T,
     ) -> ExecutionResult<OperatorState<T>> {
         let storage = ecx.storage();
+        let prof = ecx.profiler();
         let tx = ecx.tcx();
-        *tuple = self.projection.eval(&mut self.evaluator, storage, tx, tuple)?;
+
+        *tuple = self.projection.eval(&mut self.evaluator, storage, prof, tx, tuple)?;
         tracing::debug!(%tuple, "evaluating projection");
         Ok(OperatorState::Yield)
     }

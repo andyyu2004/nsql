@@ -7,6 +7,7 @@ use fix_hidden_lifetime_bug::fix_hidden_lifetime_bug;
 use next_gen::generator_fn::GeneratorFn;
 use next_gen::prelude::*;
 use nsql_core::{Name, Oid};
+use nsql_profile::Profiler;
 use nsql_storage::expr::TupleExpr;
 use nsql_storage::tuple::{FlatTuple, IntoFlatTuple, Tuple, TupleIndex};
 use nsql_storage::value::Value;
@@ -71,11 +72,12 @@ impl<'env, 'txn, S: StorageEngine> TableStorage<'env, 'txn, S, ReadWriteExecutio
     pub fn insert(
         &mut self,
         catalog: &dyn FunctionCatalog<'env, 'txn, S, ReadWriteExecutionMode>,
+        prof: &Profiler,
         tx: &dyn TransactionContext<'env, 'txn, S, ReadWriteExecutionMode>,
         tuple: &impl Tuple,
     ) -> Result<Result<(), PrimaryKeyConflict>, anyhow::Error> {
         for index in self.indexes.iter_mut() {
-            index.insert(catalog, tx, tuple)?;
+            index.insert(catalog, prof, tx, tuple)?;
         }
 
         let (k, v) = self.split_tuple(tuple);
@@ -335,16 +337,17 @@ impl<'env, 'txn, S: StorageEngine> IndexStorage<'env, 'txn, S, ReadWriteExecutio
     pub fn insert(
         &mut self,
         catalog: &dyn FunctionCatalog<'env, 'txn, S, ReadWriteExecutionMode>,
-        tx: &dyn TransactionContext<'env, 'txn, S, ReadWriteExecutionMode>,
+        prof: &Profiler,
+        tcx: &dyn TransactionContext<'env, 'txn, S, ReadWriteExecutionMode>,
         tuple: &impl Tuple,
     ) -> Result<(), anyhow::Error> {
         let expr = self
             .prepared_expr
-            .get_or_try_init(|| self.index_expr.take().unwrap().resolve(catalog, tx))?;
+            .get_or_try_init(|| self.index_expr.take().unwrap().resolve(catalog, tcx))?;
 
-        let tuple = expr.eval(&mut self.evaluator, catalog.storage(), tx, tuple)?;
+        let tuple = expr.eval(&mut self.evaluator, catalog.storage(), prof, tcx, tuple)?;
         self.storage
-            .insert(catalog, tx, &tuple)?
+            .insert(catalog, prof, tcx, &tuple)?
             .map_err(|PrimaryKeyConflict { key }| anyhow::anyhow!("unique index conflict: {key}"))
     }
 }

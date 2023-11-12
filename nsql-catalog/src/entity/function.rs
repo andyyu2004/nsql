@@ -1,6 +1,7 @@
 use std::{fmt, mem};
 
 use nsql_core::UntypedOid;
+use nsql_profile::Profiler;
 use nsql_storage::expr::Expr;
 use nsql_storage_engine::ExecutionMode;
 
@@ -12,6 +13,7 @@ mod builtins;
 
 pub type ScalarFunctionPtr<'env, 'txn, S, M> = fn(
     Catalog<'env, S>,
+    &Profiler,
     &dyn TransactionContext<'env, 'txn, S, M>,
     FunctionArgs<'_>,
 ) -> Result<Value>;

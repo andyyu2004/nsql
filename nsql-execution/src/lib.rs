@@ -20,6 +20,7 @@ use executor::OutputSink;
 use nsql_arena::{Arena, Idx};
 use nsql_catalog::Catalog;
 use nsql_core::Name;
+use nsql_profile::Profiler;
 use nsql_storage::tuple::{FlatTuple, Tuple};
 use nsql_storage_engine::{ExecutionMode, FallibleIterator, ReadWriteExecutionMode, StorageEngine};
 use nsql_util::atomic::AtomicEnum;
@@ -549,6 +550,7 @@ impl From<u8> for TransactionState {
 
 pub struct ExecutionContext<'a, 'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T> {
     catalog: Catalog<'env, S>,
+    profiler: &'a Profiler,
     tcx: &'a dyn TransactionContext<'env, 'txn, S, M>,
     scx: &'a (dyn SessionContext + 'a),
     materialized_ctes: DashMap<Name, Arc<[T]>, BuildHasherDefault<FxHasher>>,
@@ -561,11 +563,13 @@ impl<'a, 'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T>
     #[inline]
     pub fn new(
         catalog: Catalog<'env, S>,
+        profiler: &'a Profiler,
         tcx: &'a dyn TransactionContext<'env, 'txn, S, M>,
         scx: &'a (dyn SessionContext + 'a),
     ) -> Self {
         Self {
             catalog,
+            profiler,
             tcx,
             scx,
             materialized_ctes: Default::default(),
@@ -593,6 +597,11 @@ impl<'a, 'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T>
         self.catalog
     }
 
+    #[inline]
+    pub fn profiler(&self) -> &'a Profiler {
+        self.profiler
+    }
+
     pub fn get_materialized_cte_data(&self, name: &Name) -> Arc<[T]> {
         self.materialized_ctes
             .get(name)
@@ -610,5 +619,12 @@ impl<'a, 'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T>
     #[inline]
     pub fn storage(&self) -> &'env S {
         self.catalog.storage()
+    }
+
+    #[inline]
+    pub(crate) fn triple(
+        &self,
+    ) -> (Catalog<'env, S>, &'a Profiler, &'a dyn TransactionContext<'env, 'txn, S, M>) {
+        (self.catalog(), self.profiler(), self.tcx())
     }
 }

@@ -70,8 +70,10 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple>
         tuple: T,
     ) -> ExecutionResult<()> {
         let storage = ecx.storage();
-        let tx = ecx.tcx();
-        let group = self.group_expr.eval(&mut self.evaluator, storage, tx, &tuple)?;
+        let tcx = ecx.tcx();
+        let prof = ecx.profiler();
+
+        let group = self.group_expr.eval(&mut self.evaluator, storage, prof, tcx, &tuple)?;
         let functions = self.output_groups.entry(group).or_insert_with(|| {
             self.aggregates.iter().map(|(f, _expr)| f.get_aggregate_instance()).collect()
         });
@@ -79,7 +81,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple>
         for (state, (_f, expr)) in functions[..].iter_mut().zip(&self.aggregates[..]) {
             let value = expr
                 .as_ref()
-                .map(|expr| expr.eval(&mut self.evaluator, storage, tx, &tuple))
+                .map(|expr| expr.eval(&mut self.evaluator, storage, prof, tcx, &tuple))
                 .transpose()?;
             state.update(value);
         }
