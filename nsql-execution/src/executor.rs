@@ -3,8 +3,8 @@ use std::marker::PhantomData;
 use nsql_catalog::TransactionContext;
 
 use super::*;
+use crate::analyze::PhysicalNodeAnalyzeExt;
 use crate::pipeline::RootPipeline;
-use crate::profiler::PhysicalNodeProfileExt;
 
 pub(crate) struct Executor<'env, 'txn, S, M, T> {
     nodes: PhysicalNodeArena<'env, 'txn, S, M, T>,
@@ -66,18 +66,18 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple>
             refs
         }
 
-        let profiler = ecx.profiler();
+        let profiler = ecx.analyzer();
         let pipeline: &Pipeline<'env, 'txn, S, M, T> = &self.pipelines[pipeline];
         let node_ids = pipeline.nodes();
         // Safety: a pipeline should never have duplicate nodes
         let mut nodes_mut = unsafe { get_mut_refs_unchecked(&mut self.nodes, node_ids) };
         let [source, operators @ .., sink] = &mut nodes_mut[..] else { panic!() };
-        let mut source = (*source).as_source_mut().expect("expected source").profiled(profiler);
+        let mut source = (*source).as_source_mut().expect("expected source").analyze(profiler);
         let mut operators = operators
             .iter_mut()
-            .map(|op| op.as_operator_mut().expect("expected operator").profiled(profiler))
+            .map(|op| op.as_operator_mut().expect("expected operator").analyze(profiler))
             .collect::<Box<_>>();
-        let mut sink = sink.as_sink_mut().expect("expected sink").profiled(profiler);
+        let mut sink = sink.as_sink_mut().expect("expected sink").analyze(profiler);
 
         let mut stream = source.source(ecx)?;
 

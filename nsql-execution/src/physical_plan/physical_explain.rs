@@ -6,8 +6,8 @@ use nsql_storage_engine::fallible_iterator;
 
 use super::explain::ExplainTree;
 use super::*;
+use crate::analyze::AnalyzeMode;
 use crate::config::ExplainOutput;
-use crate::profiler::ProfileMode;
 
 pub struct PhysicalExplain<'env, 'txn, S, M, T> {
     id: PhysicalNodeId,
@@ -78,9 +78,9 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple>
     ) -> ExecutionResult<()> {
         if self.opts.analyze {
             if self.opts.timing {
-                ecx.profiler().set_mode(ProfileMode::Timing);
+                ecx.analyzer().set_mode(AnalyzeMode::Timing);
             } else {
-                ecx.profiler().set_mode(ProfileMode::Enabled);
+                ecx.analyzer().set_mode(AnalyzeMode::Enabled);
             }
         }
 
@@ -107,7 +107,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple>
         let scx = ecx.scx();
 
         if self.opts.analyze {
-            let metrics = ecx.profiler().metrics();
+            let metrics = ecx.analyzer().metrics();
             let mut time_annotations =
                 ArenaMap::with_capacity(if self.opts.timing { metrics.max_idx() } else { 0 });
             let mut in_tuple_annotations = ArenaMap::with_capacity(metrics.max_idx());

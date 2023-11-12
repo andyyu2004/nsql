@@ -1,11 +1,11 @@
 #![feature(trait_upcasting, once_cell_try, anonymous_lifetime_in_impl_trait, exact_size_is_empty)]
 
+mod analyze;
 mod compile;
 pub mod config;
 mod executor;
 mod physical_plan;
 mod pipeline;
-mod profiler;
 
 use std::fmt;
 use std::hash::BuildHasherDefault;
@@ -13,6 +13,7 @@ use std::ops::{Index, IndexMut};
 use std::sync::atomic::{self, AtomicBool};
 use std::sync::Arc;
 
+use analyze::Analyzer;
 pub use anyhow::Error;
 use dashmap::DashMap;
 use executor::OutputSink;
@@ -24,7 +25,6 @@ use nsql_storage_engine::{ExecutionMode, FallibleIterator, ReadWriteExecutionMod
 use nsql_util::atomic::AtomicEnum;
 pub use physical_plan::{PhysicalPlanner, PlannerProfiler};
 use pipeline::RootPipeline;
-use profiler::Profiler;
 use rustc_hash::FxHasher;
 
 use self::config::SessionConfig;
@@ -552,7 +552,7 @@ pub struct ExecutionContext<'a, 'env, 'txn, S: StorageEngine, M: ExecutionMode<'
     tcx: &'a dyn TransactionContext<'env, 'txn, S, M>,
     scx: &'a (dyn SessionContext + 'a),
     materialized_ctes: DashMap<Name, Arc<[T]>, BuildHasherDefault<FxHasher>>,
-    profiler: Profiler,
+    analyzer: Analyzer,
 }
 
 impl<'a, 'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T>
@@ -569,13 +569,13 @@ impl<'a, 'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T>
             tcx,
             scx,
             materialized_ctes: Default::default(),
-            profiler: Default::default(),
+            analyzer: Default::default(),
         }
     }
 
     #[inline]
-    pub(crate) fn profiler(&self) -> &Profiler {
-        &self.profiler
+    pub(crate) fn analyzer(&self) -> &Analyzer {
+        &self.analyzer
     }
 
     #[inline]

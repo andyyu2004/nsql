@@ -14,21 +14,21 @@ use crate::{
 };
 
 #[derive(Debug)]
-pub(crate) struct Profiler {
-    mode: Cell<ProfileMode>,
+pub(crate) struct Analyzer {
+    mode: Cell<AnalyzeMode>,
     metrics: RefCell<ArenaMap<PhysicalNodeId, NodeMetrics>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub enum ProfileMode {
+pub enum AnalyzeMode {
     Disabled,
     Enabled,
     Timing,
 }
 
-impl Default for Profiler {
+impl Default for Analyzer {
     fn default() -> Self {
-        Self { mode: Cell::new(ProfileMode::Disabled), metrics: Default::default() }
+        Self { mode: Cell::new(AnalyzeMode::Disabled), metrics: Default::default() }
     }
 }
 
@@ -40,25 +40,25 @@ enum NodeType {
     Sink,
 }
 
-impl Profiler {
+impl Analyzer {
     #[inline]
-    pub fn set_mode(&self, mode: ProfileMode) {
+    pub fn set_mode(&self, mode: AnalyzeMode) {
         self.mode.set(mode);
     }
 
     fn is_enabled(&self) -> bool {
         // FIXME this is actually pretty slow and can take up a decent amount of runtime even when disabled which sucks
-        // Consider using enum dispatch enum { EnabledProfilerImpl | TrivialDisabledProfiledImpl } to avoid having the keep reading the cell.
-        self.mode.get() > ProfileMode::Disabled
+        // Consider using enum dispatch enum { EnabledAnalyzerImpl | TrivialDisabledAnalyzerImpl } to avoid having the keep reading the cell.
+        self.mode.get() > AnalyzeMode::Disabled
     }
 
     #[inline]
-    fn start(&self, id: PhysicalNodeId, node_type: NodeType) -> ProfilerGuard<'_> {
-        let timing = matches!(self.mode.get(), ProfileMode::Timing);
+    fn start(&self, id: PhysicalNodeId, node_type: NodeType) -> AnalyzerGuard<'_> {
+        let timing = matches!(self.mode.get(), AnalyzeMode::Timing);
         let start = timing.then(Instant::now);
         let tuples_in = matches!(node_type, NodeType::Sink | NodeType::Operator) as usize;
         let tuples_out = matches!(node_type, NodeType::Operator | NodeType::Source) as usize;
-        ProfilerGuard { profiler: self, id: id.cast(), start, tuples_in, tuples_out }
+        AnalyzerGuard { analyzer: self, id: id.cast(), start, tuples_in, tuples_out }
     }
 
     fn init(&self, id: PhysicalNodeId) {
@@ -69,7 +69,7 @@ impl Profiler {
         self.metrics.borrow_mut().entry(id).or_default();
     }
 
-    fn record(&self, guard: &ProfilerGuard<'_>) {
+    fn record(&self, guard: &AnalyzerGuard<'_>) {
         if !self.is_enabled() {
             return;
         }
@@ -96,43 +96,43 @@ pub struct NodeMetrics {
     pub tuples_out: usize,
 }
 
-pub(crate) struct ProfilerGuard<'p> {
+pub(crate) struct AnalyzerGuard<'p> {
     id: Idx<()>,
-    profiler: &'p Profiler,
+    analyzer: &'p Analyzer,
     start: Option<Instant>,
     tuples_in: usize,
     tuples_out: usize,
 }
 
-impl<'p> Drop for ProfilerGuard<'p> {
+impl<'p> Drop for AnalyzerGuard<'p> {
     #[inline]
     fn drop(&mut self) {
-        self.profiler.record(self);
+        self.analyzer.record(self);
     }
 }
 
-pub(crate) trait PhysicalNodeProfileExt<'env, 'txn, S, M, T>: Sized {
-    fn profiled(self, profiler: &Profiler) -> ProfiledPhysicalNode<'_, Self>;
+pub(crate) trait PhysicalNodeAnalyzeExt<'env, 'txn, S, M, T>: Sized {
+    fn analyze(self, analyzer: &Analyzer) -> AnalyzedPhysicalNode<'_, Self>;
 }
 
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple, N>
-    PhysicalNodeProfileExt<'env, 'txn, S, M, T> for N
+    PhysicalNodeAnalyzeExt<'env, 'txn, S, M, T> for N
 where
     N: PhysicalNode<'env, 'txn, S, M, T>,
 {
-    fn profiled(self, profiler: &Profiler) -> ProfiledPhysicalNode<'_, Self> {
+    fn analyze(self, analyzer: &Analyzer) -> AnalyzedPhysicalNode<'_, Self> {
         // ensure the node has an entry in the metrics map even if it never runs
-        profiler.init(self.id());
-        ProfiledPhysicalNode { profiler, node: self }
+        analyzer.init(self.id());
+        AnalyzedPhysicalNode { analyzer, node: self }
     }
 }
 
-pub(crate) struct ProfiledPhysicalNode<'p, N> {
-    profiler: &'p Profiler,
+pub(crate) struct AnalyzedPhysicalNode<'p, N> {
+    analyzer: &'p Analyzer,
     node: N,
 }
 
-impl<'p, N> fmt::Debug for ProfiledPhysicalNode<'p, N>
+impl<'p, N> fmt::Debug for AnalyzedPhysicalNode<'p, N>
 where
     N: fmt::Debug,
 {
@@ -142,7 +142,7 @@ where
 }
 
 impl<'p, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, N> Explain<'env, 'txn, S, M>
-    for ProfiledPhysicalNode<'p, N>
+    for AnalyzedPhysicalNode<'p, N>
 where
     N: Explain<'env, 'txn, S, M>,
 {
@@ -161,7 +161,7 @@ where
 }
 
 impl<'p, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple, N>
-    PhysicalNode<'env, 'txn, S, M, T> for ProfiledPhysicalNode<'p, N>
+    PhysicalNode<'env, 'txn, S, M, T> for AnalyzedPhysicalNode<'p, N>
 where
     N: PhysicalNode<'env, 'txn, S, M, T>,
 {
@@ -227,7 +227,7 @@ where
 }
 
 impl<'p, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple, N>
-    PhysicalSource<'env, 'txn, S, M, T> for ProfiledPhysicalNode<'p, N>
+    PhysicalSource<'env, 'txn, S, M, T> for AnalyzedPhysicalNode<'p, N>
 where
     N: PhysicalSource<'env, 'txn, S, M, T>,
 {
@@ -236,25 +236,25 @@ where
         ecx: &'s ExecutionContext<'_, 'env, 'txn, S, M, T>,
     ) -> ExecutionResult<TupleStream<'s, T>> {
         let id = self.id();
-        let _guard = self.profiler.start(id, NodeType::Misc);
+        let _guard = self.analyzer.start(id, NodeType::Misc);
         let iter = self.node.source(ecx)?;
-        Ok(Box::new(ProfiledIterator { id, iter, profiler: self.profiler }))
+        Ok(Box::new(AnalyzedIterator { id, iter, analyzer: self.analyzer }))
     }
 }
 
-struct ProfiledIterator<'p, I> {
+struct AnalyzedIterator<'p, I> {
     id: Idx<()>,
-    profiler: &'p Profiler,
+    analyzer: &'p Analyzer,
     iter: I,
 }
 
-impl<'p, I: FallibleIterator> FallibleIterator for ProfiledIterator<'p, I> {
+impl<'p, I: FallibleIterator> FallibleIterator for AnalyzedIterator<'p, I> {
     type Item = I::Item;
 
     type Error = I::Error;
 
     fn next(&mut self) -> Result<Option<Self::Item>, Self::Error> {
-        let mut guard = self.profiler.start(self.id, NodeType::Source);
+        let mut guard = self.analyzer.start(self.id, NodeType::Source);
         match self.iter.next()? {
             Some(tuple) => Ok(Some(tuple)),
             None => {
@@ -266,7 +266,7 @@ impl<'p, I: FallibleIterator> FallibleIterator for ProfiledIterator<'p, I> {
 }
 
 impl<'p, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple, N>
-    PhysicalOperator<'env, 'txn, S, M, T> for ProfiledPhysicalNode<'p, N>
+    PhysicalOperator<'env, 'txn, S, M, T> for AnalyzedPhysicalNode<'p, N>
 where
     N: PhysicalOperator<'env, 'txn, S, M, T>,
 {
@@ -275,7 +275,7 @@ where
         ecx: &ExecutionContext<'_, 'env, 'txn, S, M, T>,
         input: &mut T,
     ) -> ExecutionResult<OperatorState<T>> {
-        let mut guard = self.profiler.start(self.id(), NodeType::Operator);
+        let mut guard = self.analyzer.start(self.id(), NodeType::Operator);
         match self.node.execute(ecx, input)? {
             OperatorState::Again(t) => {
                 // don't count the input tuple if it's going to come again
@@ -301,7 +301,7 @@ where
     }
 }
 impl<'p, 'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple, N>
-    PhysicalSink<'env, 'txn, S, M, T> for ProfiledPhysicalNode<'p, N>
+    PhysicalSink<'env, 'txn, S, M, T> for AnalyzedPhysicalNode<'p, N>
 where
     N: PhysicalSink<'env, 'txn, S, M, T>,
 {
@@ -309,7 +309,7 @@ where
         &mut self,
         ecx: &ExecutionContext<'_, 'env, 'txn, S, M, T>,
     ) -> ExecutionResult<()> {
-        let _guard = self.profiler.start(self.id(), NodeType::Misc);
+        let _guard = self.analyzer.start(self.id(), NodeType::Misc);
         self.node.initialize(ecx)
     }
 
@@ -318,12 +318,12 @@ where
         ecx: &ExecutionContext<'_, 'env, 'txn, S, M, T>,
         tuple: T,
     ) -> ExecutionResult<()> {
-        let _guard = self.profiler.start(self.id(), NodeType::Sink);
+        let _guard = self.analyzer.start(self.id(), NodeType::Sink);
         self.node.sink(ecx, tuple)
     }
 
     fn finalize(&mut self, ecx: &ExecutionContext<'_, 'env, 'txn, S, M, T>) -> ExecutionResult<()> {
-        let _guard = self.profiler.start(self.id(), NodeType::Misc);
+        let _guard = self.analyzer.start(self.id(), NodeType::Misc);
         self.node.finalize(ecx)
     }
 }
