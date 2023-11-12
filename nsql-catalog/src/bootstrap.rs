@@ -46,7 +46,7 @@ impl<'env: 'txn, 'txn, S, M, F> FunctionCatalog<'env, 'txn, S, M, F> for Bootstr
 
     fn get_function(
         &self,
-        _tx: &dyn TransactionContext<'env, 'txn, S, M>,
+        _tcx: &dyn TransactionContext<'env, 'txn, S, M>,
         _oid: Oid<Function>,
     ) -> Result<F> {
         bail!("cannot get function during bootstrap")

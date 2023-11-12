@@ -101,7 +101,7 @@ impl<S: StorageEngine> Nsql<S> {
 
     #[inline]
     pub fn connect(&self) -> Connection<'_, S> {
-        Connection { db: self, ctx: Default::default() }
+        Connection { db: self, tcx: Default::default() }
     }
 
     #[inline]
@@ -221,7 +221,7 @@ impl NsqlProfiler {
 
 pub struct Connection<'env, S: StorageEngine> {
     db: &'env Nsql<S>,
-    ctx: SessionContext<'env, S>,
+    tcx: SessionContext<'env, S>,
 }
 
 struct SessionContext<'env, S: StorageEngine> {
@@ -332,7 +332,7 @@ impl<'env, S: StorageEngine> nsql_execution::SessionContext for SessionContext<'
 
 impl<'env, S: StorageEngine> Connection<'env, S> {
     pub fn query(&self, query: &str) -> Result<MaterializedQueryOutput> {
-        std::panic::catch_unwind(AssertUnwindSafe(|| self.db.shared.query(&self.ctx, query)))
+        std::panic::catch_unwind(AssertUnwindSafe(|| self.db.shared.query(&self.tcx, query)))
             .map_err(|data| match data.downcast::<String>() {
                 Ok(msg) => anyhow!("{msg}"),
                 Err(_) => anyhow!("caught panic"),
@@ -347,7 +347,7 @@ impl<S: StorageEngine> Shared<S> {
 
     fn query<'env>(
         &'env self,
-        ctx: &SessionContext<'env, S>,
+        tcx: &SessionContext<'env, S>,
         query: &str,
     ) -> Result<MaterializedQueryOutput> {
         let stmts = nsql_parse::parse_statements(query)?;
@@ -356,20 +356,20 @@ impl<S: StorageEngine> Shared<S> {
             [] => Ok(MaterializedQueryOutput { schema: Schema::empty(), tuples: vec![] }),
             [stmts @ .., last] => {
                 for stmt in stmts {
-                    let _output = self.execute(ctx, stmt);
+                    let _output = self.execute(tcx, stmt);
                 }
-                self.execute(ctx, last)
+                self.execute(tcx, last)
             }
         }
     }
 
-    #[tracing::instrument(skip(self, ctx, stmt), fields(%stmt))]
+    #[tracing::instrument(skip(self, scx, stmt), fields(%stmt))]
     fn execute<'env>(
         &'env self,
-        ctx: &SessionContext<'env, S>,
+        scx: &SessionContext<'env, S>,
         stmt: &ast::Statement,
     ) -> Result<MaterializedQueryOutput> {
-        let tcx = ctx.current_tcx.swap(None).map(|tx| {
+        let tcx = scx.current_tcx.swap(None).map(|tx| {
             Arc::into_inner(tx).expect("unexpected outstanding references to transaction context")
         });
 
@@ -424,13 +424,13 @@ impl<S: StorageEngine> Shared<S> {
 
         let (tcx, output) = match tcx {
             ReadOrWriteTransactionContext::Read(tcx) => {
-                let (tcx, output) = self.execute_in(ctx, tcx, plan, |planner, tcx, plan| {
+                let (tcx, output) = self.execute_in(scx, tcx, plan, |planner, tcx, plan| {
                     planner.plan(&self.profiler, tcx, plan)
                 })?;
                 (tcx.map(ReadOrWriteTransactionContext::Read), output)
             }
             ReadOrWriteTransactionContext::Write(tcx) => {
-                let (tcx, output) = self.execute_in(ctx, tcx, plan, |planner, tcx, plan| {
+                let (tcx, output) = self.execute_in(scx, tcx, plan, |planner, tcx, plan| {
                     planner.plan_write(&self.profiler, tcx, plan)
                 })?;
                 (tcx.map(ReadOrWriteTransactionContext::Write), output)
@@ -439,7 +439,7 @@ impl<S: StorageEngine> Shared<S> {
 
         // `tx` was not committed or aborted (including autocommits), so we need to put it back
         if let Some(tcx) = tcx {
-            ctx.current_tcx.store(Some(Arc::new(tcx)));
+            scx.current_tcx.store(Some(Arc::new(tcx)));
         }
 
         Ok(output)
@@ -447,7 +447,7 @@ impl<S: StorageEngine> Shared<S> {
 
     fn execute_in<'env, M: ExecutionMode<'env, S>>(
         &'env self,
-        ctx: &SessionContext<'env, S>,
+        scx: &SessionContext<'env, S>,
         tcx: TransactionContext<'env, S, M>,
         plan: Box<ir::Plan>,
         do_physical_plan: impl for<'txn> FnOnce(
@@ -471,7 +471,7 @@ impl<S: StorageEngine> Shared<S> {
                     do_physical_plan(physical_planner, &tcx, plan)
                 })?;
 
-            let ecx = ExecutionContext::<S, M, FlatTuple>::new(catalog, &tcx, ctx);
+            let ecx = ExecutionContext::<S, M, FlatTuple>::new(catalog, &tcx, scx);
             let tuples = self.profiler.try_profile(self.profiler.execute_event_id, || {
                 nsql_execution::execute(&ecx, physical_plan)
             })?;

@@ -87,7 +87,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple>
     fn explain(
         &self,
         _catalog: Catalog<'env, S>,
-        _tx: &dyn TransactionContext<'env, 'txn, S, M>,
+        _tcx: &dyn TransactionContext<'env, 'txn, S, M>,
         f: &mut fmt::Formatter<'_>,
     ) -> explain::Result {
         write!(f, "limit ({})", self.limit)?;

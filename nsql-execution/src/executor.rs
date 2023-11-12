@@ -249,7 +249,7 @@ impl<'env, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple> Explain<
     fn explain(
         &self,
         _catalog: Catalog<'env, S>,
-        _tx: &dyn TransactionContext<'env, 'txn, S, M>,
+        _tcx: &dyn TransactionContext<'env, 'txn, S, M>,
         f: &mut fmt::Formatter<'_>,
     ) -> explain::Result {
         write!(f, "output")?;

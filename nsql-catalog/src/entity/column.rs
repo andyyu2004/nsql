@@ -160,7 +160,7 @@ impl SystemEntity for Column {
     fn name<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
         &self,
         _catalog: Catalog<'env, S>,
-        _tx: &dyn TransactionContext<'env, 'txn, S, M>,
+        _tcx: &dyn TransactionContext<'env, 'txn, S, M>,
     ) -> Result<Name> {
         Ok(Name::clone(&self.name))
     }
@@ -174,7 +174,7 @@ impl SystemEntity for Column {
     fn parent_oid<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
         &self,
         _catalog: Catalog<'env, S>,
-        _tx: &dyn TransactionContext<'env, 'txn, S, M>,
+        _tcx: &dyn TransactionContext<'env, 'txn, S, M>,
     ) -> Result<Option<Oid<Self::Parent>>> {
         Ok(Some(self.table))
     }

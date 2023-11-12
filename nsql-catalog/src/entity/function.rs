@@ -145,7 +145,7 @@ impl SystemEntity for Function {
     fn name<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
         &self,
         _catalog: Catalog<'env, S>,
-        _tx: &dyn TransactionContext<'env, 'txn, S, M>,
+        _tcx: &dyn TransactionContext<'env, 'txn, S, M>,
     ) -> Result<Name> {
         Ok(self.name())
     }
@@ -159,7 +159,7 @@ impl SystemEntity for Function {
     fn parent_oid<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
         &self,
         _catalog: Catalog<'env, S>,
-        _tx: &dyn TransactionContext<'env, 'txn, S, M>,
+        _tcx: &dyn TransactionContext<'env, 'txn, S, M>,
     ) -> Result<Option<Oid<Self::Parent>>> {
         Ok(Some(self.namespace))
     }

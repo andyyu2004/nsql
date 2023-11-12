@@ -159,7 +159,7 @@ impl SystemEntity for () {
     fn name<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
         &self,
         _catalog: Catalog<'env, S>,
-        _tx: &dyn TransactionContext<'env, 'txn, S, M>,
+        _tcx: &dyn TransactionContext<'env, 'txn, S, M>,
     ) -> Result<Name> {
         unreachable!()
     }
@@ -175,7 +175,7 @@ impl SystemEntity for () {
     fn parent_oid<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
         &self,
         _catalog: Catalog<'env, S>,
-        _tx: &dyn TransactionContext<'env, 'txn, S, M>,
+        _tcx: &dyn TransactionContext<'env, 'txn, S, M>,
     ) -> Result<Option<Oid<Self::Parent>>> {
         unreachable!()
     }

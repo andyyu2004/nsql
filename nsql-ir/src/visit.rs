@@ -20,7 +20,7 @@ pub trait Visitor {
         match plan {
             Plan::Show(_typ) => ControlFlow::Continue(()),
             Plan::Drop(_refs) => ControlFlow::Continue(()),
-            Plan::Transaction(_tx) => ControlFlow::Continue(()),
+            Plan::Transaction(_tcx) => ControlFlow::Continue(()),
             Plan::SetVariable { .. } => ControlFlow::Continue(()),
             Plan::Explain(_opts, plan) => self.walk_plan(plan),
             Plan::Query(plan) => self.visit_query_plan(plan),

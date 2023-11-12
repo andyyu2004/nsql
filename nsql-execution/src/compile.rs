@@ -179,7 +179,7 @@ impl<F> Compiler<F> {
 
                     fn get_function(
                         &self,
-                        _tx: &dyn TransactionContext<'env, 'txn, S, M>,
+                        _tcx: &dyn TransactionContext<'env, 'txn, S, M>,
                         oid: Oid<Function>,
                     ) -> Result<UntypedOid>
                     where
