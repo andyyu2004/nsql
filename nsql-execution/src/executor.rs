@@ -51,6 +51,9 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple>
         ecx: &ExecutionContext<'_, 'env, 'txn, S, M, T>,
         pipeline: Idx<Pipeline<'env, 'txn, S, M, T>>,
     ) -> ExecutionResult<()> {
+        let prof = ecx.profiler();
+        let _guard = prof.start(prof.execute_pipeline_event_id);
+
         // Safety: caller must ensure the indexes are unique
         unsafe fn get_mut_refs_unchecked<'a, 'env, 'txn, S, M, T>(
             data: &'a mut PhysicalNodeArena<'env, 'txn, S, M, T>,

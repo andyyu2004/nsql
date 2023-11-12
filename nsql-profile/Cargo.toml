@@ -8,3 +8,6 @@ measureme = "10.1.1"
 
 [lints]
 workspace = true
+
+[features]
+profile = []

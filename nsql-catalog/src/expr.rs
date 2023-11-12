@@ -128,6 +128,8 @@ impl Evaluator {
         tuple: &T,
         expr: &ExecutableExpr<'env, 'txn, S, M>,
     ) -> Result<Value> {
+        let _guard = prof.start(prof.execute_expr_id);
+
         self.ip = 0;
         self.stack.clear();
         loop {
