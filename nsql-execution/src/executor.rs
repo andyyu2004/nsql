@@ -89,7 +89,8 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple>
             {
                 tracing::debug!(%tuple, start = %operator_idx, "pushing tuple through pipeline");
 
-                for (idx, op) in operators.iter_mut().enumerate().skip(operator_idx) {
+                for (idx, op) in operators[operator_idx..].iter_mut().enumerate() {
+                    let idx = idx + operator_idx;
                     let span = tracing::debug_span!(
                         "operator",
                         id= %op.id().into_raw(),
