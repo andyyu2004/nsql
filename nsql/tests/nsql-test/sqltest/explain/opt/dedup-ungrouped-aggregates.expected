@@ -1,6 +1,6 @@
- projection (<compiled expr>, <compiled expr>, <compiled expr>)                      
-   order by (<compiled expr>)                                                        
-     projection (<compiled expr>, <compiled expr>, <compiled expr>, <compiled expr>) 
-       ungrouped aggregate (sum(<compiled expr>))                                    
-         scan 3 values                                                               
-                                                                                     
+ projection (:project @0 :return, :project @1 :return, :project @2 :return)                          
+   order by (:project @3 :return)                                                                    
+     projection (:project @0 :return, :project @0 :return, :project @0 :return, :project @0 :return) 
+       ungrouped aggregate (sum(:project @0 :return))                                                
+         scan 3 values                                                                               
+                                                                                                     

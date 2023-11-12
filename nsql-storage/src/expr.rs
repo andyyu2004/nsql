@@ -1,4 +1,5 @@
 //! A serializable stack-based bytecode for evaluating expressions.
+mod fold;
 
 use std::str::FromStr;
 use std::{fmt, mem};
@@ -111,26 +112,25 @@ impl From<Expr> for Value {
 
 impl<F> fmt::Display for Expr<F> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // TODO
-        write!(f, "<compiled expr>")
+        write!(f, "{}", self.ops.iter().join(" "))
     }
 }
 
 impl<F> Expr<F> {
     #[inline]
     pub fn null() -> Self {
-        Self { ops: Box::new([ExprOp::Push(Value::Null), ExprOp::Return]) }
+        Self { ops: Box::new([ExprOp::Push(Value::Null), ExprOp::Ret]) }
     }
 
     #[inline]
     pub fn is_literal(&self, value: impl Into<Value>) -> bool {
-        matches!(self.ops.as_ref(), [ExprOp::Push(v), ExprOp::Return] if v == &value.into())
+        matches!(self.ops.as_ref(), [ExprOp::Push(v), ExprOp::Ret] if v == &value.into())
     }
 
     #[inline]
     pub fn literal(value: impl Into<Value>) -> Self {
         let value = value.into();
-        Self { ops: Box::new([ExprOp::Push(value), ExprOp::Return]) }
+        Self { ops: Box::new([ExprOp::Push(value), ExprOp::Ret]) }
     }
 
     pub fn call(function: F, args: impl IntoIterator<Item = Value>) -> Self {
@@ -173,12 +173,27 @@ pub enum ExprOp<F = UntypedOid> {
     Jmp(u32),
     Dup,
     Pop,
-    Return,
+    Ret,
 }
 
 static_assert_eq!(mem::size_of::<ExprOp>(), 24);
 
-mod fold;
+impl<F> fmt::Display for ExprOp<F> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ExprOp::Push(value) => write!(f, ":push {value}",),
+            ExprOp::Project { index } => write!(f, ":project {index}"),
+            ExprOp::MkArray { len } => write!(f, ":mkarray {len}"),
+            ExprOp::Call { function: _ } => write!(f, ":call"),
+            ExprOp::IfNeJmp(_) => write!(f, ":jmpifne"),
+            ExprOp::IfNullJmp(_) => write!(f, ":jmpifnull"),
+            ExprOp::Jmp(_) => write!(f, ":jmp"),
+            ExprOp::Dup => write!(f, ":dup"),
+            ExprOp::Pop => write!(f, ":pop"),
+            ExprOp::Ret => write!(f, ":ret"),
+        }
+    }
+}
 
 #[cfg(test)]
 mod tests;

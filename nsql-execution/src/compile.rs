@@ -45,7 +45,7 @@ impl<F> Compiler<F> {
     ) -> Result<Expr<F>> {
         profiler.profile(profiler.physical_plan_compile_event_id, || {
             self.build(profiler, catalog, tx, q, &expr)?;
-            self.emit(ExprOp::Return);
+            self.emit(ExprOp::Ret);
             Ok(Expr::new(mem::take(&mut self.ops)))
         })
     }

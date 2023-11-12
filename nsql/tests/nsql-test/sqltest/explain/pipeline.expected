@@ -1,12 +1,12 @@
- metapipeline #0                                                  
-   pipeline #0                                                    
-      node #4 output                                              
-      node #3 update t                                            
-                                                                  
-       metapipeline #1                                            
-         pipeline #1                                              
-            node #3 update t                                      
-            node #2 projection (<compiled expr>, <compiled expr>) 
-            node #1 filter <compiled expr>                        
-            node #0 scan t (id, b)                                
-                                                                  
+ metapipeline #0                                                         
+   pipeline #0                                                           
+      node #4 output                                                     
+      node #3 update t                                                   
+                                                                         
+       metapipeline #1                                                   
+         pipeline #1                                                     
+            node #3 update t                                             
+            node #2 projection (:project @0 :return, :push true :return) 
+            node #1 filter :project @1 :return                           
+            node #0 scan t (id, b)                                       
+                                                                         

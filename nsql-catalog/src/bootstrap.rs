@@ -243,7 +243,7 @@ impl BootstrapData {
 
                             Expr::new([
                                 ExprOp::Project { index: TupleIndex::new(target_idx) },
-                                ExprOp::Return,
+                                ExprOp::Ret,
                             ])
                         })
                         .collect::<Vec<_>>(),

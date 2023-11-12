@@ -1,6 +1,6 @@
- projection (<compiled expr>, <compiled expr>, <compiled expr>)                      
-   order by (<compiled expr>)                                                        
-     projection (<compiled expr>, <compiled expr>, <compiled expr>, <compiled expr>) 
-       hash aggregate (sum(<compiled expr>)) by <compiled expr>                      
-         scan 3 values                                                               
-                                                                                     
+ projection (:project @0 :return, :project @1 :return, :project @2 :return)                          
+   order by (:project @3 :return)                                                                    
+     projection (:project @1 :return, :project @1 :return, :project @1 :return, :project @1 :return) 
+       hash aggregate (sum(:project @0 :return)) by :project @0 :return                              
+         scan 3 values                                                                               
+                                                                                                     

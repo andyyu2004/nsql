@@ -134,7 +134,7 @@ impl Evaluator {
         self.stack.clear();
         loop {
             let op = &expr.ops()[self.ip];
-            if matches!(op, ExprOp::Return) {
+            if matches!(op, ExprOp::Ret) {
                 break;
             }
             self.execute_op(storage, prof, tcx, tuple, op)?;
@@ -191,7 +191,7 @@ impl Evaluator {
                 self.ip += 1;
                 return Ok(());
             }
-            ExprOp::Return => return Ok(()),
+            ExprOp::Ret => return Ok(()),
         };
 
         self.stack.push(value);

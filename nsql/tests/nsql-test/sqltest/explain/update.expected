@@ -1,5 +1,5 @@
- update t                                        
-   projection (<compiled expr>, <compiled expr>) 
-     filter <compiled expr>                      
-       scan t (id, b)                            
-                                                 
+ update t                                               
+   projection (:project @0 :return, :push true :return) 
+     filter :project @1 :return                         
+       scan t (id, b)                                   
+                                                        

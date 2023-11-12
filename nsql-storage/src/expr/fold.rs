@@ -29,7 +29,7 @@ impl<F> ExprOp<F> {
             ExprOp::Jmp(offset) => Ok(ExprOp::Jmp(offset)),
             ExprOp::IfNeJmp(offset) => Ok(ExprOp::IfNeJmp(offset)),
             ExprOp::IfNullJmp(offset) => Ok(ExprOp::IfNullJmp(offset)),
-            ExprOp::Return => Ok(ExprOp::Return),
+            ExprOp::Ret => Ok(ExprOp::Ret),
             ExprOp::Dup => Ok(ExprOp::Dup),
             ExprOp::Pop => Ok(ExprOp::Pop),
         }
