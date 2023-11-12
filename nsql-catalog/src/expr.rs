@@ -1,7 +1,7 @@
 use anyhow::Result;
 use nsql_profile::Profiler;
 use nsql_storage::expr::{Expr, ExprOp, TupleExpr};
-use nsql_storage::tuple::Tuple;
+use nsql_storage::tuple::{Tuple, TupleLike};
 use nsql_storage::value::Value;
 use nsql_storage_engine::{ExecutionMode, StorageEngine};
 
@@ -95,7 +95,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple>
     }
 }
 
-impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple>
+impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleLike>
     ExprEvalExt<'env, 'txn, S, M, T> for ExecutableExpr<'env, 'txn, S, M>
 {
     type Output = Value;
@@ -120,7 +120,13 @@ pub struct Evaluator {
 }
 
 impl Evaluator {
-    pub fn eval_expr<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple>(
+    pub fn eval_expr<
+        'env: 'txn,
+        'txn,
+        S: StorageEngine,
+        M: ExecutionMode<'env, S>,
+        T: TupleLike,
+    >(
         &mut self,
         storage: &'env S,
         prof: &Profiler,
@@ -150,7 +156,7 @@ impl Evaluator {
         Ok(self.pop())
     }
 
-    fn execute_op<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple>(
+    fn execute_op<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: TupleLike>(
         &mut self,
         storage: &'env S,
         prof: &Profiler,

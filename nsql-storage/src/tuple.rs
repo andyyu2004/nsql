@@ -1,7 +1,7 @@
 use std::error::Error;
 use std::fmt;
 use std::hash::Hash;
-use std::ops::{Add, Index, IndexMut};
+use std::ops::{Add, Index, IndexMut, Sub};
 use std::str::FromStr;
 
 use anyhow::bail;
@@ -11,24 +11,32 @@ use rkyv::{Archive, Archived, Deserialize, Serialize};
 
 use crate::value::{CastError, FromValue, Value};
 
+pub trait TupleLike: Index<TupleIndex, Output = Value> {
+    fn width(&self) -> usize;
+}
+
+// impl<'a, T: TupleLike> TupleLike for &'a T {
+//     #[inline]
+//     fn width(&self) -> usize {
+//         (*self).width()
+//     }
+// }
+
 pub trait Tuple:
-    fmt::Debug
-    + fmt::Display
+    TupleLike
     + Hash
     + Eq
     + Ord
     + Clone
     + FromIterator<Value>
     + IntoIterator<Item = Value>
-    + Index<TupleIndex, Output = Value>
-    + AsRef<FlatTuple> // tmp trait to make it work for now, maybe an asref<[value]> would be better
     + From<FlatTuple>
     + Into<FlatTuple>
     + Default
+    + fmt::Debug
+    + fmt::Display
     + 'static
 {
-    fn width(&self) -> usize;
-
     fn values(&self) -> impl Iterator<Item = &Value>;
 
     fn join(self, other: &Self) -> Self;
@@ -48,7 +56,6 @@ pub trait Tuple:
     }
 }
 
-// FIXME make this cheap to clone
 #[derive(
     Clone,
     PartialOrd,
@@ -72,12 +79,14 @@ impl AsRef<Self> for FlatTuple {
     }
 }
 
-impl Tuple for FlatTuple {
+impl TupleLike for FlatTuple {
     #[inline]
     fn width(&self) -> usize {
         self.values.len()
     }
+}
 
+impl Tuple for FlatTuple {
     #[inline]
     fn join(self, other: &Self) -> Self {
         let mut values = self.values.into_vec();
@@ -256,6 +265,15 @@ impl Add<usize> for TupleIndex {
     }
 }
 
+impl Sub<usize> for TupleIndex {
+    type Output = Self;
+
+    #[inline]
+    fn sub(self, rhs: usize) -> Self::Output {
+        Self::new(self.as_usize() - rhs)
+    }
+}
+
 impl FromStr for TupleIndex {
     type Err = anyhow::Error;
 
@@ -372,5 +390,25 @@ where
     #[inline]
     fn into_tuple(self) -> FlatTuple {
         FlatTuple::new([self.0.into(), self.1.into()])
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct JointTuple<'a, T, U>(pub &'a T, pub &'a U);
+
+impl<'a, T: TupleLike, U: TupleLike> TupleLike for JointTuple<'a, T, U> {
+    #[inline]
+    fn width(&self) -> usize {
+        let Self(left, right) = self;
+        left.width() + right.width()
+    }
+}
+
+impl<'a, T: TupleLike, U: TupleLike> Index<TupleIndex> for JointTuple<'a, T, U> {
+    type Output = Value;
+
+    fn index(&self, index: TupleIndex) -> &Self::Output {
+        let Self(left, right) = self;
+        if index.as_usize() < left.width() { &left[index] } else { &right[index - left.width()] }
     }
 }

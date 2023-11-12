@@ -2,6 +2,7 @@ use std::marker::PhantomData;
 
 use nsql_arena::Idx;
 use nsql_catalog::expr::Evaluator;
+use nsql_storage::tuple::JointTuple;
 
 use super::*;
 use crate::pipeline::{MetaPipelineBuilder, PipelineBuilder, PipelineBuilderArena};
@@ -146,17 +147,20 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple>
         };
 
         let rhs_tuple = &rhs_tuples[rhs_index];
-        let joint_tuple = tuple.clone().join(rhs_tuple);
+        // workaround to evaluate against a joint tuple without allocating and copying
+        let tmp_joint_tuple = JointTuple(tuple, rhs_tuple);
 
         let keep = self
             .join_predicate
-            .eval(&mut self.evaluator, storage, prof, tcx, &joint_tuple)?
+            .eval(&mut self.evaluator, storage, prof, tcx, &tmp_joint_tuple)?
             .cast::<Option<bool>>()?
             .unwrap_or(false);
 
-        tracing::trace!(%joint_tuple, %keep, "evaluated join predicate");
+        tracing::trace!(%keep, "evaluated join predicate");
 
         if keep {
+            // only perform the necessary clone if we're keeping the tuple
+            let joint_tuple = tuple.clone().join(rhs_tuple);
             tracing::trace!(output = %joint_tuple, "found match, emitting tuple");
 
             if matches!(self.join_kind, ir::JoinKind::Single) {

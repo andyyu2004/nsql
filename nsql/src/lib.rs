@@ -22,7 +22,7 @@ use nsql_parse::ast;
 pub use nsql_parse::parse;
 use nsql_profile::Profiler;
 pub use nsql_redb::RedbStorageEngine;
-pub use nsql_storage::tuple::{FlatTuple, Tuple};
+pub use nsql_storage::tuple::{FlatTuple, Tuple, TupleLike};
 use nsql_storage::Storage;
 pub use nsql_storage_engine::StorageEngine;
 use nsql_storage_engine::{
