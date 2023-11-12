@@ -115,6 +115,8 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple>
         let tcx = ecx.tcx();
         let rhs_tuples = &self.rhs_tuples;
 
+        let _guard = prof.start(prof.nlp_join_execute);
+
         let rhs_index = match self.rhs_index {
             index if index < rhs_tuples.len() => {
                 self.rhs_index += 1;

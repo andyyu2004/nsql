@@ -154,7 +154,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple>
             ir::Plan::Show(object_type) => PhysicalShow::plan(object_type, &mut self.arena),
             ir::Plan::Query(q) => plan_query(self, &q)?,
             ir::Plan::Explain(opts, logical_plan) => {
-                profiler.profile::<Result<_>>(profiler.physical_plan_explain_event_id, || {
+                profiler.profile::<Result<_>>(profiler.physical_plan_explain, || {
                     let logical_explain = if opts.verbose {
                         format!("{logical_plan:#}")
                     } else {

@@ -82,12 +82,14 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple>
 impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple>
     PhysicalOperator<'env, 'txn, S, M, T> for PhysicalCrossProduct<'env, 'txn, S, M, T>
 {
-    #[tracing::instrument(level = "debug", skip(self, _ecx))]
+    #[tracing::instrument(level = "debug", skip(self, ecx))]
     fn execute(
         &mut self,
-        _ecx: &ExecutionContext<'_, 'env, 'txn, S, M, T>,
+        ecx: &ExecutionContext<'_, 'env, 'txn, S, M, T>,
         tuple: &mut T,
     ) -> ExecutionResult<OperatorState<T>> {
+        let prof = ecx.profiler();
+        let _guard = prof.start(prof.cross_product_execute);
         let rhs_tuples = &self.rhs_tuples;
 
         let rhs_index = match self.rhs_index {

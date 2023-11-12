@@ -117,6 +117,8 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple>
         let prof = ecx.profiler();
         let tcx = ecx.tcx();
 
+        let _guard = prof.start(prof.hash_join_execute);
+
         let output = loop {
             match &mut self.probe_state {
                 ProbeState::Next => {

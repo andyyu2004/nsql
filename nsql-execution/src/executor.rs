@@ -52,7 +52,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple>
         pipeline: Idx<Pipeline<'env, 'txn, S, M, T>>,
     ) -> ExecutionResult<()> {
         let prof = ecx.profiler();
-        let _guard = prof.start(prof.execute_pipeline_event_id);
+        let _pipeline_guard = prof.start(prof.execute_pipeline);
 
         // Safety: caller must ensure the indexes are unique
         unsafe fn get_mut_refs_unchecked<'a, 'env, 'txn, S, M, T>(
@@ -82,9 +82,14 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple>
             .collect::<Box<_>>();
         let mut sink = sink.as_sink_mut().expect("expected sink").analyze(profiler);
 
-        let mut stream = source.source(ecx)?;
+        let mut stream =
+            prof.profile(prof.execute_pipeline_create_source, || source.source(ecx))?;
 
-        'main_loop: while let Some(tuple) = stream.next()? {
+        'main_loop: while let Some(tuple) =
+            prof.profile(prof.execute_pipeline_source, || stream.next())?
+        {
+            let _operators_guard = prof.start(prof.execute_pipeline_execution_loop);
+
             let mut incomplete_operator_indexes = vec![(0, tuple)];
 
             'operator_loop: while let Some((operator_idx, mut tuple)) =
@@ -102,7 +107,9 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple>
                     );
 
                     let _entered = span.enter();
-                    match op.execute(ecx, &mut tuple)? {
+                    match prof
+                        .profile(prof.execute_pipeline_operator, || op.execute(ecx, &mut tuple))?
+                    {
                         OperatorState::Again(output_tuple) => {
                             // The operator is not allowed to mutate the tuple if it returns `Again` so this is ok assuming the operator is correct.
                             incomplete_operator_indexes.push((idx, tuple));
@@ -141,11 +148,12 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple>
                 .entered();
 
                 tracing::debug!(%tuple, "sinking tuple");
-                sink.sink(ecx, tuple)?;
+
+                prof.profile(prof.execute_pipeline_sink, || sink.sink(ecx, tuple))?;
             }
         }
 
-        sink.finalize(ecx)?;
+        prof.profile(prof.execute_pipeline_finalize_sink, || sink.finalize(ecx))?;
 
         Ok(())
     }
