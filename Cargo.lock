@@ -1179,7 +1179,6 @@ dependencies = [
  "criterion-macro",
  "datatest-stable",
  "expect-test",
- "measureme",
  "mimalloc",
  "nsql-bind",
  "nsql-catalog",
@@ -1188,6 +1187,7 @@ dependencies = [
  "nsql-ir",
  "nsql-opt",
  "nsql-parse",
+ "nsql-profile",
  "nsql-redb",
  "nsql-storage",
  "nsql-storage-engine",
@@ -1280,6 +1280,7 @@ dependencies = [
  "nsql-core",
  "nsql-ir",
  "nsql-opt",
+ "nsql-profile",
  "nsql-storage",
  "nsql-storage-engine",
  "nsql-util",
@@ -1310,6 +1311,7 @@ dependencies = [
  "itertools 0.11.0",
  "nsql-core",
  "nsql-ir",
+ "nsql-profile",
  "nsql-storage",
  "rustc-hash",
  "tracing",
@@ -1320,6 +1322,13 @@ name = "nsql-parse"
 version = "0.1.0"
 dependencies = [
  "sqlparser",
+]
+
+[[package]]
+name = "nsql-profile"
+version = "0.1.0"
+dependencies = [
+ "measureme",
 ]
 
 [[package]]

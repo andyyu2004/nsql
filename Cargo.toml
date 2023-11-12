@@ -19,6 +19,7 @@ members = [
     "nsql-storage-engine",
     "nsql-util",
     "nsql-redb",
+    "nsql-profile",
 ]
 
 [workspace.lints.rust]

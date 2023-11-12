@@ -12,5 +12,6 @@ ir = { path = "../nsql-ir", package = "nsql-ir" }
 nsql-storage = { path = "../nsql-storage" }
 itertools = "0.11.0"
 nsql-core = { path = "../nsql-core" }
+nsql-profile = { path = "../nsql-profile" }
 rustc-hash = "1.1.0"
 tracing = "0.1.37"

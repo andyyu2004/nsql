@@ -23,7 +23,7 @@ use nsql_core::Name;
 use nsql_storage::tuple::{FlatTuple, Tuple};
 use nsql_storage_engine::{ExecutionMode, FallibleIterator, ReadWriteExecutionMode, StorageEngine};
 use nsql_util::atomic::AtomicEnum;
-pub use physical_plan::{PhysicalPlanner, PlannerProfiler};
+pub use physical_plan::PhysicalPlanner;
 use pipeline::RootPipeline;
 use rustc_hash::FxHasher;
 

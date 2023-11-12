@@ -4,10 +4,9 @@ use anyhow::Result;
 use nsql_catalog::expr::ExprResolveExt;
 use nsql_catalog::{Function, FunctionCatalog, TransactionContext};
 use nsql_core::{Oid, UntypedOid};
+use nsql_profile::Profiler;
 use nsql_storage::expr::{Expr, ExprOp, TupleExpr};
 use nsql_storage_engine::{ExecutionMode, StorageEngine};
-
-use crate::physical_plan::PlannerProfiler;
 
 #[derive(Debug)]
 pub(crate) struct Compiler<F> {
@@ -23,7 +22,7 @@ impl<F> Default for Compiler<F> {
 impl<F> Compiler<F> {
     pub fn compile_many<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
         &mut self,
-        profiler: &impl PlannerProfiler,
+        profiler: &Profiler,
         catalog: &dyn FunctionCatalog<'env, 'txn, S, M, F>,
         tx: &dyn TransactionContext<'env, 'txn, S, M>,
         q: &opt::Query,
@@ -38,13 +37,13 @@ impl<F> Compiler<F> {
 
     pub fn compile<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
         &mut self,
-        profiler: &impl PlannerProfiler,
+        profiler: &Profiler,
         catalog: &dyn FunctionCatalog<'env, 'txn, S, M, F>,
         tx: &dyn TransactionContext<'env, 'txn, S, M>,
         q: &opt::Query,
         expr: opt::Expr<'_>,
     ) -> Result<Expr<F>> {
-        profiler.profile(profiler.compile_event_id(), || {
+        profiler.profile(profiler.physical_plan_compile_event_id, || {
             self.build(profiler, catalog, tx, q, &expr)?;
             self.emit(ExprOp::Return);
             Ok(Expr::new(mem::take(&mut self.ops)))
@@ -53,7 +52,7 @@ impl<F> Compiler<F> {
 
     fn build<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>>(
         &mut self,
-        profiler: &impl PlannerProfiler,
+        profiler: &Profiler,
         catalog: &dyn FunctionCatalog<'env, 'txn, S, M, F>,
         tx: &dyn TransactionContext<'env, 'txn, S, M>,
         q: &opt::Query,
@@ -86,7 +85,7 @@ impl<F> Compiler<F> {
             }
             opt::Expr::Call(call) => {
                 let function = profiler
-                    .profile(profiler.catalog_function_lookup_event_id(), || {
+                    .profile(profiler.physical_plan_compile_function_lookup_event_id, || {
                         catalog.get_function(tx, call.function())
                     })?;
                 let args = call.args(q);

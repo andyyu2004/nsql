@@ -10,25 +10,18 @@ use std::mem;
 pub use egg::Id as NodeId;
 use ir::fold::{ExprFold, Folder, PlanFold};
 use nsql_core::{LogicalType, Name};
+use nsql_profile::Profiler;
 use rustc_hash::FxHashSet;
 
 use self::decorrelate::Decorrelate;
 pub use self::view::{CallExpr, Expr, Plan, Query};
-
-pub trait Profiler: nsql_core::Profiler {
-    fn transform_event_id(&self) -> Self::EventId;
-
-    fn optimize_egraph_event_id(&self) -> Self::EventId;
-
-    fn build_egraph_event_id(&self) -> Self::EventId;
-}
 
 trait Pass: Folder {
     fn name(&self) -> &'static str;
 }
 
 #[allow(clippy::boxed_local)]
-pub fn optimize(profiler: &impl Profiler, plan: Box<ir::Plan>) -> Box<ir::Plan<Query>> {
+pub fn optimize(profiler: &Profiler, plan: Box<ir::Plan>) -> Box<ir::Plan<Query>> {
     let optimized = match *plan {
         ir::Plan::Show(show) => ir::Plan::Show(show),
         ir::Plan::Drop(refs) => ir::Plan::Drop(refs),
@@ -48,11 +41,11 @@ pub fn optimize(profiler: &impl Profiler, plan: Box<ir::Plan>) -> Box<ir::Plan<Q
     Box::new(optimized)
 }
 
-fn optimize_query(profiler: &impl Profiler, mut plan: Box<ir::QueryPlan>) -> Query {
+fn optimize_query(profiler: &Profiler, mut plan: Box<ir::QueryPlan>) -> Query {
     #[cfg(debug_assertions)]
     plan.validate().unwrap_or_else(|err| panic!("invalid plan passed to optimizer: {err}"));
 
-    let plan = profiler.profile(profiler.transform_event_id(), || {
+    let plan = profiler.profile(profiler.opt_transform_event_id, || {
         loop {
             let passes = [
                 &mut IdentityProjectionElimination as &mut dyn Pass,
@@ -77,8 +70,8 @@ fn optimize_query(profiler: &impl Profiler, mut plan: Box<ir::QueryPlan>) -> Que
     });
 
     let mut builder = node::Builder::default();
-    let root = profiler.profile(profiler.build_egraph_event_id(), || builder.build(&plan));
-    profiler.profile(profiler.optimize_egraph_event_id(), || builder.finalize(root))
+    let root = profiler.profile(profiler.opt_build_egraph_event_id, || builder.build(&plan));
+    profiler.profile(profiler.opt_egraph_event_id, || builder.finalize(root))
 }
 
 struct IdentityProjectionElimination;

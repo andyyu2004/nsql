@@ -33,6 +33,7 @@ use nsql_catalog::expr::{
 };
 use nsql_catalog::{Catalog, TransactionContext};
 use nsql_core::Name;
+use nsql_profile::Profiler;
 use nsql_storage_engine::StorageEngine;
 
 use self::aggregate::{PhysicalHashAggregate, PhysicalUngroupedAggregate};
@@ -67,14 +68,6 @@ use crate::{
     OperatorState, PhysicalNode, PhysicalNodeArena, PhysicalNodeId, PhysicalOperator, PhysicalSink,
     PhysicalSource, ReadWriteExecutionMode, Tuple, TupleStream,
 };
-
-pub trait PlannerProfiler: nsql_core::Profiler {
-    fn catalog_function_lookup_event_id(&self) -> Self::EventId;
-
-    fn compile_event_id(&self) -> Self::EventId;
-
-    fn explain_event_id(&self) -> Self::EventId;
-}
 
 pub struct PhysicalPlanner<'env, 'txn, S, M, T> {
     arena: PhysicalNodeArena<'env, 'txn, S, M, T>,
@@ -122,7 +115,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple>
     #[inline]
     pub fn plan(
         mut self,
-        profiler: &impl PlannerProfiler,
+        profiler: &Profiler,
         tx: &dyn TransactionContext<'env, 'txn, S, M>,
         plan: Box<ir::Plan<opt::Query>>,
     ) -> Result<PhysicalPlan<'env, 'txn, S, M, T>> {
@@ -132,7 +125,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple>
     #[inline]
     fn do_plan(
         &mut self,
-        profiler: &impl PlannerProfiler,
+        profiler: &Profiler,
         tx: &dyn TransactionContext<'env, 'txn, S, M>,
         plan: Box<ir::Plan<opt::Query>>,
     ) -> Result<PhysicalNodeId> {
@@ -147,7 +140,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple>
 
     fn fold_plan(
         &mut self,
-        profiler: &impl PlannerProfiler,
+        profiler: &Profiler,
         tx: &dyn TransactionContext<'env, 'txn, S, M>,
         plan: Box<ir::Plan<opt::Query>>,
         mut f: impl FnMut(&mut Self, Box<ir::Plan<opt::Query>>) -> Result<PhysicalNodeId>,
@@ -161,7 +154,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple>
             ir::Plan::Show(object_type) => PhysicalShow::plan(object_type, &mut self.arena),
             ir::Plan::Query(q) => plan_query(self, &q)?,
             ir::Plan::Explain(opts, logical_plan) => {
-                profiler.profile::<Result<_>>(profiler.explain_event_id(), || {
+                profiler.profile::<Result<_>>(profiler.physical_plan_explain_event_id, || {
                     let logical_explain = if opts.verbose {
                         format!("{logical_plan:#}")
                     } else {
@@ -202,7 +195,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple>
 
     fn plan_root_query(
         &mut self,
-        profiler: &impl PlannerProfiler,
+        profiler: &Profiler,
         tx: &dyn TransactionContext<'env, 'txn, S, M>,
         q: &opt::Query,
     ) -> Result<PhysicalNodeId> {
@@ -211,7 +204,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple>
 
     fn plan_node(
         &mut self,
-        profiler: &impl PlannerProfiler,
+        profiler: &Profiler,
         tx: &dyn TransactionContext<'env, 'txn, S, M>,
         q: &opt::Query,
         plan: opt::Plan<'_>,
@@ -223,7 +216,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple>
 
     fn fold_query_plan(
         &mut self,
-        profiler: &impl PlannerProfiler,
+        profiler: &Profiler,
         tx: &dyn TransactionContext<'env, 'txn, S, M>,
         q: &opt::Query,
         plan: opt::Plan<'_>,
@@ -355,7 +348,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple>
     #[allow(clippy::type_complexity)]
     fn compile_join_conditions(
         &mut self,
-        profiler: &impl PlannerProfiler,
+        profiler: &Profiler,
         tx: &dyn TransactionContext<'env, 'txn, S, M>,
         q: &opt::Query,
         conditions: impl Iterator<Item = ir::JoinCondition<opt::Expr<'_>>>,
@@ -367,7 +360,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple>
 
     fn compile_join_condition(
         &mut self,
-        profiler: &impl PlannerProfiler,
+        profiler: &Profiler,
         tx: &dyn TransactionContext<'env, 'txn, S, M>,
         q: &opt::Query,
         condition: ir::JoinCondition<opt::Expr<'_>>,
@@ -382,7 +375,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple>
     #[allow(clippy::type_complexity)]
     fn compile_order_exprs(
         &mut self,
-        profiler: &impl PlannerProfiler,
+        profiler: &Profiler,
         tx: &dyn TransactionContext<'env, 'txn, S, M>,
         q: &opt::Query,
         exprs: impl Iterator<Item = ir::OrderExpr<opt::Expr<'_>>>,
@@ -392,7 +385,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple>
 
     fn compile_order_expr(
         &mut self,
-        profiler: &impl PlannerProfiler,
+        profiler: &Profiler,
         tx: &dyn TransactionContext<'env, 'txn, S, M>,
         q: &opt::Query,
         expr: ir::OrderExpr<opt::Expr<'_>>,
@@ -402,7 +395,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple>
 
     fn compile_exprs(
         &mut self,
-        profiler: &impl PlannerProfiler,
+        profiler: &Profiler,
         tx: &dyn TransactionContext<'env, 'txn, S, M>,
         q: &opt::Query,
         exprs: impl Iterator<Item = opt::Expr<'_>>,
@@ -412,7 +405,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple>
 
     fn compile_expr(
         &mut self,
-        profiler: &impl PlannerProfiler,
+        profiler: &Profiler,
         tx: &dyn TransactionContext<'env, 'txn, S, M>,
         q: &opt::Query,
         expr: opt::Expr<'_>,
@@ -423,7 +416,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple>
     #[allow(clippy::type_complexity)]
     fn compile_aggregate_functions(
         &mut self,
-        profiler: &impl PlannerProfiler,
+        profiler: &Profiler,
         tx: &dyn TransactionContext<'env, 'txn, S, M>,
         q: &opt::Query,
         functions: impl IntoIterator<Item = opt::CallExpr<'_>>,
@@ -455,7 +448,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, T: Tuple>
 {
     pub fn plan_write(
         mut self,
-        profiler: &impl PlannerProfiler,
+        profiler: &Profiler,
         tx: &dyn TransactionContext<'env, 'txn, S, ReadWriteExecutionMode>,
         plan: Box<ir::Plan<opt::Query>>,
     ) -> Result<PhysicalPlan<'env, 'txn, S, ReadWriteExecutionMode, T>> {
@@ -464,7 +457,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, T: Tuple>
 
     fn do_plan_write(
         &mut self,
-        profiler: &impl PlannerProfiler,
+        profiler: &Profiler,
         tx: &dyn TransactionContext<'env, 'txn, S, ReadWriteExecutionMode>,
         plan: Box<ir::Plan<opt::Query>>,
     ) -> Result<PhysicalNodeId> {
@@ -482,7 +475,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, T: Tuple>
 
     fn plan_root_write_query(
         &mut self,
-        profiler: &impl PlannerProfiler,
+        profiler: &Profiler,
         tx: &dyn TransactionContext<'env, 'txn, S, ReadWriteExecutionMode>,
         q: &opt::Query,
     ) -> Result<PhysicalNodeId> {
@@ -491,7 +484,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, T: Tuple>
 
     fn plan_write_query(
         &mut self,
-        profiler: &impl PlannerProfiler,
+        profiler: &Profiler,
         tx: &dyn TransactionContext<'env, 'txn, S, ReadWriteExecutionMode>,
         q: &opt::Query,
         plan: opt::Plan<'_>,

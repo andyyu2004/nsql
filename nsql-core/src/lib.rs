@@ -13,15 +13,6 @@ pub use oid::{Oid, UntypedOid};
 pub use smol_str::SmolStr;
 pub use ty::{LogicalType, Schema};
 
-pub trait Profiler {
-    type EventId;
-
-    /// A convenient way to get a profiler guard that will profile some experimental bit of code.
-    fn debug_event_id(&self) -> Self::EventId;
-
-    fn profile<R>(&self, event_id: Self::EventId, f: impl FnOnce() -> R) -> R;
-}
-
 /// Lowercase name of a catalog entry (for case insensitive lookup)
 #[derive(Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Name {

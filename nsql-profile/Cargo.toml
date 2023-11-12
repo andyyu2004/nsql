@@ -1,0 +1,10 @@
+[package]
+name = "nsql-profile"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+measureme = "10.1.1"
+
+[lints]
+workspace = true
