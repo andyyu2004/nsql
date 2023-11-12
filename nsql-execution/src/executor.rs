@@ -85,12 +85,15 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple>
         let mut stream =
             prof.profile(prof.execute_pipeline_create_source, || source.source(ecx))?;
 
+        let mut incomplete_operator_indexes = vec![];
+
         'main_loop: while let Some(tuple) =
             prof.profile(prof.execute_pipeline_source, || stream.next())?
         {
             let _operators_guard = prof.start(prof.execute_pipeline_execution_loop);
 
-            let mut incomplete_operator_indexes = vec![(0, tuple)];
+            incomplete_operator_indexes.clear();
+            incomplete_operator_indexes.push((0, tuple));
 
             'operator_loop: while let Some((operator_idx, mut tuple)) =
                 incomplete_operator_indexes.pop()
@@ -101,7 +104,7 @@ impl<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple>
                     let idx = idx + operator_idx;
                     let span = tracing::debug_span!(
                         "operator",
-                        id= %op.id().into_raw(),
+                        id = %op.id().into_raw(),
                         "{:#}",
                         op.display(ecx.catalog(), ecx.tcx())
                     );
