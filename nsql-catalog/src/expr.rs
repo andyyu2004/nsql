@@ -140,7 +140,7 @@ impl Evaluator {
             self.stack.len()
         );
 
-        Ok(self.stack.pop().unwrap())
+        Ok(self.pop())
     }
 
     fn execute_op<'env: 'txn, 'txn, S: StorageEngine, M: ExecutionMode<'env, S>, T: Tuple>(
@@ -159,15 +159,15 @@ impl Evaluator {
             }
             ExprOp::Call { function } => function(Catalog::new(storage), tx, &mut self.stack)?,
             ExprOp::IfNeJmp(offset) => {
-                let rhs = self.stack.pop().unwrap();
-                let lhs = self.stack.pop().unwrap();
+                let rhs = self.pop();
+                let lhs = self.pop();
                 // maybe we should just call the `NOT_EQUAL` function but that would be slower
                 self.ip +=
                     if lhs.is_null() || rhs.is_null() || lhs != rhs { *offset as usize } else { 1 };
                 return Ok(());
             }
             ExprOp::IfNullJmp(offset) => {
-                let value = self.stack.pop().unwrap();
+                let value = self.pop();
                 self.ip += if value.is_null() { *offset as usize } else { 1 };
                 return Ok(());
             }
@@ -177,7 +177,7 @@ impl Evaluator {
             }
             ExprOp::Dup => self.stack.last().unwrap().clone(),
             ExprOp::Pop => {
-                self.stack.pop().unwrap();
+                self.pop();
                 self.ip += 1;
                 return Ok(());
             }
@@ -187,5 +187,9 @@ impl Evaluator {
         self.stack.push(value);
         self.ip += 1;
         Ok(())
+    }
+
+    fn pop(&mut self) -> Value {
+        self.stack.pop().unwrap()
     }
 }
