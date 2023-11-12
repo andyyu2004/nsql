@@ -45,7 +45,7 @@ fn optimize_query(profiler: &Profiler, mut plan: Box<ir::QueryPlan>) -> Query {
     #[cfg(debug_assertions)]
     plan.validate().unwrap_or_else(|err| panic!("invalid plan passed to optimizer: {err}"));
 
-    let plan = profiler.profile(profiler.opt_transform_event_id, || {
+    let plan = profiler.profile(profiler.opt_transform, || {
         loop {
             let passes = [
                 &mut IdentityProjectionElimination as &mut dyn Pass,
@@ -70,8 +70,8 @@ fn optimize_query(profiler: &Profiler, mut plan: Box<ir::QueryPlan>) -> Query {
     });
 
     let mut builder = node::Builder::default();
-    let root = profiler.profile(profiler.opt_build_egraph_event_id, || builder.build(&plan));
-    profiler.profile(profiler.opt_egraph_event_id, || builder.finalize(root))
+    let root = profiler.profile(profiler.opt_build_egraph, || builder.build(&plan));
+    profiler.profile(profiler.opt_egraph, || builder.finalize(root))
 }
 
 struct IdentityProjectionElimination;

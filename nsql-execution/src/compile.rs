@@ -43,7 +43,7 @@ impl<F> Compiler<F> {
         q: &opt::Query,
         expr: opt::Expr<'_>,
     ) -> Result<Expr<F>> {
-        profiler.profile(profiler.physical_plan_compile_event_id, || {
+        profiler.profile(profiler.physical_plan_compile, || {
             self.build(profiler, catalog, tx, q, &expr)?;
             self.emit(ExprOp::Ret);
             Ok(Expr::new(mem::take(&mut self.ops)))
@@ -85,7 +85,7 @@ impl<F> Compiler<F> {
             }
             opt::Expr::Call(call) => {
                 let function = profiler
-                    .profile(profiler.physical_plan_compile_function_lookup_event_id, || {
+                    .profile(profiler.physical_plan_compile_function_lookup, || {
                         catalog.get_function(tx, call.function())
                     })?;
                 let args = call.args(q);

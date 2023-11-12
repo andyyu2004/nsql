@@ -10,18 +10,18 @@ pub struct Profiler {
     profiler: measureme::Profiler,
     generic_event_kind: StringId,
 
-    pub debug_event_id: EventId,
+    pub debug: EventId,
 
-    pub bind_event_id: EventId,
+    pub bind: EventId,
 
-    pub optimize_event_id: EventId,
-    pub opt_transform_event_id: EventId,
-    pub opt_egraph_event_id: EventId,
-    pub opt_build_egraph_event_id: EventId,
+    pub optimize: EventId,
+    pub opt_transform: EventId,
+    pub opt_egraph: EventId,
+    pub opt_build_egraph: EventId,
 
-    pub physical_plan_event_id: EventId,
-    pub physical_plan_compile_event_id: EventId,
-    pub physical_plan_compile_function_lookup_event_id: EventId,
+    pub physical_plan: EventId,
+    pub physical_plan_compile: EventId,
+    pub physical_plan_compile_function_lookup: EventId,
     pub physical_plan_explain: EventId,
 
     pub execute_event_id: EventId,
@@ -47,15 +47,15 @@ impl Profiler {
         let mk_id = |s: &str| EventId::from_label(profiler.alloc_string(s));
 
         Ok(Self {
-            debug_event_id: mk_id("debug"),
-            bind_event_id: mk_id("bind"),
-            optimize_event_id: mk_id("optimize"),
-            opt_transform_event_id: mk_id("opt-transform"),
-            opt_egraph_event_id: mk_id("opt-egraph-build"),
-            opt_build_egraph_event_id: mk_id("opt-egraph-optimize"),
-            physical_plan_event_id: mk_id("physical-plan"),
-            physical_plan_compile_event_id: mk_id("compile"),
-            physical_plan_compile_function_lookup_event_id: mk_id("compile-function-lookup"),
+            debug: mk_id("debug"),
+            bind: mk_id("bind"),
+            optimize: mk_id("optimize"),
+            opt_transform: mk_id("opt-transform"),
+            opt_egraph: mk_id("opt-egraph-build"),
+            opt_build_egraph: mk_id("opt-egraph-optimize"),
+            physical_plan: mk_id("physical-plan"),
+            physical_plan_compile: mk_id("compile"),
+            physical_plan_compile_function_lookup: mk_id("compile-function-lookup"),
             physical_plan_explain: mk_id("explain"),
             execute_event_id: mk_id("execute"),
             execute_pipeline: mk_id("execute-pipeline"),

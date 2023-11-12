@@ -282,7 +282,7 @@ impl<S: StorageEngine> Shared<S> {
         let (tcx, plan) = match tcx {
             Some(tcx) => {
                 tracing::debug!("reusing existing transaction");
-                let plan = self.profiler.profile(self.profiler.bind_event_id, || match &tcx {
+                let plan = self.profiler.profile(self.profiler.bind, || match &tcx {
                     ReadOrWriteTransactionContext::Read(tcx) => {
                         tcx.with(|tcx| Binder::new(catalog, &tcx).bind(stmt))
                     }
@@ -303,9 +303,8 @@ impl<S: StorageEngine> Shared<S> {
                 );
                 // create a read transaction to bind the statement and figure out which type of transaction is required
                 let plan = tcx.with(|tcx| {
-                    self.profiler.profile(self.profiler.bind_event_id, || {
-                        Binder::new(catalog, &tcx).bind(stmt)
-                    })
+                    self.profiler
+                        .profile(self.profiler.bind, || Binder::new(catalog, &tcx).bind(stmt))
                 })?;
 
                 let tcx =
@@ -364,17 +363,14 @@ impl<S: StorageEngine> Shared<S> {
             let catalog = Catalog::new(self.storage.storage());
 
             let schema = Schema::new(plan.schema());
-            let plan = self
-                .profiler
-                .profile::<Result<_, Error>>(self.profiler.optimize_event_id, || {
-                    Ok(optimize(&self.profiler, plan))
-                })?;
+            let plan = self.profiler.profile::<Result<_, Error>>(self.profiler.optimize, || {
+                Ok(optimize(&self.profiler, plan))
+            })?;
 
             let physical_planner = PhysicalPlanner::new(catalog);
-            let physical_plan =
-                self.profiler.profile(self.profiler.physical_plan_event_id, || {
-                    do_physical_plan(physical_planner, &tcx, plan)
-                })?;
+            let physical_plan = self.profiler.profile(self.profiler.physical_plan, || {
+                do_physical_plan(physical_planner, &tcx, plan)
+            })?;
 
             let ecx = ExecutionContext::<S, M, FlatTuple>::new(catalog, &self.profiler, &tcx, scx);
             let tuples = self.profiler.profile(self.profiler.execute_event_id, || {
