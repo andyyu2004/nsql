@@ -1,4 +1,4 @@
- projection (:project @0 :return, :project @1 :push 1 :call :return) in=2 out=2 
-   filter :project @1 :push 2 :call :return in=4 out=2                          
-     scan integers (id, i) in=0 out=4                                           
-                                                                                
+ projection (:project @0 :ret, :project @1 :push 1 :call :ret) in=2 out=2 
+   filter :project @1 :push 2 :call :ret in=4 out=2                       
+     scan integers (id, i) in=0 out=4                                     
+                                                                          

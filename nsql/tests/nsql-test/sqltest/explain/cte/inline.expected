@@ -1,3 +1,3 @@
- projection (:push 1 :return) 
-   dummy scan                 
-                              
+ projection (:push 1 :ret) 
+   dummy scan              
+                           
