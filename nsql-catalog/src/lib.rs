@@ -196,6 +196,7 @@ impl SystemEntityPrivate for () {
     }
 }
 
+#[repr(C)]
 pub struct Catalog<'env, S> {
     storage: &'env S,
 }

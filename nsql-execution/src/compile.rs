@@ -8,6 +8,7 @@ use nsql_profile::Profiler;
 use nsql_storage::expr::{Expr, ExprOp, TupleExpr};
 use nsql_storage_engine::{ExecutionMode, StorageEngine};
 
+/// Compile optimized expressions into a serializable and executable bytecode format.
 #[derive(Debug)]
 pub(crate) struct Compiler<F> {
     ops: Vec<ExprOp<F>>,

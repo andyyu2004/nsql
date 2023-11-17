@@ -1,9 +1,16 @@
-#![feature(trait_upcasting, once_cell_try, anonymous_lifetime_in_impl_trait, exact_size_is_empty)]
+#![feature(
+    trait_upcasting,
+    once_cell_try,
+    anonymous_lifetime_in_impl_trait,
+    exact_size_is_empty,
+    ptr_metadata
+)]
 
 mod analyze;
 mod compile;
 pub mod config;
 mod executor;
+mod jit;
 mod physical_plan;
 mod pipeline;
 

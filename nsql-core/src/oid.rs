@@ -3,6 +3,7 @@ use std::marker::PhantomData;
 use std::str::FromStr;
 use std::{cmp, fmt};
 
+use nsql_util::static_assert_eq;
 use rkyv::{Archive, Deserialize, Serialize};
 
 /// An opaque identifier for an entity in a catalog set.
@@ -11,11 +12,13 @@ use rkyv::{Archive, Deserialize, Serialize};
 // This must only be constructed internally by the catalog.
 // FIXME move the typedoid to catalog crate but keep the untyped one here
 #[derive(Archive, Serialize, Deserialize)]
-// #[structural_match]
+#[repr(C)]
 pub struct Oid<T: ?Sized> {
     oid: u64,
     marker: PhantomData<fn() -> T>,
 }
+
+static_assert_eq!(std::mem::size_of::<Oid<()>>(), std::mem::size_of::<u64>());
 
 impl<T: ?Sized> std::marker::StructuralPartialEq for Oid<T> {}
 

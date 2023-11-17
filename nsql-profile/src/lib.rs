@@ -42,7 +42,7 @@ pub struct Profiler {
 }
 
 impl Profiler {
-    pub fn new(path: &Path) -> Result<Self, Box<dyn Error + Send + Sync>> {
+    pub fn new(path: impl AsRef<Path>) -> Result<Self, Box<dyn Error + Send + Sync>> {
         let profiler = measureme::Profiler::new(path)?;
         let mk_id = |s: &str| EventId::from_label(profiler.alloc_string(s));
 

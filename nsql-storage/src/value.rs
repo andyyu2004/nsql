@@ -120,6 +120,7 @@ impl FromStr for Value {
     // rkyv::Serialize,
     // rkyv::Deserialize,
 )]
+#[repr(C)]
 pub struct Text(SmolStr);
 
 impl Deref for Text {

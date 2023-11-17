@@ -9,6 +9,7 @@ workspace = true
 [dependencies]
 rust_decimal = { version = "1.28.1", default-features = false, features = [
     "rkyv",
+    "c-repr",
 ] }
 nsql-arena = { path = "../nsql-arena" }
 nsql-core = { path = "../nsql-core" }

@@ -13,14 +13,50 @@ use crate::value::{CastError, FromValue, Value};
 
 pub trait TupleLike: Index<TupleIndex, Output = Value> {
     fn width(&self) -> usize;
+
+    fn to_raw_parts(&self) -> (*const (), &'static RawTupleLikeVTable);
 }
 
-// impl<'a, T: TupleLike> TupleLike for &'a T {
-//     #[inline]
-//     fn width(&self) -> usize {
-//         (*self).width()
-//     }
-// }
+#[repr(C)]
+pub struct RawTupleLikeVTable {
+    pub width: unsafe extern "C" fn(*const ()) -> usize,
+    pub index: unsafe extern "C" fn(*const (), TupleIndex) -> *const Value,
+}
+
+impl RawTupleLikeVTable {
+    /// Convert a raw vtable and data pointer into an implementation `TupleLike`
+    /// # Safety
+    /// todo
+    pub unsafe fn make_tuple_like(&'static self, data: *const ()) -> impl TupleLike {
+        struct Impl {
+            data: *const (),
+            vtable: &'static RawTupleLikeVTable,
+        }
+
+        impl Index<TupleIndex> for Impl {
+            type Output = Value;
+
+            #[inline]
+            fn index(&self, index: TupleIndex) -> &Self::Output {
+                unsafe { &*(self.vtable.index)(self.data, index) }
+            }
+        }
+
+        impl TupleLike for Impl {
+            #[inline]
+            fn width(&self) -> usize {
+                unsafe { (self.vtable.width)(self.data) }
+            }
+
+            #[inline]
+            fn to_raw_parts(&self) -> (*const (), &'static RawTupleLikeVTable) {
+                (self.data, self.vtable)
+            }
+        }
+
+        Impl { data, vtable: self }
+    }
+}
 
 pub trait Tuple:
     TupleLike
@@ -79,10 +115,28 @@ impl AsRef<Self> for FlatTuple {
     }
 }
 
+static FLAT_TUPLE_VTABLE: &RawTupleLikeVTable =
+    &RawTupleLikeVTable { width: FlatTuple::raw_width, index: FlatTuple::raw_index };
+
+impl FlatTuple {
+    extern "C" fn raw_width(this: *const ()) -> usize {
+        unsafe { (*(this as *const FlatTuple)).width() }
+    }
+
+    extern "C" fn raw_index(this: *const (), index: TupleIndex) -> *const Value {
+        unsafe { &(*(this as *const FlatTuple))[index] }
+    }
+}
+
 impl TupleLike for FlatTuple {
     #[inline]
     fn width(&self) -> usize {
         self.values.len()
+    }
+
+    #[inline]
+    fn to_raw_parts(&self) -> (*const (), &'static RawTupleLikeVTable) {
+        (self as *const _ as *const (), FLAT_TUPLE_VTABLE)
     }
 }
 
@@ -241,6 +295,7 @@ impl IndexMut<usize> for FlatTuple {
 #[derive(
     Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Copy, Archive, Serialize, Deserialize,
 )]
+#[repr(C)]
 pub struct TupleIndex(u16);
 
 impl TupleIndex {
@@ -393,20 +448,38 @@ where
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct JointTuple<'a, T, U>(pub &'a T, pub &'a U);
+#[derive(Clone)]
+pub struct JointTuple<'a>(pub &'a dyn TupleLike, pub &'a dyn TupleLike);
 
-impl<'a, T: TupleLike, U: TupleLike> TupleLike for JointTuple<'a, T, U> {
+static JOINT_TUPLE_VTABLE: &RawTupleLikeVTable =
+    &RawTupleLikeVTable { width: JointTuple::raw_width, index: JointTuple::raw_index };
+
+impl<'a> JointTuple<'a> {
+    extern "C" fn raw_width(this: *const ()) -> usize {
+        unsafe { (*(this as *const JointTuple<'a>)).width() }
+    }
+
+    extern "C" fn raw_index(this: *const (), index: TupleIndex) -> *const Value {
+        unsafe { &(*(this as *const JointTuple<'a>))[index] }
+    }
+}
+
+impl<'a> TupleLike for JointTuple<'a> {
     #[inline]
     fn width(&self) -> usize {
         let Self(left, right) = self;
         left.width() + right.width()
     }
+
+    fn to_raw_parts(&self) -> (*const (), &'static RawTupleLikeVTable) {
+        (self as *const _ as *const (), JOINT_TUPLE_VTABLE)
+    }
 }
 
-impl<'a, T: TupleLike, U: TupleLike> Index<TupleIndex> for JointTuple<'a, T, U> {
+impl<'a> Index<TupleIndex> for JointTuple<'a> {
     type Output = Value;
 
+    #[inline]
     fn index(&self, index: TupleIndex) -> &Self::Output {
         let Self(left, right) = self;
         if index.as_usize() < left.width() { &left[index] } else { &right[index - left.width()] }
