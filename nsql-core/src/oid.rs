@@ -10,34 +10,24 @@ use rkyv::{Archive, Deserialize, Serialize};
 /// type, it is currently possible to misuse this type and read from the wrong set.
 // This must only be constructed internally by the catalog.
 // FIXME move the typedoid to catalog crate but keep the untyped one here
-#[derive(Archive, Serialize, Deserialize)]
-// #[structural_match]
+#[derive(PartialEq, Eq, Archive, Serialize, Deserialize)]
 pub struct Oid<T: ?Sized> {
     oid: u64,
     marker: PhantomData<fn() -> T>,
 }
 
-impl<T: ?Sized> std::marker::StructuralPartialEq for Oid<T> {}
+// We would ideally manually implement Eq for Oid<T> for all T.
+// However, we can't match on a type unless it derives PartialEq, and the structural match hack has
+// been removed.
 
-impl<T: ?Sized> std::marker::StructuralEq for Oid<T> {}
-
-impl<T: ?Sized> PartialEq for Oid<T> {
-    #[inline]
-    fn eq(&self, other: &Self) -> bool {
-        self.oid == other.oid
-    }
-}
-
-impl<T: ?Sized> Eq for Oid<T> {}
-
-impl<T: ?Sized> PartialOrd for Oid<T> {
+impl<T: Eq + ?Sized> PartialOrd for Oid<T> {
     #[inline]
     fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
         Some(self.cmp(other))
     }
 }
 
-impl<T: ?Sized> Ord for Oid<T> {
+impl<T: Eq + ?Sized> Ord for Oid<T> {
     #[inline]
     fn cmp(&self, other: &Self) -> cmp::Ordering {
         self.oid.cmp(&other.oid)

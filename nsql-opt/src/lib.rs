@@ -1,4 +1,4 @@
-#![feature(iter_array_chunks, if_let_guard, lazy_cell)]
+#![feature(iter_array_chunks, if_let_guard)]
 
 mod decorrelate;
 mod node;

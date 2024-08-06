@@ -1,4 +1,4 @@
-#![feature(lazy_cell, structural_match)]
+#![feature(structural_match)]
 
 mod oid;
 pub mod ty;
